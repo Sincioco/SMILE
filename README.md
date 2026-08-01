@@ -59,6 +59,10 @@ Exit
 |---|---|
 | `Print "text"` | Prints text to the console |
 
+## License
+
+SMILE uses the same licensing as the PMT project: GNU Affero General Public License v3.0. See [LICENSE](LICENSE).
+
 ## Future Ideas
 
 Possible next commands:
