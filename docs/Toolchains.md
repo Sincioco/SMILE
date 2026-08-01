@@ -63,6 +63,8 @@ Each build/run writes generated files to:
 
 SMILE never builds generated targets inside the repository.
 
+SMILE-owned temporary run workspaces older than 2 days may be deleted automatically.
+
 ## Timeout And Cancellation
 
 The default program timeout is 10 seconds. Cancellation and timeout terminate the entire child process tree where possible. Standard output and standard error are captured asynchronously to avoid deadlocks and UI freezes.

@@ -210,6 +210,9 @@ public abstract class ToolchainBase : IToolchain
     private static void CleanOldWorkspaces(string root)
     {
         string rootFullPath = Path.GetFullPath(root);
+        // Keep temporary compiler output from piling up between experiments.
+        // Two days gives enough room for troubleshooting without letting build
+        // folders quietly grow into multi-gigabyte clutter.
         var cutoff = DateTime.UtcNow.AddDays(-2);
 
         foreach (string directory in Directory.EnumerateDirectories(rootFullPath))

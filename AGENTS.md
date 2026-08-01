@@ -2,6 +2,9 @@
 
 - SMILE is a public repo, so write detailed commit messages that help people follow its progression.
 - Whenever Codex creates a commit for this project, prefix the commit subject with `Sin and Codex:`.
+- When there is no unresolved work left in the queue and all relevant tests are green, Codex should commit and push the intentional changes to the current branch.
+- Do not wait for a separate push request in that situation. The project is currently single-developer, and a bad final push can be reverted with a later commit.
+- Never force-push, never discard user work, and do not commit unrelated local changes.
 
 ## Guiding Principles
 
@@ -16,6 +19,12 @@
 - SMILE is also a learning project for compilers, interpreters, transpilers, and local toolchains.
 - Be generous with inline comments where they explain compiler concepts, parsing decisions, syntax-tree boundaries, target generation choices, process execution, cancellation, and UI responsiveness.
 - Comments should teach the "why" and the flow of the system. Avoid comments that merely repeat an obvious line of code.
+
+## Build Artifact Cleanup
+
+- Codex has permission to permanently delete SMILE-owned build and output artifacts older than 2 days when they are discovered.
+- This permission applies only to known generated artifact locations such as `bin`, `obj`, `out`, and `%TEMP%\SMILE\Runs`.
+- Before deleting recursively, verify resolved absolute paths are inside the SMILE repository or the SMILE-owned temporary root. Never delete outside those roots.
 
 ## Living Documentation
 

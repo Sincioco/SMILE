@@ -271,6 +271,8 @@ Source -> Lexer -> Parser -> Syntax Tree -> Target Generator -> Generated Files
 
 `SMILE.Engine` owns the lexer, parser, diagnostics, AST, transpiler facade, and target generators. `SMILE.Toolchains` owns detection, temporary workspaces, async process execution, cancellation, timeouts, build, and run. `SMILE.Cli` and `SMILE.Desktop` reuse both projects.
 
+SMILE-owned build/output artifacts older than 2 days may be cleaned from known generated locations such as `bin`, `obj`, `out`, and `%TEMP%\SMILE\Runs`.
+
 ## Current Limitations
 
 - Only `PRINT "text"` is supported.
