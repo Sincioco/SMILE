@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Text;
 
 namespace SMILE.Engine;
 
@@ -118,7 +119,8 @@ public abstract record BoundStatement;
 
 public sealed record BoundLetStatement(
     VariableSymbol Variable,
-    BoundExpression Initializer)
+    BoundExpression Initializer,
+    string ConstantValue)
     : BoundStatement;
 
 public sealed record BoundPrintStatement(
@@ -226,6 +228,65 @@ public static class BoundStringExpression
                 }
 
                 break;
+        }
+    }
+}
+
+internal static class BoundStringConstantEvaluator
+{
+    public static bool TryEvaluate(
+        BoundExpression expression,
+        IReadOnlyDictionary<VariableSymbol, string> values,
+        out string value)
+    {
+        switch (expression)
+        {
+            case BoundStringLiteralExpression literal:
+                value = literal.Value;
+                return true;
+
+            case BoundVariableExpression variable:
+                return values.TryGetValue(variable.Variable, out value!);
+
+            case BoundConcatenationExpression concatenation:
+                if (TryEvaluate(concatenation.Left, values, out string left) &&
+                    TryEvaluate(concatenation.Right, values, out string right))
+                {
+                    value = left + right;
+                    return true;
+                }
+
+                value = string.Empty;
+                return false;
+
+            case BoundInterpolatedStringExpression interpolated:
+                var builder = new StringBuilder();
+                foreach (BoundInterpolatedPart part in interpolated.Parts)
+                {
+                    switch (part)
+                    {
+                        case BoundInterpolatedTextPart text:
+                            builder.Append(text.Text);
+                            break;
+
+                        case BoundInterpolationExpressionPart interpolation:
+                            if (!TryEvaluate(interpolation.Expression, values, out string partValue))
+                            {
+                                value = string.Empty;
+                                return false;
+                            }
+
+                            builder.Append(partValue);
+                            break;
+                    }
+                }
+
+                value = builder.ToString();
+                return true;
+
+            default:
+                value = string.Empty;
+                return false;
         }
     }
 }

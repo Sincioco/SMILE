@@ -59,6 +59,14 @@ console.log("Hello " + Name + "!");
 
 Lower-level targets may need target-local lowering, but the emitted code should still look natural for that target.
 
+Official `LET` v1.0 initializers are immutable string constants. C, Objective-C, MASM, and other lower-level targets may emit the evaluated declaration value instead of building strings at runtime:
+
+```c
+const char *FullName = "Sin Cioco";
+```
+
+This keeps early generated programs dependency-light and avoids introducing premature buffers or a SMILE runtime library.
+
 For current C `PRINT`, SMILE should prefer one safe `printf` statement per SMILE `PRINT` where practical:
 
 ```c
@@ -97,4 +105,27 @@ SMILE preserves user-authored identifier spelling in generated target code. A SM
 LET Name = "Sin"
 ```
 
-should keep `Name` in target languages unless a future language feature explicitly introduces target-specific name mapping.
+should keep `Name` in target languages when that spelling is safe.
+
+Target generators must use the compiler's symbol-based target identifier map. A valid SMILE name must be mapped when it conflicts with:
+
+- destination-language keywords;
+- destination-language identifier rules;
+- generator-owned runtime names such as `Console`, `printf`, `System`, `main`, `args`, `console`, or `print`;
+- another generated target name.
+
+Mapped names should remain readable. For example:
+
+```smile
+LET class = "A"
+LET _smile_class = "B"
+```
+
+may generate:
+
+```csharp
+string _smile_class = "A";
+string _smile_class_2 = "B";
+```
+
+Every reference to a SMILE symbol must use the same mapped target name as its declaration. Generators must not perform source-text replacement to accomplish this.

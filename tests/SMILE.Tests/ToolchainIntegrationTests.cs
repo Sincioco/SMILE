@@ -23,6 +23,7 @@ PRINT A; B; C
     private const string ExpectedOutput = "\nHello World!\nHello World!\nHello Sin!\nHello Sin!\nHello Sin!\nLiteral braces: {Name}\nA; B; C\n";
 
     private readonly SmileTranspiler _transpiler = new();
+    private readonly SmileEvaluator _evaluator = new();
     private readonly ToolchainRegistry _toolchains = ToolchainRegistry.CreateDefault();
 
     [TestMethod]
@@ -206,6 +207,91 @@ PRINT "Literal braces: {Name}"
 
                 Assert.IsTrue(result.Success, result.BuildOutput + Environment.NewLine + result.StandardError);
                 Assert.AreEqual(Normalize(expectedOutput), Normalize(result.StandardOutput));
+                executed++;
+            }
+        }
+
+        if (executed == 0)
+        {
+            Assert.Inconclusive("No runnable target toolchains are installed.");
+        }
+    }
+
+    [TestMethod]
+    public async Task Installed_targets_match_reference_evaluator_for_let_v1_programs()
+    {
+        string[] sources =
+        {
+            """
+LET Name = "Sin"
+LET Copy = Name
+
+PRINT {Copy}
+""",
+            """
+LET FirstName = "Sin"
+LET LastName = "Cioco"
+LET FullName = FirstName + " " + LastName
+
+PRINT {FullName}
+""",
+            """
+LET Name = "Sin"
+LET Greeting = $"Hello {Name}!"
+
+PRINT {Greeting}
+""",
+            """
+LET A = "A"
+LET B = A + "B"
+LET C = $"{B}C"
+LET D = C + A
+
+PRINT {D}
+""",
+            """
+LET class = "A"
+LET Console = "B"
+LET printf = "C"
+LET System = "D"
+
+PRINT {class}
+PRINT {Console}
+PRINT {printf}
+PRINT {System}
+"""
+        };
+
+        TargetLanguage[] runnableTargets =
+        {
+            TargetLanguage.CSharp,
+            TargetLanguage.C,
+            TargetLanguage.MasmX64,
+            TargetLanguage.JavaScript,
+            TargetLanguage.Java
+        };
+
+        int executed = 0;
+        foreach (string source in sources)
+        {
+            EvaluationResult evaluation = _evaluator.Evaluate(source);
+            Assert.IsTrue(evaluation.Success, string.Join(Environment.NewLine, evaluation.Diagnostics));
+            string expected = Normalize(evaluation.Output);
+
+            foreach (TargetLanguage language in runnableTargets)
+            {
+                IToolchain toolchain = _toolchains.Get(language);
+                ToolchainStatus status = await toolchain.DetectAsync(CancellationToken.None);
+                if (!status.IsAvailable)
+                {
+                    continue;
+                }
+
+                GeneratedProgram program = _transpiler.Transpile(source, language).GeneratedProgram!;
+                BuildRunResult result = await toolchain.BuildAndRunAsync(program, CancellationToken.None);
+
+                Assert.IsTrue(result.Success, result.BuildOutput + Environment.NewLine + result.StandardError);
+                Assert.AreEqual(expected, Normalize(result.StandardOutput));
                 executed++;
             }
         }

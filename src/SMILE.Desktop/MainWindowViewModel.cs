@@ -12,14 +12,12 @@ namespace SMILE.Desktop;
 public sealed class MainWindowViewModel : ViewModelBase
 {
     private const string SampleSource = """
-LET Name = "Sin"
+LET FirstName = "Sin"
+LET LastName = "Cioco"
+LET FullName = FirstName + " " + LastName
+LET Greeting = $"Hello {FullName}!"
 
-PRINT
-PRINT "Hello World!"
-PRINT Hello World!
-PRINT Hello {Name}!
-PRINT $"Hello {Name}!"
-PRINT "Hello " + Name + "!"
+PRINT {Greeting}
 """;
 
     // Live transpilation is intentionally delayed a little. A compiler front

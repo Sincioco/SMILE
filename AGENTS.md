@@ -32,6 +32,9 @@
 - A physical source line normally contains one statement, and semicolons do not separate statements.
 - A second standalone `PRINT` keyword on the same line is a compiler error.
 - New language work must preserve asynchronous debounced WPF live transpilation.
+- Published official language specifications and compiler behavior must remain synchronized.
+- Every normative valid and invalid example in an official language specification should be represented in the conformance test suite.
+- Target generators must use a symbol-based target identifier map and must not emit raw SMILE identifiers when they conflict with destination-language syntax or generator-owned runtime names.
 
 ## Educational Code Comments
 

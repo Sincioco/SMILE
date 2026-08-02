@@ -695,6 +695,8 @@ The language-neutral representation MUST preserve enough expression shape for ge
 
 Generated target code SHOULD be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write. C, Objective-C, assembly, and other lower-level targets MAY lower interpolation and concatenation into target-specific output operations. However, the generator SHOULD still choose the clearest idiomatic destination-language form. For C string output, a single safe `printf` call with a compiler-generated format string is generally preferred over exposing every internal literal and variable segment as a separate output statement.
 
+When a `PRINT` expression references a variable, the target generator MUST use the same symbol-based target identifier map as the corresponding `LET` declaration. This keeps valid SMILE identifiers safe in target languages without changing bare `PRINT` text into variable references.
+
 ---
 
 ## 18. Examples

@@ -132,11 +132,36 @@ internal sealed class Parser
         int position = SkipHorizontalWhitespace(line.Text, letKeyword.End);
         if (position >= line.Text.Length || !SyntaxFacts.IsIdentifierStart(line.Text[position]))
         {
-            AddDiagnostic("SMILE1112", "LET requires a variable name.", line.Span(position, 0));
+            int invalidEnd = FindPotentialIdentifierEnd(line.Text, position);
+            AddDiagnostic(
+                "SMILE1112",
+                "LET requires a valid variable name.",
+                line.Span(position, Math.Max(0, invalidEnd - position)));
             return null;
         }
 
         IdentifierRead name = ReadIdentifier(line, position);
+        if (name.End < line.Text.Length &&
+            !SyntaxFacts.IsHorizontalWhitespace(line.Text[name.End]) &&
+            line.Text[name.End] != '=')
+        {
+            int invalidEnd = FindPotentialIdentifierEnd(line.Text, position);
+            AddDiagnostic(
+                "SMILE1112",
+                "LET requires a valid variable name.",
+                line.Span(position, invalidEnd - position));
+            return null;
+        }
+
+        if (SyntaxFacts.IsReservedKeyword(name.Text))
+        {
+            AddDiagnostic(
+                "SMILE1115",
+                $"'{name.Text}' is a reserved SMILE keyword and cannot be used as a variable name.",
+                name.Span);
+            return null;
+        }
+
         position = SkipHorizontalWhitespace(line.Text, name.End);
         if (position >= line.Text.Length || line.Text[position] != '=')
         {
@@ -419,6 +444,19 @@ internal sealed class Parser
         return true;
     }
 
+    private static int FindPotentialIdentifierEnd(string text, int start)
+    {
+        int position = start;
+        while (position < text.Length &&
+            !SyntaxFacts.IsHorizontalWhitespace(text[position]) &&
+            text[position] != '=')
+        {
+            position++;
+        }
+
+        return position;
+    }
+
     private IdentifierRead ReadIdentifier(SourceLine line, int start)
     {
         int position = start + 1;
@@ -676,6 +714,8 @@ internal sealed class Binder
 {
     private readonly List<Diagnostic> _diagnostics = new();
     private readonly Dictionary<string, VariableSymbol> _variables = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<VariableSymbol, string> _constantValues = new();
+    private readonly List<VariableSymbol> _declaredVariables = new();
 
     public BindResult Bind(SmileProgramSyntax program)
     {
@@ -691,7 +731,7 @@ internal sealed class Binder
         }
 
         return new BindResult(
-            new BoundProgram(statements, _variables.Values.ToArray()),
+            new BoundProgram(statements, _declaredVariables.ToArray()),
             _diagnostics);
     }
 
@@ -703,20 +743,8 @@ internal sealed class Binder
             _ => null
         };
 
-    private BoundStatement BindLetStatement(LetStatementSyntax syntax)
+    private BoundStatement? BindLetStatement(LetStatementSyntax syntax)
     {
-        BoundExpression initializer = BindExpression(syntax.Initializer);
-        var symbol = new VariableSymbol(syntax.Name, syntax.NameSpan, SmileType.String);
-
-        if (initializer is not BoundStringLiteralExpression)
-        {
-            _diagnostics.Add(new Diagnostic(
-                "SMILE1114",
-                DiagnosticSeverity.Error,
-                "LET currently requires a string literal initializer.",
-                syntax.Initializer.Span));
-        }
-
         if (_variables.ContainsKey(syntax.Name))
         {
             _diagnostics.Add(new Diagnostic(
@@ -724,13 +752,34 @@ internal sealed class Binder
                 DiagnosticSeverity.Error,
                 $"Variable '{syntax.Name}' is already declared.",
                 syntax.NameSpan));
-        }
-        else
-        {
-            _variables.Add(syntax.Name, symbol);
+            return null;
         }
 
-        return new BoundLetStatement(symbol, initializer);
+        // A declaration is intentionally absent while its initializer binds.
+        // That single ordering rule gives us declaration-before-use and makes
+        // self-reference naturally become the normal undefined-variable error.
+        int diagnosticCountBeforeInitializer = _diagnostics.Count;
+        BoundExpression initializer = BindExpression(syntax.Initializer);
+        if (_diagnostics.Count != diagnosticCountBeforeInitializer)
+        {
+            return null;
+        }
+
+        if (!BoundStringConstantEvaluator.TryEvaluate(initializer, _constantValues, out string constantValue))
+        {
+            _diagnostics.Add(new Diagnostic(
+                "SMILE1108",
+                DiagnosticSeverity.Error,
+                "Invalid string expression.",
+                syntax.Initializer.Span));
+            return null;
+        }
+
+        var symbol = new VariableSymbol(syntax.Name, syntax.NameSpan, SmileType.String);
+        _variables.Add(syntax.Name, symbol);
+        _constantValues.Add(symbol, constantValue);
+        _declaredVariables.Add(symbol);
+        return new BoundLetStatement(symbol, initializer, constantValue);
     }
 
     private BoundExpression BindExpression(ExpressionSyntax expression) =>
@@ -789,11 +838,18 @@ internal static class SyntaxFacts
     public static bool IsDoubleQuote(char value) =>
         value is '"' or '\u201c' or '\u201d';
 
+    public static bool IsReservedKeyword(string text) =>
+        text.Equals("LET", StringComparison.OrdinalIgnoreCase) ||
+        text.Equals("PRINT", StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsAsciiLetter(char value) =>
+        value is >= 'A' and <= 'Z' or >= 'a' and <= 'z';
+
     public static bool IsIdentifierStart(char value) =>
-        char.IsLetter(value) || value == '_';
+        IsAsciiLetter(value) || value == '_';
 
     public static bool IsIdentifierPart(char value) =>
-        char.IsLetterOrDigit(value) || value == '_';
+        IsIdentifierStart(value) || value is >= '0' and <= '9';
 }
 
 internal sealed record SourceLine(

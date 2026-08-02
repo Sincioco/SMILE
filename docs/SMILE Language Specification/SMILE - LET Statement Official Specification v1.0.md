@@ -979,6 +979,15 @@ A semantic binding phase SHOULD:
 
 Target-language generators MUST consume the language-neutral semantic representation rather than reparsing SMILE source.
 
+For version 1.0, every valid `LET` initializer is also a compile-time string constant because it is built only from:
+
+- String literals.
+- Previously declared string variables.
+- String concatenation.
+- Interpolated quoted strings.
+
+A conforming implementation MAY carry that evaluated string value on the bound declaration. This is the recommended KISS strategy for low-level targets that do not have a natural string concatenation or interpolation expression.
+
 ---
 
 ## 26. Runtime semantics
@@ -1065,6 +1074,16 @@ A target generator MUST safely map a valid SMILE identifier when the target lang
 - Requires escaping or name mangling.
 
 All references to the same case-insensitive SMILE variable MUST map to the same generated target symbol.
+
+The identifier map MUST be symbol-based, deterministic, collision-safe, and target-specific. It MUST NOT be implemented as source-text replacement. A readable generated name such as `_smile_class` is acceptable when a valid SMILE variable such as `class` conflicts with a target keyword. If another SMILE declaration already uses that mapped spelling, the generator MUST choose a deterministic distinct spelling such as `_smile_class_2`.
+
+Low-level targets such as C, Objective-C, and MASM MAY emit evaluated string constants for `LET` declarations:
+
+```c
+const char *FullName = "Sin Cioco";
+```
+
+This is semantically equivalent for official immutable string-only `LET` v1.0 values and avoids premature runtime buffers or a SMILE runtime library.
 
 ---
 
@@ -1280,6 +1299,26 @@ The implementation SHOULD distinguish at least:
 - Multiple statements on one line.
 
 The repository's central diagnostic catalog, when present, is authoritative for exact numeric codes.
+
+Current stable diagnostic codes for this specification include:
+
+| Code | Meaning |
+|---|---|
+| `SMILE1001` | Unknown statement or keyword |
+| `SMILE1003` | Unterminated string literal |
+| `SMILE1005` | Invalid or unexpected character |
+| `SMILE1103` | Unterminated interpolation expression |
+| `SMILE1104` | Unexpected closing brace in template |
+| `SMILE1105` | Interpolation expression cannot be empty |
+| `SMILE1106` | Undefined variable |
+| `SMILE1107` | Duplicate variable declaration |
+| `SMILE1108` | Invalid string expression |
+| `SMILE1109` | Semicolons cannot separate SMILE statements |
+| `SMILE1110` | Unterminated interpolated string |
+| `SMILE1111` | Unexpected text after a string expression |
+| `SMILE1112` | `LET` requires a valid variable name |
+| `SMILE1113` | `LET` requires `=` before its initializer |
+| `SMILE1115` | Reserved SMILE keyword used as a variable name |
 
 ---
 

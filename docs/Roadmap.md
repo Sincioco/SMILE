@@ -33,17 +33,25 @@
 - Regenerate only visible target languages that are missing for the current source revision.
 - Keep rapid C, Swift, Java, and other target selector changes from turning into repeated visible-target transpilation bursts.
 
+## Implemented In v0.3.0
+
+- Complete official `LET` v1.0 string initializer support.
+- Accept previously declared variables, concatenation, and interpolated quoted strings in `LET`.
+- Evaluate official string-only `LET` initializers as compile-time constants for low-level targets.
+- Add the SMILE reference evaluator for semantic conformance tests.
+- Enforce portable ASCII identifiers and reject `LET` or `PRINT` as variable names.
+- Add deterministic target identifier mapping for destination-language keywords and generator-owned runtime names.
+
 ## Future Ideas
 
-These are not implemented in v0.2.2:
+These are not implemented in v0.3.0:
 
-1. Non-literal `LET` initializers
-2. Numeric and boolean expressions
-3. `INPUT`
-4. `IF / THEN / ELSE`
-5. Loops
-6. Functions
-7. Type checking beyond string-only expressions
-8. Debugging and source mapping
-9. Reusable web interface
-10. Evolution toward a full SMILE language
+1. Numeric and boolean expressions
+2. `INPUT`
+3. `IF / THEN / ELSE`
+4. Loops
+5. Functions
+6. Type checking beyond string-only expressions
+7. Debugging and source mapping
+8. Reusable web interface
+9. Evolution toward a full SMILE language

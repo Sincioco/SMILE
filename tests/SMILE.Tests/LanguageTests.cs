@@ -207,7 +207,6 @@ PRINT {Name}
     [DataRow("PRINT Hello {MissingName}!", "SMILE1106", 1, 14)]
     [DataRow("PRINT \"Hello\" + MissingName", "SMILE1106", 1, 17)]
     [DataRow("LET Name = \"Sin\"\nLET NAME = \"Joy\"", "SMILE1107", 2, 5)]
-    [DataRow("LET Greeting = \"Hello \" + \"World\"", "SMILE1114", 1, 16)]
     public void Binder_reports_semantic_diagnostics_without_throwing(
         string source,
         string expectedCode,

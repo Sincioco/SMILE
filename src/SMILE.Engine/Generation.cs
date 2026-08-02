@@ -108,6 +108,7 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
 
     public GeneratedProgram Generate(BoundProgram program)
     {
+        TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
         var source = new StringBuilder();
         source.AppendLine("using System;");
         source.AppendLine();
@@ -121,7 +122,7 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
             switch (statement)
             {
                 case BoundLetStatement let:
-                    source.AppendLine($"        string {let.Variable.Name} = {TargetExpression.CSharp(let.Initializer)};");
+                    source.AppendLine($"        string {identifiers.Get(let.Variable)} = {TargetExpression.CSharp(let.Initializer, identifiers)};");
                     break;
 
                 case BoundPrintStatement print:
@@ -131,7 +132,7 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
                     }
                     else
                     {
-                        source.AppendLine($"        Console.WriteLine({TargetExpression.CSharp(print.Value)});");
+                        source.AppendLine($"        Console.WriteLine({TargetExpression.CSharp(print.Value, identifiers)});");
                     }
 
                     break;
@@ -168,6 +169,7 @@ internal sealed class CCodeGenerator : ICodeGenerator
 
     public GeneratedProgram Generate(BoundProgram program)
     {
+        TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
         var source = new StringBuilder();
         source.AppendLine("#include <stdio.h>");
         source.AppendLine();
@@ -183,7 +185,7 @@ internal sealed class CCodeGenerator : ICodeGenerator
             switch (statement)
             {
                 case BoundLetStatement let:
-                    source.AppendLine($"    const char *{let.Variable.Name} = {TargetEscapes.CString(GetLiteralInitializer(let))};");
+                    source.AppendLine($"    const char *{identifiers.Get(let.Variable)} = {TargetEscapes.CString(let.ConstantValue)};");
                     emittedDeclaration = true;
                     emittedBodyStatement = true;
                     break;
@@ -194,7 +196,7 @@ internal sealed class CCodeGenerator : ICodeGenerator
                         source.AppendLine();
                     }
 
-                    AppendCPrint(source, print);
+                    AppendCPrint(source, print, identifiers);
                     emittedExecutable = true;
                     emittedBodyStatement = true;
                     break;
@@ -214,9 +216,12 @@ internal sealed class CCodeGenerator : ICodeGenerator
             new[] { new GeneratedFile("Program.c", TextOutput.EnsureOneTrailingNewLine(source.ToString()), IsPrimary: true) });
     }
 
-    private static void AppendCPrint(StringBuilder source, BoundPrintStatement print)
+    private static void AppendCPrint(
+        StringBuilder source,
+        BoundPrintStatement print,
+        TargetIdentifierMap identifiers)
     {
-        CPrintfPlan plan = CPrintfPlan.FromPrint(print, variable => variable.Name);
+        CPrintfPlan plan = CPrintfPlan.FromPrint(print, variable => identifiers.Get(variable));
         AppendPrintfCall(source, "    ", plan);
     }
 
@@ -235,8 +240,6 @@ internal sealed class CCodeGenerator : ICodeGenerator
         source.AppendLine(");");
     }
 
-    private static string GetLiteralInitializer(BoundLetStatement let) =>
-        let.Initializer is BoundStringLiteralExpression literal ? literal.Value : string.Empty;
 }
 
 internal sealed class MasmX64CodeGenerator : ICodeGenerator
@@ -290,7 +293,7 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         {
             BoundLetStatement let = lets[index];
             string valueLabel = VariableValueLabel(index);
-            AppendMasmLine(source, $"{valueLabel} BYTE {TargetEscapes.MasmByteInitializers(GetLiteralInitializer(let))}", $"LET {let.Variable.Name} initial text.");
+            AppendMasmLine(source, $"{valueLabel} BYTE {TargetEscapes.MasmByteInitializers(let.ConstantValue)}", $"LET {let.Variable.Name} initial text.");
             AppendMasmLine(source, $"{valueLabel}Length EQU $ - {valueLabel}", "Length of the variable's current text.");
             AppendMasmLine(source, $"{VariablePointerLabel(index)} QWORD ?", $"Runtime pointer for {let.Variable.Name}.");
             AppendMasmLine(source, $"{VariableLengthLabel(index)} DWORD ?", $"Runtime length for {let.Variable.Name}.");
@@ -422,8 +425,6 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
     private static string PrintLiteralLabel(int printIndex, int segmentIndex) =>
         $"print{printIndex}Segment{segmentIndex}";
 
-    private static string GetLiteralInitializer(BoundLetStatement let) =>
-        let.Initializer is BoundStringLiteralExpression literal ? literal.Value : string.Empty;
 }
 
 internal sealed class JavaScriptCodeGenerator : ICodeGenerator
@@ -432,6 +433,7 @@ internal sealed class JavaScriptCodeGenerator : ICodeGenerator
 
     public GeneratedProgram Generate(BoundProgram program)
     {
+        TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
         var source = new StringBuilder();
 
         foreach (BoundStatement statement in program.Statements)
@@ -439,13 +441,13 @@ internal sealed class JavaScriptCodeGenerator : ICodeGenerator
             switch (statement)
             {
                 case BoundLetStatement let:
-                    source.AppendLine($"let {let.Variable.Name} = {TargetExpression.JavaScript(let.Initializer)};");
+                    source.AppendLine($"let {identifiers.Get(let.Variable)} = {TargetExpression.JavaScript(let.Initializer, identifiers)};");
                     break;
 
                 case BoundPrintStatement print:
                     source.AppendLine(print.IsBlankLine
                         ? "console.log();"
-                        : $"console.log({TargetExpression.JavaScript(print.Value)});");
+                        : $"console.log({TargetExpression.JavaScript(print.Value, identifiers)});");
                     break;
             }
         }
@@ -462,6 +464,7 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
 
     public GeneratedProgram Generate(BoundProgram program)
     {
+        TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
         var source = new StringBuilder();
         source.AppendLine("public final class Program");
         source.AppendLine("{");
@@ -473,13 +476,13 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
             switch (statement)
             {
                 case BoundLetStatement let:
-                    source.AppendLine($"        String {let.Variable.Name} = {TargetExpression.Java(let.Initializer)};");
+                    source.AppendLine($"        String {identifiers.Get(let.Variable)} = {TargetExpression.Java(let.Initializer, identifiers)};");
                     break;
 
                 case BoundPrintStatement print:
                     source.AppendLine(print.IsBlankLine
                         ? "        System.out.println();"
-                        : $"        System.out.println({TargetExpression.Java(print.Value)});");
+                        : $"        System.out.println({TargetExpression.Java(print.Value, identifiers)});");
                     break;
             }
         }
@@ -499,6 +502,7 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
 
     public GeneratedProgram Generate(BoundProgram program)
     {
+        TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
         var source = new StringBuilder();
         source.AppendLine("#import <Foundation/Foundation.h>");
         source.AppendLine("#include <stdio.h>");
@@ -517,7 +521,7 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
             switch (statement)
             {
                 case BoundLetStatement let:
-                    source.AppendLine($"        NSString *{let.Variable.Name} = {TargetEscapes.ObjectiveCString(GetLiteralInitializer(let))};");
+                    source.AppendLine($"        NSString *{identifiers.Get(let.Variable)} = {TargetEscapes.ObjectiveCString(let.ConstantValue)};");
                     emittedDeclaration = true;
                     emittedBodyStatement = true;
                     break;
@@ -528,7 +532,7 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
                         source.AppendLine();
                     }
 
-                    AppendObjectiveCPrint(source, print);
+                    AppendObjectiveCPrint(source, print, identifiers);
                     emittedExecutable = true;
                     emittedBodyStatement = true;
                     break;
@@ -550,14 +554,14 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
             new[] { new GeneratedFile("Program.m", TextOutput.EnsureOneTrailingNewLine(source.ToString()), IsPrimary: true) });
     }
 
-    private static void AppendObjectiveCPrint(StringBuilder source, BoundPrintStatement print)
+    private static void AppendObjectiveCPrint(
+        StringBuilder source,
+        BoundPrintStatement print,
+        TargetIdentifierMap identifiers)
     {
-        CPrintfPlan plan = CPrintfPlan.FromPrint(print, variable => $"[{variable.Name} UTF8String]");
+        CPrintfPlan plan = CPrintfPlan.FromPrint(print, variable => $"[{identifiers.Get(variable)} UTF8String]");
         CCodeGenerator.AppendPrintfCall(source, "        ", plan);
     }
-
-    private static string GetLiteralInitializer(BoundLetStatement let) =>
-        let.Initializer is BoundStringLiteralExpression literal ? literal.Value : string.Empty;
 }
 
 internal sealed class SwiftCodeGenerator : ICodeGenerator
@@ -566,6 +570,7 @@ internal sealed class SwiftCodeGenerator : ICodeGenerator
 
     public GeneratedProgram Generate(BoundProgram program)
     {
+        TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
         var source = new StringBuilder();
 
         foreach (BoundStatement statement in program.Statements)
@@ -573,13 +578,13 @@ internal sealed class SwiftCodeGenerator : ICodeGenerator
             switch (statement)
             {
                 case BoundLetStatement let:
-                    source.AppendLine($"let {let.Variable.Name} = {TargetExpression.Swift(let.Initializer)}");
+                    source.AppendLine($"let {identifiers.Get(let.Variable)} = {TargetExpression.Swift(let.Initializer, identifiers)}");
                     break;
 
                 case BoundPrintStatement print:
                     source.AppendLine(print.IsBlankLine
                         ? "print()"
-                        : $"print({TargetExpression.Swift(print.Value)})");
+                        : $"print({TargetExpression.Swift(print.Value, identifiers)})");
                     break;
             }
         }
@@ -636,45 +641,54 @@ internal sealed record CPrintfPlan(
 
 internal static class TargetExpression
 {
-    public static string CSharp(BoundExpression expression) =>
+    public static string CSharp(BoundExpression expression, TargetIdentifierMap identifiers) =>
         expression switch
         {
             BoundStringLiteralExpression literal => TargetEscapes.CSharpString(literal.Value),
-            BoundVariableExpression variable => variable.Variable.Name,
-            BoundConcatenationExpression concatenation => JoinConcatenation(concatenation, CSharp),
-            BoundInterpolatedStringExpression interpolated => CSharpInterpolatedString(interpolated),
+            BoundVariableExpression variable => identifiers.Get(variable.Variable),
+            BoundConcatenationExpression concatenation => JoinConcatenation(
+                concatenation,
+                part => CSharp(part, identifiers)),
+            BoundInterpolatedStringExpression interpolated => CSharpInterpolatedString(interpolated, identifiers),
             _ => TargetEscapes.CSharpString(string.Empty)
         };
 
-    public static string JavaScript(BoundExpression expression) =>
+    public static string JavaScript(BoundExpression expression, TargetIdentifierMap identifiers) =>
         expression switch
         {
             BoundStringLiteralExpression literal => TargetEscapes.JavaScriptString(literal.Value),
-            BoundVariableExpression variable => variable.Variable.Name,
-            BoundConcatenationExpression concatenation => JoinConcatenation(concatenation, JavaScript),
-            BoundInterpolatedStringExpression interpolated => JavaScriptTemplateLiteral(interpolated),
+            BoundVariableExpression variable => identifiers.Get(variable.Variable),
+            BoundConcatenationExpression concatenation => JoinConcatenation(
+                concatenation,
+                part => JavaScript(part, identifiers)),
+            BoundInterpolatedStringExpression interpolated => JavaScriptTemplateLiteral(interpolated, identifiers),
             _ => TargetEscapes.JavaScriptString(string.Empty)
         };
 
-    public static string Java(BoundExpression expression) =>
+    public static string Java(BoundExpression expression, TargetIdentifierMap identifiers) =>
         expression switch
         {
             BoundStringLiteralExpression literal => TargetEscapes.JavaString(literal.Value),
-            BoundVariableExpression variable => variable.Variable.Name,
-            BoundConcatenationExpression concatenation => JoinConcatenation(concatenation, Java),
+            BoundVariableExpression variable => identifiers.Get(variable.Variable),
+            BoundConcatenationExpression concatenation => JoinConcatenation(
+                concatenation,
+                part => Java(part, identifiers)),
             BoundInterpolatedStringExpression interpolated => JoinSegments(
                 BoundStringExpression.FlattenForOutput(interpolated),
-                TargetEscapes.JavaString),
+                TargetEscapes.JavaString,
+                identifiers),
             _ => TargetEscapes.JavaString(string.Empty)
         };
 
-    public static string Swift(BoundExpression expression) =>
+    public static string Swift(BoundExpression expression, TargetIdentifierMap identifiers) =>
         expression switch
         {
             BoundStringLiteralExpression literal => TargetEscapes.SwiftString(literal.Value),
-            BoundVariableExpression variable => variable.Variable.Name,
-            BoundConcatenationExpression concatenation => JoinConcatenation(concatenation, Swift),
-            BoundInterpolatedStringExpression interpolated => SwiftInterpolatedString(interpolated),
+            BoundVariableExpression variable => identifiers.Get(variable.Variable),
+            BoundConcatenationExpression concatenation => JoinConcatenation(
+                concatenation,
+                part => Swift(part, identifiers)),
+            BoundInterpolatedStringExpression interpolated => SwiftInterpolatedString(interpolated, identifiers),
             _ => TargetEscapes.SwiftString(string.Empty)
         };
 
@@ -683,33 +697,40 @@ internal static class TargetExpression
         Func<BoundExpression, string> renderExpression) =>
         renderExpression(expression.Left) + " + " + renderExpression(expression.Right);
 
-    private static string CSharpInterpolatedString(BoundInterpolatedStringExpression expression) =>
+    private static string CSharpInterpolatedString(
+        BoundInterpolatedStringExpression expression,
+        TargetIdentifierMap identifiers) =>
         "$\"" + string.Concat(expression.Parts.Select(part => part switch
         {
             BoundInterpolatedTextPart text => TargetEscapes.CSharpInterpolatedText(text.Text),
-            BoundInterpolationExpressionPart interpolation => "{" + CSharp(interpolation.Expression) + "}",
+            BoundInterpolationExpressionPart interpolation => "{" + CSharp(interpolation.Expression, identifiers) + "}",
             _ => string.Empty
         })) + "\"";
 
-    private static string JavaScriptTemplateLiteral(BoundInterpolatedStringExpression expression) =>
+    private static string JavaScriptTemplateLiteral(
+        BoundInterpolatedStringExpression expression,
+        TargetIdentifierMap identifiers) =>
         "`" + string.Concat(expression.Parts.Select(part => part switch
         {
             BoundInterpolatedTextPart text => TargetEscapes.JavaScriptTemplateText(text.Text),
-            BoundInterpolationExpressionPart interpolation => "${" + JavaScript(interpolation.Expression) + "}",
+            BoundInterpolationExpressionPart interpolation => "${" + JavaScript(interpolation.Expression, identifiers) + "}",
             _ => string.Empty
         })) + "`";
 
-    private static string SwiftInterpolatedString(BoundInterpolatedStringExpression expression) =>
+    private static string SwiftInterpolatedString(
+        BoundInterpolatedStringExpression expression,
+        TargetIdentifierMap identifiers) =>
         "\"" + string.Concat(expression.Parts.Select(part => part switch
         {
             BoundInterpolatedTextPart text => TargetEscapes.SwiftInterpolatedText(text.Text),
-            BoundInterpolationExpressionPart interpolation => "\\(" + Swift(interpolation.Expression) + ")",
+            BoundInterpolationExpressionPart interpolation => "\\(" + Swift(interpolation.Expression, identifiers) + ")",
             _ => string.Empty
         })) + "\"";
 
     private static string JoinSegments(
         IReadOnlyList<PrintSegment> segments,
-        Func<string, string> quoteLiteral)
+        Func<string, string> quoteLiteral,
+        TargetIdentifierMap identifiers)
     {
         if (segments.Count == 0)
         {
@@ -721,7 +742,7 @@ internal static class TargetExpression
             segments.Select(segment => segment switch
             {
                 LiteralPrintSegment literal => quoteLiteral(literal.Text),
-                VariablePrintSegment variable => variable.Variable.Name,
+                VariablePrintSegment variable => identifiers.Get(variable.Variable),
                 _ => quoteLiteral(string.Empty)
             }));
     }
