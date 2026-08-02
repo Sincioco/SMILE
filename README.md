@@ -87,10 +87,12 @@ Implemented rules:
 - Ordinary quoted strings do not interpolate, so `PRINT "Hello {Name}!"` prints `{Name}` literally.
 - `PRINT Hello World!` is a raw template and prints `Hello World!`.
 - Raw templates and `$"..."` support `{Name}` interpolation.
+- Raw placeholders are interpolation-oriented friendly syntax, so targets with native interpolation should show interpolation.
 - `{{` and `}}` produce literal braces in raw templates and `$"..."`.
 - `PRINT Name` prints the literal text `Name`.
 - `PRINT {Name}` evaluates the variable `Name`.
 - `PRINT "Hello " + Name + "!"` supports string concatenation for `PRINT`.
+- Explicit concatenation remains concatenation in generated code when the target language supports it.
 - A semicolon is not a statement separator. In raw templates, `PRINT A; B; C` prints the semicolons literally.
 - A physical line may contain only one statement.
 - A second standalone `PRINT` keyword on the same line is a compiler error.
@@ -110,6 +112,7 @@ internal static class Program
     private static void Main()
     {
         string Name = "Sin";
+        Console.WriteLine($"Hello {Name}!");
         Console.WriteLine("Hello " + Name + "!");
     }
 }
@@ -135,6 +138,7 @@ JavaScript:
 
 ```javascript
 let Name = "Sin";
+console.log(`Hello ${Name}!`);
 console.log("Hello " + Name + "!");
 ```
 
@@ -176,6 +180,7 @@ Swift:
 
 ```swift
 let Name = "Sin"
+print("Hello \(Name)!")
 print("Hello " + Name + "!")
 ```
 

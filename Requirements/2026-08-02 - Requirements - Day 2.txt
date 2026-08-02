@@ -76,3 +76,14 @@ To Codex
 Codex Completion Notes
 ----------------------
 **22-25 ready for testing:** The official PRINT and LET specifications now live under `C:\SMILE\docs\SMILE Language Specification`, README/AGENTS/language docs point to that canonical folder, the old duplicate PRINT specification locations were removed, and README now uses a fresh versioned screenshot file copied from `C:\SMILE\Requirements\Progress\2026-08-02-day-1-2-smile-desktop.png` so GitHub should display the v0.2.0 Friendly PRINT image.
+
+
+To Codex
+--------
+26.) I noticed that while you translate the PRINT statement syntactically correct from SMILE to the target language, the intent is lost especially when interpolation is used.  I have researched the issue with ChatGPT 5.6 and you will find in "C:\SMILE\Requirements\2026-0-8-02 2001 - SMILE Codex Instructions Preserve PRINT Expression Intent.md" the correction to your logic.  Read the mentioned file and execute / implement it.
+
+Codex Completion Notes
+----------------------
+**26 ready for testing:** SMILE now preserves PRINT expression intent in generated code. Friendly raw interpolation and explicit `$"..."` interpolation generate native interpolation in C#, JavaScript, and Swift; explicit `"..." + Name` concatenation remains concatenation; Java uses concatenation as the interpolation fallback; and C, Objective-C, and MASM still use equivalent segment output.
+
+Validation completed locally: `dotnet restore SMILE.sln`, Debug build/tests, Release build/tests, CLI generation for all seven targets, and CLI compile/run for C#, C, MASM x64, JavaScript, and Java with identical normalized runtime output.

@@ -648,7 +648,13 @@ Print(
 )
 ```
 
-A compiler may preserve the source style in generated educational output, but all target backends MUST preserve the same observable SMILE behavior.
+Although the runtime output is the same, the programmer's expression intent is different:
+
+- `PRINT Hello {Name}!` is interpolation-oriented friendly syntax.
+- `PRINT $"Hello {Name}!"` is explicit interpolation.
+- `PRINT "Hello " + Name + "!"` is explicit concatenation.
+
+Target generators SHOULD preserve the programmer's expression form when the destination language provides a clear and idiomatic equivalent. Interpolated SMILE expressions SHOULD generate native interpolation syntax where supported. Explicit concatenation SHOULD remain concatenation. If the destination language lacks a close equivalent, the generator MUST emit semantically equivalent code.
 
 ---
 
@@ -684,6 +690,8 @@ TextPart
 Raw templates and `$"..."` interpolated strings SHOULD lower to the same language-neutral semantic representation.
 
 Target-language generators MUST consume the language-neutral representation rather than reparsing SMILE source text.
+
+The language-neutral representation MUST preserve enough expression shape for generators to distinguish interpolation-oriented expressions from explicit concatenation. Implementations MAY flatten expressions into literal and variable output segments inside targets that need segment output, such as C, Objective-C, or assembly, but that target-local lowering MUST NOT become the canonical semantic representation used by every backend.
 
 ---
 
@@ -826,6 +834,7 @@ The official SMILE `PRINT` rules are:
 14. A second standalone `PRINT` keyword on the same line is a syntax error.
 15. Quote-free string convenience is specific to `PRINT`.
 16. Every form lowers to a common language-neutral expression representation.
+17. Target generators preserve expression intent when the target language has an idiomatic equivalent.
 
 ---
 

@@ -32,7 +32,18 @@ public sealed class LanguageTests
         PrintStatementSyntax statement = ParseSinglePrint(source);
 
         var literal = (StringLiteralExpressionSyntax)statement.Value;
+        Assert.IsTrue(statement.IsBlankLine);
         Assert.AreEqual(expectedText, literal.Value);
+    }
+
+    [TestMethod]
+    public void Parser_keeps_blank_print_distinct_from_quoted_empty_string()
+    {
+        PrintStatementSyntax statement = ParseSinglePrint("PRINT \"\"");
+
+        var literal = (StringLiteralExpressionSyntax)statement.Value;
+        Assert.IsFalse(statement.IsBlankLine);
+        Assert.AreEqual(string.Empty, literal.Value);
     }
 
     [TestMethod]
@@ -89,7 +100,7 @@ PRINT {CUSTOMERNAME}
     }
 
     [TestMethod]
-    public void Binder_flattens_equivalent_interpolation_and_concatenation_to_the_same_segments()
+    public void Binder_preserves_expression_intent_before_optional_output_flattening()
     {
         BindResult raw = _transpiler.Bind("""
 LET Name = "Sin"
@@ -103,6 +114,10 @@ PRINT $"Hello {Name}!"
 LET Name = "Sin"
 PRINT "Hello " + Name + "!"
 """);
+
+        Assert.IsInstanceOfType(GetPrintExpression(raw), typeof(BoundInterpolatedStringExpression));
+        Assert.IsInstanceOfType(GetPrintExpression(quoted), typeof(BoundInterpolatedStringExpression));
+        Assert.IsInstanceOfType(GetPrintExpression(concatenated), typeof(BoundConcatenationExpression));
 
         AssertSegments(raw, "Hello ", "Name", "!");
         AssertSegments(quoted, "Hello ", "Name", "!");
@@ -125,8 +140,8 @@ PRINT {Name}
 
         AssertSegments(literalPrint.Value, "Name");
         AssertSegments(evaluatedPrint.Value, "Name");
-        Assert.IsInstanceOfType(BoundStringExpression.Flatten(literalPrint.Value).Single(), typeof(LiteralPrintSegment));
-        Assert.IsInstanceOfType(BoundStringExpression.Flatten(evaluatedPrint.Value).Single(), typeof(VariablePrintSegment));
+        Assert.IsInstanceOfType(BoundStringExpression.FlattenForOutput(literalPrint.Value).Single(), typeof(LiteralPrintSegment));
+        Assert.IsInstanceOfType(BoundStringExpression.FlattenForOutput(evaluatedPrint.Value).Single(), typeof(VariablePrintSegment));
     }
 
     [TestMethod]
@@ -252,13 +267,12 @@ PRINT {Name}
     private static void AssertSegments(BindResult result, params string[] expected)
     {
         Assert.IsTrue(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
-        var print = (BoundPrintStatement)result.Program!.Statements[1];
-        AssertSegments(print.Value, expected);
+        AssertSegments(GetPrintExpression(result), expected);
     }
 
     private static void AssertSegments(BoundExpression expression, params string[] expected)
     {
-        string[] actual = BoundStringExpression.Flatten(expression)
+        string[] actual = BoundStringExpression.FlattenForOutput(expression)
             .Select(segment => segment switch
             {
                 LiteralPrintSegment literal => literal.Text,
@@ -268,5 +282,12 @@ PRINT {Name}
             .ToArray();
 
         CollectionAssert.AreEqual(expected, actual);
+    }
+
+    private static BoundExpression GetPrintExpression(BindResult result)
+    {
+        Assert.IsTrue(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+        var print = (BoundPrintStatement)result.Program!.Statements[1];
+        return print.Value;
     }
 }

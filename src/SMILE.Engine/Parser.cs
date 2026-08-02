@@ -83,7 +83,8 @@ internal sealed class Parser
             // string and then the normal PRINT newline."
             return new PrintStatementSyntax(
                 new StringLiteralExpressionSyntax(string.Empty, line.Span(afterKeyword, 0)),
-                fullSpan);
+                fullSpan,
+                IsBlankLine: true);
         }
 
         if (!SyntaxFacts.IsHorizontalWhitespace(line.Text[afterKeyword]))
@@ -698,7 +699,7 @@ internal sealed class Binder
         statement switch
         {
             LetStatementSyntax let => BindLetStatement(let),
-            PrintStatementSyntax print => new BoundPrintStatement(BindExpression(print.Value)),
+            PrintStatementSyntax print => new BoundPrintStatement(BindExpression(print.Value), print.IsBlankLine),
             _ => null
         };
 

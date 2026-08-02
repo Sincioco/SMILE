@@ -23,6 +23,7 @@
 - PRINT parsing must be deterministic and must never guess whether bare text is a variable.
 - Bare PRINT text is literal template text; expressions require braces.
 - Ordinary quoted strings do not interpolate; `$"..."` and raw templates do.
+- Target generators should preserve expression intent when a destination language has a clear idiomatic equivalent: interpolation should remain interpolation, explicit concatenation should remain concatenation, and lower-level targets may use equivalent segment output.
 - A physical source line normally contains one statement, and semicolons do not separate statements.
 - A second standalone `PRINT` keyword on the same line is a compiler error.
 - New language work must preserve asynchronous debounced WPF live transpilation.

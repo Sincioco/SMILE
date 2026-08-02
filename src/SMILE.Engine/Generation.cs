@@ -125,7 +125,15 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
                     break;
 
                 case BoundPrintStatement print:
-                    source.AppendLine($"        Console.WriteLine({TargetExpression.CSharp(print.Value)});");
+                    if (print.IsBlankLine)
+                    {
+                        source.AppendLine("        Console.WriteLine();");
+                    }
+                    else
+                    {
+                        source.AppendLine($"        Console.WriteLine({TargetExpression.CSharp(print.Value)});");
+                    }
+
                     break;
             }
         }
@@ -190,7 +198,7 @@ internal sealed class CCodeGenerator : ICodeGenerator
 
     private static void AppendCPrint(StringBuilder source, BoundExpression expression)
     {
-        IReadOnlyList<PrintSegment> segments = BoundStringExpression.Flatten(expression);
+        IReadOnlyList<PrintSegment> segments = BoundStringExpression.FlattenForOutput(expression);
         if (segments.Count == 0)
         {
             source.AppendLine("    putchar('\\n');");
@@ -277,7 +285,7 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
 
         for (int printIndex = 0; printIndex < prints.Count; printIndex++)
         {
-            IReadOnlyList<PrintSegment> segments = BoundStringExpression.Flatten(prints[printIndex].Value);
+            IReadOnlyList<PrintSegment> segments = BoundStringExpression.FlattenForOutput(prints[printIndex].Value);
             for (int segmentIndex = 0; segmentIndex < segments.Count; segmentIndex++)
             {
                 if (segments[segmentIndex] is not LiteralPrintSegment literal)
@@ -332,7 +340,7 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         {
             source.AppendLine();
             AppendMasmLine(source, $"; PRINT #{printIndex + 1}", "Write each expression segment, then newline.");
-            IReadOnlyList<PrintSegment> segments = BoundStringExpression.Flatten(prints[printIndex].Value);
+            IReadOnlyList<PrintSegment> segments = BoundStringExpression.FlattenForOutput(prints[printIndex].Value);
             for (int segmentIndex = 0; segmentIndex < segments.Count; segmentIndex++)
             {
                 switch (segments[segmentIndex])
@@ -422,7 +430,9 @@ internal sealed class JavaScriptCodeGenerator : ICodeGenerator
                     break;
 
                 case BoundPrintStatement print:
-                    source.AppendLine($"console.log({TargetExpression.JavaScript(print.Value)});");
+                    source.AppendLine(print.IsBlankLine
+                        ? "console.log();"
+                        : $"console.log({TargetExpression.JavaScript(print.Value)});");
                     break;
             }
         }
@@ -454,7 +464,9 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
                     break;
 
                 case BoundPrintStatement print:
-                    source.AppendLine($"        System.out.println({TargetExpression.Java(print.Value)});");
+                    source.AppendLine(print.IsBlankLine
+                        ? "        System.out.println();"
+                        : $"        System.out.println({TargetExpression.Java(print.Value)});");
                     break;
             }
         }
@@ -509,7 +521,7 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
 
     private static void AppendObjectiveCPrint(StringBuilder source, BoundExpression expression)
     {
-        IReadOnlyList<PrintSegment> segments = BoundStringExpression.Flatten(expression);
+        IReadOnlyList<PrintSegment> segments = BoundStringExpression.FlattenForOutput(expression);
         if (segments.Count == 0)
         {
             source.AppendLine("        putchar('\\n');");
@@ -554,7 +566,9 @@ internal sealed class SwiftCodeGenerator : ICodeGenerator
                     break;
 
                 case BoundPrintStatement print:
-                    source.AppendLine($"print({TargetExpression.Swift(print.Value)})");
+                    source.AppendLine(print.IsBlankLine
+                        ? "print()"
+                        : $"print({TargetExpression.Swift(print.Value)})");
                     break;
             }
         }
@@ -568,18 +582,77 @@ internal sealed class SwiftCodeGenerator : ICodeGenerator
 internal static class TargetExpression
 {
     public static string CSharp(BoundExpression expression) =>
-        Join(BoundStringExpression.Flatten(expression), TargetEscapes.CSharpString);
+        expression switch
+        {
+            BoundStringLiteralExpression literal => TargetEscapes.CSharpString(literal.Value),
+            BoundVariableExpression variable => variable.Variable.Name,
+            BoundConcatenationExpression concatenation => JoinConcatenation(concatenation, CSharp),
+            BoundInterpolatedStringExpression interpolated => CSharpInterpolatedString(interpolated),
+            _ => TargetEscapes.CSharpString(string.Empty)
+        };
 
     public static string JavaScript(BoundExpression expression) =>
-        Join(BoundStringExpression.Flatten(expression), TargetEscapes.JavaScriptString);
+        expression switch
+        {
+            BoundStringLiteralExpression literal => TargetEscapes.JavaScriptString(literal.Value),
+            BoundVariableExpression variable => variable.Variable.Name,
+            BoundConcatenationExpression concatenation => JoinConcatenation(concatenation, JavaScript),
+            BoundInterpolatedStringExpression interpolated => JavaScriptTemplateLiteral(interpolated),
+            _ => TargetEscapes.JavaScriptString(string.Empty)
+        };
 
     public static string Java(BoundExpression expression) =>
-        Join(BoundStringExpression.Flatten(expression), TargetEscapes.JavaString);
+        expression switch
+        {
+            BoundStringLiteralExpression literal => TargetEscapes.JavaString(literal.Value),
+            BoundVariableExpression variable => variable.Variable.Name,
+            BoundConcatenationExpression concatenation => JoinConcatenation(concatenation, Java),
+            BoundInterpolatedStringExpression interpolated => JoinSegments(
+                BoundStringExpression.FlattenForOutput(interpolated),
+                TargetEscapes.JavaString),
+            _ => TargetEscapes.JavaString(string.Empty)
+        };
 
     public static string Swift(BoundExpression expression) =>
-        Join(BoundStringExpression.Flatten(expression), TargetEscapes.SwiftString);
+        expression switch
+        {
+            BoundStringLiteralExpression literal => TargetEscapes.SwiftString(literal.Value),
+            BoundVariableExpression variable => variable.Variable.Name,
+            BoundConcatenationExpression concatenation => JoinConcatenation(concatenation, Swift),
+            BoundInterpolatedStringExpression interpolated => SwiftInterpolatedString(interpolated),
+            _ => TargetEscapes.SwiftString(string.Empty)
+        };
 
-    private static string Join(
+    private static string JoinConcatenation(
+        BoundConcatenationExpression expression,
+        Func<BoundExpression, string> renderExpression) =>
+        renderExpression(expression.Left) + " + " + renderExpression(expression.Right);
+
+    private static string CSharpInterpolatedString(BoundInterpolatedStringExpression expression) =>
+        "$\"" + string.Concat(expression.Parts.Select(part => part switch
+        {
+            BoundInterpolatedTextPart text => TargetEscapes.CSharpInterpolatedText(text.Text),
+            BoundInterpolationExpressionPart interpolation => "{" + CSharp(interpolation.Expression) + "}",
+            _ => string.Empty
+        })) + "\"";
+
+    private static string JavaScriptTemplateLiteral(BoundInterpolatedStringExpression expression) =>
+        "`" + string.Concat(expression.Parts.Select(part => part switch
+        {
+            BoundInterpolatedTextPart text => TargetEscapes.JavaScriptTemplateText(text.Text),
+            BoundInterpolationExpressionPart interpolation => "${" + JavaScript(interpolation.Expression) + "}",
+            _ => string.Empty
+        })) + "`";
+
+    private static string SwiftInterpolatedString(BoundInterpolatedStringExpression expression) =>
+        "\"" + string.Concat(expression.Parts.Select(part => part switch
+        {
+            BoundInterpolatedTextPart text => TargetEscapes.SwiftInterpolatedText(text.Text),
+            BoundInterpolationExpressionPart interpolation => "\\(" + Swift(interpolation.Expression) + ")",
+            _ => string.Empty
+        })) + "\"";
+
+    private static string JoinSegments(
         IReadOnlyList<PrintSegment> segments,
         Func<string, string> quoteLiteral)
     {
@@ -612,6 +685,12 @@ internal static class TargetEscapes
     public static string JavaString(string text) => Quote(EscapeJava(text));
 
     public static string SwiftString(string text) => Quote(EscapeSwift(text));
+
+    public static string CSharpInterpolatedText(string text) => EscapeCSharpInterpolatedText(text);
+
+    public static string JavaScriptTemplateText(string text) => EscapeJavaScriptTemplateText(text);
+
+    public static string SwiftInterpolatedText(string text) => EscapeSwift(text);
 
     public static string MasmByteInitializers(string text)
     {
@@ -656,6 +735,34 @@ internal static class TargetEscapes
         {
             builder.Append(value switch
             {
+                '\\' => "\\\\",
+                '"' => "\\\"",
+                '\0' => "\\0",
+                '\a' => "\\a",
+                '\b' => "\\b",
+                '\f' => "\\f",
+                '\n' => "\\n",
+                '\r' => "\\r",
+                '\t' => "\\t",
+                '\v' => "\\v",
+                _ when char.IsControl(value) => $"\\u{(int)value:x4}",
+                _ => value
+            });
+        }
+
+        return builder.ToString();
+    }
+
+    private static string EscapeCSharpInterpolatedText(string text)
+    {
+        var builder = new StringBuilder();
+
+        foreach (char value in text)
+        {
+            builder.Append(value switch
+            {
+                '{' => "{{",
+                '}' => "}}",
                 '\\' => "\\\\",
                 '"' => "\\\"",
                 '\0' => "\\0",
@@ -757,6 +864,31 @@ internal static class TargetEscapes
             {
                 '\\' => "\\\\",
                 '"' => "\\\"",
+                '\b' => "\\b",
+                '\t' => "\\t",
+                '\n' => "\\n",
+                '\f' => "\\f",
+                '\r' => "\\r",
+                _ when char.IsControl(value) => $"\\u{(int)value:x4}",
+                _ => value
+            });
+        }
+
+        return builder.ToString();
+    }
+
+    private static string EscapeJavaScriptTemplateText(string text)
+    {
+        var builder = new StringBuilder();
+
+        for (int index = 0; index < text.Length; index++)
+        {
+            char value = text[index];
+            builder.Append(value switch
+            {
+                '\\' => "\\\\",
+                '`' => "\\`",
+                '$' when index + 1 < text.Length && text[index + 1] == '{' => "\\$",
                 '\b' => "\\b",
                 '\t' => "\\t",
                 '\n' => "\\n",

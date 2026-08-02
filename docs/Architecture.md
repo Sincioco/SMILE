@@ -14,7 +14,9 @@ The parser is line-oriented because current SMILE statements are line-oriented. 
 
 The binder resolves variable names with an ordinal case-insensitive symbol table. This keeps declarations-before-use, duplicate declarations, and undefined variables target-independent. Target generators consume the bound program and do not reparse SMILE source text.
 
-The engine also exposes a tiny target-neutral string flattener. It turns bound string expressions such as:
+The bound tree preserves expression intent. C#, JavaScript, and Swift can therefore render interpolation-oriented SMILE expressions as native interpolation, while explicit SMILE concatenation remains target-language concatenation.
+
+The engine also exposes a tiny target-neutral string flattener for targets that need segment output. It turns bound string expressions such as:
 
 ```text
 "Hello " + Name + "!"
@@ -30,7 +32,7 @@ variable Name
 literal "!"
 ```
 
-C, Objective-C, and MASM use those segments directly so v0.2.0 does not need a runtime string-concatenation library.
+C, Objective-C, MASM, and Java interpolation fallback use those segments where appropriate so v0.2.0 does not need a runtime string-concatenation library. The flattener is a target-local lowering helper, not the canonical semantic representation.
 
 `SMILE.Engine` has no WPF dependency. That keeps the language front end reusable from the CLI, the desktop app, tests, and a possible future web interface.
 

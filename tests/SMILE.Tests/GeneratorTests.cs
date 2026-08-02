@@ -232,11 +232,11 @@ PRINT A; B; C
                 "    private static void Main()",
                 "    {",
                 "        string Name = \"Sin\";",
-                "        Console.WriteLine(\"\");",
+                "        Console.WriteLine();",
                 "        Console.WriteLine(\"Hello World!\");",
                 "        Console.WriteLine(\"Hello World!\");",
-                "        Console.WriteLine(\"Hello \" + Name + \"!\");",
-                "        Console.WriteLine(\"Hello \" + Name + \"!\");",
+                "        Console.WriteLine($\"Hello {Name}!\");",
+                "        Console.WriteLine($\"Hello {Name}!\");",
                 "        Console.WriteLine(\"Hello \" + Name + \"!\");",
                 "        Console.WriteLine(\"Literal braces: {Name}\");",
                 "        Console.WriteLine(\"A; B; C\");",
@@ -247,11 +247,11 @@ PRINT A; B; C
         Assert.AreEqual(
             Lines(
                 "let Name = \"Sin\";",
-                "console.log(\"\");",
+                "console.log();",
                 "console.log(\"Hello World!\");",
                 "console.log(\"Hello World!\");",
-                "console.log(\"Hello \" + Name + \"!\");",
-                "console.log(\"Hello \" + Name + \"!\");",
+                "console.log(`Hello ${Name}!`);",
+                "console.log(`Hello ${Name}!`);",
                 "console.log(\"Hello \" + Name + \"!\");",
                 "console.log(\"Literal braces: {Name}\");",
                 "console.log(\"A; B; C\");"),
@@ -260,11 +260,11 @@ PRINT A; B; C
         Assert.AreEqual(
             Lines(
                 "let Name = \"Sin\"",
-                "print(\"\")",
+                "print()",
                 "print(\"Hello World!\")",
                 "print(\"Hello World!\")",
-                "print(\"Hello \" + Name + \"!\")",
-                "print(\"Hello \" + Name + \"!\")",
+                "print(\"Hello \\(Name)!\")",
+                "print(\"Hello \\(Name)!\")",
                 "print(\"Hello \" + Name + \"!\")",
                 "print(\"Literal braces: {Name}\")",
                 "print(\"A; B; C\")"),
@@ -277,7 +277,7 @@ PRINT A; B; C
                 "    public static void main(String[] args)",
                 "    {",
                 "        String Name = \"Sin\";",
-                "        System.out.println(\"\");",
+                "        System.out.println();",
                 "        System.out.println(\"Hello World!\");",
                 "        System.out.println(\"Hello World!\");",
                 "        System.out.println(\"Hello \" + Name + \"!\");",
@@ -302,6 +302,186 @@ PRINT A; B; C
         StringAssert.Contains(masm, "variable0Ptr QWORD ?");
         StringAssert.Contains(masm, "mov rdx, QWORD PTR [variable0Ptr]");
         StringAssert.Contains(masm, "print6Segment0 BYTE \"Literal braces: {Name}\"");
+    }
+
+    [TestMethod]
+    public void Csharp_generator_preserves_explicit_interpolation()
+    {
+        GeneratedProgram program = Generate("""
+LET Name = "Sin"
+PRINT $"Hello {Name}!"
+""", TargetLanguage.CSharp);
+
+        StringAssert.Contains(program.PrimaryFile.Content, """Console.WriteLine($"Hello {Name}!");""");
+    }
+
+    [TestMethod]
+    public void Csharp_generator_uses_interpolation_for_friendly_raw_placeholders()
+    {
+        GeneratedProgram program = Generate("""
+LET Name = "Sin"
+PRINT Hello {Name}!
+""", TargetLanguage.CSharp);
+
+        StringAssert.Contains(program.PrimaryFile.Content, """Console.WriteLine($"Hello {Name}!");""");
+    }
+
+    [TestMethod]
+    public void Csharp_generator_preserves_explicit_concatenation()
+    {
+        GeneratedProgram program = Generate("""
+LET Name = "Sin"
+PRINT "Hello " + Name + "!"
+""", TargetLanguage.CSharp);
+
+        StringAssert.Contains(program.PrimaryFile.Content, """Console.WriteLine("Hello " + Name + "!");""");
+    }
+
+    [TestMethod]
+    public void Javascript_generator_preserves_interpolation_and_concatenation_intent()
+    {
+        StringAssert.Contains(
+            Generate("""
+LET Name = "Sin"
+PRINT Hello {Name}!
+PRINT $"Hello {Name}!"
+""", TargetLanguage.JavaScript).PrimaryFile.Content,
+            "console.log(`Hello ${Name}!`);");
+
+        StringAssert.Contains(
+            Generate("""
+LET Name = "Sin"
+PRINT "Hello " + Name + "!"
+""", TargetLanguage.JavaScript).PrimaryFile.Content,
+            "console.log(\"Hello \" + Name + \"!\");");
+    }
+
+    [TestMethod]
+    public void Swift_generator_preserves_interpolation_and_concatenation_intent()
+    {
+        string interpolation = Generate("""
+LET Name = "Sin"
+PRINT Hello {Name}!
+PRINT $"Hello {Name}!"
+""", TargetLanguage.Swift).PrimaryFile.Content;
+
+        StringAssert.Contains(interpolation, "print(\"Hello \\(Name)!\")");
+
+        StringAssert.Contains(
+            Generate("""
+LET Name = "Sin"
+PRINT "Hello " + Name + "!"
+""", TargetLanguage.Swift).PrimaryFile.Content,
+            "print(\"Hello \" + Name + \"!\")");
+    }
+
+    [TestMethod]
+    public void Java_generator_uses_concatenation_as_interpolation_fallback()
+    {
+        GeneratedProgram program = Generate("""
+LET Name = "Sin"
+PRINT Hello {Name}!
+PRINT $"Hello {Name}!"
+""", TargetLanguage.Java);
+
+        Assert.AreEqual(2, CountOccurrences(program.PrimaryFile.Content, "System.out.println(\"Hello \" + Name + \"!\");"));
+    }
+
+    [TestMethod]
+    public void Generators_escape_literal_braces_in_interpolation_oriented_forms()
+    {
+        const string source = """
+LET Name = "Sin"
+PRINT Literal braces: {{Name}}
+PRINT $"Literal braces: {{Name}}"
+""";
+
+        string csharp = Generate(source, TargetLanguage.CSharp).PrimaryFile.Content;
+        StringAssert.Contains(csharp, """Console.WriteLine("Literal braces: {Name}");""");
+        StringAssert.Contains(csharp, """Console.WriteLine($"Literal braces: {{Name}}");""");
+
+        string javascript = Generate(source, TargetLanguage.JavaScript).PrimaryFile.Content;
+        StringAssert.Contains(javascript, "console.log(\"Literal braces: {Name}\");");
+        StringAssert.Contains(javascript, "console.log(`Literal braces: {Name}`);");
+
+        string swift = Generate(source, TargetLanguage.Swift).PrimaryFile.Content;
+        StringAssert.Contains(swift, "print(\"Literal braces: {Name}\")");
+    }
+
+    [TestMethod]
+    public void Interpolation_text_escapes_target_interpolation_markers()
+    {
+        StringAssert.Contains(
+            Generate("""
+PRINT $"Literal ${{Name}} and `tick`"
+""", TargetLanguage.JavaScript).PrimaryFile.Content,
+            """console.log(`Literal \${Name} and \`tick\``);""");
+
+        StringAssert.Contains(
+            Generate("""
+PRINT $"Literal \(Name)"
+""", TargetLanguage.Swift).PrimaryFile.Content,
+            "print(\"Literal \\\\(Name)\")");
+    }
+
+    [TestMethod]
+    public void Generators_preserve_multiple_and_adjacent_interpolation_parts()
+    {
+        const string multiple = """
+LET FirstName = "Sin"
+LET LastName = "Cioco"
+PRINT $"{FirstName} {LastName}"
+""";
+
+        StringAssert.Contains(
+            Generate(multiple, TargetLanguage.CSharp).PrimaryFile.Content,
+            """Console.WriteLine($"{FirstName} {LastName}");""");
+        StringAssert.Contains(
+            Generate(multiple, TargetLanguage.JavaScript).PrimaryFile.Content,
+            "console.log(`${FirstName} ${LastName}`);");
+        StringAssert.Contains(
+            Generate(multiple, TargetLanguage.Swift).PrimaryFile.Content,
+            "print(\"\\(FirstName) \\(LastName)\")");
+
+        const string adjacent = """
+LET A = "A"
+LET B = "B"
+PRINT $"{A}{B}"
+""";
+
+        StringAssert.Contains(
+            Generate(adjacent, TargetLanguage.CSharp).PrimaryFile.Content,
+            """Console.WriteLine($"{A}{B}");""");
+        StringAssert.Contains(
+            Generate(adjacent, TargetLanguage.JavaScript).PrimaryFile.Content,
+            "console.log(`${A}${B}`);");
+        StringAssert.Contains(
+            Generate(adjacent, TargetLanguage.Swift).PrimaryFile.Content,
+            "print(\"\\(A)\\(B)\")");
+    }
+
+    [TestMethod]
+    public void Csharp_generator_preserves_interpolation_even_when_only_one_variable_is_inside()
+    {
+        GeneratedProgram program = Generate("""
+LET Name = "Sin"
+PRINT $"{Name}"
+""", TargetLanguage.CSharp);
+
+        StringAssert.Contains(program.PrimaryFile.Content, """Console.WriteLine($"{Name}");""");
+        Assert.IsFalse(program.PrimaryFile.Content.Contains("Console.WriteLine(Name);", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void Csharp_generator_uses_idiomatic_blank_print_without_rewriting_empty_string_literals()
+    {
+        GeneratedProgram program = Generate("""
+PRINT
+PRINT ""
+""", TargetLanguage.CSharp);
+
+        StringAssert.Contains(program.PrimaryFile.Content, "Console.WriteLine();");
+        StringAssert.Contains(program.PrimaryFile.Content, """Console.WriteLine("");""");
     }
 
     [TestMethod]
@@ -394,5 +574,18 @@ PRINT A; B; C
     {
         Assert.IsTrue(text.EndsWith(Environment.NewLine, StringComparison.Ordinal));
         Assert.IsFalse(text.EndsWith(Environment.NewLine + Environment.NewLine, StringComparison.Ordinal));
+    }
+
+    private static int CountOccurrences(string text, string value)
+    {
+        int count = 0;
+        int position = 0;
+        while ((position = text.IndexOf(value, position, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            position += value.Length;
+        }
+
+        return count;
     }
 }

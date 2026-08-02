@@ -39,7 +39,8 @@ public abstract record StatementSyntax(TextSpan Span)
 
 public sealed record PrintStatementSyntax(
     ExpressionSyntax Value,
-    TextSpan Span)
+    TextSpan Span,
+    bool IsBlankLine = false)
     : StatementSyntax(Span);
 
 public sealed record LetStatementSyntax(
@@ -121,7 +122,8 @@ public sealed record BoundLetStatement(
     : BoundStatement;
 
 public sealed record BoundPrintStatement(
-    BoundExpression Value)
+    BoundExpression Value,
+    bool IsBlankLine = false)
     : BoundStatement;
 
 public abstract record BoundExpression(SmileType Type);
@@ -168,12 +170,20 @@ public sealed record VariablePrintSegment(VariableSymbol Variable)
 
 public static class BoundStringExpression
 {
-    public static IReadOnlyList<PrintSegment> Flatten(BoundExpression expression)
+    // Some low-level targets do not have a convenient string-expression syntax.
+    // They lower a bound expression into "write this literal, then this
+    // variable" output segments at the last responsible moment. High-level
+    // targets should keep using the expression tree so interpolation and
+    // concatenation intent remains visible in generated educational code.
+    public static IReadOnlyList<PrintSegment> FlattenForOutput(BoundExpression expression)
     {
         var segments = new List<PrintSegment>();
         Append(expression, segments);
         return segments;
     }
+
+    public static IReadOnlyList<PrintSegment> Flatten(BoundExpression expression) =>
+        FlattenForOutput(expression);
 
     private static void Append(BoundExpression expression, List<PrintSegment> segments)
     {
