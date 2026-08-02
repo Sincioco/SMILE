@@ -9,6 +9,8 @@ public sealed class LanguageTests
 
     [TestMethod]
     [DataRow("PRINT \"Hello\"", "Hello")]
+    [DataRow("PRINT    \"Hello\"", "Hello")]
+    [DataRow("PRINT\t\"Hello\"", "Hello")]
     [DataRow("print \"Hello\"", "Hello")]
     [DataRow("PrInT \"Hello\"", "Hello")]
     [DataRow("PRINT \u201cHello\u201d", "Hello")]
@@ -38,6 +40,7 @@ public sealed class LanguageTests
 
     [TestMethod]
     [DataRow("PRINT", "SMILE1002", 1, 6)]
+    [DataRow("PRINT\"Hello\"", "SMILE1006", 1, 6)]
     [DataRow("PRINT Hello", "SMILE1002", 1, 7)]
     [DataRow("PRINT \"Unclosed", "SMILE1003", 1, 7)]
     [DataRow("PRONT \"Typo\"", "SMILE1001", 1, 1)]

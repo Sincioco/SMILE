@@ -1,3 +1,4 @@
+using System.IO;
 using SMILE.Engine;
 using SMILE.Toolchains;
 
@@ -93,7 +94,7 @@ Different syntax, same idea.
         BuildRunResult result = await toolchain.BuildAndRunAsync(program, CancellationToken.None);
 
         Assert.IsFalse(result.Success);
-        Assert.AreEqual("Transpile only", result.Stage);
+        Assert.AreEqual("Transpile Only", result.Stage);
         Assert.IsNull(result.WorkingDirectory);
         Assert.IsNull(result.PauseLauncherPath);
     }

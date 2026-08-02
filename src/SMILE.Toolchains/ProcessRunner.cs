@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Text;
 
 namespace SMILE.Toolchains;
@@ -72,6 +73,8 @@ public sealed class ProcessRunner : IProcessRunner
                 Cancelled: cancellationToken.IsCancellationRequested);
         }
 
+        CloseStandardInput(process);
+
         Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
         Task<string> errorTask = process.StandardError.ReadToEndAsync();
 
@@ -113,6 +116,7 @@ public sealed class ProcessRunner : IProcessRunner
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = true,
             CreateNoWindow = true,
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8
@@ -124,6 +128,23 @@ public sealed class ProcessRunner : IProcessRunner
         }
 
         return startInfo;
+    }
+
+    private static void CloseStandardInput(Process process)
+    {
+        try
+        {
+            // SMILE-run programs are captured by the app, not interacted with
+            // directly. Closing stdin makes accidental reads finish or fail
+            // instead of waiting forever inside an invisible console.
+            process.StandardInput.Close();
+        }
+        catch (InvalidOperationException)
+        {
+        }
+        catch (IOException)
+        {
+        }
     }
 
     private static void TryKillProcessTree(Process process)

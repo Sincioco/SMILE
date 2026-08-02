@@ -6,13 +6,13 @@ Write a simple SMILE program once, then view equivalent programs in C#, C, Windo
 
 ## Mission
 
-SMILE v0.1.2, "PRINT Everywhere," proves one small vertical slice:
+SMILE v0.1.3, "PRINT Everywhere," proves one small vertical slice:
 
 ```text
 SMILE PRINT source
   -> parse once
   -> generate seven target programs directly from the SMILE syntax tree
-  -> show three target programs at a time in a responsive WPF desktop app
+  -> show three debounced live target previews in a responsive WPF desktop app
   -> build and run locally when the matching toolchain is installed
 ```
 
@@ -138,13 +138,14 @@ Objective-C:
 
 ```objc
 #import <Foundation/Foundation.h>
+#include <stdio.h>
 
-int main(int argc, const char * argv[])
+int main(void)
 {
     @autoreleasepool
     {
-        NSLog(@"Hello from SMILE!");
-        NSLog(@"Different syntax, same idea.");
+        puts([@"Hello from SMILE!" UTF8String]);
+        puts([@"Different syntax, same idea." UTF8String]);
     }
 
     return 0;
@@ -212,6 +213,8 @@ PRINT "Different syntax, same idea."
 
 The desktop app opens maximized. The top-left pane is editable SMILE source. The other three panes are read-only generated targets. They default to C#, Assembly - Windows x64 MASM, and C. Each generated pane can switch between C#, C, MASM x64, JavaScript, Java, Objective-C, and Swift.
 
+Typing in the SMILE source editor schedules a short debounced live transpilation for the visible target languages only. The latest source revision always wins, so stale generated code is never used for Build & Run. The Transpile All command is asynchronous and regenerates all seven targets.
+
 ![SMILE desktop app in maximized state](Requirements/Progress/2026-08-02-day-1-2-smile-desktop.png)
 
 Main actions:
@@ -228,15 +231,15 @@ Main actions:
 - File menu for New, Open `.smile`, Save, Save As, and Exit
 - Help menu with About SMILE and the current desktop build version
 
-Each generated pane supports Copy, Save Source, and Build & Run. JavaScript runs directly with Node.js, so its button says Run.
+Each generated pane supports Copy, Save Source, and Build & Run. JavaScript runs directly with Node.js, so its button says Run. Objective-C and Swift are transpile-only on Windows, so their buttons say Transpile Only and visible-language build runs skip them without failing the whole operation.
 
-Diagnostics, build output, program output, exit code, duration, timeout, cancellation, generated workspace paths, pause-launcher paths, and missing-tool messages appear in the output area. The output area scrolls to the newest text as build/run messages are appended.
+Diagnostics, build output, program output, exit code, total duration, timeout, cancellation, generated workspace paths, pause-launcher paths, and missing-tool messages appear in the output area. The output area scrolls to the newest text as build/run messages are appended. Successful automatic live transpiles do not erase build logs.
 
 When Open Generated Folder is enabled, SMILE opens the generated-code workspace after a pane build/run. For Build & Run Visible Languages, it opens the shared SMILE run folder so the generated-code workspaces for all visible targets can be inspected. Generated workspace folder names end with the target language so learners can quickly identify them. If that folder is already open, SMILE brings the existing Explorer window to the front instead of opening a duplicate.
 
 When Press Any Key Launcher is enabled, SMILE writes `Run Program - Press Any Key.cmd` into each successful build/run workspace. Double-clicking that launcher runs the generated program and then shows `Press any key to exit...`, which keeps the console window open long enough to inspect the output.
 
-Current desktop build version: `0.1.2 PRINT Everywhere`.
+Current desktop build version: `0.1.3 PRINT Everywhere`.
 
 ## CLI Developer Harness
 
@@ -268,6 +271,7 @@ print-statement -> PRINT whitespace+ string-literal
 Rules:
 
 - `PRINT` is case-insensitive.
+- `PRINT` must be followed by at least one space or tab before the string literal.
 - Blank lines are allowed.
 - Multiple `PRINT` statements are allowed.
 - The final newline is optional.

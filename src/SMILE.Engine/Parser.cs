@@ -281,6 +281,21 @@ internal sealed class Parser
             return null;
         }
 
+        if (Current.Span.Start == printKeyword.Span.Start + printKeyword.Span.Length)
+        {
+            _diagnostics.Add(new Diagnostic(
+                "SMILE1006",
+                DiagnosticSeverity.Error,
+                "PRINT requires a space or tab before its quoted string.",
+                new TextSpan(
+                    printKeyword.Span.Start + printKeyword.Span.Length,
+                    0,
+                    printKeyword.Span.Line,
+                    printKeyword.Span.Column + printKeyword.Span.Length)));
+
+            return null;
+        }
+
         SyntaxToken text = NextToken();
 
         if (Current.Kind is not SyntaxKind.NewLineToken and not SyntaxKind.EndOfFileToken)

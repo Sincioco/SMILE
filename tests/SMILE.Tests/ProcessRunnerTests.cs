@@ -8,6 +8,13 @@ public sealed class ProcessRunnerTests
     private readonly ProcessRunner _runner = new();
 
     [TestMethod]
+    public void Toolchain_timeouts_keep_builds_and_program_runs_separate()
+    {
+        Assert.AreEqual(TimeSpan.FromSeconds(120), ToolchainBase.BuildTimeout);
+        Assert.AreEqual(TimeSpan.FromSeconds(10), ToolchainBase.ProgramTimeout);
+    }
+
+    [TestMethod]
     public async Task Process_runner_captures_standard_output_and_error()
     {
         ProcessResult result = await _runner.RunAsync(

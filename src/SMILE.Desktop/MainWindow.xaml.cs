@@ -12,7 +12,17 @@ public partial class MainWindow : Window
         InitializeComponent();
         DataContext = _viewModel;
 
-        Loaded += async (_, _) => await _viewModel.InitializeAsync();
+        Loaded += async (_, _) =>
+        {
+            try
+            {
+                await _viewModel.InitializeAsync();
+            }
+            catch (Exception ex)
+            {
+                _viewModel.HandleInitializationException(ex);
+            }
+        };
     }
 
     private void OutputTextBox_TextChanged(object sender, TextChangedEventArgs e)

@@ -20,17 +20,19 @@ public sealed class TargetLanguageOption
 
 public sealed class TargetPaneViewModel : ViewModelBase
 {
+    private readonly string _baseTitle;
     private TargetLanguageOption _selectedLanguageOption;
     private string _generatedCode = string.Empty;
     private string _status = "Ready";
     private string _toolchainStatusText = "Toolchain not detected.";
     private bool _hasToolchain;
     private bool _hasValidSource;
+    private bool _hasSyntaxError;
     private bool _isBusy;
 
     public TargetPaneViewModel(string title, TargetLanguage defaultLanguage)
     {
-        Title = title;
+        _baseTitle = title;
         LanguageOptions = TargetLanguageInfo.All
             .Select(language => new TargetLanguageOption(language))
             .ToArray();
@@ -39,7 +41,7 @@ public sealed class TargetPaneViewModel : ViewModelBase
 
     public event EventHandler? SelectedLanguageChanged;
 
-    public string Title { get; }
+    public string Title => $"{_baseTitle} - {SelectedLanguageOption.DisplayName}";
 
     public IReadOnlyList<TargetLanguageOption> LanguageOptions { get; }
 
@@ -51,6 +53,7 @@ public sealed class TargetPaneViewModel : ViewModelBase
             if (SetProperty(ref _selectedLanguageOption, value))
             {
                 OnPropertyChanged(nameof(Language));
+                OnPropertyChanged(nameof(Title));
                 OnPropertyChanged(nameof(BuildButtonText));
                 SelectedLanguageChanged?.Invoke(this, EventArgs.Empty);
             }
@@ -101,6 +104,18 @@ public sealed class TargetPaneViewModel : ViewModelBase
         }
     }
 
+    public bool HasSyntaxError
+    {
+        get => _hasSyntaxError;
+        set
+        {
+            if (SetProperty(ref _hasSyntaxError, value))
+            {
+                RaiseCommandStateChanged();
+            }
+        }
+    }
+
     public bool IsBusy
     {
         get => _isBusy;
@@ -108,19 +123,28 @@ public sealed class TargetPaneViewModel : ViewModelBase
         {
             if (SetProperty(ref _isBusy, value))
             {
+                OnPropertyChanged(nameof(CanChangeLanguage));
                 RaiseCommandStateChanged();
             }
         }
     }
 
     public string BuildButtonText =>
-        Language == TargetLanguage.JavaScript ? "Run" : "Build & Run";
+        Language switch
+        {
+            TargetLanguage.JavaScript => "Run",
+            TargetLanguage.ObjectiveC => "Transpile Only",
+            TargetLanguage.Swift => "Transpile Only",
+            _ => "Build & Run"
+        };
 
     public bool CanUseSource =>
-        HasValidSource && !string.IsNullOrWhiteSpace(GeneratedCode) && !IsBusy;
+        HasValidSource && !string.IsNullOrWhiteSpace(GeneratedCode);
 
     public bool CanBuild =>
-        CanUseSource && HasToolchain;
+        (HasToolchain || IsTranspileOnlyLanguage(Language)) && !HasSyntaxError && !IsBusy;
+
+    public bool CanChangeLanguage => !IsBusy;
 
     public ICommand? CopyCommand { get; set; }
 
@@ -132,6 +156,7 @@ public sealed class TargetPaneViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(CanUseSource));
         OnPropertyChanged(nameof(CanBuild));
+        OnPropertyChanged(nameof(CanChangeLanguage));
 
         if (CopyCommand is RelayCommand copy)
         {
@@ -148,4 +173,7 @@ public sealed class TargetPaneViewModel : ViewModelBase
             build.RaiseCanExecuteChanged();
         }
     }
+
+    private static bool IsTranspileOnlyLanguage(TargetLanguage language) =>
+        language is TargetLanguage.ObjectiveC or TargetLanguage.Swift;
 }

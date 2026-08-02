@@ -15,18 +15,28 @@ PRINT "Hello from SMILE!"
 PRINT "Different syntax, same idea."
 """;
 
+    // Live transpilation is intentionally delayed a little. A compiler front
+    // end usually works on complete snapshots of source text, so this debounce
+    // lets the user finish a burst of typing before the lexer/parser/generator
+    // pipeline runs in the background.
+    private static readonly TimeSpan LiveTranspileDelay = TimeSpan.FromMilliseconds(250);
+
     private readonly SmileTranspiler _transpiler = new();
     private readonly ToolchainRegistry _toolchains = ToolchainRegistry.CreateDefault();
-    private readonly Dictionary<TargetLanguage, GeneratedProgram> _generatedPrograms = new();
+    private readonly Dictionary<TargetLanguage, GeneratedSnapshot> _generatedPrograms = new();
     private readonly Dictionary<TargetLanguage, ToolchainStatus> _toolchainStatuses = new();
     private CancellationTokenSource? _operationCancellation;
+    private CancellationTokenSource? _liveTranspileCancellation;
+    private Task? _liveTranspileTask;
     private string _sourceText = SampleSource;
     private string _outputText = string.Empty;
     private string _operationStatus = "Ready";
     private string? _currentFilePath;
+    private long _sourceRevision;
     private bool _isBusy;
     private bool _openGeneratedFolderAfterBuild = true;
     private bool _createPauseLauncherAfterBuild = true;
+    private bool _outputShowsLiveDiagnostics;
 
     public MainWindowViewModel()
     {
@@ -34,16 +44,18 @@ PRINT "Different syntax, same idea."
         Pane2 = CreatePane("Generated target 2", TargetLanguage.MasmX64);
         Pane3 = CreatePane("Generated target 3", TargetLanguage.C);
 
-        NewCommand = new RelayCommand(NewDocument, CanStartWork);
-        OpenCommand = new AsyncRelayCommand(OpenAsync, CanStartWork);
-        SaveCommand = new AsyncRelayCommand(SaveAsync, CanStartWork);
-        SaveAsCommand = new AsyncRelayCommand(SaveAsAsync, CanStartWork);
-        TranspileAllCommand = new RelayCommand(TranspileAll, CanStartWork);
-        BuildRunVisibleCommand = new AsyncRelayCommand(BuildRunVisibleAsync, CanBuildVisible);
-        CancelCommand = new RelayCommand(Cancel, () => IsBusy);
-        ExitCommand = new RelayCommand(Exit, CanStartWork);
-        AboutCommand = new RelayCommand(ShowAbout);
+        NewCommand = new RelayCommand(NewDocument, CanStartWork, HandleCommandException);
+        OpenCommand = new AsyncRelayCommand(OpenAsync, CanStartWork, HandleCommandException);
+        SaveCommand = new AsyncRelayCommand(SaveAsync, CanStartWork, HandleCommandException);
+        SaveAsCommand = new AsyncRelayCommand(SaveAsAsync, CanStartWork, HandleCommandException);
+        TranspileAllCommand = new AsyncRelayCommand(TranspileAllAsync, CanStartWork, HandleCommandException);
+        BuildRunVisibleCommand = new AsyncRelayCommand(BuildRunVisibleAsync, CanBuildVisible, HandleCommandException);
+        CancelCommand = new RelayCommand(Cancel, () => IsBusy, HandleCommandException);
+        ExitCommand = new RelayCommand(Exit, CanStartWork, HandleCommandException);
+        AboutCommand = new RelayCommand(ShowAbout, onError: HandleCommandException);
     }
+
+    private sealed record GeneratedSnapshot(long SourceRevision, GeneratedProgram Program);
 
     public TargetPaneViewModel Pane1 { get; }
 
@@ -61,7 +73,7 @@ PRINT "Different syntax, same idea."
 
     public AsyncRelayCommand SaveAsCommand { get; }
 
-    public RelayCommand TranspileAllCommand { get; }
+    public AsyncRelayCommand TranspileAllCommand { get; }
 
     public AsyncRelayCommand BuildRunVisibleCommand { get; }
 
@@ -78,9 +90,8 @@ PRINT "Different syntax, same idea."
         {
             if (SetProperty(ref _sourceText, value) && Pane1 is not null)
             {
-                // v0.1 parsing is intentionally tiny, so live transpilation
-                // keeps the panes honest without creating noticeable UI work.
-                TranspileAll();
+                _sourceRevision++;
+                ScheduleLiveTranspilation();
             }
         }
     }
@@ -128,9 +139,19 @@ PRINT "Different syntax, same idea."
 
     public async Task InitializeAsync()
     {
-        TranspileAll();
-        await DetectToolchainsAsync().ConfigureAwait(true);
+        try
+        {
+            await TranspileAllCurrentSourceAsync(isManual: false, CancellationToken.None).ConfigureAwait(true);
+            await DetectToolchainsAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            HandleUiError("Initialize SMILE", ex);
+        }
     }
+
+    public void HandleInitializationException(Exception ex) =>
+        HandleUiError("Initialize SMILE", ex);
 
     private TargetPaneViewModel CreatePane(string title, TargetLanguage defaultLanguage)
     {
@@ -138,17 +159,21 @@ PRINT "Different syntax, same idea."
         pane.SelectedLanguageChanged += (_, _) =>
         {
             UpdatePaneForLanguage(pane);
+            ScheduleLiveTranspilation();
             RaiseCommandStateChanged();
         };
         pane.CopyCommand = new RelayCommand(
             () => Clipboard.SetText(pane.GeneratedCode),
-            () => pane.CanUseSource);
+            () => pane.CanUseSource,
+            HandleCommandException);
         pane.SaveSourceCommand = new AsyncRelayCommand(
             () => SaveGeneratedSourceAsync(pane),
-            () => pane.CanUseSource);
+            () => pane.CanUseSource,
+            HandleCommandException);
         pane.BuildRunCommand = new AsyncRelayCommand(
             () => BuildRunPaneAsync(pane),
-            () => pane.CanBuild);
+            () => pane.CanBuild,
+            HandleCommandException);
         return pane;
     }
 
@@ -168,6 +193,7 @@ PRINT "Different syntax, same idea."
         foreach (TargetPaneViewModel pane in Panes)
         {
             UpdateToolchainStatus(pane);
+            UpdatePaneForLanguage(pane);
         }
 
         OperationStatus = "Ready";
@@ -178,6 +204,7 @@ PRINT "Different syntax, same idea."
     {
         SourceText = SampleSource;
         _currentFilePath = null;
+        OperationStatus = "New file";
     }
 
     private async Task OpenAsync()
@@ -195,6 +222,7 @@ PRINT "Different syntax, same idea."
 
         SourceText = await File.ReadAllTextAsync(dialog.FileName).ConfigureAwait(true);
         _currentFilePath = dialog.FileName;
+        OperationStatus = $"Opened {Path.GetFileName(_currentFilePath)}";
     }
 
     private async Task SaveAsync()
@@ -227,37 +255,183 @@ PRINT "Different syntax, same idea."
         await SaveAsync().ConfigureAwait(true);
     }
 
-    private void TranspileAll()
+    private async Task TranspileAllAsync()
     {
-        IReadOnlyList<TranspileResult> results = _transpiler.TranspileMany(SourceText, TargetLanguageInfo.All);
-        _generatedPrograms.Clear();
+        await RunOperationAsync(
+            "Transpile all targets",
+            cancellationToken => TranspileAllCurrentSourceAsync(isManual: true, cancellationToken))
+            .ConfigureAwait(true);
+    }
 
-        foreach (TranspileResult result in results)
+    private async Task TranspileAllCurrentSourceAsync(bool isManual, CancellationToken cancellationToken)
+    {
+        CancelLiveTranspilation();
+
+        string sourceSnapshot = SourceText;
+        long revision = _sourceRevision;
+        IReadOnlyList<TranspileResult> results = await GenerateAsync(
+            sourceSnapshot,
+            TargetLanguageInfo.All,
+            cancellationToken).ConfigureAwait(true);
+
+        if (revision == _sourceRevision)
         {
-            if (result.GeneratedProgram is not null)
-            {
-                _generatedPrograms[result.Language] = result.GeneratedProgram;
-            }
+            ApplyTranspileResults(results, revision, isLive: false, reportSuccess: isManual);
+        }
+    }
+
+    private void ScheduleLiveTranspilation()
+    {
+        if (IsBusy)
+        {
+            return;
         }
 
+        CancelLiveTranspilation();
+
+        TargetLanguage[] languages = GetVisibleLanguages();
+        if (languages.Length == 0)
+        {
+            return;
+        }
+
+        foreach (TargetPaneViewModel pane in Panes)
+        {
+            pane.HasValidSource = false;
+            pane.HasSyntaxError = false;
+            pane.Status = "Updating";
+        }
+
+        OperationStatus = "Updating";
+        RaiseCommandStateChanged();
+
+        var cancellation = new CancellationTokenSource();
+        _liveTranspileCancellation = cancellation;
+        string sourceSnapshot = SourceText;
+        long revision = _sourceRevision;
+
+        _liveTranspileTask = RunLiveTranspilationAsync(
+            sourceSnapshot,
+            revision,
+            languages,
+            cancellation,
+            LiveTranspileDelay);
+    }
+
+    private async Task RunLiveTranspilationAsync(
+        string sourceSnapshot,
+        long revision,
+        IReadOnlyList<TargetLanguage> languages,
+        CancellationTokenSource cancellation,
+        TimeSpan delay)
+    {
+        try
+        {
+            await Task.Delay(delay, cancellation.Token).ConfigureAwait(true);
+
+            IReadOnlyList<TranspileResult> results = await GenerateAsync(
+                sourceSnapshot,
+                languages,
+                cancellation.Token).ConfigureAwait(true);
+
+            if (cancellation.IsCancellationRequested || revision != _sourceRevision)
+            {
+                return;
+            }
+
+            ApplyTranspileResults(results, revision, isLive: true, reportSuccess: false);
+            OperationStatus = "Ready";
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            // A newer source snapshot superseded this one. That is expected:
+            // the UI only wants compiler output for the most recent text.
+        }
+        catch (Exception ex)
+        {
+            HandleUiError("Live transpilation", ex);
+        }
+        finally
+        {
+            if (ReferenceEquals(_liveTranspileCancellation, cancellation))
+            {
+                _liveTranspileCancellation = null;
+                _liveTranspileTask = null;
+            }
+
+            cancellation.Dispose();
+        }
+    }
+
+    private async Task<IReadOnlyList<TranspileResult>> GenerateAsync(
+        string sourceSnapshot,
+        IReadOnlyList<TargetLanguage> languages,
+        CancellationToken cancellationToken)
+    {
+        // The lexer/parser/generator pipeline is fast today, but keeping it
+        // off the WPF dispatcher protects the editor as SMILE grows.
+        return await Task.Run(
+            () => _transpiler.TranspileMany(sourceSnapshot, languages),
+            cancellationToken).ConfigureAwait(true);
+    }
+
+    private void ApplyTranspileResults(
+        IReadOnlyList<TranspileResult> results,
+        long revision,
+        bool isLive,
+        bool reportSuccess)
+    {
         IReadOnlyList<Diagnostic> diagnostics = results
             .SelectMany(result => result.Diagnostics)
             .Distinct()
             .ToArray();
 
         bool success = results.All(result => result.Success);
+        if (success)
+        {
+            foreach (TranspileResult result in results)
+            {
+                _generatedPrograms[result.Language] = new GeneratedSnapshot(
+                    revision,
+                    result.GeneratedProgram!);
+            }
 
-        OutputText = diagnostics.Count > 0
-            ? string.Join(Environment.NewLine, diagnostics.Select(diagnostic => diagnostic.ToString()))
-            : "Transpilation completed.";
+            foreach (TargetPaneViewModel pane in Panes)
+            {
+                UpdatePaneForLanguage(pane);
+            }
+
+            if (reportSuccess)
+            {
+                OutputText = "Transpilation completed.";
+                _outputShowsLiveDiagnostics = false;
+                OperationStatus = "Completed";
+            }
+            else if (isLive && _outputShowsLiveDiagnostics)
+            {
+                OutputText = string.Empty;
+                _outputShowsLiveDiagnostics = false;
+            }
+
+            return;
+        }
+
+        string diagnosticText = string.Join(
+            Environment.NewLine,
+            diagnostics.Select(diagnostic => diagnostic.ToString()));
 
         foreach (TargetPaneViewModel pane in Panes)
         {
-            pane.HasValidSource = success;
-            UpdatePaneForLanguage(pane);
+            pane.GeneratedCode = string.Empty;
+            pane.HasValidSource = false;
+            pane.HasSyntaxError = true;
+            pane.Status = "Syntax Error";
+            pane.RaiseCommandStateChanged();
         }
 
-        OperationStatus = success ? "Transpiled" : "Syntax error";
+        OutputText = diagnosticText;
+        _outputShowsLiveDiagnostics = isLive;
+        OperationStatus = "Syntax Error";
         RaiseCommandStateChanged();
     }
 
@@ -269,7 +443,9 @@ PRINT "Different syntax, same idea."
             "Build & Run visible languages",
             async cancellationToken =>
             {
-                foreach (TargetPaneViewModel pane in Panes.GroupBy(pane => pane.Language).Select(group => group.First()))
+                foreach (TargetPaneViewModel pane in Panes
+                    .GroupBy(pane => pane.Language)
+                    .Select(group => group.First()))
                 {
                     if (cancellationToken.IsCancellationRequested)
                     {
@@ -305,26 +481,72 @@ PRINT "Different syntax, same idea."
         TargetPaneViewModel pane,
         CancellationToken cancellationToken)
     {
-        if (!_generatedPrograms.TryGetValue(pane.Language, out GeneratedProgram? generatedProgram))
+        TargetLanguage language = pane.Language;
+        string languageName = TargetLanguageInfo.GetDisplayName(language);
+
+        if (IsTranspileOnlyLanguage(language))
         {
-            TranspileAll();
-            if (!_generatedPrograms.TryGetValue(pane.Language, out generatedProgram))
-            {
-                return null;
-            }
+            pane.Status = "Transpile Only";
+            await EnsureCurrentGeneratedProgramAsync(language, cancellationToken).ConfigureAwait(true);
+            AppendOutput($"=== {languageName} ==={Environment.NewLine}Skipped: this target is transpile-only on Windows for now.");
+            return null;
         }
 
-        pane.Status = "Running";
-        AppendOutput($"=== {TargetLanguageInfo.GetDisplayName(pane.Language)} ===");
+        if (!_toolchainStatuses.TryGetValue(language, out ToolchainStatus? status) || !status.IsAvailable)
+        {
+            pane.Status = "Toolchain Missing";
+            AppendOutput($"=== {languageName} ==={Environment.NewLine}{status?.Message ?? "Toolchain not detected."}");
+            return null;
+        }
+
+        GeneratedProgram? generatedProgram = await EnsureCurrentGeneratedProgramAsync(language, cancellationToken)
+            .ConfigureAwait(true);
+        if (generatedProgram is null)
+        {
+            pane.Status = "Syntax Error";
+            return null;
+        }
+
+        pane.Status = GetInitialBuildStatus(language);
+        AppendOutput($"=== {languageName} ===");
 
         var options = new BuildRunOptions(CreatePauseLauncher: CreatePauseLauncherAfterBuild);
-        BuildRunResult result = await _toolchains.Get(pane.Language)
+        BuildRunResult result = await _toolchains.Get(language)
             .BuildAndRunAsync(generatedProgram, cancellationToken, options)
             .ConfigureAwait(true);
 
-        pane.Status = result.Success ? "Completed" : result.Stage;
+        pane.Status = BuildRunStatusText(result);
         AppendBuildRunResult(result);
         return result;
+    }
+
+    private async Task<GeneratedProgram?> EnsureCurrentGeneratedProgramAsync(
+        TargetLanguage language,
+        CancellationToken cancellationToken)
+    {
+        if (_generatedPrograms.TryGetValue(language, out GeneratedSnapshot? snapshot) &&
+            snapshot.SourceRevision == _sourceRevision)
+        {
+            return snapshot.Program;
+        }
+
+        string sourceSnapshot = SourceText;
+        long revision = _sourceRevision;
+        IReadOnlyList<TranspileResult> results = await GenerateAsync(
+            sourceSnapshot,
+            new[] { language },
+            cancellationToken).ConfigureAwait(true);
+
+        if (revision != _sourceRevision)
+        {
+            return null;
+        }
+
+        ApplyTranspileResults(results, revision, isLive: false, reportSuccess: false);
+        return _generatedPrograms.TryGetValue(language, out GeneratedSnapshot? currentSnapshot) &&
+            currentSnapshot.SourceRevision == revision
+            ? currentSnapshot.Program
+            : null;
     }
 
     private async Task RunOperationAsync(string title, Func<CancellationToken, Task> operation)
@@ -334,6 +556,7 @@ PRINT "Different syntax, same idea."
             return;
         }
 
+        CancelLiveTranspilation();
         _operationCancellation = new CancellationTokenSource();
         IsBusy = true;
         OperationStatus = title;
@@ -341,30 +564,33 @@ PRINT "Different syntax, same idea."
         try
         {
             await operation(_operationCancellation.Token).ConfigureAwait(true);
-            OperationStatus = _operationCancellation.IsCancellationRequested ? "Cancelled" : "Ready";
+            OperationStatus = _operationCancellation.IsCancellationRequested ? "Cancelled" : "Completed";
         }
         catch (OperationCanceledException)
         {
             OperationStatus = "Cancelled";
+
+            foreach (TargetPaneViewModel pane in Panes.Where(pane => pane.Status is "Building" or "Assembling" or "Linking" or "Running"))
+            {
+                pane.Status = "Cancelled";
+            }
         }
         catch (Exception ex)
         {
             OperationStatus = "Failed";
-            AppendOutput(ex.Message);
+
+            foreach (TargetPaneViewModel pane in Panes.Where(pane => pane.Status is "Building" or "Assembling" or "Linking" or "Running"))
+            {
+                pane.Status = "Failed";
+            }
+
+            HandleUiError(title, ex);
         }
         finally
         {
             _operationCancellation.Dispose();
             _operationCancellation = null;
             IsBusy = false;
-
-            foreach (TargetPaneViewModel pane in Panes)
-            {
-                if (pane.Status == "Running")
-                {
-                    pane.Status = "Ready";
-                }
-            }
         }
     }
 
@@ -377,7 +603,10 @@ PRINT "Different syntax, same idea."
 
     private async Task SaveGeneratedSourceAsync(TargetPaneViewModel pane)
     {
-        if (!_generatedPrograms.TryGetValue(pane.Language, out GeneratedProgram? generatedProgram))
+        GeneratedProgram? generatedProgram = await EnsureCurrentGeneratedProgramAsync(
+            pane.Language,
+            CancellationToken.None).ConfigureAwait(true);
+        if (generatedProgram is null)
         {
             return;
         }
@@ -400,18 +629,22 @@ PRINT "Different syntax, same idea."
 
     private void UpdatePaneForLanguage(TargetPaneViewModel pane)
     {
-        if (_generatedPrograms.TryGetValue(pane.Language, out GeneratedProgram? generatedProgram))
+        UpdateToolchainStatus(pane);
+
+        if (_generatedPrograms.TryGetValue(pane.Language, out GeneratedSnapshot? snapshot) &&
+            snapshot.SourceRevision == _sourceRevision)
         {
-            pane.GeneratedCode = generatedProgram.PrimaryFile.Content;
-            pane.Status = "Ready";
+            pane.GeneratedCode = snapshot.Program.PrimaryFile.Content;
+            pane.HasValidSource = true;
+            pane.HasSyntaxError = false;
+            pane.Status = GetReadyStatus(pane);
         }
-        else
+        else if (!pane.HasSyntaxError)
         {
-            pane.GeneratedCode = string.Empty;
-            pane.Status = "No source";
+            pane.HasValidSource = false;
+            pane.Status = "Updating";
         }
 
-        UpdateToolchainStatus(pane);
         pane.RaiseCommandStateChanged();
     }
 
@@ -449,8 +682,21 @@ PRINT "Different syntax, same idea."
         }
 
         string folderToOpen = GetFolderToOpen(folders);
+        _ = OpenGeneratedFolderAsync(folderToOpen);
+    }
+
+    private async Task OpenGeneratedFolderAsync(string folderToOpen)
+    {
         AppendOutput($"Generated code folder: {folderToOpen}");
-        FolderOpener.OpenOrActivate(folderToOpen);
+
+        try
+        {
+            await Task.Run(() => FolderOpener.OpenOrActivate(folderToOpen)).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            HandleUiError("Open generated folder", ex);
+        }
     }
 
     private static string GetFolderToOpen(IReadOnlyList<string> folders)
@@ -479,7 +725,8 @@ PRINT "Different syntax, same idea."
     private bool CanStartWork() => !IsBusy;
 
     private bool CanBuildVisible() =>
-        !IsBusy && Panes.Any(pane => pane.CanBuild);
+        !IsBusy &&
+        Panes.Any(pane => !pane.HasSyntaxError && (pane.HasToolchain || IsTranspileOnlyLanguage(pane.Language)));
 
     private void RaiseCommandStateChanged()
     {
@@ -526,7 +773,7 @@ PRINT "Different syntax, same idea."
         }
 
         builder.AppendLine($"Exit code: {(result.ExitCode.HasValue ? result.ExitCode.Value.ToString() : "n/a")}");
-        builder.AppendLine($"Duration: {result.Duration.TotalMilliseconds:0} ms");
+        builder.AppendLine($"Total duration: {result.Duration.TotalMilliseconds:0} ms");
 
         if (result.WorkingDirectory is not null)
         {
@@ -561,6 +808,69 @@ PRINT "Different syntax, same idea."
 
         OutputText += Environment.NewLine + Environment.NewLine + text;
     }
+
+    private void HandleCommandException(Exception exception) =>
+        HandleUiError("Command", exception);
+
+    private void HandleUiError(string operation, Exception exception)
+    {
+        OperationStatus = "Failed";
+        AppendOutput($"{operation} failed: {exception.Message}");
+    }
+
+    private void CancelLiveTranspilation()
+    {
+        _liveTranspileCancellation?.Cancel();
+        _liveTranspileCancellation = null;
+        _liveTranspileTask = null;
+    }
+
+    private TargetLanguage[] GetVisibleLanguages() =>
+        Panes
+            .Select(pane => pane.Language)
+            .Distinct()
+            .ToArray();
+
+    private static string GetReadyStatus(TargetPaneViewModel pane) =>
+        IsTranspileOnlyLanguage(pane.Language)
+            ? "Transpile Only"
+            : pane.HasToolchain ? "Ready" : "Toolchain Missing";
+
+    private static string GetInitialBuildStatus(TargetLanguage language) =>
+        language switch
+        {
+            TargetLanguage.MasmX64 => "Assembling",
+            TargetLanguage.JavaScript => "Running",
+            _ => "Building"
+        };
+
+    public static string BuildRunStatusText(BuildRunResult result)
+    {
+        if (result.Cancelled)
+        {
+            return "Cancelled";
+        }
+
+        if (result.TimedOut)
+        {
+            return "Timed Out";
+        }
+
+        if (result.Stage.Equals("Transpile Only", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Transpile Only";
+        }
+
+        if (result.Stage.Equals("Toolchain Missing", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Toolchain Missing";
+        }
+
+        return result.Success ? "Completed" : "Failed";
+    }
+
+    private static bool IsTranspileOnlyLanguage(TargetLanguage language) =>
+        language is TargetLanguage.ObjectiveC or TargetLanguage.Swift;
 
     private static void Exit() =>
         Application.Current.Shutdown();

@@ -42,3 +42,5 @@ The AI actually agreed with me.  It had already started creating this complex pa
 
 14.) Can you download the correct JDK so you can compile java on this machine locally?  You have my permission.
 15.) Can we also add support for transpilling to Objective-C and Swift?  Even if we are unable to compile it on a Windows VM machine.
+
+16.) Follow and execute the instructions provided "C:\SMILE\Requirements\2026-08-02 1011 - ChatGPT Audit of Codex's Work.md".  These are corrections to some of the deficiencies in your last commit that ChatGPT noticed and should be corrected.

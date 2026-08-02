@@ -121,15 +121,17 @@ public sealed class TranspileOnlyToolchain : IToolchain
             Cancelled: false,
             WorkingDirectory: null,
             PauseLauncherPath: null,
-            Stage: "Transpile only");
+            Stage: "Transpile Only");
     }
 }
 
 public abstract class ToolchainBase : IToolchain
 {
     public static readonly TimeSpan DetectionTimeout = TimeSpan.FromSeconds(5);
+    public static readonly TimeSpan BuildTimeout = TimeSpan.FromSeconds(120);
     public static readonly TimeSpan ProgramTimeout = TimeSpan.FromSeconds(10);
     private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
+    private static int _oldWorkspaceCleanupStarted;
 
     protected ToolchainBase(IProcessRunner runner)
     {
@@ -162,7 +164,7 @@ public abstract class ToolchainBase : IToolchain
         // gives every build/run operation an isolated directory.
         string root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "SMILE", "Runs"));
         Directory.CreateDirectory(root);
-        CleanOldWorkspaces(root);
+        await CleanOldWorkspacesOnceAsync(root, cancellationToken).ConfigureAwait(false);
 
         string workspace = Path.Combine(
             root,
@@ -261,7 +263,7 @@ public abstract class ToolchainBase : IToolchain
             Cancelled: false,
             workingDirectory,
             null,
-            "Missing toolchain");
+            "Toolchain Missing");
 
     protected BuildRunResult FromProcessResults(
         ToolchainStatus status,
@@ -270,7 +272,8 @@ public abstract class ToolchainBase : IToolchain
         string workingDirectory,
         string stage,
         bool buildSucceeded = true,
-        string? pauseLauncherPath = null)
+        string? pauseLauncherPath = null,
+        TimeSpan? totalDuration = null)
     {
         bool success = buildSucceeded && runResult.Success;
 
@@ -282,7 +285,7 @@ public abstract class ToolchainBase : IToolchain
             runResult.StandardOutput,
             runResult.StandardError,
             runResult.ExitCode,
-            runResult.Duration,
+            totalDuration ?? runResult.Duration,
             runResult.TimedOut,
             runResult.Cancelled,
             workingDirectory,
@@ -303,6 +306,9 @@ public abstract class ToolchainBase : IToolchain
     protected static string QuoteForCmd(string value) =>
         "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
 
+    protected static TimeSpan TotalDuration(params ProcessResult[] results) =>
+        TimeSpan.FromTicks(results.Sum(result => result.Duration.Ticks));
+
     private static string GetSafeWorkspaceLanguageName(TargetLanguage language)
     {
         string displayName = TargetLanguageInfo.GetDisplayName(language);
@@ -316,7 +322,21 @@ public abstract class ToolchainBase : IToolchain
         return displayName;
     }
 
-    private static void CleanOldWorkspaces(string root)
+    private static async Task CleanOldWorkspacesOnceAsync(
+        string root,
+        CancellationToken cancellationToken)
+    {
+        if (Interlocked.Exchange(ref _oldWorkspaceCleanupStarted, 1) != 0)
+        {
+            return;
+        }
+
+        await Task.Run(
+            () => CleanOldWorkspaces(root, cancellationToken),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private static void CleanOldWorkspaces(string root, CancellationToken cancellationToken)
     {
         string rootFullPath = Path.GetFullPath(root);
         // Keep temporary compiler output from piling up between experiments.
@@ -326,8 +346,10 @@ public abstract class ToolchainBase : IToolchain
 
         foreach (string directory in Directory.EnumerateDirectories(rootFullPath))
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             string fullPath = Path.GetFullPath(directory);
-            if (!fullPath.StartsWith(rootFullPath, StringComparison.OrdinalIgnoreCase))
+            if (!fullPath.StartsWith(rootFullPath + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
@@ -393,7 +415,7 @@ public sealed class DotNetToolchain : ToolchainBase
                 "dotnet",
                 new[] { "build", "GeneratedProgram.csproj", "-nologo" },
                 workspace),
-            ProgramTimeout,
+            BuildTimeout,
             cancellationToken).ConfigureAwait(false);
 
         string buildOutput = Combine(build);
@@ -421,15 +443,23 @@ public sealed class DotNetToolchain : ToolchainBase
             options,
             cancellationToken).ConfigureAwait(false);
 
+        string executablePath = Path.Combine(workspace, "bin", "Debug", "net10.0", "GeneratedProgram.exe");
         ProcessResult run = await Runner.RunAsync(
             new ProcessCommand(
-                "dotnet",
-                new[] { "run", "--project", "GeneratedProgram.csproj", "--no-build" },
+                executablePath,
+                Array.Empty<string>(),
                 workspace),
             ProgramTimeout,
             cancellationToken).ConfigureAwait(false);
 
-        return FromProcessResults(status, buildOutput, run, workspace, "Running", pauseLauncherPath: pauseLauncherPath);
+        return FromProcessResults(
+            status,
+            buildOutput,
+            run,
+            workspace,
+            "Running",
+            pauseLauncherPath: pauseLauncherPath,
+            totalDuration: TotalDuration(build, run));
     }
 }
 
@@ -483,7 +513,7 @@ public sealed class MsvcCToolchain : ToolchainBase
 
         ProcessResult build = await Runner.RunAsync(
             ProcessCommand.ForCmd("build-c.cmd", workspace),
-            ProgramTimeout,
+            BuildTimeout,
             cancellationToken).ConfigureAwait(false);
 
         string buildOutput = Combine(build);
@@ -503,7 +533,14 @@ public sealed class MsvcCToolchain : ToolchainBase
             ProgramTimeout,
             cancellationToken).ConfigureAwait(false);
 
-        return FromProcessResults(status, buildOutput, run, workspace, "Running", pauseLauncherPath: pauseLauncherPath);
+        return FromProcessResults(
+            status,
+            buildOutput,
+            run,
+            workspace,
+            "Running",
+            pauseLauncherPath: pauseLauncherPath,
+            totalDuration: TotalDuration(build, run));
     }
 }
 
@@ -557,7 +594,7 @@ public sealed class MasmX64Toolchain : ToolchainBase
 
         ProcessResult assemble = await Runner.RunAsync(
             ProcessCommand.ForCmd("assemble.cmd", workspace),
-            ProgramTimeout,
+            BuildTimeout,
             cancellationToken).ConfigureAwait(false);
 
         string buildOutput = Combine(assemble);
@@ -580,13 +617,20 @@ public sealed class MasmX64Toolchain : ToolchainBase
 
         ProcessResult link = await Runner.RunAsync(
             ProcessCommand.ForCmd("link-masm.cmd", workspace),
-            ProgramTimeout,
+            BuildTimeout,
             cancellationToken).ConfigureAwait(false);
 
         buildOutput = JoinNonEmpty(buildOutput, Combine(link));
         if (!link.Success)
         {
-            return FromProcessResults(status, buildOutput, link, workspace, "Linking", buildSucceeded: false);
+            return FromProcessResults(
+                status,
+                buildOutput,
+                link,
+                workspace,
+                "Linking",
+                buildSucceeded: false,
+                totalDuration: TotalDuration(assemble, link));
         }
 
         string? pauseLauncherPath = await WritePauseLauncherAsync(
@@ -600,7 +644,14 @@ public sealed class MasmX64Toolchain : ToolchainBase
             ProgramTimeout,
             cancellationToken).ConfigureAwait(false);
 
-        return FromProcessResults(status, buildOutput, run, workspace, "Running", pauseLauncherPath: pauseLauncherPath);
+        return FromProcessResults(
+            status,
+            buildOutput,
+            run,
+            workspace,
+            "Running",
+            pauseLauncherPath: pauseLauncherPath,
+            totalDuration: TotalDuration(assemble, link, run));
     }
 }
 
@@ -702,8 +753,8 @@ public sealed class JavaToolchain : ToolchainBase
             .ConfigureAwait(false);
 
         ProcessResult build = await Runner.RunAsync(
-            new ProcessCommand("javac", new[] { "Program.java" }, workspace),
-            ProgramTimeout,
+            new ProcessCommand("javac", new[] { "-encoding", "UTF-8", "Program.java" }, workspace),
+            BuildTimeout,
             cancellationToken).ConfigureAwait(false);
 
         string buildOutput = Combine(build);
@@ -723,7 +774,14 @@ public sealed class JavaToolchain : ToolchainBase
             ProgramTimeout,
             cancellationToken).ConfigureAwait(false);
 
-        return FromProcessResults(status, buildOutput, run, workspace, "Running", pauseLauncherPath: pauseLauncherPath);
+        return FromProcessResults(
+            status,
+            buildOutput,
+            run,
+            workspace,
+            "Running",
+            pauseLauncherPath: pauseLauncherPath,
+            totalDuration: TotalDuration(build, run));
     }
 }
 

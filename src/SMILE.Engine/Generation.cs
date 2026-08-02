@@ -314,15 +314,16 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
         // idea without adding classes or other ceremony to this PRINT slice.
         var source = new StringBuilder();
         source.AppendLine("#import <Foundation/Foundation.h>");
+        source.AppendLine("#include <stdio.h>");
         source.AppendLine();
-        source.AppendLine("int main(int argc, const char * argv[])");
+        source.AppendLine("int main(void)");
         source.AppendLine("{");
         source.AppendLine("    @autoreleasepool");
         source.AppendLine("    {");
 
         foreach (PrintStatementSyntax print in program.Statements.OfType<PrintStatementSyntax>())
         {
-            source.AppendLine($"        NSLog({TargetEscapes.ObjectiveCString(print.Text)});");
+            source.AppendLine($"        puts([{TargetEscapes.ObjectiveCString(print.Text)} UTF8String]);");
         }
 
         source.AppendLine("    }");
@@ -359,15 +360,15 @@ internal sealed class SwiftCodeGenerator : ICodeGenerator
 
 internal static class TargetEscapes
 {
-    public static string CSharpString(string text) => Quote(Escape(text));
+    public static string CSharpString(string text) => Quote(EscapeCSharp(text));
 
-    public static string CString(string text) => Quote(Escape(text));
+    public static string CString(string text) => Quote(EscapeCStyle(text));
 
-    public static string ObjectiveCString(string text) => "@" + Quote(Escape(text));
+    public static string ObjectiveCString(string text) => "@" + Quote(EscapeCStyle(text));
 
-    public static string JavaScriptString(string text) => Quote(Escape(text));
+    public static string JavaScriptString(string text) => Quote(EscapeJavaScript(text));
 
-    public static string JavaString(string text) => Quote(Escape(text));
+    public static string JavaString(string text) => Quote(EscapeJava(text));
 
     public static string SwiftString(string text) => Quote(EscapeSwift(text));
 
@@ -410,7 +411,7 @@ internal static class TargetEscapes
 
     private static string Quote(string text) => $"\"{text}\"";
 
-    private static string Escape(string text)
+    private static string EscapeCSharp(string text)
     {
         var builder = new StringBuilder();
 
@@ -428,6 +429,109 @@ internal static class TargetEscapes
                 '\r' => "\\r",
                 '\t' => "\\t",
                 '\v' => "\\v",
+                _ when char.IsControl(value) => $"\\u{(int)value:x4}",
+                _ => value
+            });
+        }
+
+        return builder.ToString();
+    }
+
+    private static string EscapeCStyle(string text)
+    {
+        var builder = new StringBuilder();
+
+        foreach (char value in text)
+        {
+            builder.Append(value switch
+            {
+                '\\' => "\\\\",
+                '"' => "\\\"",
+                '\0' => "\\000",
+                '\a' => "\\007",
+                '\b' => "\\b",
+                '\f' => "\\f",
+                '\n' => "\\n",
+                '\r' => "\\r",
+                '\t' => "\\t",
+                '\v' => "\\013",
+                _ when char.IsControl(value) => EscapeUtf8BytesAsOctal(value),
+                _ => value
+            });
+        }
+
+        return builder.ToString();
+    }
+
+    private static string EscapeUtf8BytesAsOctal(char value)
+    {
+        // C and Objective-C source files are written as UTF-8. For control
+        // characters without a named C escape, fixed three-digit octal byte
+        // escapes avoid raw invisible characters and avoid accidental merging
+        // with a following digit.
+        byte[] bytes = Encoding.UTF8.GetBytes(value.ToString());
+        var builder = new StringBuilder();
+
+        foreach (byte utf8Byte in bytes)
+        {
+            builder.Append('\\');
+            builder.Append(ToFixedOctal(utf8Byte));
+        }
+
+        return builder.ToString();
+    }
+
+    private static string ToFixedOctal(byte value)
+    {
+        // Fixed-width octal means exactly three base-8 digits. That matters in
+        // languages like C and Java where a following digit could otherwise be
+        // mistaken for part of the same escape sequence.
+        Span<char> digits = stackalloc char[3];
+        digits[0] = (char)('0' + ((value >> 6) & 0b111));
+        digits[1] = (char)('0' + ((value >> 3) & 0b111));
+        digits[2] = (char)('0' + (value & 0b111));
+        return new string(digits);
+    }
+
+    private static string EscapeJava(string text)
+    {
+        var builder = new StringBuilder();
+
+        foreach (char value in text)
+        {
+            builder.Append(value switch
+            {
+                '\\' => "\\\\",
+                '"' => "\\\"",
+                '\b' => "\\b",
+                '\t' => "\\t",
+                '\n' => "\\n",
+                '\f' => "\\f",
+                '\r' => "\\r",
+                _ when value < 32 => "\\" + ToFixedOctal((byte)value),
+                _ when char.IsControl(value) => $"\\u{(int)value:x4}",
+                _ => value
+            });
+        }
+
+        return builder.ToString();
+    }
+
+    private static string EscapeJavaScript(string text)
+    {
+        var builder = new StringBuilder();
+
+        foreach (char value in text)
+        {
+            builder.Append(value switch
+            {
+                '\\' => "\\\\",
+                '"' => "\\\"",
+                '\b' => "\\b",
+                '\t' => "\\t",
+                '\n' => "\\n",
+                '\f' => "\\f",
+                '\r' => "\\r",
                 _ when char.IsControl(value) => $"\\u{(int)value:x4}",
                 _ => value
             });

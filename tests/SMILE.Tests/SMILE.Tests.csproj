@@ -1,10 +1,11 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
     <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
   </PropertyGroup>
 
@@ -18,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\SMILE.Engine\SMILE.Engine.csproj" />
+    <ProjectReference Include="..\..\src\SMILE.Desktop\SMILE.Desktop.csproj" />
     <ProjectReference Include="..\..\src\SMILE.Toolchains\SMILE.Toolchains.csproj" />
   </ItemGroup>
 

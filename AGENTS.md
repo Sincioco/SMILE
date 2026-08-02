@@ -3,6 +3,7 @@
 - SMILE is a public repo, so write detailed commit messages that help people follow its progression.
 - Whenever Codex creates a commit for this project, prefix the commit subject with `Sin and Codex:`.
 - Do not commit or push unless Sin explicitly asks for it.
+- Work directly on `main` unless Sin explicitly requests another branch. If an external brief suggests a feature branch, prefer this project rule and stay on `main`.
 - When Sin says to "commit all files" and push, interpret that as staging and committing all current unstaged and untracked repo changes, while still respecting `.gitignore`.
 - Never include build/output folders or generated build/output files in commits, even when committing all files. Do not force-add ignored artifacts.
 - Never force-push, never discard user work, and do not commit unrelated local changes.

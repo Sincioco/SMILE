@@ -1,0 +1,26 @@
+Sin and ChatGPT Researching - PRINT statement
+---------------------------------------------
+
+Is it feasible to construct the SMILE language such that the PRINT statement works this way without sabotashing the long-term plan to make it a full-pledge programming language in 2 years?
+
+a.) PRINT, print, Print all mean the same thing.  The SMILE language is not case sensitive.
+b.) The two statements below output the same thing:
+
+PRINT "Hello World!"
+PRINT Hello World!
+
+c.) I'm thinking the double quote can be omitted if the rest of the PRINT statement is just a string literally.
+
+d.) As for string interpolation, I was thinking of the following:
+
+LET Name = "Sin"
+
+PRINT "Hello " + Name + "!"
+PRINT Hello {Name}!
+PRINT $"Hello {Name}!"
+
+How feasible is it to make SMILE's syntax behave like that?  I want it to be beginner friendly so it must not be so strict, but I also want it have the same / similar string interpolation like in C# when needed by advanced programmers.
+
+Let's assume that for SMILE, each line would only, in general, execute one SMILE statement.  Meaning no semicolons like in C-based languages where you can jam multiple lines into one.
+
+This is especially true for PRINT.  If the keyword PRINT is encountered more than once in one line then that is a syntax / compiler error.

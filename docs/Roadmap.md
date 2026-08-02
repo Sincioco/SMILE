@@ -1,6 +1,6 @@
 # Roadmap
 
-## Implemented In v0.1.2
+## Implemented In v0.1.3
 
 - Parse `PRINT "text"` statements.
 - Accept multiple `PRINT` statements and blank lines.
@@ -10,10 +10,13 @@
 - Report Objective-C and Swift as transpile-only targets on Windows.
 - Provide a CLI developer harness.
 - Provide a responsive WPF desktop app with three generated panes.
+- Debounce live desktop previews so typing stays responsive.
+- Keep Build & Run tied to the latest source revision.
+- Use separate 120 second build and 10 second program execution timeouts.
 
 ## Future Ideas
 
-These are not implemented in v0.1.2:
+These are not implemented in v0.1.3:
 
 1. `LET` and variables
 2. Printing variables and expressions

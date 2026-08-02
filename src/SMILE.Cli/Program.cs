@@ -116,7 +116,7 @@ internal static class Program
         }
 
         Console.WriteLine($"Exit Code: {(result.ExitCode.HasValue ? result.ExitCode.Value.ToString() : "n/a")}");
-        Console.WriteLine($"Duration: {result.Duration.TotalMilliseconds:0} ms");
+        Console.WriteLine($"Total duration: {result.Duration.TotalMilliseconds:0} ms");
 
         if (result.TimedOut)
         {

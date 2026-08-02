@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:SMILE.Desktop"
         mc:Ignorable="d"
-        Title="SMILE v0.1.2 - PRINT Everywhere"
+        Title="SMILE v0.1.3 - PRINT Everywhere"
         Height="820"
         Width="1180"
         MinHeight="620"
@@ -46,7 +46,8 @@
                                   Width="230"
                                   ItemsSource="{Binding LanguageOptions}"
                                   SelectedItem="{Binding SelectedLanguageOption}"
-                                  DisplayMemberPath="DisplayName" />
+                                  DisplayMemberPath="DisplayName"
+                                  IsEnabled="{Binding CanChangeLanguage}" />
                     </Grid>
 
                     <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,6,0,6">
@@ -148,7 +149,8 @@
                     <TextBlock Text="SMILE" FontWeight="SemiBold" Margin="0,0,0,6" />
                     <TextBox Grid.Row="1"
                              Text="{Binding SourceText, UpdateSourceTrigger=PropertyChanged}"
-                             TextWrapping="NoWrap" />
+                             TextWrapping="NoWrap"
+                             IsReadOnly="{Binding IsBusy}" />
                 </Grid>
             </Border>
 

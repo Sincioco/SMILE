@@ -2,7 +2,7 @@
 
 SMILE v0.1 supports one statement: `PRINT "text"`.
 
-The current v0.1.2 toolchain can generate C#, C, Windows x64 MASM, JavaScript, Java, Objective-C, and Swift from that same one-statement syntax.
+The current v0.1.3 toolchain can generate C#, C, Windows x64 MASM, JavaScript, Java, Objective-C, and Swift from that same one-statement syntax.
 
 ## Grammar
 
@@ -27,6 +27,7 @@ PRINT "Every PRINT ends with a newline"
 Rules:
 
 - `PRINT` is case-insensitive.
+- `PRINT` must be followed by at least one space or tab before the string literal.
 - Blank lines are allowed.
 - Multiple `PRINT` statements are allowed.
 - A final newline is optional.
@@ -46,6 +47,7 @@ Expected source errors return diagnostics instead of exceptions.
 | `SMILE1003` | Unterminated string literal |
 | `SMILE1004` | Unexpected text after statement |
 | `SMILE1005` | Invalid or unexpected character |
+| `SMILE1006` | `PRINT` requires a space or tab before its quoted string |
 
 Examples:
 
@@ -55,6 +57,7 @@ PRINT Hello
 PRINT "Unclosed
 PRONT "Typo"
 PRINT "Hello" extra
+PRINT"No separating space"
 ```
 
 ## Not In v0.1

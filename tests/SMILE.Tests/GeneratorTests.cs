@@ -161,13 +161,14 @@ PRINT "Different syntax, same idea."
         Assert.AreEqual(
             Lines(
                 "#import <Foundation/Foundation.h>",
+                "#include <stdio.h>",
                 "",
-                "int main(int argc, const char * argv[])",
+                "int main(void)",
                 "{",
                 "    @autoreleasepool",
                 "    {",
-                "        NSLog(@\"Hello from SMILE!\");",
-                "        NSLog(@\"Different syntax, same idea.\");",
+                "        puts([@\"Hello from SMILE!\" UTF8String]);",
+                "        puts([@\"Different syntax, same idea.\" UTF8String]);",
                 "    }",
                 "",
                 "    return 0;",
@@ -233,6 +234,34 @@ PRINT "Different syntax, same idea."
         StringAssert.Contains(Generate(source, TargetLanguage.ObjectiveC).PrimaryFile.Content, "@\"C:\\\\Temp\\\\SMILE\"");
         StringAssert.Contains(Generate(source, TargetLanguage.Swift).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\"");
         StringAssert.Contains(Generate(source, TargetLanguage.MasmX64).PrimaryFile.Content, "\"C:\\Temp\\SMILE\"");
+    }
+
+    [TestMethod]
+    public void Generators_use_target_specific_control_character_escapes()
+    {
+        string source = "PRINT \"A\\B" + '\0' + "C" + '\a' + "D" + '\v' + "E" + '\t' + "F" + '\u007f' + "G\"";
+
+        StringAssert.Contains(
+            Generate(source, TargetLanguage.CSharp).PrimaryFile.Content,
+            "\"A\\\\B\\0C\\aD\\vE\\tF\\u007fG\"");
+        StringAssert.Contains(
+            Generate(source, TargetLanguage.C).PrimaryFile.Content,
+            "\"A\\\\B\\000C\\007D\\013E\\tF\\177G\"");
+        StringAssert.Contains(
+            Generate(source, TargetLanguage.ObjectiveC).PrimaryFile.Content,
+            "@\"A\\\\B\\000C\\007D\\013E\\tF\\177G\"");
+        StringAssert.Contains(
+            Generate(source, TargetLanguage.JavaScript).PrimaryFile.Content,
+            "\"A\\\\B\\u0000C\\u0007D\\u000bE\\tF\\u007fG\"");
+        StringAssert.Contains(
+            Generate(source, TargetLanguage.Java).PrimaryFile.Content,
+            "\"A\\\\B\\000C\\007D\\013E\\tF\\u007fG\"");
+        StringAssert.Contains(
+            Generate(source, TargetLanguage.Swift).PrimaryFile.Content,
+            "\"A\\\\B\\0C\\u{7}D\\u{b}E\\tF\\u{7f}G\"");
+        StringAssert.Contains(
+            Generate(source, TargetLanguage.MasmX64).PrimaryFile.Content,
+            "\"A\\B\", 0, \"C\", 7, \"D\", 11, \"E\", 9, \"F\", 127, \"G\", 13, 10");
     }
 
     private GeneratedProgram Generate(string source, TargetLanguage language)
