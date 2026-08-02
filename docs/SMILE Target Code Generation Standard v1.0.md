@@ -97,6 +97,20 @@ printf("Hello %s!\n", [Name UTF8String]);
 
 MASM stays dependency-light and uses explicit output operations, but the generated assembly should keep explanatory right-side comments so learners can follow the code.
 
+For MASM empty strings, storage may use one placeholder byte so a label has an address:
+
+```asm
+variable0Value BYTE 0
+```
+
+The logical string length must still be zero:
+
+```asm
+variable0ValueLength EQU 0
+```
+
+This prevents `WriteFile` from emitting a hidden NUL byte before the normal `PRINT` newline.
+
 ## Identifier Spelling
 
 SMILE preserves user-authored identifier spelling in generated target code. A SMILE declaration such as:
@@ -110,9 +124,13 @@ should keep `Name` in target languages when that spelling is safe.
 Target generators must use the compiler's symbol-based target identifier map. A valid SMILE name must be mapped when it conflicts with:
 
 - destination-language keywords;
+- destination-language contextual or restricted identifiers;
 - destination-language identifier rules;
-- generator-owned runtime names such as `Console`, `printf`, `System`, `main`, `args`, `console`, or `print`;
+- generator-owned runtime names such as `Console`, `Program`, `Main`, `printf`, `System`, `String`, `main`, `args`, `console`, or `print`;
+- destination-language reserved identifier patterns, such as C and Objective-C names beginning with `__` or with `_` followed by an uppercase ASCII letter;
 - another generated target name.
+
+Java and Swift must map a single SMILE `_` identifier because `_` is not a usable ordinary local variable spelling in those targets.
 
 Mapped names should remain readable. For example:
 

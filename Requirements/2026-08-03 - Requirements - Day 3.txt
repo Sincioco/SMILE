@@ -27,6 +27,10 @@ Finish LET v1.0 Specification Implementation
 
 	Status: **Ready for testing** after the LET v1.0 conformance implementation, documentation updates, and validation pass.
 
-2.) I'd like to add COBOL as one of the target languages in SMILE.  You have my permission to download any tooling you need from the Internet, providing it is free or open-source, so that SMILE can compile and test COBOL programs locally.  Commit all and push when all your tests are green.
+2.) There are some lose ends for the LET statement.  Follow the instructions in "C:\SMILE\Requirements\2026-08-03 0453 - SMILE Codex Instructions LET v1 Target Conformance Hardening.md". Commit all and push when all your tests are green.
+
+	Status: **Ready for testing** after the v0.3.1 LET/PRINT target-conformance hardening pass, documentation updates, and validation pass.
 
 3.) I'd like to add the ability to compile Objective-C and Swift programs locally.  You have my permission to download any tooling you need from the Internet, providing it is free or open-source, so that SMILE can compile and test Objective-C and Swift programs locally.  Commit all and push when all your tests are green.
+
+4.) I'd like to add COBOL as one of the target languages in SMILE.  You have my permission to download any tooling you need from the Internet, providing it is free or open-source, so that SMILE can compile and test COBOL programs locally.  Commit all and push when all your tests are green.

@@ -170,6 +170,15 @@ internal sealed class Parser
         }
 
         position = SkipHorizontalWhitespace(line.Text, position + 1);
+        if (position >= line.Text.Length)
+        {
+            AddDiagnostic(
+                "SMILE1116",
+                "LET requires an initializer expression.",
+                line.Span(position, 0));
+            return null;
+        }
+
         var parser = new ExpressionParser(this, line, position, line.Text.Length);
         ExpressionSyntax? initializer = parser.ParseStringExpression();
         RequireOnlyTrailingWhitespace(line, parser.Position, "SMILE1111", "Unexpected text after LET initializer.");
@@ -844,6 +853,9 @@ internal static class SyntaxFacts
 
     public static bool IsAsciiLetter(char value) =>
         value is >= 'A' and <= 'Z' or >= 'a' and <= 'z';
+
+    public static bool IsAsciiUppercaseLetter(char value) =>
+        value is >= 'A' and <= 'Z';
 
     public static bool IsIdentifierStart(char value) =>
         IsAsciiLetter(value) || value == '_';

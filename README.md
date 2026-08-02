@@ -6,13 +6,14 @@ Write a simple SMILE program once, then view equivalent programs in C#, C, Windo
 
 ## Mission
 
-SMILE v0.3.0, "Complete LET v1.0 and the String Expression Core," implements the official beginner-friendly `LET` and `PRINT` syntax:
+SMILE v0.3.1, "LET and PRINT v1.0 Target-Conformance Hardening," implements the official beginner-friendly `LET` and `PRINT` syntax:
 
 ```text
 SMILE source
   -> parse once into syntax nodes
   -> bind variables and string expressions once
   -> evaluate official LET v1.0 string constants once
+  -> map SMILE symbols to safe target identifiers once per target
   -> generate seven target programs from the bound program
   -> compare generated runtime behavior to the SMILE reference evaluator in tests
   -> show three debounced live target previews with line numbers and syntax highlighting
@@ -99,9 +100,11 @@ Implemented rules:
 - A physical line may contain only one statement.
 - A second standalone `PRINT` keyword on the same line is a compiler error.
 - Quote omission is a `PRINT` convenience only; it does not make quote-free strings legal in `LET` or future expression positions.
-- Target generators map valid SMILE identifiers when a destination language reserves the same spelling or when the name would shadow generator-owned runtime APIs.
+- Target generators map valid SMILE identifiers when a destination language reserves the same spelling, when a spelling would shadow generator-owned runtime APIs, or when a target has reserved identifier patterns.
+- Java and Swift map a single `_` SMILE identifier because those languages cannot use `_` as an ordinary readable local variable.
+- C and Objective-C map implementation-reserved prefixes such as `__internal` and `_Upper`.
 
-Not implemented in v0.3.0: numeric types, comments, `INPUT`, conditions, loops, functions, arrays, classes, escaping embedded quotes inside SMILE strings, non-string `LET` initializers, and reassignment.
+Not implemented in v0.3.1: numeric types, comments, `INPUT`, conditions, loops, functions, arrays, classes, escaping embedded quotes inside SMILE strings, non-string `LET` initializers, and reassignment.
 
 ## Generated Examples
 
@@ -248,6 +251,8 @@ Run the CLI developer harness:
 cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\FriendlyPrint.smile --target all
 cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\FriendlyPrint.smile --target csharp --run
 cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\CompleteLetV1.smile --target all
+cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\LetEmptyStringHardening.smile --target all
+cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\LetIdentifierHardening.smile --target all
 ```
 
 Valid targets are `csharp`, `c`, `masm-x64`, `javascript`, `java`, `objective-c`, `swift`, and `all`.
@@ -270,7 +275,7 @@ When Open Generated Folder is enabled, SMILE asks Windows Explorer to open the g
 
 When Press Any Key Launcher is enabled, SMILE writes `Run Program - Press Any Key.cmd` into each successful build/run workspace. Double-clicking that launcher runs the generated program and then shows `Press any key to exit...`, which keeps the console window open long enough to inspect the output.
 
-Current desktop build version: `0.3.0 Complete LET v1.0 and String Expression Core`.
+Current desktop build version: `0.3.1 LET and PRINT v1.0 Target-Conformance Hardening`.
 
 ## Diagnostics
 
@@ -295,6 +300,7 @@ SMILE reports source errors as diagnostics instead of ordinary crashes. Current 
 | `SMILE1112` | `LET` requires a valid variable name |
 | `SMILE1113` | `LET` requires `=` before its initializer |
 | `SMILE1115` | Reserved SMILE keyword used as a variable name |
+| `SMILE1116` | `LET` requires an initializer expression |
 
 Desktop crash containment is intentionally defensive. Recoverable Build & Run, toolchain detection, process execution, command refresh, and folder-opening failures are reported in the output area without closing the IDE. Detailed desktop diagnostics are written to `%LOCALAPPDATA%\SMILE\Logs\SMILE-yyyy-MM-dd.log`, with `%TEMP%\SMILE\Logs` used as a fallback if the normal log folder is unavailable.
 
@@ -331,7 +337,7 @@ Source -> Parser -> Syntax Tree -> Binder -> Bound Program -> Target Generator -
                                                  Build and Run Result
 ```
 
-`SMILE.Engine` owns parsing, diagnostics, syntax nodes, binding, variable symbols, bound expressions, compile-time string constant evaluation, target-neutral print segment flattening, the SMILE reference evaluator, target identifier mapping, and target generators. `SMILE.Toolchains` owns detection, temporary workspaces, async process execution, cancellation, timeouts, bounded process output, build, and run. `SMILE.Cli` and `SMILE.Desktop` reuse both projects. `SMILE.Desktop` uses AvalonEdit for the four code panes and keeps build/run work isolated from the WPF UI thread.
+`SMILE.Engine` owns parsing, diagnostics, syntax nodes, binding, variable symbols, bound expressions, compile-time string constant evaluation, target-neutral print segment flattening, the SMILE reference evaluator, target identifier mapping, and target generators. The target identifier map is symbol-based and uses exact reserved-word checks plus target-specific pattern rules, such as C implementation-reserved prefixes and Java/Swift `_`. `SMILE.Toolchains` owns detection, temporary workspaces, async process execution, cancellation, timeouts, bounded process output, build, and run. `SMILE.Cli` and `SMILE.Desktop` reuse both projects. `SMILE.Desktop` uses AvalonEdit for the four code panes and keeps build/run work isolated from the WPF UI thread.
 
 SMILE-owned build/output artifacts older than 1 day may be cleaned from known generated locations such as `bin`, `obj`, `out`, and `%TEMP%\SMILE\Runs`.
 
@@ -347,7 +353,7 @@ SMILE-owned build/output artifacts older than 1 day may be cleaned from known ge
 
 ## Roadmap
 
-Future ideas, not implemented in v0.3.0:
+Future ideas, not implemented in v0.3.1:
 
 1. Numeric and boolean expressions
 2. `INPUT`

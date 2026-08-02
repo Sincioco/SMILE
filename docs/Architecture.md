@@ -1,6 +1,6 @@
 # Architecture
 
-SMILE v0.3.0 uses a small direct compiler pipeline:
+SMILE v0.3.1 uses a small direct compiler pipeline:
 
 ```text
 Source -> Parser -> Syntax Tree -> Binder -> Bound Program -> Target Generator -> Generated Files
@@ -38,7 +38,9 @@ C and Objective-C use those segments as target-local input to a safe `printf` fo
 
 The engine includes a small `SmileEvaluator` reference evaluator. It executes the bound program directly, stores string values for `LET`, and appends output for `PRINT`. Tests use it as the semantic oracle for runnable generated targets.
 
-Target generators use a symbol-based target identifier map. Valid SMILE identifiers are preserved when safe, and mapped to readable names such as `_smile_class` when they conflict with destination-language keywords or generator-owned runtime names. The map is built once per target from `BoundProgram.Variables`, so every reference to a variable uses the same generated name as its declaration.
+Target generators use a symbol-based target identifier map. Valid SMILE identifiers are preserved when safe, and mapped to readable names such as `_smile_class` when they conflict with destination-language keywords, contextual/restricted identifiers, generator-owned runtime names, or target-specific reserved identifier patterns. C and Objective-C map names such as `__internal` and `_Upper` because those prefixes are reserved for implementations in ordinary C-family usage. Java and Swift map a single `_` because it is not a usable ordinary local variable in those targets. The map is built once per target from `BoundProgram.Variables`, so every reference to a variable uses the same generated name as its declaration.
+
+MASM stores string bytes in static labels and writes them with `WriteFile`. For an empty string, the data label keeps a one-byte placeholder so the symbol has an address, but the generated logical length is `0`. This keeps `PRINT {Empty}` from emitting an invisible NUL byte before the normal newline.
 
 Generated target code should be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write. That rule applies even when a lower-level target must lower SMILE features into equivalent operations.
 

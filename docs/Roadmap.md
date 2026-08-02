@@ -42,9 +42,19 @@
 - Enforce portable ASCII identifiers and reject `LET` or `PRINT` as variable names.
 - Add deterministic target identifier mapping for destination-language keywords and generator-owned runtime names.
 
+## Implemented In v0.3.1
+
+- Harden `LET` and `PRINT` v1.0 target conformance without adding new language syntax.
+- Preserve empty string variables exactly, including MASM zero logical length for empty storage.
+- Map Java and Swift single `_` identifiers to usable generated variable names.
+- Map C and Objective-C implementation-reserved identifier prefixes such as `__internal` and `_Upper`.
+- Expand target identifier mapping coverage for keywords, contextual/restricted identifiers, generator-owned names, and collision cases.
+- Add `SMILE1116` for missing `LET` initializer expressions.
+- Add evaluator-versus-toolchain tests for empty strings and adversarial valid SMILE identifiers.
+
 ## Future Ideas
 
-These are not implemented in v0.3.0:
+These are not implemented in v0.3.1:
 
 1. Numeric and boolean expressions
 2. `INPUT`

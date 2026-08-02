@@ -293,8 +293,7 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         {
             BoundLetStatement let = lets[index];
             string valueLabel = VariableValueLabel(index);
-            AppendMasmLine(source, $"{valueLabel} BYTE {TargetEscapes.MasmByteInitializers(let.ConstantValue)}", $"LET {let.Variable.Name} initial text.");
-            AppendMasmLine(source, $"{valueLabel}Length EQU $ - {valueLabel}", "Length of the variable's current text.");
+            AppendMasmStringData(source, valueLabel, let.ConstantValue, $"LET {let.Variable.Name} initial text.", "Length of the variable's current text.");
             AppendMasmLine(source, $"{VariablePointerLabel(index)} QWORD ?", $"Runtime pointer for {let.Variable.Name}.");
             AppendMasmLine(source, $"{VariableLengthLabel(index)} DWORD ?", $"Runtime length for {let.Variable.Name}.");
         }
@@ -310,8 +309,7 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
                 }
 
                 string label = PrintLiteralLabel(printIndex, segmentIndex);
-                AppendMasmLine(source, $"{label} BYTE {TargetEscapes.MasmByteInitializers(literal.Text)}", $"PRINT #{printIndex + 1} literal segment.");
-                AppendMasmLine(source, $"{label}Length EQU $ - {label}", "Length of this literal segment.");
+                AppendMasmStringData(source, label, literal.Text, $"PRINT #{printIndex + 1} literal segment.", "Length of this literal segment.");
             }
         }
 
@@ -324,6 +322,24 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         }
 
         source.AppendLine();
+    }
+
+    private static void AppendMasmStringData(
+        StringBuilder source,
+        string label,
+        string value,
+        string valueComment,
+        string lengthComment)
+    {
+        AppendMasmLine(source, $"{label} BYTE {TargetEscapes.MasmByteInitializers(value)}", valueComment);
+
+        // MASM needs at least one byte after a BYTE label, so the empty string
+        // uses a 0 placeholder for storage. The logical SMILE string length is
+        // still zero; otherwise WriteFile would emit an invisible NUL byte.
+        string lengthExpression = Encoding.UTF8.GetByteCount(value) == 0
+            ? "0"
+            : $"$ - {label}";
+        AppendMasmLine(source, $"{label}Length EQU {lengthExpression}", lengthComment);
     }
 
     private static void AppendMasmCode(

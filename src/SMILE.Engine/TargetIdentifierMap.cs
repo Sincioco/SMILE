@@ -12,15 +12,15 @@ internal sealed class TargetIdentifierMap
 
     public static TargetIdentifierMap Create(BoundProgram program, TargetLanguage language)
     {
-        var reserved = TargetReservedNames.For(language);
+        ISet<string> reserved = TargetReservedNames.For(language);
         var used = new HashSet<string>(StringComparer.Ordinal);
         var names = new Dictionary<VariableSymbol, string>();
 
         foreach (VariableSymbol variable in program.Variables)
         {
-            string preferred = IsSafeTargetIdentifier(variable.Name, reserved)
+            string preferred = IsSafeTargetIdentifier(variable.Name, language, reserved)
                 ? variable.Name
-                : MappedPrefix + variable.Name;
+                : BuildMappedName(variable.Name);
             string unique = MakeUnique(preferred, used);
 
             used.Add(unique);
@@ -32,8 +32,16 @@ internal sealed class TargetIdentifierMap
 
     public string Get(VariableSymbol variable) => _names[variable];
 
-    private static bool IsSafeTargetIdentifier(string name, ISet<string> reserved) =>
-        IsPortableIdentifier(name) && !reserved.Contains(name);
+    private static bool IsSafeTargetIdentifier(
+        string name,
+        TargetLanguage language,
+        ISet<string> reserved) =>
+        IsPortableIdentifier(name) && !RequiresMapping(language, name, reserved);
+
+    private static string BuildMappedName(string name) =>
+        // A single underscore is valid SMILE, but Java and Swift cannot use it
+        // as a normal variable. Map it to the cleanest readable prefix form.
+        name == "_" ? MappedPrefix : MappedPrefix + name;
 
     private static bool IsPortableIdentifier(string name)
     {
@@ -52,6 +60,30 @@ internal sealed class TargetIdentifierMap
 
         return true;
     }
+
+    private static bool RequiresMapping(TargetLanguage language, string name, ISet<string> reserved)
+    {
+        if (reserved.Contains(name))
+        {
+            return true;
+        }
+
+        // C and Objective-C reserve implementation namespace identifiers that
+        // begin with "__" or with "_" followed by an uppercase ASCII letter.
+        // SMILE lets learners write those names, so targets map them rather
+        // than emitting technically reserved implementation identifiers.
+        if (language is TargetLanguage.C or TargetLanguage.ObjectiveC &&
+            IsCImplementationReservedIdentifier(name))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsCImplementationReservedIdentifier(string name) =>
+        name.StartsWith("__", StringComparison.Ordinal) ||
+        (name.Length >= 2 && name[0] == '_' && SyntaxFacts.IsAsciiUppercaseLetter(name[1]));
 
     private static string MakeUnique(string preferred, ISet<string> used)
     {
@@ -85,7 +117,13 @@ internal sealed class TargetIdentifierMap
             "params", "private", "protected", "public", "readonly", "ref", "return", "sbyte",
             "sealed", "short", "sizeof", "stackalloc", "static", "string", "struct", "switch",
             "this", "throw", "true", "try", "typeof", "uint", "ulong", "unchecked", "unsafe",
-            "ushort", "using", "virtual", "void", "volatile", "while", "Console", "Program", "Main"
+            "ushort", "using", "virtual", "void", "volatile", "while",
+            "add", "alias", "and", "ascending", "async", "await", "by", "descending", "dynamic",
+            "equals", "file", "from", "get", "global", "group", "init", "into", "join", "let",
+            "managed", "nameof", "nint", "not", "notnull", "nuint", "on", "or", "orderby",
+            "partial", "record", "remove", "required", "scoped", "select", "set", "unmanaged",
+            "value", "var", "when", "where", "with", "yield",
+            "Console", "Program", "Main", "String", "System"
         };
 
         private static readonly string[] C =
@@ -104,7 +142,7 @@ internal sealed class TargetIdentifierMap
             "delete", "do", "else", "enum", "export", "extends", "false", "finally", "for",
             "function", "if", "import", "in", "instanceof", "let", "new", "null", "return",
             "super", "switch", "this", "throw", "true", "try", "typeof", "var", "void", "while",
-            "with", "yield", "console"
+            "with", "yield", "arguments", "console", "eval"
         };
 
         private static readonly string[] Java =
@@ -114,15 +152,15 @@ internal sealed class TargetIdentifierMap
             "false", "final", "finally", "float", "for", "goto", "if", "implements", "import",
             "instanceof", "int", "interface", "long", "module", "native", "new", "null", "open",
             "opens", "package", "private", "protected", "provides", "public", "requires", "return",
-            "short", "static", "strictfp", "super", "switch", "synchronized", "this", "throw",
+            "record", "sealed", "permits", "short", "static", "strictfp", "super", "switch", "synchronized", "this", "throw",
             "throws", "to", "transient", "transitive", "true", "try", "uses", "var", "void",
-            "volatile", "while", "with", "yield", "System", "String", "Program", "main", "args"
+            "volatile", "while", "with", "yield", "_", "System", "String", "Program", "main", "args"
         };
 
         private static readonly string[] ObjectiveC = C
             .Concat(new[]
             {
-                "NSString", "printf", "main", "id", "self", "super", "YES", "NO", "nil", "NULL"
+                "Class", "Nil", "NSString", "printf", "main", "id", "self", "super", "YES", "NO", "nil", "NULL"
             })
             .ToArray();
 
@@ -133,7 +171,8 @@ internal sealed class TargetIdentifierMap
             "false", "fileprivate", "for", "func", "guard", "if", "import", "in", "init", "inout",
             "internal", "is", "let", "nil", "open", "operator", "private", "protocol", "public",
             "repeat", "return", "self", "static", "struct", "subscript", "super", "switch", "throw",
-            "throws", "true", "try", "typealias", "var", "where", "while", "print"
+            "throws", "true", "try", "typealias", "var", "where", "while",
+            "_", "async", "await", "print", "yield", "String"
         };
 
         private static readonly string[] Masm =

@@ -1070,12 +1070,19 @@ A target generator MUST safely map a valid SMILE identifier when the target lang
 
 - Is case-sensitive.
 - Reserves that spelling.
+- Treats the spelling as a contextual or restricted identifier.
 - Uses different identifier rules.
+- Owns the spelling for generated runtime APIs or helper names.
+- Reserves an identifier pattern, not only an exact word.
 - Requires escaping or name mangling.
 
 All references to the same case-insensitive SMILE variable MUST map to the same generated target symbol.
 
 The identifier map MUST be symbol-based, deterministic, collision-safe, and target-specific. It MUST NOT be implemented as source-text replacement. A readable generated name such as `_smile_class` is acceptable when a valid SMILE variable such as `class` conflicts with a target keyword. If another SMILE declaration already uses that mapped spelling, the generator MUST choose a deterministic distinct spelling such as `_smile_class_2`.
+
+For C and Objective-C, generators SHOULD map implementation-reserved identifier patterns such as names beginning with `__` or names beginning with `_` followed by an uppercase ASCII letter.
+
+For Java and Swift, a single SMILE identifier `_` MUST be mapped to a usable destination-language local variable name.
 
 Low-level targets such as C, Objective-C, and MASM MAY emit evaluated string constants for `LET` declarations:
 
@@ -1084,6 +1091,20 @@ const char *FullName = "Sin Cioco";
 ```
 
 This is semantically equivalent for official immutable string-only `LET` v1.0 values and avoids premature runtime buffers or a SMILE runtime library.
+
+When MASM emits an empty string constant, it MAY use placeholder storage:
+
+```asm
+variable0Value BYTE 0
+```
+
+but the logical length MUST be zero:
+
+```asm
+variable0ValueLength EQU 0
+```
+
+This ensures `PRINT {Empty}` writes only the normal `PRINT` newline and does not emit a NUL byte.
 
 ---
 
@@ -1319,6 +1340,7 @@ Current stable diagnostic codes for this specification include:
 | `SMILE1112` | `LET` requires a valid variable name |
 | `SMILE1113` | `LET` requires `=` before its initializer |
 | `SMILE1115` | Reserved SMILE keyword used as a variable name |
+| `SMILE1116` | `LET` requires an initializer expression |
 
 ---
 

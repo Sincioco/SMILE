@@ -3,7 +3,7 @@
 - SMILE is a public repo, so write detailed commit messages that help people follow its progression.
 - Whenever Codex creates a commit for this project, prefix the commit subject with `Sin and Codex:`.
 - Do not commit or push unless Sin explicitly asks for it.
-- Work directly on `main` unless Sin explicitly requests another branch. If an external brief suggests a feature branch, prefer this project rule and stay on `main`.
+- All SMILE development is performed directly on `main`. Sin is the only developer. Do not create or recommend feature branches unless Sin explicitly changes this rule.
 - When Sin says to "commit all files" and push, interpret that as staging and committing all current unstaged and untracked repo changes, while still respecting `.gitignore`.
 - Never include build/output folders or generated build/output files in commits, even when committing all files. Do not force-add ignored artifacts.
 - Never force-push, never discard user work, and do not commit unrelated local changes.
@@ -35,6 +35,7 @@
 - Published official language specifications and compiler behavior must remain synchronized.
 - Every normative valid and invalid example in an official language specification should be represented in the conformance test suite.
 - Target generators must use a symbol-based target identifier map and must not emit raw SMILE identifiers when they conflict with destination-language syntax or generator-owned runtime names.
+- Every valid SMILE identifier must be mapped to valid, collision-safe destination identifiers in every target. Target restrictions include exact keywords, contextual/restricted identifiers, generator-owned names, and reserved identifier patterns.
 
 ## Educational Code Comments
 
