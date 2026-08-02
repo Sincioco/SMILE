@@ -66,55 +66,55 @@ PRINT "Different syntax, same idea."
     }
 
     [TestMethod]
-    public void Masm_generator_produces_real_x64_masm_with_unique_labels()
+    public void Masm_generator_produces_real_x64_masm_with_unique_labels_and_comments()
     {
         GeneratedProgram program = Generate(SampleSource, TargetLanguage.MasmX64);
 
         Assert.AreEqual("Program.asm", program.PrimaryFile.RelativePath);
         Assert.AreEqual(
             Lines(
-                "option casemap:none",
+                "option casemap:none                             ; Keep symbol names case-sensitive.",
                 "",
-                "EXTERN GetStdHandle:PROC",
-                "EXTERN WriteFile:PROC",
-                "EXTERN ExitProcess:PROC",
+                "EXTERN GetStdHandle:PROC                        ; Windows API: get standard console handles.",
+                "EXTERN WriteFile:PROC                           ; Windows API: write bytes to the console.",
+                "EXTERN ExitProcess:PROC                         ; Windows API: terminate the process.",
                 "",
-                "STD_OUTPUT_HANDLE EQU -11",
+                "STD_OUTPUT_HANDLE EQU -11                       ; Magic value for the console output handle.",
                 "",
-                ".data",
-                "message0 BYTE \"Hello from SMILE!\", 13, 10",
-                "message0Length EQU $ - message0",
-                "message1 BYTE \"Different syntax, same idea.\", 13, 10",
-                "message1Length EQU $ - message1",
-                "bytesWritten DWORD ?",
+                ".data                                           ; Static bytes and variables live here.",
+                "message0 BYTE \"Hello from SMILE!\", 13, 10       ; PRINT text #1, ending with CR/LF.",
+                "message0Length EQU $ - message0                 ; Length equals current address minus the label.",
+                "message1 BYTE \"Different syntax, same idea.\", 13, 10 ; PRINT text #2, ending with CR/LF.",
+                "message1Length EQU $ - message1                 ; Length equals current address minus the label.",
+                "bytesWritten DWORD ?                            ; WriteFile stores how many bytes it wrote.",
                 "",
-                ".code",
-                "main PROC",
-                "    sub rsp, 28h",
+                ".code                                           ; CPU instructions live here.",
+                "main PROC                                       ; Program entry point.",
+                "    sub rsp, 28h                                ; Reserve Win64 shadow space and align the stack.",
                 "",
-                "    mov ecx, STD_OUTPUT_HANDLE",
-                "    call GetStdHandle",
+                "    mov ecx, STD_OUTPUT_HANDLE                  ; First argument: ask for stdout.",
+                "    call GetStdHandle                           ; RAX now holds the stdout handle.",
                 "",
-                "    mov rcx, rax",
-                "    lea rdx, message0",
-                "    mov r8d, message0Length",
-                "    lea r9, bytesWritten",
-                "    mov QWORD PTR [rsp + 20h], 0",
-                "    call WriteFile",
+                "    mov rcx, rax                                ; WriteFile arg 1: stdout handle.",
+                "    lea rdx, message0                           ; WriteFile arg 2: address of message bytes.",
+                "    mov r8d, message0Length                     ; WriteFile arg 3: byte count.",
+                "    lea r9, bytesWritten                        ; WriteFile arg 4: address for bytes-written result.",
+                "    mov QWORD PTR [rsp + 20h], 0                ; WriteFile arg 5 on stack: no overlapped I/O.",
+                "    call WriteFile                              ; Emit the PRINT line.",
                 "",
-                "    mov ecx, STD_OUTPUT_HANDLE",
-                "    call GetStdHandle",
+                "    mov ecx, STD_OUTPUT_HANDLE                  ; First argument: ask for stdout.",
+                "    call GetStdHandle                           ; RAX now holds the stdout handle.",
                 "",
-                "    mov rcx, rax",
-                "    lea rdx, message1",
-                "    mov r8d, message1Length",
-                "    lea r9, bytesWritten",
-                "    mov QWORD PTR [rsp + 20h], 0",
-                "    call WriteFile",
+                "    mov rcx, rax                                ; WriteFile arg 1: stdout handle.",
+                "    lea rdx, message1                           ; WriteFile arg 2: address of message bytes.",
+                "    mov r8d, message1Length                     ; WriteFile arg 3: byte count.",
+                "    lea r9, bytesWritten                        ; WriteFile arg 4: address for bytes-written result.",
+                "    mov QWORD PTR [rsp + 20h], 0                ; WriteFile arg 5 on stack: no overlapped I/O.",
+                "    call WriteFile                              ; Emit the PRINT line.",
                 "",
-                "    xor ecx, ecx",
-                "    call ExitProcess",
-                "main ENDP",
+                "    xor ecx, ecx                                ; ExitProcess arg 1: process exit code 0.",
+                "    call ExitProcess                            ; End the program.",
+                "main ENDP                                       ; End of the main procedure.",
                 "",
                 "END"),
             program.PrimaryFile.Content);
@@ -153,11 +153,49 @@ PRINT "Different syntax, same idea."
     }
 
     [TestMethod]
+    public void Objective_c_generator_produces_minimal_foundation_program()
+    {
+        GeneratedProgram program = Generate(SampleSource, TargetLanguage.ObjectiveC);
+
+        Assert.AreEqual("Program.m", program.PrimaryFile.RelativePath);
+        Assert.AreEqual(
+            Lines(
+                "#import <Foundation/Foundation.h>",
+                "",
+                "int main(int argc, const char * argv[])",
+                "{",
+                "    @autoreleasepool",
+                "    {",
+                "        NSLog(@\"Hello from SMILE!\");",
+                "        NSLog(@\"Different syntax, same idea.\");",
+                "    }",
+                "",
+                "    return 0;",
+                "}"),
+            program.PrimaryFile.Content);
+    }
+
+    [TestMethod]
+    public void Swift_generator_produces_minimal_top_level_program()
+    {
+        GeneratedProgram program = Generate(SampleSource, TargetLanguage.Swift);
+
+        Assert.AreEqual("Program.swift", program.PrimaryFile.RelativePath);
+        Assert.AreEqual(
+            Lines(
+                "print(\"Hello from SMILE!\")",
+                "print(\"Different syntax, same idea.\")"),
+            program.PrimaryFile.Content);
+    }
+
+    [TestMethod]
     [DataRow(TargetLanguage.CSharp)]
     [DataRow(TargetLanguage.C)]
     [DataRow(TargetLanguage.MasmX64)]
     [DataRow(TargetLanguage.JavaScript)]
     [DataRow(TargetLanguage.Java)]
+    [DataRow(TargetLanguage.ObjectiveC)]
+    [DataRow(TargetLanguage.Swift)]
     public void Empty_programs_are_complete_and_end_with_one_newline(TargetLanguage language)
     {
         GeneratedProgram program = Generate(string.Empty, language);
@@ -171,6 +209,8 @@ PRINT "Different syntax, same idea."
     [DataRow(TargetLanguage.MasmX64)]
     [DataRow(TargetLanguage.JavaScript)]
     [DataRow(TargetLanguage.Java)]
+    [DataRow(TargetLanguage.ObjectiveC)]
+    [DataRow(TargetLanguage.Swift)]
     public void Generated_output_is_deterministic(TargetLanguage language)
     {
         GeneratedProgram first = Generate(SampleSource, language);
@@ -190,6 +230,8 @@ PRINT "Different syntax, same idea."
         StringAssert.Contains(Generate(source, TargetLanguage.C).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\"");
         StringAssert.Contains(Generate(source, TargetLanguage.JavaScript).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\"");
         StringAssert.Contains(Generate(source, TargetLanguage.Java).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\"");
+        StringAssert.Contains(Generate(source, TargetLanguage.ObjectiveC).PrimaryFile.Content, "@\"C:\\\\Temp\\\\SMILE\"");
+        StringAssert.Contains(Generate(source, TargetLanguage.Swift).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\"");
         StringAssert.Contains(Generate(source, TargetLanguage.MasmX64).PrimaryFile.Content, "\"C:\\Temp\\SMILE\"");
     }
 

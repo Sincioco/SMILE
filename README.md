@@ -2,16 +2,16 @@
 
 SMILE is an educational, BASIC-inspired, multi-target transpiler. It is designed to bring a smile to new developers by showing that programming languages share the same fundamental ideas even when their syntax, compiler, runtime, and platform conventions differ.
 
-Write a simple SMILE program once, then view, build, and run equivalent programs in C#, C, Windows x64 MASM Assembly, JavaScript, and Java.
+Write a simple SMILE program once, then view equivalent programs in C#, C, Windows x64 MASM Assembly, JavaScript, Java, Objective-C, and Swift.
 
 ## Mission
 
-SMILE v0.1, "PRINT Everywhere," proves one small vertical slice:
+SMILE v0.1.2, "PRINT Everywhere," proves one small vertical slice:
 
 ```text
 SMILE PRINT source
   -> parse once
-  -> generate five target programs directly from the SMILE syntax tree
+  -> generate seven target programs directly from the SMILE syntax tree
   -> show three target programs at a time in a responsive WPF desktop app
   -> build and run locally when the matching toolchain is installed
 ```
@@ -68,48 +68,48 @@ int main(void)
 Assembly - Windows x64 MASM:
 
 ```asm
-option casemap:none
+option casemap:none                             ; Keep symbol names case-sensitive.
 
-EXTERN GetStdHandle:PROC
-EXTERN WriteFile:PROC
-EXTERN ExitProcess:PROC
+EXTERN GetStdHandle:PROC                        ; Windows API: get standard console handles.
+EXTERN WriteFile:PROC                           ; Windows API: write bytes to the console.
+EXTERN ExitProcess:PROC                         ; Windows API: terminate the process.
 
-STD_OUTPUT_HANDLE EQU -11
+STD_OUTPUT_HANDLE EQU -11                       ; Magic value for the console output handle.
 
-.data
-message0 BYTE "Hello from SMILE!", 13, 10
-message0Length EQU $ - message0
-message1 BYTE "Different syntax, same idea.", 13, 10
-message1Length EQU $ - message1
-bytesWritten DWORD ?
+.data                                           ; Static bytes and variables live here.
+message0 BYTE "Hello from SMILE!", 13, 10       ; PRINT text #1, ending with CR/LF.
+message0Length EQU $ - message0                 ; Length equals current address minus the label.
+message1 BYTE "Different syntax, same idea.", 13, 10 ; PRINT text #2, ending with CR/LF.
+message1Length EQU $ - message1                 ; Length equals current address minus the label.
+bytesWritten DWORD ?                            ; WriteFile stores how many bytes it wrote.
 
-.code
-main PROC
-    sub rsp, 28h
+.code                                           ; CPU instructions live here.
+main PROC                                       ; Program entry point.
+    sub rsp, 28h                                ; Reserve Win64 shadow space and align the stack.
 
-    mov ecx, STD_OUTPUT_HANDLE
-    call GetStdHandle
+    mov ecx, STD_OUTPUT_HANDLE                  ; First argument: ask for stdout.
+    call GetStdHandle                           ; RAX now holds the stdout handle.
 
-    mov rcx, rax
-    lea rdx, message0
-    mov r8d, message0Length
-    lea r9, bytesWritten
-    mov QWORD PTR [rsp + 20h], 0
-    call WriteFile
+    mov rcx, rax                                ; WriteFile arg 1: stdout handle.
+    lea rdx, message0                           ; WriteFile arg 2: address of message bytes.
+    mov r8d, message0Length                     ; WriteFile arg 3: byte count.
+    lea r9, bytesWritten                        ; WriteFile arg 4: address for bytes-written result.
+    mov QWORD PTR [rsp + 20h], 0                ; WriteFile arg 5 on stack: no overlapped I/O.
+    call WriteFile                              ; Emit the PRINT line.
 
-    mov ecx, STD_OUTPUT_HANDLE
-    call GetStdHandle
+    mov ecx, STD_OUTPUT_HANDLE                  ; First argument: ask for stdout.
+    call GetStdHandle                           ; RAX now holds the stdout handle.
 
-    mov rcx, rax
-    lea rdx, message1
-    mov r8d, message1Length
-    lea r9, bytesWritten
-    mov QWORD PTR [rsp + 20h], 0
-    call WriteFile
+    mov rcx, rax                                ; WriteFile arg 1: stdout handle.
+    lea rdx, message1                           ; WriteFile arg 2: address of message bytes.
+    mov r8d, message1Length                     ; WriteFile arg 3: byte count.
+    lea r9, bytesWritten                        ; WriteFile arg 4: address for bytes-written result.
+    mov QWORD PTR [rsp + 20h], 0                ; WriteFile arg 5 on stack: no overlapped I/O.
+    call WriteFile                              ; Emit the PRINT line.
 
-    xor ecx, ecx
-    call ExitProcess
-main ENDP
+    xor ecx, ecx                                ; ExitProcess arg 1: process exit code 0.
+    call ExitProcess                            ; End the program.
+main ENDP                                       ; End of the main procedure.
 
 END
 ```
@@ -134,6 +134,30 @@ public final class Program
 }
 ```
 
+Objective-C:
+
+```objc
+#import <Foundation/Foundation.h>
+
+int main(int argc, const char * argv[])
+{
+    @autoreleasepool
+    {
+        NSLog(@"Hello from SMILE!");
+        NSLog(@"Different syntax, same idea.");
+    }
+
+    return 0;
+}
+```
+
+Swift:
+
+```swift
+print("Hello from SMILE!")
+print("Different syntax, same idea.")
+```
+
 ## Supported Targets
 
 | Stable ID | Display name | Generated files | Build & Run toolchain |
@@ -143,8 +167,10 @@ public final class Program
 | `masm-x64` | Assembly - Windows x64 MASM | `Program.asm` | Visual Studio C++ x64 tools with `ml64` and `link.exe` |
 | `javascript` | JavaScript | `Program.js` | Node.js |
 | `java` | Java | `Program.java` | JDK with `javac` and `java` |
+| `objective-c` | Objective-C | `Program.m` | Transpile only on Windows |
+| `swift` | Swift | `Program.swift` | Transpile only on Windows |
 
-Transpilation works even when optional target toolchains are missing. Build & Run is enabled only when the matching local tools are detected.
+Transpilation works even when optional target toolchains are missing. Build & Run is enabled only when the matching local tools are detected. Objective-C and Swift are available for source inspection, copy, and save on Windows, but local Build & Run is intentionally disabled until SMILE has a supported compiler path for them.
 
 ## Requirements
 
@@ -152,7 +178,7 @@ Transpilation works even when optional target toolchains are missing. Build & Ru
 - .NET SDK 10 or newer
 - Visual Studio 2026 Enterprise or Build Tools with Desktop development with C++ for C and MASM
 - Optional: Node.js for JavaScript
-- Optional: JDK for Java
+- Optional: JDK 25 LTS or newer for Java
 
 Visual Studio setup must include the x64 C++ tools and `VC\Auxiliary\Build\vcvars64.bat`. SMILE discovers Visual Studio with `vswhere.exe`; it does not hardcode an edition or install folder.
 
@@ -184,7 +210,7 @@ PRINT "Hello from SMILE!"
 PRINT "Different syntax, same idea."
 ```
 
-The desktop app opens maximized. The top-left pane is editable SMILE source. The other three panes are read-only generated targets. They default to C#, Assembly - Windows x64 MASM, and C. Each generated pane can switch between C#, C, MASM x64, JavaScript, and Java.
+The desktop app opens maximized. The top-left pane is editable SMILE source. The other three panes are read-only generated targets. They default to C#, Assembly - Windows x64 MASM, and C. Each generated pane can switch between C#, C, MASM x64, JavaScript, Java, Objective-C, and Swift.
 
 ![SMILE desktop app in maximized state](Requirements/Progress/2026-08-02-day-1-2-smile-desktop.png)
 
@@ -198,14 +224,19 @@ Main actions:
 - Build & Run Visible Languages
 - Cancel while work is active
 - Open Generated Folder toggle
+- Press Any Key Launcher toggle
 - File menu for New, Open `.smile`, Save, Save As, and Exit
 - Help menu with About SMILE and the current desktop build version
 
 Each generated pane supports Copy, Save Source, and Build & Run. JavaScript runs directly with Node.js, so its button says Run.
 
-Diagnostics, build output, program output, exit code, duration, timeout, cancellation, and missing-tool messages appear in the output area. The output area scrolls to the newest text as build/run messages are appended.
+Diagnostics, build output, program output, exit code, duration, timeout, cancellation, generated workspace paths, pause-launcher paths, and missing-tool messages appear in the output area. The output area scrolls to the newest text as build/run messages are appended.
 
 When Open Generated Folder is enabled, SMILE opens the generated-code workspace after a pane build/run. For Build & Run Visible Languages, it opens the shared SMILE run folder so the generated-code workspaces for all visible targets can be inspected. Generated workspace folder names end with the target language so learners can quickly identify them. If that folder is already open, SMILE brings the existing Explorer window to the front instead of opening a duplicate.
+
+When Press Any Key Launcher is enabled, SMILE writes `Run Program - Press Any Key.cmd` into each successful build/run workspace. Double-clicking that launcher runs the generated program and then shows `Press any key to exit...`, which keeps the console window open long enough to inspect the output.
+
+Current desktop build version: `0.1.2 PRINT Everywhere`.
 
 ## CLI Developer Harness
 
@@ -221,7 +252,7 @@ Build and run one target:
 cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\PrintEverywhere.smile --target csharp --run
 ```
 
-Valid targets are `csharp`, `c`, `masm-x64`, `javascript`, `java`, and `all`.
+Valid targets are `csharp`, `c`, `masm-x64`, `javascript`, `java`, `objective-c`, `swift`, and `all`.
 
 ## SMILE v0.1 Syntax
 
@@ -288,6 +319,7 @@ SMILE-owned build/output artifacts older than 1 day may be cleaned from known ge
 - Only `PRINT "text"` is supported.
 - Embedded quote escaping inside SMILE string literals is not implemented.
 - C and MASM target output is focused on Windows local toolchains.
+- Objective-C and Swift output is transpile-only on Windows in this version.
 - Unicode output beyond simple source text is an area for later hardening.
 - WPF launch, resize, Build & Run command availability, invocation, and Cancel enabled state were smoke-tested with UI Automation; full UI automation coverage is not included.
 

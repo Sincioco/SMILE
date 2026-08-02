@@ -70,4 +70,25 @@ public sealed class LanguageTests
         Assert.IsTrue(results.All(result => result.GeneratedProgram is null));
         Assert.IsTrue(results.All(result => result.Diagnostics.Any(diagnostic => diagnostic.Code == "SMILE1002")));
     }
+
+    [TestMethod]
+    [DataRow("csharp", TargetLanguage.CSharp, "C#", "Program.cs")]
+    [DataRow("c", TargetLanguage.C, "C", "Program.c")]
+    [DataRow("masm-x64", TargetLanguage.MasmX64, "Assembly - Windows x64 MASM", "Program.asm")]
+    [DataRow("javascript", TargetLanguage.JavaScript, "JavaScript", "Program.js")]
+    [DataRow("java", TargetLanguage.Java, "Java", "Program.java")]
+    [DataRow("objective-c", TargetLanguage.ObjectiveC, "Objective-C", "Program.m")]
+    [DataRow("swift", TargetLanguage.Swift, "Swift", "Program.swift")]
+    public void Target_language_metadata_is_stable(
+        string stableId,
+        TargetLanguage language,
+        string displayName,
+        string primaryFileName)
+    {
+        Assert.IsTrue(TargetLanguageInfo.TryParse(stableId, out TargetLanguage parsed));
+        Assert.AreEqual(language, parsed);
+        Assert.AreEqual(stableId, TargetLanguageInfo.GetStableId(language));
+        Assert.AreEqual(displayName, TargetLanguageInfo.GetDisplayName(language));
+        Assert.AreEqual(primaryFileName, TargetLanguageInfo.GetPrimaryFileName(language));
+    }
 }

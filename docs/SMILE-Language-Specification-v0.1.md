@@ -2,6 +2,8 @@
 
 SMILE v0.1 supports one statement: `PRINT "text"`.
 
+The current v0.1.2 toolchain can generate C#, C, Windows x64 MASM, JavaScript, Java, Objective-C, and Swift from that same one-statement syntax.
+
 ## Grammar
 
 ```text

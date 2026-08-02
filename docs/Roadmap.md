@@ -1,18 +1,19 @@
 # Roadmap
 
-## Implemented In v0.1
+## Implemented In v0.1.2
 
 - Parse `PRINT "text"` statements.
 - Accept multiple `PRINT` statements and blank lines.
 - Accept straight and smart double-quote delimiters.
-- Generate C#, C, Windows x64 MASM, JavaScript, and Java directly from the SMILE syntax tree.
+- Generate C#, C, Windows x64 MASM, JavaScript, Java, Objective-C, and Swift directly from the SMILE syntax tree.
 - Build and run installed local target toolchains.
+- Report Objective-C and Swift as transpile-only targets on Windows.
 - Provide a CLI developer harness.
 - Provide a responsive WPF desktop app with three generated panes.
 
 ## Future Ideas
 
-These are not implemented in v0.1:
+These are not implemented in v0.1.2:
 
 1. `LET` and variables
 2. Printing variables and expressions

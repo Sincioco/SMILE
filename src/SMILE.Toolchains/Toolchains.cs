@@ -23,7 +23,13 @@ public sealed record BuildRunResult(
     bool TimedOut,
     bool Cancelled,
     string? WorkingDirectory,
+    string? PauseLauncherPath,
     string Stage);
+
+public sealed record BuildRunOptions(bool CreatePauseLauncher = false)
+{
+    public static BuildRunOptions Default { get; } = new();
+}
 
 public interface IToolchain
 {
@@ -35,7 +41,8 @@ public interface IToolchain
 
     Task<BuildRunResult> BuildAndRunAsync(
         GeneratedProgram generatedProgram,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        BuildRunOptions? options = null);
 }
 
 public sealed class ToolchainRegistry
@@ -52,21 +59,70 @@ public sealed class ToolchainRegistry
         var runner = new ProcessRunner();
         var visualStudioLocator = new VisualStudioLocator(runner);
 
-        // The registry is intentionally small: five target languages, five
-        // toolchains, no plugin system for v0.1.
+        // The registry stays explicit for v0.1: each target gets one clear
+        // toolchain object, including targets that can only transpile today.
         return new ToolchainRegistry(new IToolchain[]
         {
             new DotNetToolchain(runner),
             new MsvcCToolchain(runner, visualStudioLocator),
             new MasmX64Toolchain(runner, visualStudioLocator),
             new NodeToolchain(runner),
-            new JavaToolchain(runner)
+            new JavaToolchain(runner),
+            new TranspileOnlyToolchain(TargetLanguage.ObjectiveC),
+            new TranspileOnlyToolchain(TargetLanguage.Swift)
         });
     }
 
     public IToolchain Get(TargetLanguage language) => _toolchains[language];
 
     public IReadOnlyList<IToolchain> All => _toolchains.Values.ToArray();
+}
+
+public sealed class TranspileOnlyToolchain : IToolchain
+{
+    public TranspileOnlyToolchain(TargetLanguage language)
+    {
+        Language = language;
+    }
+
+    public TargetLanguage Language { get; }
+
+    public Task<ToolchainStatus> DetectAsync(CancellationToken cancellationToken)
+    {
+        // These targets are intentionally useful before their compiler story is
+        // local to Windows. The engine can still generate source for learners
+        // to inspect, copy, and save.
+        string name = TargetLanguageInfo.GetDisplayName(Language);
+        return Task.FromResult(new ToolchainStatus(
+            Language,
+            IsAvailable: false,
+            name,
+            Version: null,
+            Location: null,
+            $"{name} transpilation is available, but local Build & Run is not supported on this Windows machine yet."));
+    }
+
+    public async Task<BuildRunResult> BuildAndRunAsync(
+        GeneratedProgram generatedProgram,
+        CancellationToken cancellationToken,
+        BuildRunOptions? options = null)
+    {
+        ToolchainStatus status = await DetectAsync(cancellationToken).ConfigureAwait(false);
+        return new BuildRunResult(
+            Language,
+            Success: false,
+            status,
+            BuildOutput: status.Message,
+            StandardOutput: string.Empty,
+            StandardError: status.Message,
+            ExitCode: null,
+            Duration: TimeSpan.Zero,
+            TimedOut: false,
+            Cancelled: false,
+            WorkingDirectory: null,
+            PauseLauncherPath: null,
+            Stage: "Transpile only");
+    }
 }
 
 public abstract class ToolchainBase : IToolchain
@@ -88,7 +144,8 @@ public abstract class ToolchainBase : IToolchain
 
     public abstract Task<BuildRunResult> BuildAndRunAsync(
         GeneratedProgram generatedProgram,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        BuildRunOptions? options = null);
 
     protected ToolchainStatus Missing(string message) =>
         new(Language, false, TargetLanguageInfo.GetDisplayName(Language), null, null, message);
@@ -139,7 +196,7 @@ public abstract class ToolchainBase : IToolchain
         return workspaceFullPath;
     }
 
-    protected async Task WriteCommandScriptAsync(
+    protected async Task<string> WriteCommandScriptAsync(
         string workspace,
         string scriptName,
         IEnumerable<string> lines,
@@ -155,7 +212,39 @@ public abstract class ToolchainBase : IToolchain
             throw new InvalidOperationException("Command script path escaped the SMILE workspace.");
         }
 
-        await File.WriteAllLinesAsync(scriptPath, lines, cancellationToken).ConfigureAwait(false);
+        await File.WriteAllLinesAsync(scriptPath, lines, Utf8NoBom, cancellationToken).ConfigureAwait(false);
+        return scriptPath;
+    }
+
+    protected async Task<string?> WritePauseLauncherAsync(
+        string workspace,
+        IEnumerable<string> programCommandLines,
+        BuildRunOptions? options,
+        CancellationToken cancellationToken)
+    {
+        if ((options ?? BuildRunOptions.Default).CreatePauseLauncher is false)
+        {
+            return null;
+        }
+
+        // The launcher is deliberately a separate .cmd file instead of extra
+        // target-language source. That keeps generated programs idiomatic, but
+        // still gives learners a double-click path that leaves the console open.
+        var lines = new List<string>
+        {
+            "@echo off",
+            "cd /d \"%~dp0\""
+        };
+        lines.AddRange(programCommandLines);
+        lines.Add("echo.");
+        lines.Add("echo Press any key to exit...");
+        lines.Add("pause >nul");
+
+        return await WriteCommandScriptAsync(
+            workspace,
+            "Run Program - Press Any Key.cmd",
+            lines,
+            cancellationToken).ConfigureAwait(false);
     }
 
     protected BuildRunResult MissingResult(ToolchainStatus status, string? workingDirectory = null) =>
@@ -171,6 +260,7 @@ public abstract class ToolchainBase : IToolchain
             TimedOut: false,
             Cancelled: false,
             workingDirectory,
+            null,
             "Missing toolchain");
 
     protected BuildRunResult FromProcessResults(
@@ -179,7 +269,8 @@ public abstract class ToolchainBase : IToolchain
         ProcessResult runResult,
         string workingDirectory,
         string stage,
-        bool buildSucceeded = true)
+        bool buildSucceeded = true,
+        string? pauseLauncherPath = null)
     {
         bool success = buildSucceeded && runResult.Success;
 
@@ -195,6 +286,7 @@ public abstract class ToolchainBase : IToolchain
             runResult.TimedOut,
             runResult.Cancelled,
             workingDirectory,
+            pauseLauncherPath,
             stage);
     }
 
@@ -284,7 +376,8 @@ public sealed class DotNetToolchain : ToolchainBase
 
     public override async Task<BuildRunResult> BuildAndRunAsync(
         GeneratedProgram generatedProgram,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        BuildRunOptions? options = null)
     {
         ToolchainStatus status = await DetectAsync(cancellationToken).ConfigureAwait(false);
         if (!status.IsAvailable)
@@ -318,8 +411,15 @@ public sealed class DotNetToolchain : ToolchainBase
                 build.TimedOut,
                 build.Cancelled,
                 workspace,
+                null,
                 "Building");
         }
+
+        string? pauseLauncherPath = await WritePauseLauncherAsync(
+            workspace,
+            new[] { "\"bin\\Debug\\net10.0\\GeneratedProgram.exe\"" },
+            options,
+            cancellationToken).ConfigureAwait(false);
 
         ProcessResult run = await Runner.RunAsync(
             new ProcessCommand(
@@ -329,7 +429,7 @@ public sealed class DotNetToolchain : ToolchainBase
             ProgramTimeout,
             cancellationToken).ConfigureAwait(false);
 
-        return FromProcessResults(status, buildOutput, run, workspace, "Running");
+        return FromProcessResults(status, buildOutput, run, workspace, "Running", pauseLauncherPath: pauseLauncherPath);
     }
 }
 
@@ -357,7 +457,8 @@ public sealed class MsvcCToolchain : ToolchainBase
 
     public override async Task<BuildRunResult> BuildAndRunAsync(
         GeneratedProgram generatedProgram,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        BuildRunOptions? options = null)
     {
         ToolchainStatus status = await DetectAsync(cancellationToken).ConfigureAwait(false);
         if (!status.IsAvailable || status.Location is null)
@@ -391,12 +492,18 @@ public sealed class MsvcCToolchain : ToolchainBase
             return FromProcessResults(status, buildOutput, build, workspace, "Building", buildSucceeded: false);
         }
 
+        string? pauseLauncherPath = await WritePauseLauncherAsync(
+            workspace,
+            new[] { "\"Program.exe\"" },
+            options,
+            cancellationToken).ConfigureAwait(false);
+
         ProcessResult run = await Runner.RunAsync(
             ProcessCommand.ForCmd("Program.exe", workspace),
             ProgramTimeout,
             cancellationToken).ConfigureAwait(false);
 
-        return FromProcessResults(status, buildOutput, run, workspace, "Running");
+        return FromProcessResults(status, buildOutput, run, workspace, "Running", pauseLauncherPath: pauseLauncherPath);
     }
 }
 
@@ -424,7 +531,8 @@ public sealed class MasmX64Toolchain : ToolchainBase
 
     public override async Task<BuildRunResult> BuildAndRunAsync(
         GeneratedProgram generatedProgram,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        BuildRunOptions? options = null)
     {
         ToolchainStatus status = await DetectAsync(cancellationToken).ConfigureAwait(false);
         if (!status.IsAvailable || status.Location is null)
@@ -481,12 +589,18 @@ public sealed class MasmX64Toolchain : ToolchainBase
             return FromProcessResults(status, buildOutput, link, workspace, "Linking", buildSucceeded: false);
         }
 
+        string? pauseLauncherPath = await WritePauseLauncherAsync(
+            workspace,
+            new[] { "\"Program.exe\"" },
+            options,
+            cancellationToken).ConfigureAwait(false);
+
         ProcessResult run = await Runner.RunAsync(
             ProcessCommand.ForCmd("Program.exe", workspace),
             ProgramTimeout,
             cancellationToken).ConfigureAwait(false);
 
-        return FromProcessResults(status, buildOutput, run, workspace, "Running");
+        return FromProcessResults(status, buildOutput, run, workspace, "Running", pauseLauncherPath: pauseLauncherPath);
     }
 }
 
@@ -513,7 +627,8 @@ public sealed class NodeToolchain : ToolchainBase
 
     public override async Task<BuildRunResult> BuildAndRunAsync(
         GeneratedProgram generatedProgram,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        BuildRunOptions? options = null)
     {
         ToolchainStatus status = await DetectAsync(cancellationToken).ConfigureAwait(false);
         if (!status.IsAvailable)
@@ -524,12 +639,18 @@ public sealed class NodeToolchain : ToolchainBase
         string workspace = await WriteGeneratedProgramAsync(generatedProgram, cancellationToken)
             .ConfigureAwait(false);
 
+        string? pauseLauncherPath = await WritePauseLauncherAsync(
+            workspace,
+            new[] { "node Program.js" },
+            options,
+            cancellationToken).ConfigureAwait(false);
+
         ProcessResult run = await Runner.RunAsync(
             new ProcessCommand("node", new[] { "Program.js" }, workspace),
             ProgramTimeout,
             cancellationToken).ConfigureAwait(false);
 
-        return FromProcessResults(status, string.Empty, run, workspace, "Running");
+        return FromProcessResults(status, string.Empty, run, workspace, "Running", pauseLauncherPath: pauseLauncherPath);
     }
 }
 
@@ -568,7 +689,8 @@ public sealed class JavaToolchain : ToolchainBase
 
     public override async Task<BuildRunResult> BuildAndRunAsync(
         GeneratedProgram generatedProgram,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        BuildRunOptions? options = null)
     {
         ToolchainStatus status = await DetectAsync(cancellationToken).ConfigureAwait(false);
         if (!status.IsAvailable)
@@ -590,12 +712,18 @@ public sealed class JavaToolchain : ToolchainBase
             return FromProcessResults(status, buildOutput, build, workspace, "Building", buildSucceeded: false);
         }
 
+        string? pauseLauncherPath = await WritePauseLauncherAsync(
+            workspace,
+            new[] { "java Program" },
+            options,
+            cancellationToken).ConfigureAwait(false);
+
         ProcessResult run = await Runner.RunAsync(
             new ProcessCommand("java", new[] { "Program" }, workspace),
             ProgramTimeout,
             cancellationToken).ConfigureAwait(false);
 
-        return FromProcessResults(status, buildOutput, run, workspace, "Running");
+        return FromProcessResults(status, buildOutput, run, workspace, "Running", pauseLauncherPath: pauseLauncherPath);
     }
 }
 

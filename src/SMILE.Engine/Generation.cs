@@ -84,7 +84,9 @@ public static class CodeGeneratorRegistry
             new CCodeGenerator(),
             new MasmX64CodeGenerator(),
             new JavaScriptCodeGenerator(),
-            new JavaCodeGenerator()
+            new JavaCodeGenerator(),
+            new ObjectiveCCodeGenerator(),
+            new SwiftCodeGenerator()
         }.ToDictionary(generator => generator.Language);
 
     public static ICodeGenerator Get(TargetLanguage language) => Generators[language];
@@ -173,38 +175,38 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         PrintStatementSyntax[] prints = program.Statements.OfType<PrintStatementSyntax>().ToArray();
         var source = new StringBuilder();
 
-        source.AppendLine("option casemap:none");
+        AppendMasmLine(source, "option casemap:none", "Keep symbol names case-sensitive.");
         source.AppendLine();
 
         if (prints.Length > 0)
         {
-            source.AppendLine("EXTERN GetStdHandle:PROC");
-            source.AppendLine("EXTERN WriteFile:PROC");
+            AppendMasmLine(source, "EXTERN GetStdHandle:PROC", "Windows API: get standard console handles.");
+            AppendMasmLine(source, "EXTERN WriteFile:PROC", "Windows API: write bytes to the console.");
         }
 
-        source.AppendLine("EXTERN ExitProcess:PROC");
+        AppendMasmLine(source, "EXTERN ExitProcess:PROC", "Windows API: terminate the process.");
         source.AppendLine();
 
         if (prints.Length > 0)
         {
-            source.AppendLine("STD_OUTPUT_HANDLE EQU -11");
+            AppendMasmLine(source, "STD_OUTPUT_HANDLE EQU -11", "Magic value for the console output handle.");
             source.AppendLine();
-            source.AppendLine(".data");
+            AppendMasmLine(source, ".data", "Static bytes and variables live here.");
 
             for (int index = 0; index < prints.Length; index++)
             {
                 string label = $"message{index}";
-                source.AppendLine($"{label} BYTE {TargetEscapes.MasmByteInitializers(prints[index].Text)}");
-                source.AppendLine($"{label}Length EQU $ - {label}");
+                AppendMasmLine(source, $"{label} BYTE {TargetEscapes.MasmByteInitializers(prints[index].Text)}", $"PRINT text #{index + 1}, ending with CR/LF.");
+                AppendMasmLine(source, $"{label}Length EQU $ - {label}", "Length equals current address minus the label.");
             }
 
-            source.AppendLine("bytesWritten DWORD ?");
+            AppendMasmLine(source, "bytesWritten DWORD ?", "WriteFile stores how many bytes it wrote.");
             source.AppendLine();
         }
 
-        source.AppendLine(".code");
-        source.AppendLine("main PROC");
-        source.AppendLine("    sub rsp, 28h");
+        AppendMasmLine(source, ".code", "CPU instructions live here.");
+        AppendMasmLine(source, "main PROC", "Program entry point.");
+        AppendMasmLine(source, "    sub rsp, 28h", "Reserve Win64 shadow space and align the stack.");
 
         for (int index = 0; index < prints.Length; index++)
         {
@@ -212,27 +214,43 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
             // One WriteFile block per PRINT keeps the educational relationship
             // obvious even though a later optimizer could combine writes.
             source.AppendLine();
-            source.AppendLine("    mov ecx, STD_OUTPUT_HANDLE");
-            source.AppendLine("    call GetStdHandle");
+            AppendMasmLine(source, "    mov ecx, STD_OUTPUT_HANDLE", "First argument: ask for stdout.");
+            AppendMasmLine(source, "    call GetStdHandle", "RAX now holds the stdout handle.");
             source.AppendLine();
-            source.AppendLine("    mov rcx, rax");
-            source.AppendLine($"    lea rdx, {label}");
-            source.AppendLine($"    mov r8d, {label}Length");
-            source.AppendLine("    lea r9, bytesWritten");
-            source.AppendLine("    mov QWORD PTR [rsp + 20h], 0");
-            source.AppendLine("    call WriteFile");
+            AppendMasmLine(source, "    mov rcx, rax", "WriteFile arg 1: stdout handle.");
+            AppendMasmLine(source, $"    lea rdx, {label}", "WriteFile arg 2: address of message bytes.");
+            AppendMasmLine(source, $"    mov r8d, {label}Length", "WriteFile arg 3: byte count.");
+            AppendMasmLine(source, "    lea r9, bytesWritten", "WriteFile arg 4: address for bytes-written result.");
+            AppendMasmLine(source, "    mov QWORD PTR [rsp + 20h], 0", "WriteFile arg 5 on stack: no overlapped I/O.");
+            AppendMasmLine(source, "    call WriteFile", "Emit the PRINT line.");
         }
 
         source.AppendLine();
-        source.AppendLine("    xor ecx, ecx");
-        source.AppendLine("    call ExitProcess");
-        source.AppendLine("main ENDP");
+        AppendMasmLine(source, "    xor ecx, ecx", "ExitProcess arg 1: process exit code 0.");
+        AppendMasmLine(source, "    call ExitProcess", "End the program.");
+        AppendMasmLine(source, "main ENDP", "End of the main procedure.");
         source.AppendLine();
         source.AppendLine("END");
 
         return new GeneratedProgram(
             Language,
             new[] { new GeneratedFile("Program.asm", TextOutput.EnsureOneTrailingNewLine(source.ToString()), IsPrimary: true) });
+    }
+
+    private static void AppendMasmLine(StringBuilder source, string code, string? comment = null)
+    {
+        if (comment is null)
+        {
+            source.AppendLine(code);
+            return;
+        }
+
+        // Assembly programmers often keep instruction comments in a right-side
+        // column. Padding keeps the generated tutorial code scannable while
+        // preserving the exact instructions MASM assembles.
+        const int commentColumn = 48;
+        int padding = Math.Max(1, commentColumn - code.Length);
+        source.AppendLine(code + new string(' ', padding) + "; " + comment);
     }
 }
 
@@ -285,15 +303,73 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
     }
 }
 
+internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
+{
+    public TargetLanguage Language => TargetLanguage.ObjectiveC;
+
+    public GeneratedProgram Generate(SmileProgramSyntax program)
+    {
+        // Objective-C usually wraps even tiny command-line programs in an
+        // autorelease pool. That gives learners one real Objective-C runtime
+        // idea without adding classes or other ceremony to this PRINT slice.
+        var source = new StringBuilder();
+        source.AppendLine("#import <Foundation/Foundation.h>");
+        source.AppendLine();
+        source.AppendLine("int main(int argc, const char * argv[])");
+        source.AppendLine("{");
+        source.AppendLine("    @autoreleasepool");
+        source.AppendLine("    {");
+
+        foreach (PrintStatementSyntax print in program.Statements.OfType<PrintStatementSyntax>())
+        {
+            source.AppendLine($"        NSLog({TargetEscapes.ObjectiveCString(print.Text)});");
+        }
+
+        source.AppendLine("    }");
+        source.AppendLine();
+        source.AppendLine("    return 0;");
+        source.AppendLine("}");
+
+        return new GeneratedProgram(
+            Language,
+            new[] { new GeneratedFile("Program.m", TextOutput.EnsureOneTrailingNewLine(source.ToString()), IsPrimary: true) });
+    }
+}
+
+internal sealed class SwiftCodeGenerator : ICodeGenerator
+{
+    public TargetLanguage Language => TargetLanguage.Swift;
+
+    public GeneratedProgram Generate(SmileProgramSyntax program)
+    {
+        // Swift's top-level statements are perfect for this first SMILE slice:
+        // PRINT maps directly to print without needing a class or main method.
+        var source = new StringBuilder();
+
+        foreach (PrintStatementSyntax print in program.Statements.OfType<PrintStatementSyntax>())
+        {
+            source.AppendLine($"print({TargetEscapes.SwiftString(print.Text)})");
+        }
+
+        return new GeneratedProgram(
+            Language,
+            new[] { new GeneratedFile("Program.swift", TextOutput.EnsureOneTrailingNewLine(source.ToString()), IsPrimary: true) });
+    }
+}
+
 internal static class TargetEscapes
 {
     public static string CSharpString(string text) => Quote(Escape(text));
 
     public static string CString(string text) => Quote(Escape(text));
 
+    public static string ObjectiveCString(string text) => "@" + Quote(Escape(text));
+
     public static string JavaScriptString(string text) => Quote(Escape(text));
 
     public static string JavaString(string text) => Quote(Escape(text));
+
+    public static string SwiftString(string text) => Quote(EscapeSwift(text));
 
     public static string MasmByteInitializers(string text)
     {
@@ -353,6 +429,28 @@ internal static class TargetEscapes
                 '\t' => "\\t",
                 '\v' => "\\v",
                 _ when char.IsControl(value) => $"\\u{(int)value:x4}",
+                _ => value
+            });
+        }
+
+        return builder.ToString();
+    }
+
+    private static string EscapeSwift(string text)
+    {
+        var builder = new StringBuilder();
+
+        foreach (char value in text)
+        {
+            builder.Append(value switch
+            {
+                '\\' => "\\\\",
+                '"' => "\\\"",
+                '\0' => "\\0",
+                '\n' => "\\n",
+                '\r' => "\\r",
+                '\t' => "\\t",
+                _ when char.IsControl(value) => $"\\u{{{(int)value:x}}}",
                 _ => value
             });
         }

@@ -11,6 +11,8 @@ Transpilation does not require target compilers or runtimes. Build & Run require
 | MASM x64 | Same Visual Studio C++ environment, plus `ml64` and `link.exe` |
 | JavaScript | `node --version` |
 | Java | `javac -version` and `java -version` |
+| Objective-C | Transpile only on Windows |
+| Swift | Transpile only on Windows |
 
 SMILE uses `vswhere.exe` from `%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe` to locate Visual Studio. It does not hardcode the Visual Studio year, edition, or installation path.
 
@@ -53,6 +55,8 @@ javac Program.java
 java Program
 ```
 
+Objective-C and Swift are generated for inspection, copy, and save. Local Build & Run is not supported on Windows yet.
+
 ## Temporary Workspaces
 
 Each build/run writes generated files to:
@@ -67,6 +71,16 @@ The language suffix helps learners identify which generated-code workspace belon
 
 SMILE-owned temporary run workspaces older than 1 day may be deleted automatically.
 
+## Pause Launcher
+
+When requested by the desktop app, a successful build/run also writes:
+
+```text
+Run Program - Press Any Key.cmd
+```
+
+That launcher runs the generated program from the temporary workspace, prints `Press any key to exit...`, and waits for a key before closing. Keeping this behavior in a companion script preserves idiomatic target-language source while giving learners a double-click path that leaves the console visible.
+
 ## Timeout And Cancellation
 
 The default program timeout is 10 seconds. Cancellation and timeout terminate the entire child process tree where possible. Standard output and standard error are captured asynchronously to avoid deadlocks and UI freezes.
@@ -76,4 +90,5 @@ The default program timeout is 10 seconds. Cancellation and timeout terminate th
 - Missing .NET SDK: install .NET SDK 10 or newer.
 - Missing C or MASM: install Visual Studio 2026 Enterprise or Build Tools with Desktop development with C++.
 - Missing JavaScript runtime: install Node.js.
-- Missing Java compiler: install a full JDK, not only a JRE.
+- Missing Java compiler: install a full JDK such as Microsoft OpenJDK 25 LTS, not only a JRE.
+- Objective-C or Swift Build & Run unavailable: inspect or save the generated source; Windows local compilation is not supported yet.

@@ -132,7 +132,7 @@ internal static class Program
     private static void PrintUsage()
     {
         Console.Error.WriteLine("Usage:");
-        Console.Error.WriteLine("  dotnet run --project src\\SMILE.Cli -- <file.smile> --target csharp|c|masm-x64|javascript|java|all [--run]");
+        Console.Error.WriteLine("  dotnet run --project src\\SMILE.Cli -- <file.smile> --target csharp|c|masm-x64|javascript|java|objective-c|swift|all [--run]");
     }
 }
 

@@ -26,6 +26,7 @@ PRINT "Different syntax, same idea."
     private string? _currentFilePath;
     private bool _isBusy;
     private bool _openGeneratedFolderAfterBuild = true;
+    private bool _createPauseLauncherAfterBuild = true;
 
     public MainWindowViewModel()
     {
@@ -117,6 +118,12 @@ PRINT "Different syntax, same idea."
     {
         get => _openGeneratedFolderAfterBuild;
         set => SetProperty(ref _openGeneratedFolderAfterBuild, value);
+    }
+
+    public bool CreatePauseLauncherAfterBuild
+    {
+        get => _createPauseLauncherAfterBuild;
+        set => SetProperty(ref _createPauseLauncherAfterBuild, value);
     }
 
     public async Task InitializeAsync()
@@ -310,8 +317,9 @@ PRINT "Different syntax, same idea."
         pane.Status = "Running";
         AppendOutput($"=== {TargetLanguageInfo.GetDisplayName(pane.Language)} ===");
 
+        var options = new BuildRunOptions(CreatePauseLauncher: CreatePauseLauncherAfterBuild);
         BuildRunResult result = await _toolchains.Get(pane.Language)
-            .BuildAndRunAsync(generatedProgram, cancellationToken)
+            .BuildAndRunAsync(generatedProgram, cancellationToken, options)
             .ConfigureAwait(true);
 
         pane.Status = result.Success ? "Completed" : result.Stage;
@@ -523,6 +531,11 @@ PRINT "Different syntax, same idea."
         if (result.WorkingDirectory is not null)
         {
             builder.AppendLine($"Workspace: {result.WorkingDirectory}");
+        }
+
+        if (result.PauseLauncherPath is not null)
+        {
+            builder.AppendLine($"Press-any-key launcher: {result.PauseLauncherPath}");
         }
 
         if (result.TimedOut)

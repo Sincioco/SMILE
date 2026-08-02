@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:SMILE.Desktop"
         mc:Ignorable="d"
-        Title="SMILE v0.1 - PRINT Everywhere"
+        Title="SMILE v0.1.2 - PRINT Everywhere"
         Height="820"
         Width="1180"
         MinHeight="620"
@@ -93,6 +93,9 @@
                 <MenuItem Header="_Open Generated Folder After Build"
                           IsCheckable="True"
                           IsChecked="{Binding OpenGeneratedFolderAfterBuild}" />
+                <MenuItem Header="_Create Press Any Key Launcher"
+                          IsCheckable="True"
+                          IsChecked="{Binding CreatePauseLauncherAfterBuild}" />
             </MenuItem>
             <MenuItem Header="_Help">
                 <MenuItem Header="_About SMILE" Command="{Binding AboutCommand}" />
@@ -110,6 +113,10 @@
                 <Button Content="Cancel" Command="{Binding CancelCommand}" />
                 <CheckBox Content="Open Generated Folder"
                           IsChecked="{Binding OpenGeneratedFolderAfterBuild}"
+                          VerticalAlignment="Center"
+                          Margin="8,0,0,0" />
+                <CheckBox Content="Press Any Key Launcher"
+                          IsChecked="{Binding CreatePauseLauncherAfterBuild}"
                           VerticalAlignment="Center"
                           Margin="8,0,0,0" />
             </StackPanel>

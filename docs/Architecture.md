@@ -1,6 +1,6 @@
 # Architecture
 
-SMILE v0.1 uses a small direct transpiler pipeline:
+SMILE v0.1.2 uses a small direct transpiler pipeline:
 
 ```text
 Source -> Lexer -> Parser -> Syntax Tree -> Target Generator -> Generated Files
@@ -16,6 +16,6 @@ SMILE deliberately does not generate C first and then derive other targets from 
 
 `SMILE.Engine` has no WPF dependency. That keeps the language front end reusable from the CLI, the desktop app, tests, and a possible future web interface.
 
-`SMILE.Toolchains` owns local compiler/runtime detection and process execution. Process work is asynchronous, cancellable, timed, and isolated in `%TEMP%\SMILE\Runs\<unique-id> - <language>\` so the WPF UI thread stays responsive, learners can identify each generated-code folder, and build artifacts stay out of the repository.
+`SMILE.Toolchains` owns local compiler/runtime detection, process execution, transpile-only target status, and optional press-any-key launcher scripts. Process work is asynchronous, cancellable, timed, and isolated in `%TEMP%\SMILE\Runs\<unique-id> - <language>\` so the WPF UI thread stays responsive, learners can identify each generated-code folder, and build artifacts stay out of the repository.
 
 KISS keeps the architecture small: one engine project, one toolchain project, one CLI harness, one desktop app, and one test project. KISS v2 keeps the user experience responsive first, then optimizes functional work such as parsing once for multiple target generators.
