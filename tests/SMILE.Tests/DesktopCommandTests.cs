@@ -145,6 +145,31 @@ public sealed class DesktopCommandTests
     }
 
     [TestMethod]
+    public async Task Rapid_language_switching_reuses_cached_generated_code_without_update_churn()
+    {
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(),
+            new FakeErrorReporter(),
+            new FakeFolderOpener());
+        await viewModel.InitializeAsync();
+
+        TargetPaneViewModel pane = viewModel.Pane3;
+        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.C);
+        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Swift);
+        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Java);
+
+        Assert.AreEqual("Ready", viewModel.OperationStatus);
+        Assert.AreEqual("Ready", pane.Status);
+        Assert.IsTrue(pane.HasValidSource);
+        StringAssert.Contains(pane.GeneratedCode, "public final class Program");
+
+        await Task.Delay(350);
+
+        Assert.AreEqual("Ready", viewModel.OperationStatus);
+        Assert.AreEqual("Ready", pane.Status);
+    }
+
+    [TestMethod]
     public void Build_run_status_text_uses_final_user_facing_statuses()
     {
         Assert.AreEqual("Completed", MainWindowViewModel.BuildRunStatusText(Result(success: true, stage: "Running")));

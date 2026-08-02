@@ -6,7 +6,7 @@ Write a simple SMILE program once, then view equivalent programs in C#, C, Windo
 
 ## Mission
 
-SMILE v0.2.1, "IDE Stability and Highlighting," builds on the official beginner-friendly `PRINT` syntax:
+SMILE v0.2.2, "Responsive Language Switching," builds on the official beginner-friendly `PRINT` syntax:
 
 ```text
 SMILE source
@@ -15,7 +15,7 @@ SMILE source
   -> generate seven target programs from the bound program
   -> show three debounced live target previews with line numbers and syntax highlighting
   -> build and run locally when the matching toolchain is installed
-  -> keep the desktop IDE responsive when a target toolchain fails
+  -> keep the desktop IDE responsive when a target toolchain fails or target languages are switched rapidly
 ```
 
 The official language specifications are published in [docs/SMILE Language Specification](docs/SMILE%20Language%20Specification):
@@ -99,7 +99,7 @@ Implemented rules:
 - A second standalone `PRINT` keyword on the same line is a compiler error.
 - Quote omission is a `PRINT` convenience only; it does not make quote-free strings legal in `LET` or future expression positions.
 
-Not implemented in v0.2.1: numeric types, comments, `INPUT`, conditions, loops, functions, arrays, classes, escaping embedded quotes inside SMILE strings, and non-literal `LET` initializers.
+Not implemented in v0.2.2: numeric types, comments, `INPUT`, conditions, loops, functions, arrays, classes, escaping embedded quotes inside SMILE strings, and non-literal `LET` initializers.
 
 ## Generated Examples
 
@@ -240,7 +240,7 @@ The desktop app title is `SMILE - Simple Modern Interactive Learning Environment
 
 ![SMILE desktop app in maximized state](Requirements/Progress/2026-08-02-day-1-2-smile-desktop.png)
 
-The four code panes use AvalonEdit. The SMILE source pane and all three generated target panes show line numbers and lexical syntax highlighting. Target panes switch highlighting when their selected language changes. The output area remains a plain build/program log without line numbers.
+The four code panes use AvalonEdit. The SMILE source pane and all three generated target panes show line numbers and lexical syntax highlighting. Target panes switch highlighting when their selected language changes. Language switching reuses generated code already cached for the current source revision and only schedules live transpilation for visible targets that are actually missing. The output area remains a plain build/program log without line numbers.
 
 Typing in the SMILE source editor schedules a short debounced live transpilation for the visible target languages only. The latest source revision always wins, so stale generated code is never used for Build & Run. The Transpile All command is asynchronous and regenerates all seven targets.
 
@@ -252,7 +252,7 @@ When Open Generated Folder is enabled, SMILE asks Windows Explorer to open the g
 
 When Press Any Key Launcher is enabled, SMILE writes `Run Program - Press Any Key.cmd` into each successful build/run workspace. Double-clicking that launcher runs the generated program and then shows `Press any key to exit...`, which keeps the console window open long enough to inspect the output.
 
-Current desktop build version: `0.2.1 IDE Stability and Highlighting`.
+Current desktop build version: `0.2.2 Responsive Language Switching`.
 
 ## Diagnostics
 
@@ -329,7 +329,7 @@ SMILE-owned build/output artifacts older than 1 day may be cleaned from known ge
 
 ## Roadmap
 
-Future ideas, not implemented in v0.2.1:
+Future ideas, not implemented in v0.2.2:
 
 1. Non-literal `LET` initializers
 2. Numeric and boolean expressions

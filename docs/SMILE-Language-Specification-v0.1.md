@@ -8,12 +8,12 @@ SMILE v0.1 supported only:
 PRINT "text"
 ```
 
-SMILE v0.2.1 implements the official Friendly PRINT and LET language behavior defined in:
+SMILE v0.2.2 implements the official Friendly PRINT and LET language behavior defined in:
 
 - [SMILE - PRINT Statement Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20PRINT%20Statement%20Official%20Specification%20v1.0.md)
 - [SMILE - LET Statement Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20LET%20Statement%20Official%20Specification%20v1.0.md)
 
-Current v0.2.1 behavior includes:
+Current v0.2.2 behavior includes:
 
 - `LET Name = "Sin"` string variable declarations.
 - Blank `PRINT`.

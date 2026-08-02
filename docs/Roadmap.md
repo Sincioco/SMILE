@@ -27,9 +27,15 @@
 - Write desktop diagnostic logs under `%LOCALAPPDATA%\SMILE\Logs`, with a `%TEMP%\SMILE\Logs` fallback.
 - Bound captured child-process streams and desktop output history to protect the IDE from runaway generated-program output.
 
+## Implemented In v0.2.2
+
+- Reuse cached generated code when a target pane changes language.
+- Regenerate only visible target languages that are missing for the current source revision.
+- Keep rapid C, Swift, Java, and other target selector changes from turning into repeated visible-target transpilation bursts.
+
 ## Future Ideas
 
-These are not implemented in v0.2.1:
+These are not implemented in v0.2.2:
 
 1. Non-literal `LET` initializers
 2. Numeric and boolean expressions

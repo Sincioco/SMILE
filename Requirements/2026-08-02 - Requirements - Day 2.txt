@@ -212,3 +212,11 @@ Codex Completion Notes
 **30 ready for testing:** The four code panes now use AvalonEdit. The SMILE source pane and all three generated target panes display line numbers and syntax highlighting for SMILE, C#, C, MASM x64, JavaScript, Java, Objective-C, and Swift. The output window remains a plain scrolling build/program log.
 
 **31 ready for testing:** SMILE is now documented as "Simple Modern Interactive Learning Environment." The IDE title bar shows `SMILE - Simple Modern Interactive Learning Environment`, About SMILE shows the same full name and the current build version, and the README/project docs have been updated for the new meaning.
+
+SMILE IDE Stuck
+---------------
+32.) I switched from one language to another, from C, to Swift to JAVA in rapid succession and it caused the SMILE IDE to hang.  Please figure out what the problem is and fix it.  Commit and push when all your tests are green.
+
+Codex Completion Notes
+----------------------
+**32 ready for testing:** Rapid target-language switching now reuses generated code already cached for the current source revision. SMILE no longer marks every pane as updating or schedules a fresh visible-target live transpilation burst when a selected language already has current generated code. If a newly selected visible target is missing, only the missing visible target languages are regenerated.

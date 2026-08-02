@@ -183,9 +183,7 @@ PRINT "Hello " + Name + "!"
         var pane = new TargetPaneViewModel(title, defaultLanguage);
         pane.SelectedLanguageChanged += (_, _) =>
         {
-            UpdatePaneForLanguage(pane);
-            ScheduleLiveTranspilation();
-            RaiseCommandStateChanged();
+            RefreshVisiblePanesAfterLanguageChange();
         };
         pane.CopyCommand = new RelayCommand(
             () => Clipboard.SetText(pane.GeneratedCode),
@@ -324,6 +322,16 @@ PRINT "Hello " + Name + "!"
 
     private void ScheduleLiveTranspilation()
     {
+        RefreshVisiblePanesAndScheduleLiveTranspilation(clearExistingSyntaxErrors: true);
+    }
+
+    private void RefreshVisiblePanesAfterLanguageChange()
+    {
+        RefreshVisiblePanesAndScheduleLiveTranspilation(clearExistingSyntaxErrors: false);
+    }
+
+    private void RefreshVisiblePanesAndScheduleLiveTranspilation(bool clearExistingSyntaxErrors)
+    {
         if (IsBusy)
         {
             return;
@@ -331,17 +339,42 @@ PRINT "Hello " + Name + "!"
 
         CancelLiveTranspilation();
 
-        TargetLanguage[] languages = GetVisibleLanguages();
-        if (languages.Length == 0)
-        {
-            return;
-        }
-
+        var missingLanguages = new List<TargetLanguage>();
         foreach (TargetPaneViewModel pane in Panes)
         {
-            pane.HasValidSource = false;
-            pane.HasSyntaxError = false;
-            pane.Status = "Updating";
+            if (clearExistingSyntaxErrors)
+            {
+                pane.HasSyntaxError = false;
+            }
+
+            UpdateToolchainStatus(pane);
+            if (TryApplyCurrentGeneratedProgram(pane))
+            {
+                pane.RaiseCommandStateChanged();
+                continue;
+            }
+
+            if (!pane.HasSyntaxError)
+            {
+                // A source edit invalidates old generated programs; a language
+                // switch may simply reveal a target that was not visible during
+                // the last live transpile. In both cases, only missing visible
+                // targets need compiler work. Cached targets stay ready, which
+                // keeps rapid ComboBox changes from flooding the UI thread.
+                pane.HasValidSource = false;
+                pane.Status = "Updating";
+                missingLanguages.Add(pane.Language);
+            }
+
+            pane.RaiseCommandStateChanged();
+        }
+
+        TargetLanguage[] languages = missingLanguages.Distinct().ToArray();
+        if (languages.Length == 0)
+        {
+            OperationStatus = Panes.Any(pane => pane.HasSyntaxError) ? "Syntax Error" : "Ready";
+            RaiseCommandStateChanged();
+            return;
         }
 
         OperationStatus = "Updating";
@@ -714,21 +747,28 @@ PRINT "Hello " + Name + "!"
     {
         UpdateToolchainStatus(pane);
 
-        if (_generatedPrograms.TryGetValue(pane.Language, out GeneratedSnapshot? snapshot) &&
-            snapshot.SourceRevision == _sourceRevision)
-        {
-            pane.GeneratedCode = snapshot.Program.PrimaryFile.Content;
-            pane.HasValidSource = true;
-            pane.HasSyntaxError = false;
-            pane.Status = GetReadyStatus(pane);
-        }
-        else if (!pane.HasSyntaxError)
+        if (!TryApplyCurrentGeneratedProgram(pane) && !pane.HasSyntaxError)
         {
             pane.HasValidSource = false;
             pane.Status = "Updating";
         }
 
         pane.RaiseCommandStateChanged();
+    }
+
+    private bool TryApplyCurrentGeneratedProgram(TargetPaneViewModel pane)
+    {
+        if (!_generatedPrograms.TryGetValue(pane.Language, out GeneratedSnapshot? snapshot) ||
+            snapshot.SourceRevision != _sourceRevision)
+        {
+            return false;
+        }
+
+        pane.GeneratedCode = snapshot.Program.PrimaryFile.Content;
+        pane.HasValidSource = true;
+        pane.HasSyntaxError = false;
+        pane.Status = GetReadyStatus(pane);
+        return true;
     }
 
     private void UpdateToolchainStatus(TargetPaneViewModel pane)
@@ -1054,12 +1094,6 @@ PRINT "Hello " + Name + "!"
         _liveTranspileCancellation = null;
         _liveTranspileTask = null;
     }
-
-    private TargetLanguage[] GetVisibleLanguages() =>
-        Panes
-            .Select(pane => pane.Language)
-            .Distinct()
-            .ToArray();
 
     private string GetReadyStatus(TargetPaneViewModel pane)
     {

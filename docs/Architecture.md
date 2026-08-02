@@ -1,6 +1,6 @@
 # Architecture
 
-SMILE v0.2.1 uses a small direct compiler pipeline:
+SMILE v0.2.2 uses a small direct compiler pipeline:
 
 ```text
 Source -> Parser -> Syntax Tree -> Binder -> Bound Program -> Target Generator -> Generated Files
@@ -43,6 +43,8 @@ Generated target code should be semantically correct, idiomatic for the destinat
 The desktop app tracks source revisions for live preview. Typing schedules a short debounced background transpilation for the visible target languages only. Manual Transpile All runs asynchronously and generates every target. Build & Run asks for the current source revision before invoking a toolchain, which prevents a compiler from running stale generated code.
 
 `SMILE.Desktop` uses AvalonEdit for the editable SMILE source pane and the three generated target panes. Those four code panes show line numbers and lexical syntax highlighting, while the output area stays a plain append-only log for build and program output.
+
+Generated programs are cached by target language and source revision. A target-language switch first tries that cache; live transpilation is scheduled only for visible targets that are missing for the current source revision. This keeps rapid ComboBox changes responsive and avoids unnecessary compiler work on the WPF dispatcher path.
 
 Recoverable desktop failures are contained at the operation boundary. Toolchain detection, build/run, child-process output, command-state refresh, and folder-opening failures report concise output, write a diagnostic log when possible, and keep the IDE open.
 
