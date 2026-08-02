@@ -8,14 +8,19 @@ namespace SMILE.Tests;
 public sealed class ToolchainIntegrationTests
 {
     private const string SampleSource = """
-PRINT "Hello from SMILE!"
-PRINT "Different syntax, same idea."
+LET Name = "Sin"
+
+PRINT
+PRINT "Hello World!"
+PRINT Hello World!
+PRINT Hello {Name}!
+PRINT $"Hello {Name}!"
+PRINT "Hello " + Name + "!"
+PRINT Literal braces: {{Name}}
+PRINT A; B; C
 """;
 
-    private const string ExpectedOutput = """
-Hello from SMILE!
-Different syntax, same idea.
-""";
+    private const string ExpectedOutput = "\nHello World!\nHello World!\nHello Sin!\nHello Sin!\nHello Sin!\nLiteral braces: {Name}\nA; B; C\n";
 
     private readonly SmileTranspiler _transpiler = new();
     private readonly ToolchainRegistry _toolchains = ToolchainRegistry.CreateDefault();
@@ -75,7 +80,7 @@ Different syntax, same idea.
         Assert.IsTrue(File.Exists(launcherPath), launcherPath);
 
         string launcher = await File.ReadAllTextAsync(launcherPath);
-        StringAssert.Contains(launcher, ExpectedPauseLauncherCommand(language));
+        AssertPauseLauncherCommand(language, launcher);
         StringAssert.Contains(launcher, "Press any key to exit...");
     }
 
@@ -143,4 +148,19 @@ Different syntax, same idea.
             TargetLanguage.Java => "java Program",
             _ => throw new ArgumentOutOfRangeException(nameof(language), language, null)
         };
+
+    private static void AssertPauseLauncherCommand(TargetLanguage language, string launcher)
+    {
+        if (language is TargetLanguage.Java)
+        {
+            // Java may be launched from PATH or from a discovered JDK folder.
+            // Either form is valid as long as the launcher runs Program.class.
+            bool usesPath = launcher.Contains("java Program", StringComparison.OrdinalIgnoreCase);
+            bool usesDiscoveredJdk = launcher.Contains("java.exe\" Program", StringComparison.OrdinalIgnoreCase);
+            Assert.IsTrue(usesPath || usesDiscoveredJdk, launcher);
+            return;
+        }
+
+        StringAssert.Contains(launcher, ExpectedPauseLauncherCommand(language));
+    }
 }

@@ -8,43 +8,156 @@ public sealed class LanguageTests
     private readonly SmileTranspiler _transpiler = new();
 
     [TestMethod]
+    [DataRow("PRINT Hello", "Hello")]
+    [DataRow("Print Hello", "Hello")]
+    [DataRow("print Hello", "Hello")]
+    [DataRow("pRiNt Hello", "Hello")]
     [DataRow("PRINT \"Hello\"", "Hello")]
-    [DataRow("PRINT    \"Hello\"", "Hello")]
-    [DataRow("PRINT\t\"Hello\"", "Hello")]
-    [DataRow("print \"Hello\"", "Hello")]
-    [DataRow("PrInT \"Hello\"", "Hello")]
+    [DataRow("PRINT    Hello", "Hello")]
+    [DataRow("PRINT\tHello", "Hello")]
     [DataRow("PRINT \u201cHello\u201d", "Hello")]
-    public void Parser_accepts_print_keyword_and_quote_variants(string source, string expectedText)
+    public void Parser_accepts_keyword_casing_and_print_forms(string source, string expectedText)
     {
-        ParseResult result = _transpiler.Parse(source);
+        PrintStatementSyntax statement = ParseSinglePrint(source);
 
-        Assert.IsTrue(result.Success);
-        var statement = (PrintStatementSyntax)result.Program!.Statements.Single();
-        Assert.AreEqual(expectedText, statement.Text);
+        var literal = (StringLiteralExpressionSyntax)statement.Value;
+        Assert.AreEqual(expectedText, literal.Value);
     }
 
     [TestMethod]
-    [DataRow("PRINT \"One\"\r\nPRINT \"Two\"\r\n", 2)]
-    [DataRow("PRINT \"One\"\n\nPRINT \"Two\"", 2)]
-    [DataRow("", 0)]
-    [DataRow("\r\n\n", 0)]
-    public void Parser_accepts_crlf_lf_blank_lines_and_optional_final_newline(
-        string source,
-        int expectedStatements)
+    [DataRow("PRINT", "")]
+    [DataRow("PRINT    ", "")]
+    public void Parser_treats_blank_print_as_empty_string(string source, string expectedText)
     {
-        ParseResult result = _transpiler.Parse(source);
+        PrintStatementSyntax statement = ParseSinglePrint(source);
 
-        Assert.IsTrue(result.Success);
-        Assert.HasCount(expectedStatements, result.Program!.Statements);
+        var literal = (StringLiteralExpressionSyntax)statement.Value;
+        Assert.AreEqual(expectedText, literal.Value);
     }
 
     [TestMethod]
-    [DataRow("PRINT", "SMILE1002", 1, 6)]
-    [DataRow("PRINT\"Hello\"", "SMILE1006", 1, 6)]
-    [DataRow("PRINT Hello", "SMILE1002", 1, 7)]
-    [DataRow("PRINT \"Unclosed", "SMILE1003", 1, 7)]
+    public void Raw_print_with_interpolation_has_text_expression_text_parts()
+    {
+        PrintStatementSyntax statement = ParseSinglePrint("PRINT Hello {Name}!");
+
+        var interpolated = (InterpolatedStringExpressionSyntax)statement.Value;
+        Assert.HasCount(3, interpolated.Parts);
+        Assert.AreEqual("Hello ", ((InterpolatedTextPartSyntax)interpolated.Parts[0]).Text);
+        Assert.AreEqual("Name", ((NameExpressionSyntax)((InterpolationExpressionPartSyntax)interpolated.Parts[1]).Expression).Name);
+        Assert.AreEqual("!", ((InterpolatedTextPartSyntax)interpolated.Parts[2]).Text);
+    }
+
+    [TestMethod]
+    public void Interpolated_quoted_print_uses_the_same_interpolated_syntax_shape()
+    {
+        PrintStatementSyntax statement = ParseSinglePrint("PRINT $\"Hello {Name}!\"");
+
+        var interpolated = (InterpolatedStringExpressionSyntax)statement.Value;
+        Assert.HasCount(3, interpolated.Parts);
+        Assert.AreEqual("Hello ", ((InterpolatedTextPartSyntax)interpolated.Parts[0]).Text);
+        Assert.AreEqual("Name", ((NameExpressionSyntax)((InterpolationExpressionPartSyntax)interpolated.Parts[1]).Expression).Name);
+        Assert.AreEqual("!", ((InterpolatedTextPartSyntax)interpolated.Parts[2]).Text);
+    }
+
+    [TestMethod]
+    public void Quoted_expression_with_plus_is_left_associative_concatenation()
+    {
+        PrintStatementSyntax statement = ParseSinglePrint("PRINT \"Hello \" + Name + \"!\"");
+
+        var outer = (ConcatenationExpressionSyntax)statement.Value;
+        Assert.IsInstanceOfType(outer.Left, typeof(ConcatenationExpressionSyntax));
+        Assert.AreEqual("!", ((StringLiteralExpressionSyntax)outer.Right).Value);
+    }
+
+    [TestMethod]
+    public void Binder_resolves_identifiers_case_insensitively_and_preserves_declaration_spelling()
+    {
+        BindResult result = _transpiler.Bind("""
+LET CustomerName = "Sin"
+PRINT {customername}
+PRINT {CUSTOMERNAME}
+""");
+
+        Assert.IsTrue(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+        VariableSymbol variable = result.Program!.Variables.Single();
+        Assert.AreEqual("CustomerName", variable.Name);
+
+        var firstPrint = (BoundPrintStatement)result.Program.Statements[1];
+        var firstExpression = (BoundInterpolatedStringExpression)firstPrint.Value;
+        var firstVariable = (BoundVariableExpression)((BoundInterpolationExpressionPart)firstExpression.Parts.Single()).Expression;
+        Assert.AreSame(variable, firstVariable.Variable);
+    }
+
+    [TestMethod]
+    public void Binder_flattens_equivalent_interpolation_and_concatenation_to_the_same_segments()
+    {
+        BindResult raw = _transpiler.Bind("""
+LET Name = "Sin"
+PRINT Hello {Name}!
+""");
+        BindResult quoted = _transpiler.Bind("""
+LET Name = "Sin"
+PRINT $"Hello {Name}!"
+""");
+        BindResult concatenated = _transpiler.Bind("""
+LET Name = "Sin"
+PRINT "Hello " + Name + "!"
+""");
+
+        AssertSegments(raw, "Hello ", "Name", "!");
+        AssertSegments(quoted, "Hello ", "Name", "!");
+        AssertSegments(concatenated, "Hello ", "Name", "!");
+    }
+
+    [TestMethod]
+    public void Binder_keeps_bare_words_literal_and_braced_names_evaluated()
+    {
+        BindResult result = _transpiler.Bind("""
+LET Name = "Sin"
+PRINT Name
+PRINT {Name}
+""");
+
+        Assert.IsTrue(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+
+        var literalPrint = (BoundPrintStatement)result.Program!.Statements[1];
+        var evaluatedPrint = (BoundPrintStatement)result.Program.Statements[2];
+
+        AssertSegments(literalPrint.Value, "Name");
+        AssertSegments(evaluatedPrint.Value, "Name");
+        Assert.IsInstanceOfType(BoundStringExpression.Flatten(literalPrint.Value).Single(), typeof(LiteralPrintSegment));
+        Assert.IsInstanceOfType(BoundStringExpression.Flatten(evaluatedPrint.Value).Single(), typeof(VariablePrintSegment));
+    }
+
+    [TestMethod]
+    [DataRow("PRINT Use {{Name}}")]
+    [DataRow("PRINT $\"Use {{Name}}\"")]
+    public void Binder_preserves_literal_braces_in_template_forms(string source)
+    {
+        BindResult result = _transpiler.Bind(source);
+
+        Assert.IsTrue(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+        var print = (BoundPrintStatement)result.Program!.Statements.Single();
+        AssertSegments(print.Value, "Use {Name}");
+    }
+
+    [TestMethod]
+    [DataRow("PRINT\"Hello\"", "SMILE1101", 1, 6)]
+    [DataRow("PRINT$\"Hello\"", "SMILE1101", 1, 6)]
+    [DataRow("PRINT Hello PRINT World", "SMILE1102", 1, 13)]
+    [DataRow("print Hello PrInT World", "SMILE1102", 1, 13)]
+    [DataRow("PRINT \"Hello\"; PRINT \"World\"", "SMILE1102", 1, 16)]
+    [DataRow("PRINT Use PRINT to display text.", "SMILE1102", 1, 11)]
+    [DataRow("PRINT Hello {", "SMILE1103", 1, 13)]
+    [DataRow("PRINT Hello {}", "SMILE1105", 1, 13)]
+    [DataRow("PRINT Hello {Name", "SMILE1103", 1, 13)]
+    [DataRow("PRINT Hello Name}", "SMILE1104", 1, 17)]
+    [DataRow("PRINT $\"Hello {Name\"", "SMILE1103", 1, 15)]
+    [DataRow("PRINT $\"Hello }\"", "SMILE1104", 1, 15)]
+    [DataRow("PRINT \"Hello\" +", "SMILE1108", 1, 16)]
+    [DataRow("PRINT \"A\"; \"B\"", "SMILE1109", 1, 10)]
+    [DataRow("PRINT \"Hello\" \"World\"", "SMILE1111", 1, 15)]
     [DataRow("PRONT \"Typo\"", "SMILE1001", 1, 1)]
-    [DataRow("PRINT \"Hello\" extra", "SMILE1004", 1, 15)]
     [DataRow("@", "SMILE1005", 1, 1)]
     public void Parser_reports_friendly_diagnostics_without_throwing(
         string source,
@@ -55,8 +168,41 @@ public sealed class LanguageTests
         ParseResult result = _transpiler.Parse(source);
 
         Assert.IsFalse(result.Success);
-        Diagnostic diagnostic = result.Diagnostics.Single(d => d.Code == expectedCode);
+        Diagnostic diagnostic = result.Diagnostics.First(d => d.Code == expectedCode);
         Assert.AreEqual(DiagnosticSeverity.Error, diagnostic.Severity);
+        Assert.AreEqual(expectedLine, diagnostic.Span.Line);
+        Assert.AreEqual(expectedColumn, diagnostic.Span.Column);
+    }
+
+    [TestMethod]
+    [DataRow("PRINT \"Use PRINT to display text.\"")]
+    [DataRow("PRINT Reprint this report.")]
+    [DataRow("PRINT PRINTABLE text.")]
+    [DataRow("PRINT Use \"PRINT\" as the command name.")]
+    [DataRow("PRINT Use {\"PRINT\"} as the command name.")]
+    [DataRow("PRINT A; B; C")]
+    public void Parser_allows_print_keyword_text_when_it_is_not_a_second_statement(string source)
+    {
+        ParseResult result = _transpiler.Parse(source);
+
+        Assert.IsTrue(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+    }
+
+    [TestMethod]
+    [DataRow("PRINT Hello {MissingName}!", "SMILE1106", 1, 14)]
+    [DataRow("PRINT \"Hello\" + MissingName", "SMILE1106", 1, 17)]
+    [DataRow("LET Name = \"Sin\"\nLET NAME = \"Joy\"", "SMILE1107", 2, 5)]
+    [DataRow("LET Greeting = \"Hello \" + \"World\"", "SMILE1114", 1, 16)]
+    public void Binder_reports_semantic_diagnostics_without_throwing(
+        string source,
+        string expectedCode,
+        int expectedLine,
+        int expectedColumn)
+    {
+        BindResult result = _transpiler.Bind(source);
+
+        Assert.IsFalse(result.Success);
+        Diagnostic diagnostic = result.Diagnostics.Single(d => d.Code == expectedCode);
         Assert.AreEqual(expectedLine, diagnostic.Span.Line);
         Assert.AreEqual(expectedColumn, diagnostic.Span.Column);
     }
@@ -65,13 +211,13 @@ public sealed class LanguageTests
     public void Transpile_many_reports_the_same_diagnostics_for_each_target()
     {
         IReadOnlyList<TranspileResult> results = _transpiler.TranspileMany(
-            "PRINT Hello",
+            "PRINT Hello {MissingName}!",
             TargetLanguageInfo.All);
 
         Assert.HasCount(TargetLanguageInfo.All.Count, results);
         Assert.IsTrue(results.All(result => !result.Success));
         Assert.IsTrue(results.All(result => result.GeneratedProgram is null));
-        Assert.IsTrue(results.All(result => result.Diagnostics.Any(diagnostic => diagnostic.Code == "SMILE1002")));
+        Assert.IsTrue(results.All(result => result.Diagnostics.Any(diagnostic => diagnostic.Code == "SMILE1106")));
     }
 
     [TestMethod]
@@ -93,5 +239,34 @@ public sealed class LanguageTests
         Assert.AreEqual(stableId, TargetLanguageInfo.GetStableId(language));
         Assert.AreEqual(displayName, TargetLanguageInfo.GetDisplayName(language));
         Assert.AreEqual(primaryFileName, TargetLanguageInfo.GetPrimaryFileName(language));
+    }
+
+    private PrintStatementSyntax ParseSinglePrint(string source)
+    {
+        ParseResult result = _transpiler.Parse(source);
+
+        Assert.IsTrue(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+        return (PrintStatementSyntax)result.Program!.Statements.Single();
+    }
+
+    private static void AssertSegments(BindResult result, params string[] expected)
+    {
+        Assert.IsTrue(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+        var print = (BoundPrintStatement)result.Program!.Statements[1];
+        AssertSegments(print.Value, expected);
+    }
+
+    private static void AssertSegments(BoundExpression expression, params string[] expected)
+    {
+        string[] actual = BoundStringExpression.Flatten(expression)
+            .Select(segment => segment switch
+            {
+                LiteralPrintSegment literal => literal.Text,
+                VariablePrintSegment variable => variable.Variable.Name,
+                _ => string.Empty
+            })
+            .ToArray();
+
+        CollectionAssert.AreEqual(expected, actual);
     }
 }

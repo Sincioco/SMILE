@@ -37,6 +37,8 @@ Tasks
 12.) If possible, I would like more comments on the assembly generated code explaining what it does.  Typical of assembly programmers and have comments to the right-side of the code.
 13.) Or, the simplest approach for #11, might have been to just generate a .bat file with the corresponding .exe so it's the batch file that can have a pause at the end?  So the user can see the output?  Would that work?
 
+AI and Sin Chatting and Exploring Ideas
+---------------------------------------
 The AI actually agreed with me.  It had already started creating this complex pause algorithm for each language that it would insert at compile time, but a simple .cmd file (it went with that) in the end keeps the spirit of KISS alive.
 
 
@@ -44,3 +46,22 @@ The AI actually agreed with me.  It had already started creating this complex pa
 15.) Can we also add support for transpilling to Objective-C and Swift?  Even if we are unable to compile it on a Windows VM machine.
 
 16.) Follow and execute the instructions provided "C:\SMILE\Requirements\2026-08-02 1011 - ChatGPT Audit of Codex's Work.md".  These are corrections to some of the deficiencies in your last commit that ChatGPT noticed and should be corrected.
+
+Formalizing the PRINT Statement with ChatGPT
+--------------------------------------------
+17.) Give me two mark down files for download:  1.) Formalizes the PRINT statement for the SMILE language so it can be published in the repo publicly as the official PRINT syntax for SMILE; 2.) Instructions for Codex to implement the PRINT statement as we discussed in our conversation.
+18.) The 2nd markdown file is to have Codex implement the formal syntax of PRINT for SMILE. And have it generate tests cases so it can test variations of it to make sure it complies with the PRINT formal syntax.
+
+To Codex
+--------
+19.) For background information, I have a the formal SMILE language declaration / specification for the PRINT statement.  It is located in "C:\SMILE\Requirements\SMILE Language Specification\SMILE - PRINT Statement Official Specification_v1.0.md".
+20.) I have the official Codex instructions provided by ChatGPT 5.6 for you to execute and implement the formal language PRINT statement for SMILE located in "C:\SMILE\Requirements\2026-08-02 1639 - SMILE PRINT Statement - Codex Implementation Instructions.md" read and follow its instructions.
+21.) When you are done implementing it and all your tests are green, commit all and push to the repo.
+
+Codex Completion Notes
+----------------------
+**19-21 ready for testing:** SMILE v0.2.0 Friendly PRINT implements the official PRINT forms, minimal string LET declarations, case-insensitive binding, raw and quoted interpolation, concatenation, deterministic PRINT Name versus PRINT {Name}, target-neutral binding, and generation across C#, C, MASM x64, JavaScript, Java, Objective-C, and Swift.
+
+Validation completed locally: Debug build/tests, Release build/tests, CLI generation for all seven targets, CLI compile/run for C#, C, MASM x64, JavaScript, and Java, and desktop WPF smoke validation with maximized launch, screenshot refresh, 100-line paste, diagnostics/fix flow, duplicate PRINT diagnostic, Build & Run output, and preservation of build logs after live transpilation.
+
+The Microsoft JDK installed on this VM is also detected from its Program Files folder when it is not on PATH, so Java Build & Run works locally without requiring a global PATH edit.

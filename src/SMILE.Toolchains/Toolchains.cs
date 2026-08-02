@@ -707,6 +707,10 @@ public sealed class NodeToolchain : ToolchainBase
 
 public sealed class JavaToolchain : ToolchainBase
 {
+    private sealed record JavaCommands(string Java, string Javac, string Location);
+
+    private sealed record JavaDetection(JavaCommands Commands, string Version);
+
     public JavaToolchain(IProcessRunner runner)
         : base(runner)
     {
@@ -716,26 +720,13 @@ public sealed class JavaToolchain : ToolchainBase
 
     public override async Task<ToolchainStatus> DetectAsync(CancellationToken cancellationToken)
     {
-        ProcessResult javac = await Runner.RunAsync(
-            new ProcessCommand("javac", new[] { "-version" }, Environment.CurrentDirectory),
-            DetectionTimeout,
-            cancellationToken).ConfigureAwait(false);
-
-        ProcessResult java = await Runner.RunAsync(
-            new ProcessCommand("java", new[] { "-version" }, Environment.CurrentDirectory),
-            DetectionTimeout,
-            cancellationToken).ConfigureAwait(false);
-
-        if (!javac.Success || !java.Success)
+        JavaDetection? detection = await DetectInstallationAsync(cancellationToken).ConfigureAwait(false);
+        if (detection is null)
         {
             return Missing("A full JDK was not found. Install a JDK with both javac and java.");
         }
 
-        string version = JoinNonEmpty(
-            JoinNonEmpty(javac.StandardOutput, javac.StandardError),
-            JoinNonEmpty(java.StandardOutput, java.StandardError));
-
-        return Available(version, "javac/java", "JDK detected.");
+        return Available(detection.Version, detection.Commands.Location, "JDK detected.");
     }
 
     public override async Task<BuildRunResult> BuildAndRunAsync(
@@ -743,9 +734,19 @@ public sealed class JavaToolchain : ToolchainBase
         CancellationToken cancellationToken,
         BuildRunOptions? options = null)
     {
-        ToolchainStatus status = await DetectAsync(cancellationToken).ConfigureAwait(false);
+        JavaDetection? detection = await DetectInstallationAsync(cancellationToken).ConfigureAwait(false);
+        if (detection is null)
+        {
+            ToolchainStatus missing = Missing("A full JDK was not found. Install a JDK with both javac and java.");
+            return MissingResult(missing);
+        }
+
+        ToolchainStatus status = Available(detection.Version, detection.Commands.Location, "JDK detected.");
+
         if (!status.IsAvailable)
         {
+            // This branch is defensive; the status above is always available
+            // when a JavaDetection exists.
             return MissingResult(status);
         }
 
@@ -753,7 +754,7 @@ public sealed class JavaToolchain : ToolchainBase
             .ConfigureAwait(false);
 
         ProcessResult build = await Runner.RunAsync(
-            new ProcessCommand("javac", new[] { "-encoding", "UTF-8", "Program.java" }, workspace),
+            new ProcessCommand(detection.Commands.Javac, new[] { "-encoding", "UTF-8", "Program.java" }, workspace),
             BuildTimeout,
             cancellationToken).ConfigureAwait(false);
 
@@ -765,12 +766,12 @@ public sealed class JavaToolchain : ToolchainBase
 
         string? pauseLauncherPath = await WritePauseLauncherAsync(
             workspace,
-            new[] { "java Program" },
+            new[] { BuildJavaProgramCommand(detection.Commands) },
             options,
             cancellationToken).ConfigureAwait(false);
 
         ProcessResult run = await Runner.RunAsync(
-            new ProcessCommand("java", new[] { "Program" }, workspace),
+            new ProcessCommand(detection.Commands.Java, new[] { "Program" }, workspace),
             ProgramTimeout,
             cancellationToken).ConfigureAwait(false);
 
@@ -783,6 +784,131 @@ public sealed class JavaToolchain : ToolchainBase
             pauseLauncherPath: pauseLauncherPath,
             totalDuration: TotalDuration(build, run));
     }
+
+    private async Task<JavaDetection?> DetectInstallationAsync(CancellationToken cancellationToken)
+    {
+        foreach (JavaCommands commands in EnumerateCommandCandidates())
+        {
+            ProcessResult javac = await Runner.RunAsync(
+                new ProcessCommand(commands.Javac, new[] { "-version" }, Environment.CurrentDirectory),
+                DetectionTimeout,
+                cancellationToken).ConfigureAwait(false);
+
+            ProcessResult java = await Runner.RunAsync(
+                new ProcessCommand(commands.Java, new[] { "-version" }, Environment.CurrentDirectory),
+                DetectionTimeout,
+                cancellationToken).ConfigureAwait(false);
+
+            if (!javac.Success || !java.Success)
+            {
+                continue;
+            }
+
+            string version = JoinNonEmpty(
+                JoinNonEmpty(javac.StandardOutput, javac.StandardError),
+                JoinNonEmpty(java.StandardOutput, java.StandardError));
+
+            return new JavaDetection(commands, version);
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<JavaCommands> EnumerateCommandCandidates()
+    {
+        var seenBins = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // PATH remains the simplest and most portable setup, so it is always
+        // tried before Windows-specific fallback probing.
+        yield return new JavaCommands("java", "javac", "javac/java");
+
+        foreach (string binDirectory in EnumerateJdkBinDirectories())
+        {
+            string normalizedBin = Path.GetFullPath(binDirectory);
+            if (!seenBins.Add(normalizedBin))
+            {
+                continue;
+            }
+
+            string java = Path.Combine(normalizedBin, "java.exe");
+            string javac = Path.Combine(normalizedBin, "javac.exe");
+            if (File.Exists(java) && File.Exists(javac))
+            {
+                yield return new JavaCommands(java, javac, normalizedBin);
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateJdkBinDirectories()
+    {
+        foreach (string home in EnumerateJdkHomeCandidates())
+        {
+            string binDirectory = Path.Combine(home, "bin");
+            if (Directory.Exists(binDirectory))
+            {
+                yield return binDirectory;
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateJdkHomeCandidates()
+    {
+        string? javaHome = Environment.GetEnvironmentVariable("JAVA_HOME");
+        if (!string.IsNullOrWhiteSpace(javaHome))
+        {
+            yield return javaHome;
+        }
+
+        foreach (string programFilesRoot in EnumerateProgramFilesRoots())
+        {
+            foreach (string vendorRoot in EnumerateExistingDirectories(
+                Path.Combine(programFilesRoot, "Microsoft"),
+                Path.Combine(programFilesRoot, "Java"),
+                Path.Combine(programFilesRoot, "Eclipse Adoptium")))
+            {
+                foreach (string jdkHome in EnumerateDirectories(vendorRoot, "jdk*"))
+                {
+                    yield return jdkHome;
+                }
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateProgramFilesRoots()
+    {
+        foreach (string variableName in new[] { "ProgramFiles", "ProgramFiles(x86)" })
+        {
+            string? root = Environment.GetEnvironmentVariable(variableName);
+            if (!string.IsNullOrWhiteSpace(root))
+            {
+                yield return root;
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateExistingDirectories(params string[] paths) =>
+        paths.Where(Directory.Exists);
+
+    private static IEnumerable<string> EnumerateDirectories(string path, string searchPattern)
+    {
+        try
+        {
+            return Directory.EnumerateDirectories(path, searchPattern).ToArray();
+        }
+        catch (IOException)
+        {
+            return Array.Empty<string>();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Array.Empty<string>();
+        }
+    }
+
+    private static string BuildJavaProgramCommand(JavaCommands commands) =>
+        commands.Java.Equals("java", StringComparison.OrdinalIgnoreCase)
+            ? "java Program"
+            : QuoteForCmd(commands.Java) + " Program";
 }
 
 public sealed record VisualStudioTools(

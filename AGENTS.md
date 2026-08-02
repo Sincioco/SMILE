@@ -16,6 +16,16 @@
 - The WPF UI thread must never be blocked by toolchain detection, compilation, linking, execution, process output, long file operations, or other noticeable work.
 - Generated code must be minimal, idiomatic, readable, deterministic, educational, dependency-light, and fast without sacrificing clarity.
 
+## Official PRINT Syntax
+
+- The official PRINT syntax is defined by `docs/SMILE-PRINT-Statement-Specification-v1.0.md`.
+- PRINT parsing must be deterministic and must never guess whether bare text is a variable.
+- Bare PRINT text is literal template text; expressions require braces.
+- Ordinary quoted strings do not interpolate; `$"..."` and raw templates do.
+- A physical source line normally contains one statement, and semicolons do not separate statements.
+- A second standalone `PRINT` keyword on the same line is a compiler error.
+- New language work must preserve asynchronous debounced WPF live transpilation.
+
 ## Educational Code Comments
 
 - SMILE is also a learning project for compilers, interpreters, transpilers, and local toolchains.

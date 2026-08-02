@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:SMILE.Desktop"
         mc:Ignorable="d"
-        Title="SMILE v0.1.3 - PRINT Everywhere"
+        Title="SMILE v0.2.0 - Friendly PRINT"
         Height="820"
         Width="1180"
         MinHeight="620"

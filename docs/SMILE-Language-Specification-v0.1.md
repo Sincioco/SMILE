@@ -1,65 +1,27 @@
 # SMILE Language Specification v0.1
 
-SMILE v0.1 supports one statement: `PRINT "text"`.
+This document is retained as a historical v0.1 note.
 
-The current v0.1.3 toolchain can generate C#, C, Windows x64 MASM, JavaScript, Java, Objective-C, and Swift from that same one-statement syntax.
-
-## Grammar
-
-```text
-program         -> line* end-of-file
-line            -> whitespace* statement? whitespace* newline
-statement       -> print-statement
-print-statement -> PRINT whitespace+ string-literal
-```
-
-## Valid Source
+SMILE v0.1 supported only:
 
 ```basic
-PRINT "Hello World"
-Print "Keywords are case-insensitive"
-print "Smart quote delimiters are accepted when typed as smart quotes"
-
-PRINT "Multiple statements are supported"
-PRINT "Every PRINT ends with a newline"
+PRINT "text"
 ```
 
-Rules:
+SMILE v0.2.0 implements the official Friendly PRINT language behavior defined in:
 
-- `PRINT` is case-insensitive.
-- `PRINT` must be followed by at least one space or tab before the string literal.
-- Blank lines are allowed.
-- Multiple `PRINT` statements are allowed.
-- A final newline is optional.
-- Straight double quotes are accepted.
-- Smart opening and closing double quotes are accepted.
-- `PRINT` appends a newline.
-- User-visible line and column values are one-based.
+[SMILE PRINT Statement Specification v1.0](SMILE-PRINT-Statement-Specification-v1.0.md)
 
-## Diagnostics
+Current v0.2.0 behavior includes:
 
-Expected source errors return diagnostics instead of exceptions.
+- `LET Name = "Sin"` string variable declarations.
+- Blank `PRINT`.
+- Ordinary quoted `PRINT`.
+- Quote-free raw `PRINT` templates.
+- Raw `{Name}` interpolation.
+- `$"..."` interpolation.
+- String concatenation in quoted `PRINT` expressions.
+- Case-insensitive keywords and variable lookup.
+- Stable diagnostics for malformed interpolation, duplicate variables, undefined variables, missing `PRINT` whitespace, and second `PRINT` keywords on one line.
 
-| Code | Meaning |
-|---|---|
-| `SMILE1001` | Unknown statement or keyword |
-| `SMILE1002` | `PRINT` requires a quoted string |
-| `SMILE1003` | Unterminated string literal |
-| `SMILE1004` | Unexpected text after statement |
-| `SMILE1005` | Invalid or unexpected character |
-| `SMILE1006` | `PRINT` requires a space or tab before its quoted string |
-
-Examples:
-
-```basic
-PRINT
-PRINT Hello
-PRINT "Unclosed
-PRONT "Typo"
-PRINT "Hello" extra
-PRINT"No separating space"
-```
-
-## Not In v0.1
-
-Variables, expressions, comments, `INPUT`, conditions, loops, labels, `GOTO`, functions, and classes are not implemented.
+The old v0.1 `PRINT "text"` form remains valid.

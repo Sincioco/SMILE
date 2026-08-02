@@ -1,18 +1,36 @@
 # Architecture
 
-SMILE v0.1.3 uses a small direct transpiler pipeline:
+SMILE v0.2.0 uses a small direct compiler pipeline:
 
 ```text
-Source -> Lexer -> Parser -> Syntax Tree -> Target Generator -> Generated Files
-                                             |
-                                      Optional Toolchain
-                                             |
-                                      Build and Run Result
+Source -> Parser -> Syntax Tree -> Binder -> Bound Program -> Target Generator -> Generated Files
+                                                        |
+                                                 Optional Toolchain
+                                                        |
+                                                 Build and Run Result
 ```
 
-The lexer turns characters into tokens. The parser turns tokens into a small language-neutral syntax tree. Target generators consume that same syntax tree directly.
+The parser is line-oriented because current SMILE statements are line-oriented. It recognizes `LET`, deterministic `PRINT` forms, raw templates, `$"..."` interpolation, ordinary quoted strings, and string concatenation for `PRINT`.
 
-SMILE deliberately does not generate C first and then derive other targets from C. Each target generator owns its own native output so students can compare the same idea in several languages.
+The binder resolves variable names with an ordinal case-insensitive symbol table. This keeps declarations-before-use, duplicate declarations, and undefined variables target-independent. Target generators consume the bound program and do not reparse SMILE source text.
+
+The engine also exposes a tiny target-neutral string flattener. It turns bound string expressions such as:
+
+```text
+"Hello " + Name + "!"
+Hello {Name}!
+$"Hello {Name}!"
+```
+
+into ordered printable segments:
+
+```text
+literal "Hello "
+variable Name
+literal "!"
+```
+
+C, Objective-C, and MASM use those segments directly so v0.2.0 does not need a runtime string-concatenation library.
 
 `SMILE.Engine` has no WPF dependency. That keeps the language front end reusable from the CLI, the desktop app, tests, and a possible future web interface.
 
@@ -20,4 +38,4 @@ SMILE deliberately does not generate C first and then derive other targets from 
 
 The desktop app tracks source revisions for live preview. Typing schedules a short debounced background transpilation for the visible target languages only. Manual Transpile All runs asynchronously and generates every target. Build & Run asks for the current source revision before invoking a toolchain, which prevents a compiler from running stale generated code.
 
-KISS keeps the architecture small: one engine project, one toolchain project, one CLI harness, one desktop app, and one test project. KISS v2 keeps the user experience responsive first, then optimizes functional work such as parsing once for multiple target generators.
+KISS keeps the architecture small: one engine project, one toolchain project, one CLI harness, one desktop app, and one test project. KISS v2 keeps the user experience responsive first.

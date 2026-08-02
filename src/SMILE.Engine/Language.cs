@@ -25,19 +25,8 @@ public readonly record struct TextSpan(
     int Line,
     int Column);
 
-// Tokens are the small pieces the lexer recognizes. The parser consumes these
-// tokens and builds a syntax tree from them.
-public enum SyntaxKind
-{
-    BadToken,
-    EndOfFileToken,
-    NewLineToken,
-    PrintKeyword,
-    StringLiteralToken
-}
-
-// The syntax tree is deliberately language-neutral. Target generators should
-// understand SMILE statements, not the syntax of another generated language.
+// Syntax nodes describe what the user wrote, before the compiler resolves
+// names. Keeping this layer source-shaped makes diagnostics easier to place.
 public abstract record SyntaxNode(TextSpan Span);
 
 public sealed record SmileProgramSyntax(
@@ -49,9 +38,53 @@ public abstract record StatementSyntax(TextSpan Span)
     : SyntaxNode(Span);
 
 public sealed record PrintStatementSyntax(
-    string Text,
+    ExpressionSyntax Value,
     TextSpan Span)
     : StatementSyntax(Span);
+
+public sealed record LetStatementSyntax(
+    string Name,
+    TextSpan NameSpan,
+    ExpressionSyntax Initializer,
+    TextSpan Span)
+    : StatementSyntax(Span);
+
+public abstract record ExpressionSyntax(TextSpan Span)
+    : SyntaxNode(Span);
+
+public sealed record StringLiteralExpressionSyntax(
+    string Value,
+    TextSpan Span)
+    : ExpressionSyntax(Span);
+
+public sealed record NameExpressionSyntax(
+    string Name,
+    TextSpan Span)
+    : ExpressionSyntax(Span);
+
+public sealed record ConcatenationExpressionSyntax(
+    ExpressionSyntax Left,
+    ExpressionSyntax Right,
+    TextSpan Span)
+    : ExpressionSyntax(Span);
+
+public sealed record InterpolatedStringExpressionSyntax(
+    IReadOnlyList<InterpolatedPartSyntax> Parts,
+    TextSpan Span)
+    : ExpressionSyntax(Span);
+
+public abstract record InterpolatedPartSyntax(TextSpan Span)
+    : SyntaxNode(Span);
+
+public sealed record InterpolatedTextPartSyntax(
+    string Text,
+    TextSpan Span)
+    : InterpolatedPartSyntax(Span);
+
+public sealed record InterpolationExpressionPartSyntax(
+    ExpressionSyntax Expression,
+    TextSpan Span)
+    : InterpolatedPartSyntax(Span);
 
 // Expected source errors are returned as diagnostics instead of exceptions.
 // That lets the CLI and WPF app display friendly messages and keep running.
@@ -62,6 +95,129 @@ public sealed record ParseResult(
     public bool Success =>
         Program is not null &&
         Diagnostics.All(diagnostic => diagnostic.Severity != DiagnosticSeverity.Error);
+}
+
+public enum SmileType
+{
+    String
+}
+
+public sealed record VariableSymbol(
+    string Name,
+    TextSpan DeclarationSpan,
+    SmileType Type);
+
+// Bound nodes describe what the program means after name lookup. Generators
+// consume this layer so no backend has to reparse SMILE source text.
+public sealed record BoundProgram(
+    IReadOnlyList<BoundStatement> Statements,
+    IReadOnlyList<VariableSymbol> Variables);
+
+public abstract record BoundStatement;
+
+public sealed record BoundLetStatement(
+    VariableSymbol Variable,
+    BoundExpression Initializer)
+    : BoundStatement;
+
+public sealed record BoundPrintStatement(
+    BoundExpression Value)
+    : BoundStatement;
+
+public abstract record BoundExpression(SmileType Type);
+
+public sealed record BoundStringLiteralExpression(string Value)
+    : BoundExpression(SmileType.String);
+
+public sealed record BoundVariableExpression(VariableSymbol Variable)
+    : BoundExpression(SmileType.String);
+
+public sealed record BoundConcatenationExpression(
+    BoundExpression Left,
+    BoundExpression Right)
+    : BoundExpression(SmileType.String);
+
+public sealed record BoundInterpolatedStringExpression(
+    IReadOnlyList<BoundInterpolatedPart> Parts)
+    : BoundExpression(SmileType.String);
+
+public abstract record BoundInterpolatedPart;
+
+public sealed record BoundInterpolatedTextPart(string Text)
+    : BoundInterpolatedPart;
+
+public sealed record BoundInterpolationExpressionPart(BoundExpression Expression)
+    : BoundInterpolatedPart;
+
+public sealed record BindResult(
+    BoundProgram? Program,
+    IReadOnlyList<Diagnostic> Diagnostics)
+{
+    public bool Success =>
+        Program is not null &&
+        Diagnostics.All(diagnostic => diagnostic.Severity != DiagnosticSeverity.Error);
+}
+
+public abstract record PrintSegment;
+
+public sealed record LiteralPrintSegment(string Text)
+    : PrintSegment;
+
+public sealed record VariablePrintSegment(VariableSymbol Variable)
+    : PrintSegment;
+
+public static class BoundStringExpression
+{
+    public static IReadOnlyList<PrintSegment> Flatten(BoundExpression expression)
+    {
+        var segments = new List<PrintSegment>();
+        Append(expression, segments);
+        return segments;
+    }
+
+    private static void Append(BoundExpression expression, List<PrintSegment> segments)
+    {
+        switch (expression)
+        {
+            case BoundStringLiteralExpression literal:
+                if (literal.Value.Length > 0)
+                {
+                    segments.Add(new LiteralPrintSegment(literal.Value));
+                }
+
+                break;
+
+            case BoundVariableExpression variable:
+                segments.Add(new VariablePrintSegment(variable.Variable));
+                break;
+
+            case BoundConcatenationExpression concatenation:
+                Append(concatenation.Left, segments);
+                Append(concatenation.Right, segments);
+                break;
+
+            case BoundInterpolatedStringExpression interpolated:
+                foreach (BoundInterpolatedPart part in interpolated.Parts)
+                {
+                    switch (part)
+                    {
+                        case BoundInterpolatedTextPart textPart:
+                            if (textPart.Text.Length > 0)
+                            {
+                                segments.Add(new LiteralPrintSegment(textPart.Text));
+                            }
+
+                            break;
+
+                        case BoundInterpolationExpressionPart expressionPart:
+                            Append(expressionPart.Expression, segments);
+                            break;
+                    }
+                }
+
+                break;
+        }
+    }
 }
 
 public enum TargetLanguage
@@ -144,10 +300,3 @@ public static class TargetLanguageInfo
         return false;
     }
 }
-
-internal sealed record SyntaxToken(
-    SyntaxKind Kind,
-    string Text,
-    string? Value,
-    TextSpan Span,
-    bool HasError);

@@ -18,10 +18,10 @@ public interface ICodeGenerator
 {
     TargetLanguage Language { get; }
 
-    // Each generator receives the same SMILE syntax tree. This is the key
-    // transpiler boundary: SMILE does not go through C# on the way to C,
-    // assembly, JavaScript, or Java.
-    GeneratedProgram Generate(SmileProgramSyntax program);
+    // Generators consume the bound program, not source text. That keeps target
+    // backends honest: they all see the same variables, literals, and
+    // interpolation parts resolved by the binder.
+    GeneratedProgram Generate(BoundProgram program);
 }
 
 public sealed record TranspileResult(
@@ -42,6 +42,20 @@ public sealed class SmileTranspiler
         return new Parser(source).Parse();
     }
 
+    public BindResult Bind(string source)
+    {
+        ParseResult parseResult = Parse(source);
+        if (!parseResult.Success || parseResult.Program is null)
+        {
+            return new BindResult(null, parseResult.Diagnostics);
+        }
+
+        BindResult bindResult = new Binder().Bind(parseResult.Program);
+        return new BindResult(
+            bindResult.Program,
+            parseResult.Diagnostics.Concat(bindResult.Diagnostics).ToArray());
+    }
+
     public TranspileResult Transpile(string source, TargetLanguage targetLanguage) =>
         TranspileMany(source, new[] { targetLanguage }).Single();
 
@@ -53,15 +67,11 @@ public sealed class SmileTranspiler
 
         TargetLanguage[] languages = targetLanguages.Distinct().ToArray();
 
-        // Parse once, then hand the same syntax tree to every requested
-        // generator. This keeps the UI fast and makes cross-target output
-        // easier to reason about.
-        ParseResult parseResult = Parse(source);
-
-        if (!parseResult.Success || parseResult.Program is null)
+        BindResult bindResult = Bind(source);
+        if (!bindResult.Success || bindResult.Program is null)
         {
             return languages
-                .Select(language => new TranspileResult(language, null, parseResult.Diagnostics))
+                .Select(language => new TranspileResult(language, null, bindResult.Diagnostics))
                 .ToArray();
         }
 
@@ -69,7 +79,7 @@ public sealed class SmileTranspiler
             .Select(language =>
             {
                 ICodeGenerator generator = CodeGeneratorRegistry.Get(language);
-                return new TranspileResult(language, generator.Generate(parseResult.Program), parseResult.Diagnostics);
+                return new TranspileResult(language, generator.Generate(bindResult.Program), bindResult.Diagnostics);
             })
             .ToArray();
     }
@@ -96,10 +106,8 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
 {
     public TargetLanguage Language => TargetLanguage.CSharp;
 
-    public GeneratedProgram Generate(SmileProgramSyntax program)
+    public GeneratedProgram Generate(BoundProgram program)
     {
-        // The generated C# is a complete console program, but it avoids
-        // namespaces and other ceremony so PRINT maps clearly to WriteLine.
         var source = new StringBuilder();
         source.AppendLine("using System;");
         source.AppendLine();
@@ -108,9 +116,18 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
         source.AppendLine("    private static void Main()");
         source.AppendLine("    {");
 
-        foreach (PrintStatementSyntax print in program.Statements.OfType<PrintStatementSyntax>())
+        foreach (BoundStatement statement in program.Statements)
         {
-            source.AppendLine($"        Console.WriteLine({TargetEscapes.CSharpString(print.Text)});");
+            switch (statement)
+            {
+                case BoundLetStatement let:
+                    source.AppendLine($"        string {let.Variable.Name} = {TargetExpression.CSharp(let.Initializer)};");
+                    break;
+
+                case BoundPrintStatement print:
+                    source.AppendLine($"        Console.WriteLine({TargetExpression.CSharp(print.Value)});");
+                    break;
+            }
         }
 
         source.AppendLine("    }");
@@ -141,38 +158,74 @@ internal sealed class CCodeGenerator : ICodeGenerator
 {
     public TargetLanguage Language => TargetLanguage.C;
 
-    public GeneratedProgram Generate(SmileProgramSyntax program)
+    public GeneratedProgram Generate(BoundProgram program)
     {
-        // puts is the C standard-library call that naturally matches SMILE
-        // PRINT because both append a newline.
         var source = new StringBuilder();
         source.AppendLine("#include <stdio.h>");
         source.AppendLine();
         source.AppendLine("int main(void)");
         source.AppendLine("{");
 
-        foreach (PrintStatementSyntax print in program.Statements.OfType<PrintStatementSyntax>())
+        foreach (BoundStatement statement in program.Statements)
         {
-            source.AppendLine($"    puts({TargetEscapes.CString(print.Text)});");
+            switch (statement)
+            {
+                case BoundLetStatement let:
+                    source.AppendLine($"    const char *{let.Variable.Name} = {TargetEscapes.CString(GetLiteralInitializer(let))};");
+                    break;
+
+                case BoundPrintStatement print:
+                    AppendCPrint(source, print.Value);
+                    break;
+            }
         }
 
         source.AppendLine("    return 0;");
         source.AppendLine("}");
 
-        return SingleFile(TextOutput.EnsureOneTrailingNewLine(source.ToString()));
+        return new GeneratedProgram(
+            Language,
+            new[] { new GeneratedFile("Program.c", TextOutput.EnsureOneTrailingNewLine(source.ToString()), IsPrimary: true) });
     }
 
-    private GeneratedProgram SingleFile(string content) =>
-        new(Language, new[] { new GeneratedFile("Program.c", content, IsPrimary: true) });
+    private static void AppendCPrint(StringBuilder source, BoundExpression expression)
+    {
+        IReadOnlyList<PrintSegment> segments = BoundStringExpression.Flatten(expression);
+        if (segments.Count == 0)
+        {
+            source.AppendLine("    putchar('\\n');");
+            return;
+        }
+
+        foreach (PrintSegment segment in segments)
+        {
+            switch (segment)
+            {
+                case LiteralPrintSegment literal:
+                    source.AppendLine($"    fputs({TargetEscapes.CString(literal.Text)}, stdout);");
+                    break;
+
+                case VariablePrintSegment variable:
+                    source.AppendLine($"    fputs({variable.Variable.Name}, stdout);");
+                    break;
+            }
+        }
+
+        source.AppendLine("    putchar('\\n');");
+    }
+
+    private static string GetLiteralInitializer(BoundLetStatement let) =>
+        let.Initializer is BoundStringLiteralExpression literal ? literal.Value : string.Empty;
 }
 
 internal sealed class MasmX64CodeGenerator : ICodeGenerator
 {
     public TargetLanguage Language => TargetLanguage.MasmX64;
 
-    public GeneratedProgram Generate(SmileProgramSyntax program)
+    public GeneratedProgram Generate(BoundProgram program)
     {
-        PrintStatementSyntax[] prints = program.Statements.OfType<PrintStatementSyntax>().ToArray();
+        BoundLetStatement[] lets = program.Statements.OfType<BoundLetStatement>().ToArray();
+        BoundPrintStatement[] prints = program.Statements.OfType<BoundPrintStatement>().ToArray();
         var source = new StringBuilder();
 
         AppendMasmLine(source, "option casemap:none", "Keep symbol names case-sensitive.");
@@ -187,42 +240,115 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         AppendMasmLine(source, "EXTERN ExitProcess:PROC", "Windows API: terminate the process.");
         source.AppendLine();
 
-        if (prints.Length > 0)
+        AppendMasmData(source, lets, prints);
+        AppendMasmCode(source, lets, prints);
+
+        return new GeneratedProgram(
+            Language,
+            new[] { new GeneratedFile("Program.asm", TextOutput.EnsureOneTrailingNewLine(source.ToString()), IsPrimary: true) });
+    }
+
+    private static void AppendMasmData(
+        StringBuilder source,
+        IReadOnlyList<BoundLetStatement> lets,
+        IReadOnlyList<BoundPrintStatement> prints)
+    {
+        if (lets.Count == 0 && prints.Count == 0)
         {
-            AppendMasmLine(source, "STD_OUTPUT_HANDLE EQU -11", "Magic value for the console output handle.");
-            source.AppendLine();
-            AppendMasmLine(source, ".data", "Static bytes and variables live here.");
-
-            for (int index = 0; index < prints.Length; index++)
-            {
-                string label = $"message{index}";
-                AppendMasmLine(source, $"{label} BYTE {TargetEscapes.MasmByteInitializers(prints[index].Text)}", $"PRINT text #{index + 1}, ending with CR/LF.");
-                AppendMasmLine(source, $"{label}Length EQU $ - {label}", "Length equals current address minus the label.");
-            }
-
-            AppendMasmLine(source, "bytesWritten DWORD ?", "WriteFile stores how many bytes it wrote.");
-            source.AppendLine();
+            return;
         }
 
+        AppendMasmLine(source, ".data", "Static bytes and variables live here.");
+
+        if (prints.Count > 0)
+        {
+            AppendMasmLine(source, "STD_OUTPUT_HANDLE EQU -11", "Magic value for the console output handle.");
+        }
+
+        for (int index = 0; index < lets.Count; index++)
+        {
+            BoundLetStatement let = lets[index];
+            string valueLabel = VariableValueLabel(index);
+            AppendMasmLine(source, $"{valueLabel} BYTE {TargetEscapes.MasmByteInitializers(GetLiteralInitializer(let))}", $"LET {let.Variable.Name} initial text.");
+            AppendMasmLine(source, $"{valueLabel}Length EQU $ - {valueLabel}", "Length of the variable's current text.");
+            AppendMasmLine(source, $"{VariablePointerLabel(index)} QWORD ?", $"Runtime pointer for {let.Variable.Name}.");
+            AppendMasmLine(source, $"{VariableLengthLabel(index)} DWORD ?", $"Runtime length for {let.Variable.Name}.");
+        }
+
+        for (int printIndex = 0; printIndex < prints.Count; printIndex++)
+        {
+            IReadOnlyList<PrintSegment> segments = BoundStringExpression.Flatten(prints[printIndex].Value);
+            for (int segmentIndex = 0; segmentIndex < segments.Count; segmentIndex++)
+            {
+                if (segments[segmentIndex] is not LiteralPrintSegment literal)
+                {
+                    continue;
+                }
+
+                string label = PrintLiteralLabel(printIndex, segmentIndex);
+                AppendMasmLine(source, $"{label} BYTE {TargetEscapes.MasmByteInitializers(literal.Text)}", $"PRINT #{printIndex + 1} literal segment.");
+                AppendMasmLine(source, $"{label}Length EQU $ - {label}", "Length of this literal segment.");
+            }
+        }
+
+        if (prints.Count > 0)
+        {
+            AppendMasmLine(source, "newline BYTE 13, 10", "SMILE PRINT appends CR/LF on Windows.");
+            AppendMasmLine(source, "newlineLength EQU $ - newline", "Length of the newline bytes.");
+            AppendMasmLine(source, "stdoutHandle QWORD ?", "Cached standard output handle.");
+            AppendMasmLine(source, "bytesWritten DWORD ?", "WriteFile stores how many bytes it wrote.");
+        }
+
+        source.AppendLine();
+    }
+
+    private static void AppendMasmCode(
+        StringBuilder source,
+        IReadOnlyList<BoundLetStatement> lets,
+        IReadOnlyList<BoundPrintStatement> prints)
+    {
         AppendMasmLine(source, ".code", "CPU instructions live here.");
         AppendMasmLine(source, "main PROC", "Program entry point.");
         AppendMasmLine(source, "    sub rsp, 28h", "Reserve Win64 shadow space and align the stack.");
 
-        for (int index = 0; index < prints.Length; index++)
+        if (prints.Count > 0)
         {
-            string label = $"message{index}";
-            // One WriteFile block per PRINT keeps the educational relationship
-            // obvious even though a later optimizer could combine writes.
             source.AppendLine();
-            AppendMasmLine(source, "    mov ecx, STD_OUTPUT_HANDLE", "First argument: ask for stdout.");
-            AppendMasmLine(source, "    call GetStdHandle", "RAX now holds the stdout handle.");
+            AppendMasmLine(source, "    mov ecx, STD_OUTPUT_HANDLE", "Ask Windows for stdout.");
+            AppendMasmLine(source, "    call GetStdHandle", "RAX receives the stdout handle.");
+            AppendMasmLine(source, "    mov QWORD PTR [stdoutHandle], rax", "Cache stdout for every PRINT segment.");
+        }
+
+        for (int index = 0; index < lets.Count; index++)
+        {
+            string valueLabel = VariableValueLabel(index);
             source.AppendLine();
-            AppendMasmLine(source, "    mov rcx, rax", "WriteFile arg 1: stdout handle.");
-            AppendMasmLine(source, $"    lea rdx, {label}", "WriteFile arg 2: address of message bytes.");
-            AppendMasmLine(source, $"    mov r8d, {label}Length", "WriteFile arg 3: byte count.");
-            AppendMasmLine(source, "    lea r9, bytesWritten", "WriteFile arg 4: address for bytes-written result.");
-            AppendMasmLine(source, "    mov QWORD PTR [rsp + 20h], 0", "WriteFile arg 5 on stack: no overlapped I/O.");
-            AppendMasmLine(source, "    call WriteFile", "Emit the PRINT line.");
+            AppendMasmLine(source, $"    lea rax, {valueLabel}", $"Address of LET {lets[index].Variable.Name} text.");
+            AppendMasmLine(source, $"    mov QWORD PTR [{VariablePointerLabel(index)}], rax", "Store the runtime string pointer.");
+            AppendMasmLine(source, $"    mov DWORD PTR [{VariableLengthLabel(index)}], {valueLabel}Length", "Store the runtime string length.");
+        }
+
+        for (int printIndex = 0; printIndex < prints.Count; printIndex++)
+        {
+            source.AppendLine();
+            AppendMasmLine(source, $"; PRINT #{printIndex + 1}", "Write each expression segment, then newline.");
+            IReadOnlyList<PrintSegment> segments = BoundStringExpression.Flatten(prints[printIndex].Value);
+            for (int segmentIndex = 0; segmentIndex < segments.Count; segmentIndex++)
+            {
+                switch (segments[segmentIndex])
+                {
+                    case LiteralPrintSegment:
+                        AppendMasmWriteLiteral(source, PrintLiteralLabel(printIndex, segmentIndex));
+                        break;
+
+                    case VariablePrintSegment variable:
+                        int variableIndex = lets.IndexOf(let => ReferenceEquals(let.Variable, variable.Variable));
+                        AppendMasmWriteVariable(source, variable.Variable.Name, variableIndex);
+                        break;
+                }
+            }
+
+            AppendMasmWriteLiteral(source, "newline");
         }
 
         source.AppendLine();
@@ -231,10 +357,26 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         AppendMasmLine(source, "main ENDP", "End of the main procedure.");
         source.AppendLine();
         source.AppendLine("END");
+    }
 
-        return new GeneratedProgram(
-            Language,
-            new[] { new GeneratedFile("Program.asm", TextOutput.EnsureOneTrailingNewLine(source.ToString()), IsPrimary: true) });
+    private static void AppendMasmWriteLiteral(StringBuilder source, string label)
+    {
+        AppendMasmLine(source, "    mov rcx, QWORD PTR [stdoutHandle]", "WriteFile arg 1: stdout handle.");
+        AppendMasmLine(source, $"    lea rdx, {label}", "WriteFile arg 2: address of literal bytes.");
+        AppendMasmLine(source, $"    mov r8d, {label}Length", "WriteFile arg 3: byte count.");
+        AppendMasmLine(source, "    lea r9, bytesWritten", "WriteFile arg 4: address for bytes-written result.");
+        AppendMasmLine(source, "    mov QWORD PTR [rsp + 20h], 0", "WriteFile arg 5 on stack: no overlapped I/O.");
+        AppendMasmLine(source, "    call WriteFile", "Emit this literal segment.");
+    }
+
+    private static void AppendMasmWriteVariable(StringBuilder source, string name, int variableIndex)
+    {
+        AppendMasmLine(source, "    mov rcx, QWORD PTR [stdoutHandle]", "WriteFile arg 1: stdout handle.");
+        AppendMasmLine(source, $"    mov rdx, QWORD PTR [{VariablePointerLabel(variableIndex)}]", $"WriteFile arg 2: {name} pointer.");
+        AppendMasmLine(source, $"    mov r8d, DWORD PTR [{VariableLengthLabel(variableIndex)}]", $"WriteFile arg 3: {name} length.");
+        AppendMasmLine(source, "    lea r9, bytesWritten", "WriteFile arg 4: address for bytes-written result.");
+        AppendMasmLine(source, "    mov QWORD PTR [rsp + 20h], 0", "WriteFile arg 5 on stack: no overlapped I/O.");
+        AppendMasmLine(source, "    call WriteFile", "Emit this variable segment.");
     }
 
     private static void AppendMasmLine(StringBuilder source, string code, string? comment = null)
@@ -245,28 +387,44 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
             return;
         }
 
-        // Assembly programmers often keep instruction comments in a right-side
-        // column. Padding keeps the generated tutorial code scannable while
-        // preserving the exact instructions MASM assembles.
         const int commentColumn = 48;
         int padding = Math.Max(1, commentColumn - code.Length);
         source.AppendLine(code + new string(' ', padding) + "; " + comment);
     }
+
+    private static string VariableValueLabel(int index) => $"variable{index}Value";
+
+    private static string VariablePointerLabel(int index) => $"variable{index}Ptr";
+
+    private static string VariableLengthLabel(int index) => $"variable{index}Length";
+
+    private static string PrintLiteralLabel(int printIndex, int segmentIndex) =>
+        $"print{printIndex}Segment{segmentIndex}";
+
+    private static string GetLiteralInitializer(BoundLetStatement let) =>
+        let.Initializer is BoundStringLiteralExpression literal ? literal.Value : string.Empty;
 }
 
 internal sealed class JavaScriptCodeGenerator : ICodeGenerator
 {
     public TargetLanguage Language => TargetLanguage.JavaScript;
 
-    public GeneratedProgram Generate(SmileProgramSyntax program)
+    public GeneratedProgram Generate(BoundProgram program)
     {
-        // JavaScript needs no wrapper for this MVP; the file can be run
-        // directly with Node.js when it is installed.
         var source = new StringBuilder();
 
-        foreach (PrintStatementSyntax print in program.Statements.OfType<PrintStatementSyntax>())
+        foreach (BoundStatement statement in program.Statements)
         {
-            source.AppendLine($"console.log({TargetEscapes.JavaScriptString(print.Text)});");
+            switch (statement)
+            {
+                case BoundLetStatement let:
+                    source.AppendLine($"let {let.Variable.Name} = {TargetExpression.JavaScript(let.Initializer)};");
+                    break;
+
+                case BoundPrintStatement print:
+                    source.AppendLine($"console.log({TargetExpression.JavaScript(print.Value)});");
+                    break;
+            }
         }
 
         return new GeneratedProgram(
@@ -279,19 +437,26 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
 {
     public TargetLanguage Language => TargetLanguage.Java;
 
-    public GeneratedProgram Generate(SmileProgramSyntax program)
+    public GeneratedProgram Generate(BoundProgram program)
     {
-        // Java requires a class and main method, so this is the minimum normal
-        // Java shape around the same PRINT statements.
         var source = new StringBuilder();
         source.AppendLine("public final class Program");
         source.AppendLine("{");
         source.AppendLine("    public static void main(String[] args)");
         source.AppendLine("    {");
 
-        foreach (PrintStatementSyntax print in program.Statements.OfType<PrintStatementSyntax>())
+        foreach (BoundStatement statement in program.Statements)
         {
-            source.AppendLine($"        System.out.println({TargetEscapes.JavaString(print.Text)});");
+            switch (statement)
+            {
+                case BoundLetStatement let:
+                    source.AppendLine($"        String {let.Variable.Name} = {TargetExpression.Java(let.Initializer)};");
+                    break;
+
+                case BoundPrintStatement print:
+                    source.AppendLine($"        System.out.println({TargetExpression.Java(print.Value)});");
+                    break;
+            }
         }
 
         source.AppendLine("    }");
@@ -307,11 +472,8 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
 {
     public TargetLanguage Language => TargetLanguage.ObjectiveC;
 
-    public GeneratedProgram Generate(SmileProgramSyntax program)
+    public GeneratedProgram Generate(BoundProgram program)
     {
-        // Objective-C usually wraps even tiny command-line programs in an
-        // autorelease pool. That gives learners one real Objective-C runtime
-        // idea without adding classes or other ceremony to this PRINT slice.
         var source = new StringBuilder();
         source.AppendLine("#import <Foundation/Foundation.h>");
         source.AppendLine("#include <stdio.h>");
@@ -321,9 +483,18 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
         source.AppendLine("    @autoreleasepool");
         source.AppendLine("    {");
 
-        foreach (PrintStatementSyntax print in program.Statements.OfType<PrintStatementSyntax>())
+        foreach (BoundStatement statement in program.Statements)
         {
-            source.AppendLine($"        puts([{TargetEscapes.ObjectiveCString(print.Text)} UTF8String]);");
+            switch (statement)
+            {
+                case BoundLetStatement let:
+                    source.AppendLine($"        NSString *{let.Variable.Name} = {TargetEscapes.ObjectiveCString(GetLiteralInitializer(let))};");
+                    break;
+
+                case BoundPrintStatement print:
+                    AppendObjectiveCPrint(source, print.Value);
+                    break;
+            }
         }
 
         source.AppendLine("    }");
@@ -335,26 +506,96 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
             Language,
             new[] { new GeneratedFile("Program.m", TextOutput.EnsureOneTrailingNewLine(source.ToString()), IsPrimary: true) });
     }
+
+    private static void AppendObjectiveCPrint(StringBuilder source, BoundExpression expression)
+    {
+        IReadOnlyList<PrintSegment> segments = BoundStringExpression.Flatten(expression);
+        if (segments.Count == 0)
+        {
+            source.AppendLine("        putchar('\\n');");
+            return;
+        }
+
+        foreach (PrintSegment segment in segments)
+        {
+            switch (segment)
+            {
+                case LiteralPrintSegment literal:
+                    source.AppendLine($"        fputs({TargetEscapes.CString(literal.Text)}, stdout);");
+                    break;
+
+                case VariablePrintSegment variable:
+                    source.AppendLine($"        fputs([{variable.Variable.Name} UTF8String], stdout);");
+                    break;
+            }
+        }
+
+        source.AppendLine("        putchar('\\n');");
+    }
+
+    private static string GetLiteralInitializer(BoundLetStatement let) =>
+        let.Initializer is BoundStringLiteralExpression literal ? literal.Value : string.Empty;
 }
 
 internal sealed class SwiftCodeGenerator : ICodeGenerator
 {
     public TargetLanguage Language => TargetLanguage.Swift;
 
-    public GeneratedProgram Generate(SmileProgramSyntax program)
+    public GeneratedProgram Generate(BoundProgram program)
     {
-        // Swift's top-level statements are perfect for this first SMILE slice:
-        // PRINT maps directly to print without needing a class or main method.
         var source = new StringBuilder();
 
-        foreach (PrintStatementSyntax print in program.Statements.OfType<PrintStatementSyntax>())
+        foreach (BoundStatement statement in program.Statements)
         {
-            source.AppendLine($"print({TargetEscapes.SwiftString(print.Text)})");
+            switch (statement)
+            {
+                case BoundLetStatement let:
+                    source.AppendLine($"let {let.Variable.Name} = {TargetExpression.Swift(let.Initializer)}");
+                    break;
+
+                case BoundPrintStatement print:
+                    source.AppendLine($"print({TargetExpression.Swift(print.Value)})");
+                    break;
+            }
         }
 
         return new GeneratedProgram(
             Language,
             new[] { new GeneratedFile("Program.swift", TextOutput.EnsureOneTrailingNewLine(source.ToString()), IsPrimary: true) });
+    }
+}
+
+internal static class TargetExpression
+{
+    public static string CSharp(BoundExpression expression) =>
+        Join(BoundStringExpression.Flatten(expression), TargetEscapes.CSharpString);
+
+    public static string JavaScript(BoundExpression expression) =>
+        Join(BoundStringExpression.Flatten(expression), TargetEscapes.JavaScriptString);
+
+    public static string Java(BoundExpression expression) =>
+        Join(BoundStringExpression.Flatten(expression), TargetEscapes.JavaString);
+
+    public static string Swift(BoundExpression expression) =>
+        Join(BoundStringExpression.Flatten(expression), TargetEscapes.SwiftString);
+
+    private static string Join(
+        IReadOnlyList<PrintSegment> segments,
+        Func<string, string> quoteLiteral)
+    {
+        if (segments.Count == 0)
+        {
+            return quoteLiteral(string.Empty);
+        }
+
+        return string.Join(
+            " + ",
+            segments.Select(segment => segment switch
+            {
+                LiteralPrintSegment literal => quoteLiteral(literal.Text),
+                VariablePrintSegment variable => variable.Variable.Name,
+                _ => quoteLiteral(string.Empty)
+            }));
     }
 }
 
@@ -374,11 +615,7 @@ internal static class TargetEscapes
 
     public static string MasmByteInitializers(string text)
     {
-        // MASM BYTE initializers are safest when we emit ordinary printable
-        // ASCII as quoted runs and everything else as numeric byte values.
-        // That prevents a SMILE string containing quotes or non-ASCII bytes
-        // from accidentally becoming invalid assembly syntax.
-        byte[] bytes = Encoding.UTF8.GetBytes(text + "\r\n");
+        byte[] bytes = Encoding.UTF8.GetBytes(text);
         var parts = new List<string>();
         var currentText = new StringBuilder();
 
@@ -395,7 +632,7 @@ internal static class TargetEscapes
         }
 
         FlushText();
-        return string.Join(", ", parts);
+        return parts.Count == 0 ? "0" : string.Join(", ", parts);
 
         void FlushText()
         {
@@ -465,10 +702,6 @@ internal static class TargetEscapes
 
     private static string EscapeUtf8BytesAsOctal(char value)
     {
-        // C and Objective-C source files are written as UTF-8. For control
-        // characters without a named C escape, fixed three-digit octal byte
-        // escapes avoid raw invisible characters and avoid accidental merging
-        // with a following digit.
         byte[] bytes = Encoding.UTF8.GetBytes(value.ToString());
         var builder = new StringBuilder();
 
@@ -483,9 +716,6 @@ internal static class TargetEscapes
 
     private static string ToFixedOctal(byte value)
     {
-        // Fixed-width octal means exactly three base-8 digits. That matters in
-        // languages like C and Java where a following digit could otherwise be
-        // mistaken for part of the same escape sequence.
         Span<char> digits = stackalloc char[3];
         digits[0] = (char)('0' + ((value >> 6) & 0b111));
         digits[1] = (char)('0' + ((value >> 3) & 0b111));
@@ -573,5 +803,21 @@ internal static class TextOutput
             .Replace("\n", Environment.NewLine, StringComparison.Ordinal);
 
         return normalized.TrimEnd('\r', '\n') + Environment.NewLine;
+    }
+}
+
+internal static class ReadOnlyListExtensions
+{
+    public static int IndexOf<T>(this IReadOnlyList<T> values, Func<T, bool> predicate)
+    {
+        for (int index = 0; index < values.Count; index++)
+        {
+            if (predicate(values[index]))
+            {
+                return index;
+            }
+        }
+
+        throw new InvalidOperationException("Expected value was not found.");
     }
 }

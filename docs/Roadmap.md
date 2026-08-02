@@ -1,11 +1,15 @@
 # Roadmap
 
-## Implemented In v0.1.3
+## Implemented In v0.2.0
 
-- Parse `PRINT "text"` statements.
-- Accept multiple `PRINT` statements and blank lines.
-- Accept straight and smart double-quote delimiters.
-- Generate C#, C, Windows x64 MASM, JavaScript, Java, Objective-C, and Swift directly from the SMILE syntax tree.
+- Parse `LET Name = "Sin"` string variable declarations.
+- Resolve variables case-insensitively with declarations before use.
+- Detect duplicate variable declarations case-insensitively.
+- Parse `PRINT` blank-line, ordinary quoted, raw template, `$"..."`, and quoted concatenation forms.
+- Keep `PRINT Name` literal and `PRINT {Name}` evaluated.
+- Support `{{` and `}}` literal braces in raw templates and `$"..."`.
+- Reject missing `PRINT` whitespace, malformed interpolation, semicolon statement separators, and a second standalone `PRINT` keyword on one line.
+- Generate C#, C, Windows x64 MASM, JavaScript, Java, Objective-C, and Swift directly from the bound SMILE program.
 - Build and run installed local target toolchains.
 - Report Objective-C and Swift as transpile-only targets on Windows.
 - Provide a CLI developer harness.
@@ -16,16 +20,15 @@
 
 ## Future Ideas
 
-These are not implemented in v0.1.3:
+These are not implemented in v0.2.0:
 
-1. `LET` and variables
-2. Printing variables and expressions
+1. Non-literal `LET` initializers
+2. Numeric and boolean expressions
 3. `INPUT`
-4. Numeric and string expressions
-5. `IF / THEN / ELSE`
-6. Loops
-7. Functions
-8. Type checking
-9. Debugging and source mapping
-10. Reusable web interface
-11. Evolution toward a full SMILE language
+4. `IF / THEN / ELSE`
+5. Loops
+6. Functions
+7. Type checking beyond string-only expressions
+8. Debugging and source mapping
+9. Reusable web interface
+10. Evolution toward a full SMILE language

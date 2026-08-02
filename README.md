@@ -6,34 +6,94 @@ Write a simple SMILE program once, then view equivalent programs in C#, C, Windo
 
 ## Mission
 
-SMILE v0.1.3, "PRINT Everywhere," proves one small vertical slice:
+SMILE v0.2.0, "Friendly PRINT," implements the official beginner-friendly `PRINT` syntax:
 
 ```text
-SMILE PRINT source
-  -> parse once
-  -> generate seven target programs directly from the SMILE syntax tree
+SMILE source
+  -> parse once into syntax nodes
+  -> bind variables and string expressions once
+  -> generate seven target programs from the bound program
   -> show three debounced live target previews in a responsive WPF desktop app
   -> build and run locally when the matching toolchain is installed
 ```
+
+The official language specification for `PRINT` is published at [docs/SMILE-PRINT-Statement-Specification-v1.0.md](docs/SMILE-PRINT-Statement-Specification-v1.0.md).
 
 ## Guiding Principles
 
 KISS means the simplest complete solution wins. SMILE avoids speculative features, unnecessary abstractions, heavy frameworks, parser generators, CLI frameworks, and third-party MVVM or process libraries.
 
-KISS v2, "The Sin Way," puts user-experience performance first and functional performance second. The app should feel immediate, clear, cancellable, and stable. After that, the code avoids repeated parsing, unnecessary process launches, and needless disk work.
+KISS v2, "The Sin Way," puts user-experience performance first and functional performance second. Typing should feel immediate, build/run work should be cancellable, and compiler/toolchain work must not block the WPF UI thread.
 
 Generated code follows the same rules: complete, minimal, idiomatic, readable, deterministic, educational, and dependency-light.
-
-## WPF Responsiveness
-
-The WPF UI thread must not block on toolchain detection, compilation, linking, execution, process output, long file operations, or other noticeable work. Build and run operations use async APIs, cancellation tokens, timeouts, and process-tree termination.
 
 ## Simple SMILE Program
 
 ```basic
-PRINT "Hello from SMILE!"
-PRINT "Different syntax, same idea."
+LET Name = "Sin"
+
+PRINT
+PRINT "Hello World!"
+PRINT Hello World!
+PRINT Hello {Name}!
+PRINT $"Hello {Name}!"
+PRINT "Hello " + Name + "!"
+PRINT Name
+PRINT {Name}
+PRINT Literal braces: {{Name}}
+PRINT A; B; C
 ```
+
+Output:
+
+```text
+
+Hello World!
+Hello World!
+Hello Sin!
+Hello Sin!
+Hello Sin!
+Name
+Sin
+Literal braces: {Name}
+A; B; C
+```
+
+## Friendly PRINT Syntax
+
+Implemented grammar:
+
+```text
+program          -> line* end-of-file
+line             -> whitespace* statement? whitespace* newline
+statement        -> let-statement | print-statement
+let-statement    -> LET identifier = string-literal
+print-statement  -> PRINT
+                  | PRINT hspace+ interpolated-string
+                  | PRINT hspace+ quoted-string-expression
+                  | PRINT hspace+ raw-template
+```
+
+Implemented rules:
+
+- `PRINT` and `LET` are case-insensitive.
+- Variable lookup is ordinal case-insensitive.
+- `LET` currently declares string variables with string literal initializers, such as `LET Name = "Sin"`.
+- `PRINT` alone, or followed only by spaces/tabs, prints one blank line.
+- `PRINT "Hello"` prints an ordinary quoted string.
+- Ordinary quoted strings do not interpolate, so `PRINT "Hello {Name}!"` prints `{Name}` literally.
+- `PRINT Hello World!` is a raw template and prints `Hello World!`.
+- Raw templates and `$"..."` support `{Name}` interpolation.
+- `{{` and `}}` produce literal braces in raw templates and `$"..."`.
+- `PRINT Name` prints the literal text `Name`.
+- `PRINT {Name}` evaluates the variable `Name`.
+- `PRINT "Hello " + Name + "!"` supports string concatenation for `PRINT`.
+- A semicolon is not a statement separator. In raw templates, `PRINT A; B; C` prints the semicolons literally.
+- A physical line may contain only one statement.
+- A second standalone `PRINT` keyword on the same line is a compiler error.
+- Quote omission is a `PRINT` convenience only; it does not make quote-free strings legal in `LET` or future expression positions.
+
+Not implemented in v0.2.0: numeric types, comments, `INPUT`, conditions, loops, functions, arrays, classes, escaping embedded quotes inside SMILE strings, and non-literal `LET` initializers.
 
 ## Generated Examples
 
@@ -46,8 +106,8 @@ internal static class Program
 {
     private static void Main()
     {
-        Console.WriteLine("Hello from SMILE!");
-        Console.WriteLine("Different syntax, same idea.");
+        string Name = "Sin";
+        Console.WriteLine("Hello " + Name + "!");
     }
 }
 ```
@@ -59,66 +119,20 @@ C:
 
 int main(void)
 {
-    puts("Hello from SMILE!");
-    puts("Different syntax, same idea.");
+    const char *Name = "Sin";
+    fputs("Hello ", stdout);
+    fputs(Name, stdout);
+    fputs("!", stdout);
+    putchar('\n');
     return 0;
 }
-```
-
-Assembly - Windows x64 MASM:
-
-```asm
-option casemap:none                             ; Keep symbol names case-sensitive.
-
-EXTERN GetStdHandle:PROC                        ; Windows API: get standard console handles.
-EXTERN WriteFile:PROC                           ; Windows API: write bytes to the console.
-EXTERN ExitProcess:PROC                         ; Windows API: terminate the process.
-
-STD_OUTPUT_HANDLE EQU -11                       ; Magic value for the console output handle.
-
-.data                                           ; Static bytes and variables live here.
-message0 BYTE "Hello from SMILE!", 13, 10       ; PRINT text #1, ending with CR/LF.
-message0Length EQU $ - message0                 ; Length equals current address minus the label.
-message1 BYTE "Different syntax, same idea.", 13, 10 ; PRINT text #2, ending with CR/LF.
-message1Length EQU $ - message1                 ; Length equals current address minus the label.
-bytesWritten DWORD ?                            ; WriteFile stores how many bytes it wrote.
-
-.code                                           ; CPU instructions live here.
-main PROC                                       ; Program entry point.
-    sub rsp, 28h                                ; Reserve Win64 shadow space and align the stack.
-
-    mov ecx, STD_OUTPUT_HANDLE                  ; First argument: ask for stdout.
-    call GetStdHandle                           ; RAX now holds the stdout handle.
-
-    mov rcx, rax                                ; WriteFile arg 1: stdout handle.
-    lea rdx, message0                           ; WriteFile arg 2: address of message bytes.
-    mov r8d, message0Length                     ; WriteFile arg 3: byte count.
-    lea r9, bytesWritten                        ; WriteFile arg 4: address for bytes-written result.
-    mov QWORD PTR [rsp + 20h], 0                ; WriteFile arg 5 on stack: no overlapped I/O.
-    call WriteFile                              ; Emit the PRINT line.
-
-    mov ecx, STD_OUTPUT_HANDLE                  ; First argument: ask for stdout.
-    call GetStdHandle                           ; RAX now holds the stdout handle.
-
-    mov rcx, rax                                ; WriteFile arg 1: stdout handle.
-    lea rdx, message1                           ; WriteFile arg 2: address of message bytes.
-    mov r8d, message1Length                     ; WriteFile arg 3: byte count.
-    lea r9, bytesWritten                        ; WriteFile arg 4: address for bytes-written result.
-    mov QWORD PTR [rsp + 20h], 0                ; WriteFile arg 5 on stack: no overlapped I/O.
-    call WriteFile                              ; Emit the PRINT line.
-
-    xor ecx, ecx                                ; ExitProcess arg 1: process exit code 0.
-    call ExitProcess                            ; End the program.
-main ENDP                                       ; End of the main procedure.
-
-END
 ```
 
 JavaScript:
 
 ```javascript
-console.log("Hello from SMILE!");
-console.log("Different syntax, same idea.");
+let Name = "Sin";
+console.log("Hello " + Name + "!");
 ```
 
 Java:
@@ -128,8 +142,8 @@ public final class Program
 {
     public static void main(String[] args)
     {
-        System.out.println("Hello from SMILE!");
-        System.out.println("Different syntax, same idea.");
+        String Name = "Sin";
+        System.out.println("Hello " + Name + "!");
     }
 }
 ```
@@ -144,8 +158,11 @@ int main(void)
 {
     @autoreleasepool
     {
-        puts([@"Hello from SMILE!" UTF8String]);
-        puts([@"Different syntax, same idea." UTF8String]);
+        NSString *Name = @"Sin";
+        fputs("Hello ", stdout);
+        fputs([Name UTF8String], stdout);
+        fputs("!", stdout);
+        putchar('\n');
     }
 
     return 0;
@@ -155,9 +172,11 @@ int main(void)
 Swift:
 
 ```swift
-print("Hello from SMILE!")
-print("Different syntax, same idea.")
+let Name = "Sin"
+print("Hello " + Name + "!")
 ```
+
+MASM output uses UTF-8 byte labels for literal segments, a pointer-plus-length pair for each string variable, and one `WriteFile` call per printed segment. The generated assembly keeps right-side comments to support learning.
 
 ## Supported Targets
 
@@ -194,42 +213,28 @@ cmd /c cd /d C:\SMILE && dotnet build SMILE.sln -c Release
 cmd /c cd /d C:\SMILE && dotnet test SMILE.sln -c Release --no-build
 ```
 
-Open `SMILE.sln` in Visual Studio 2026 Enterprise to work with the solution.
-
 Run the desktop app:
 
 ```bat
 cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Desktop
 ```
 
-## Desktop Application
+Run the CLI developer harness:
 
-The desktop app opens with this example:
-
-```basic
-PRINT "Hello from SMILE!"
-PRINT "Different syntax, same idea."
+```bat
+cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\FriendlyPrint.smile --target all
+cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\FriendlyPrint.smile --target csharp --run
 ```
 
-The desktop app opens maximized. The top-left pane is editable SMILE source. The other three panes are read-only generated targets. They default to C#, Assembly - Windows x64 MASM, and C. Each generated pane can switch between C#, C, MASM x64, JavaScript, Java, Objective-C, and Swift.
+Valid targets are `csharp`, `c`, `masm-x64`, `javascript`, `java`, `objective-c`, `swift`, and `all`.
 
-Typing in the SMILE source editor schedules a short debounced live transpilation for the visible target languages only. The latest source revision always wins, so stale generated code is never used for Build & Run. The Transpile All command is asynchronous and regenerates all seven targets.
+## Desktop Application
+
+The desktop app opens maximized with the Friendly PRINT sample. The top-left pane is editable SMILE source. The other three panes are read-only generated targets. They default to C#, Assembly - Windows x64 MASM, and C. Each generated pane can switch between C#, C, MASM x64, JavaScript, Java, Objective-C, and Swift.
 
 ![SMILE desktop app in maximized state](Requirements/Progress/2026-08-02-day-1-2-smile-desktop.png)
 
-Main actions:
-
-- New
-- Open `.smile`
-- Save
-- Save As
-- Transpile All
-- Build & Run Visible Languages
-- Cancel while work is active
-- Open Generated Folder toggle
-- Press Any Key Launcher toggle
-- File menu for New, Open `.smile`, Save, Save As, and Exit
-- Help menu with About SMILE and the current desktop build version
+Typing in the SMILE source editor schedules a short debounced live transpilation for the visible target languages only. The latest source revision always wins, so stale generated code is never used for Build & Run. The Transpile All command is asynchronous and regenerates all seven targets.
 
 Each generated pane supports Copy, Save Source, and Build & Run. JavaScript runs directly with Node.js, so its button says Run. Objective-C and Swift are transpile-only on Windows, so their buttons say Transpile Only and visible-language build runs skip them without failing the whole operation.
 
@@ -239,47 +244,31 @@ When Open Generated Folder is enabled, SMILE opens the generated-code workspace 
 
 When Press Any Key Launcher is enabled, SMILE writes `Run Program - Press Any Key.cmd` into each successful build/run workspace. Double-clicking that launcher runs the generated program and then shows `Press any key to exit...`, which keeps the console window open long enough to inspect the output.
 
-Current desktop build version: `0.1.3 PRINT Everywhere`.
+Current desktop build version: `0.2.0 Friendly PRINT`.
 
-## CLI Developer Harness
+## Diagnostics
 
-Generate all targets:
+SMILE reports source errors as diagnostics instead of ordinary crashes. Current stable codes include:
 
-```bat
-cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\PrintEverywhere.smile --target all
-```
-
-Build and run one target:
-
-```bat
-cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\PrintEverywhere.smile --target csharp --run
-```
-
-Valid targets are `csharp`, `c`, `masm-x64`, `javascript`, `java`, `objective-c`, `swift`, and `all`.
-
-## SMILE v0.1 Syntax
-
-Implemented grammar:
-
-```text
-program         -> line* end-of-file
-line            -> whitespace* statement? whitespace* newline
-statement       -> print-statement
-print-statement -> PRINT whitespace+ string-literal
-```
-
-Rules:
-
-- `PRINT` is case-insensitive.
-- `PRINT` must be followed by at least one space or tab before the string literal.
-- Blank lines are allowed.
-- Multiple `PRINT` statements are allowed.
-- The final newline is optional.
-- Straight and smart double-quote delimiters are accepted.
-- `PRINT` appends a newline.
-- Syntax errors produce stable diagnostics instead of ordinary crashes.
-
-Not implemented in v0.1: variables, `LET`, `INPUT`, expressions, comments, conditions, loops, labels, `GOTO`, functions, classes, debugging, syntax highlighting, package management, cloud compilation, and arbitrary editing or compilation of generated target code.
+| Code | Meaning |
+|---|---|
+| `SMILE1001` | Unknown statement or keyword |
+| `SMILE1003` | Unterminated string literal |
+| `SMILE1005` | Invalid or unexpected character |
+| `SMILE1101` | `PRINT` requires whitespace before its payload |
+| `SMILE1102` | Only one `PRINT` statement is allowed per line |
+| `SMILE1103` | Unterminated interpolation expression |
+| `SMILE1104` | Unexpected closing brace in template |
+| `SMILE1105` | Interpolation expression cannot be empty |
+| `SMILE1106` | Undefined variable |
+| `SMILE1107` | Duplicate variable declaration |
+| `SMILE1108` | Invalid string expression |
+| `SMILE1109` | Semicolons cannot separate SMILE statements |
+| `SMILE1110` | Unterminated interpolated string |
+| `SMILE1111` | Unexpected text after a string expression |
+| `SMILE1112` | `LET` requires a variable name |
+| `SMILE1113` | `LET` requires `=` before its initializer |
+| `SMILE1114` | `LET` currently requires a string literal initializer |
 
 ## Repository Structure
 
@@ -307,41 +296,40 @@ tests/
 ## Architecture
 
 ```text
-Source -> Lexer -> Parser -> Syntax Tree -> Target Generator -> Generated Files
-                                             |
-                                      Optional Toolchain
-                                             |
-                                      Build and Run Result
+Source -> Parser -> Syntax Tree -> Binder -> Bound Program -> Target Generator -> Generated Files
+                                                        |
+                                                 Optional Toolchain
+                                                        |
+                                                 Build and Run Result
 ```
 
-`SMILE.Engine` owns the lexer, parser, diagnostics, AST, transpiler facade, and target generators. `SMILE.Toolchains` owns detection, temporary workspaces, async process execution, cancellation, timeouts, build, and run. `SMILE.Cli` and `SMILE.Desktop` reuse both projects.
+`SMILE.Engine` owns parsing, diagnostics, syntax nodes, binding, variable symbols, bound expressions, target-neutral print segment flattening, and target generators. `SMILE.Toolchains` owns detection, temporary workspaces, async process execution, cancellation, timeouts, build, and run. `SMILE.Cli` and `SMILE.Desktop` reuse both projects.
 
 SMILE-owned build/output artifacts older than 1 day may be cleaned from known generated locations such as `bin`, `obj`, `out`, and `%TEMP%\SMILE\Runs`.
 
 ## Current Limitations
 
-- Only `PRINT "text"` is supported.
+- `LET` is limited to string variables with string literal initializers.
 - Embedded quote escaping inside SMILE string literals is not implemented.
 - C and MASM target output is focused on Windows local toolchains.
 - Objective-C and Swift output is transpile-only on Windows in this version.
-- Unicode output beyond simple source text is an area for later hardening.
-- WPF launch, resize, Build & Run command availability, invocation, and Cancel enabled state were smoke-tested with UI Automation; full UI automation coverage is not included.
+- Unicode output beyond UTF-8 source text remains an area for later hardening.
+- Full UI automation coverage is not included; manual WPF smoke testing is still required for release validation.
 
 ## Roadmap
 
-Future ideas, not implemented in v0.1:
+Future ideas, not implemented in v0.2.0:
 
-1. `LET` and variables
-2. Printing variables and expressions
+1. Non-literal `LET` initializers
+2. Numeric and boolean expressions
 3. `INPUT`
-4. Numeric and string expressions
-5. `IF / THEN / ELSE`
-6. Loops
-7. Functions
-8. Type checking
-9. Debugging and source mapping
-10. Reusable web interface
-11. Evolution toward a full SMILE language
+4. `IF / THEN / ELSE`
+5. Loops
+6. Functions
+7. Type checking beyond string-only expressions
+8. Debugging and source mapping
+9. Reusable web interface
+10. Evolution toward a full SMILE language
 
 ## License
 

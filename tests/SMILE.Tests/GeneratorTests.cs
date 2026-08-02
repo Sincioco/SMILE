@@ -10,6 +10,19 @@ PRINT "Hello from SMILE!"
 PRINT "Different syntax, same idea."
 """;
 
+    private const string FriendlyPrintSource = """
+LET Name = "Sin"
+
+PRINT
+PRINT "Hello World!"
+PRINT Hello World!
+PRINT Hello {Name}!
+PRINT $"Hello {Name}!"
+PRINT "Hello " + Name + "!"
+PRINT Literal braces: {{Name}}
+PRINT A; B; C
+""";
+
     private readonly SmileTranspiler _transpiler = new();
 
     [TestMethod]
@@ -58,8 +71,10 @@ PRINT "Different syntax, same idea."
                 "",
                 "int main(void)",
                 "{",
-                "    puts(\"Hello from SMILE!\");",
-                "    puts(\"Different syntax, same idea.\");",
+                "    fputs(\"Hello from SMILE!\", stdout);",
+                "    putchar('\\n');",
+                "    fputs(\"Different syntax, same idea.\", stdout);",
+                "    putchar('\\n');",
                 "    return 0;",
                 "}"),
             program.PrimaryFile.Content);
@@ -79,38 +94,52 @@ PRINT "Different syntax, same idea."
                 "EXTERN WriteFile:PROC                           ; Windows API: write bytes to the console.",
                 "EXTERN ExitProcess:PROC                         ; Windows API: terminate the process.",
                 "",
-                "STD_OUTPUT_HANDLE EQU -11                       ; Magic value for the console output handle.",
-                "",
                 ".data                                           ; Static bytes and variables live here.",
-                "message0 BYTE \"Hello from SMILE!\", 13, 10       ; PRINT text #1, ending with CR/LF.",
-                "message0Length EQU $ - message0                 ; Length equals current address minus the label.",
-                "message1 BYTE \"Different syntax, same idea.\", 13, 10 ; PRINT text #2, ending with CR/LF.",
-                "message1Length EQU $ - message1                 ; Length equals current address minus the label.",
+                "STD_OUTPUT_HANDLE EQU -11                       ; Magic value for the console output handle.",
+                "print0Segment0 BYTE \"Hello from SMILE!\"         ; PRINT #1 literal segment.",
+                "print0Segment0Length EQU $ - print0Segment0     ; Length of this literal segment.",
+                "print1Segment0 BYTE \"Different syntax, same idea.\" ; PRINT #2 literal segment.",
+                "print1Segment0Length EQU $ - print1Segment0     ; Length of this literal segment.",
+                "newline BYTE 13, 10                             ; SMILE PRINT appends CR/LF on Windows.",
+                "newlineLength EQU $ - newline                   ; Length of the newline bytes.",
+                "stdoutHandle QWORD ?                            ; Cached standard output handle.",
                 "bytesWritten DWORD ?                            ; WriteFile stores how many bytes it wrote.",
                 "",
                 ".code                                           ; CPU instructions live here.",
                 "main PROC                                       ; Program entry point.",
                 "    sub rsp, 28h                                ; Reserve Win64 shadow space and align the stack.",
                 "",
-                "    mov ecx, STD_OUTPUT_HANDLE                  ; First argument: ask for stdout.",
-                "    call GetStdHandle                           ; RAX now holds the stdout handle.",
+                "    mov ecx, STD_OUTPUT_HANDLE                  ; Ask Windows for stdout.",
+                "    call GetStdHandle                           ; RAX receives the stdout handle.",
+                "    mov QWORD PTR [stdoutHandle], rax           ; Cache stdout for every PRINT segment.",
                 "",
-                "    mov rcx, rax                                ; WriteFile arg 1: stdout handle.",
-                "    lea rdx, message0                           ; WriteFile arg 2: address of message bytes.",
-                "    mov r8d, message0Length                     ; WriteFile arg 3: byte count.",
+                "; PRINT #1                                      ; Write each expression segment, then newline.",
+                "    mov rcx, QWORD PTR [stdoutHandle]           ; WriteFile arg 1: stdout handle.",
+                "    lea rdx, print0Segment0                     ; WriteFile arg 2: address of literal bytes.",
+                "    mov r8d, print0Segment0Length               ; WriteFile arg 3: byte count.",
                 "    lea r9, bytesWritten                        ; WriteFile arg 4: address for bytes-written result.",
                 "    mov QWORD PTR [rsp + 20h], 0                ; WriteFile arg 5 on stack: no overlapped I/O.",
-                "    call WriteFile                              ; Emit the PRINT line.",
-                "",
-                "    mov ecx, STD_OUTPUT_HANDLE                  ; First argument: ask for stdout.",
-                "    call GetStdHandle                           ; RAX now holds the stdout handle.",
-                "",
-                "    mov rcx, rax                                ; WriteFile arg 1: stdout handle.",
-                "    lea rdx, message1                           ; WriteFile arg 2: address of message bytes.",
-                "    mov r8d, message1Length                     ; WriteFile arg 3: byte count.",
+                "    call WriteFile                              ; Emit this literal segment.",
+                "    mov rcx, QWORD PTR [stdoutHandle]           ; WriteFile arg 1: stdout handle.",
+                "    lea rdx, newline                            ; WriteFile arg 2: address of literal bytes.",
+                "    mov r8d, newlineLength                      ; WriteFile arg 3: byte count.",
                 "    lea r9, bytesWritten                        ; WriteFile arg 4: address for bytes-written result.",
                 "    mov QWORD PTR [rsp + 20h], 0                ; WriteFile arg 5 on stack: no overlapped I/O.",
-                "    call WriteFile                              ; Emit the PRINT line.",
+                "    call WriteFile                              ; Emit this literal segment.",
+                "",
+                "; PRINT #2                                      ; Write each expression segment, then newline.",
+                "    mov rcx, QWORD PTR [stdoutHandle]           ; WriteFile arg 1: stdout handle.",
+                "    lea rdx, print1Segment0                     ; WriteFile arg 2: address of literal bytes.",
+                "    mov r8d, print1Segment0Length               ; WriteFile arg 3: byte count.",
+                "    lea r9, bytesWritten                        ; WriteFile arg 4: address for bytes-written result.",
+                "    mov QWORD PTR [rsp + 20h], 0                ; WriteFile arg 5 on stack: no overlapped I/O.",
+                "    call WriteFile                              ; Emit this literal segment.",
+                "    mov rcx, QWORD PTR [stdoutHandle]           ; WriteFile arg 1: stdout handle.",
+                "    lea rdx, newline                            ; WriteFile arg 2: address of literal bytes.",
+                "    mov r8d, newlineLength                      ; WriteFile arg 3: byte count.",
+                "    lea r9, bytesWritten                        ; WriteFile arg 4: address for bytes-written result.",
+                "    mov QWORD PTR [rsp + 20h], 0                ; WriteFile arg 5 on stack: no overlapped I/O.",
+                "    call WriteFile                              ; Emit this literal segment.",
                 "",
                 "    xor ecx, ecx                                ; ExitProcess arg 1: process exit code 0.",
                 "    call ExitProcess                            ; End the program.",
@@ -167,8 +196,10 @@ PRINT "Different syntax, same idea."
                 "{",
                 "    @autoreleasepool",
                 "    {",
-                "        puts([@\"Hello from SMILE!\" UTF8String]);",
-                "        puts([@\"Different syntax, same idea.\" UTF8String]);",
+                "        fputs(\"Hello from SMILE!\", stdout);",
+                "        putchar('\\n');",
+                "        fputs(\"Different syntax, same idea.\", stdout);",
+                "        putchar('\\n');",
                 "    }",
                 "",
                 "    return 0;",
@@ -187,6 +218,90 @@ PRINT "Different syntax, same idea."
                 "print(\"Hello from SMILE!\")",
                 "print(\"Different syntax, same idea.\")"),
             program.PrimaryFile.Content);
+    }
+
+    [TestMethod]
+    public void Friendly_print_generation_preserves_variables_templates_and_concatenation()
+    {
+        Assert.AreEqual(
+            Lines(
+                "using System;",
+                "",
+                "internal static class Program",
+                "{",
+                "    private static void Main()",
+                "    {",
+                "        string Name = \"Sin\";",
+                "        Console.WriteLine(\"\");",
+                "        Console.WriteLine(\"Hello World!\");",
+                "        Console.WriteLine(\"Hello World!\");",
+                "        Console.WriteLine(\"Hello \" + Name + \"!\");",
+                "        Console.WriteLine(\"Hello \" + Name + \"!\");",
+                "        Console.WriteLine(\"Hello \" + Name + \"!\");",
+                "        Console.WriteLine(\"Literal braces: {Name}\");",
+                "        Console.WriteLine(\"A; B; C\");",
+                "    }",
+                "}"),
+            Generate(FriendlyPrintSource, TargetLanguage.CSharp).PrimaryFile.Content);
+
+        Assert.AreEqual(
+            Lines(
+                "let Name = \"Sin\";",
+                "console.log(\"\");",
+                "console.log(\"Hello World!\");",
+                "console.log(\"Hello World!\");",
+                "console.log(\"Hello \" + Name + \"!\");",
+                "console.log(\"Hello \" + Name + \"!\");",
+                "console.log(\"Hello \" + Name + \"!\");",
+                "console.log(\"Literal braces: {Name}\");",
+                "console.log(\"A; B; C\");"),
+            Generate(FriendlyPrintSource, TargetLanguage.JavaScript).PrimaryFile.Content);
+
+        Assert.AreEqual(
+            Lines(
+                "let Name = \"Sin\"",
+                "print(\"\")",
+                "print(\"Hello World!\")",
+                "print(\"Hello World!\")",
+                "print(\"Hello \" + Name + \"!\")",
+                "print(\"Hello \" + Name + \"!\")",
+                "print(\"Hello \" + Name + \"!\")",
+                "print(\"Literal braces: {Name}\")",
+                "print(\"A; B; C\")"),
+            Generate(FriendlyPrintSource, TargetLanguage.Swift).PrimaryFile.Content);
+
+        Assert.AreEqual(
+            Lines(
+                "public final class Program",
+                "{",
+                "    public static void main(String[] args)",
+                "    {",
+                "        String Name = \"Sin\";",
+                "        System.out.println(\"\");",
+                "        System.out.println(\"Hello World!\");",
+                "        System.out.println(\"Hello World!\");",
+                "        System.out.println(\"Hello \" + Name + \"!\");",
+                "        System.out.println(\"Hello \" + Name + \"!\");",
+                "        System.out.println(\"Hello \" + Name + \"!\");",
+                "        System.out.println(\"Literal braces: {Name}\");",
+                "        System.out.println(\"A; B; C\");",
+                "    }",
+                "}"),
+            Generate(FriendlyPrintSource, TargetLanguage.Java).PrimaryFile.Content);
+
+        string c = Generate(FriendlyPrintSource, TargetLanguage.C).PrimaryFile.Content;
+        StringAssert.Contains(c, "const char *Name = \"Sin\";");
+        StringAssert.Contains(c, "fputs(Name, stdout);");
+        StringAssert.Contains(c, "fputs(\"Literal braces: {Name}\", stdout);");
+
+        string objectiveC = Generate(FriendlyPrintSource, TargetLanguage.ObjectiveC).PrimaryFile.Content;
+        StringAssert.Contains(objectiveC, "NSString *Name = @\"Sin\";");
+        StringAssert.Contains(objectiveC, "fputs([Name UTF8String], stdout);");
+
+        string masm = Generate(FriendlyPrintSource, TargetLanguage.MasmX64).PrimaryFile.Content;
+        StringAssert.Contains(masm, "variable0Ptr QWORD ?");
+        StringAssert.Contains(masm, "mov rdx, QWORD PTR [variable0Ptr]");
+        StringAssert.Contains(masm, "print6Segment0 BYTE \"Literal braces: {Name}\"");
     }
 
     [TestMethod]
@@ -231,7 +346,7 @@ PRINT "Different syntax, same idea."
         StringAssert.Contains(Generate(source, TargetLanguage.C).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\"");
         StringAssert.Contains(Generate(source, TargetLanguage.JavaScript).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\"");
         StringAssert.Contains(Generate(source, TargetLanguage.Java).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\"");
-        StringAssert.Contains(Generate(source, TargetLanguage.ObjectiveC).PrimaryFile.Content, "@\"C:\\\\Temp\\\\SMILE\"");
+        StringAssert.Contains(Generate(source, TargetLanguage.ObjectiveC).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\"");
         StringAssert.Contains(Generate(source, TargetLanguage.Swift).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\"");
         StringAssert.Contains(Generate(source, TargetLanguage.MasmX64).PrimaryFile.Content, "\"C:\\Temp\\SMILE\"");
     }
@@ -249,7 +364,7 @@ PRINT "Different syntax, same idea."
             "\"A\\\\B\\000C\\007D\\013E\\tF\\177G\"");
         StringAssert.Contains(
             Generate(source, TargetLanguage.ObjectiveC).PrimaryFile.Content,
-            "@\"A\\\\B\\000C\\007D\\013E\\tF\\177G\"");
+            "\"A\\\\B\\000C\\007D\\013E\\tF\\177G\"");
         StringAssert.Contains(
             Generate(source, TargetLanguage.JavaScript).PrimaryFile.Content,
             "\"A\\\\B\\u0000C\\u0007D\\u000bE\\tF\\u007fG\"");
@@ -261,7 +376,7 @@ PRINT "Different syntax, same idea."
             "\"A\\\\B\\0C\\u{7}D\\u{b}E\\tF\\u{7f}G\"");
         StringAssert.Contains(
             Generate(source, TargetLanguage.MasmX64).PrimaryFile.Content,
-            "\"A\\B\", 0, \"C\", 7, \"D\", 11, \"E\", 9, \"F\", 127, \"G\", 13, 10");
+            "\"A\\B\", 0, \"C\", 7, \"D\", 11, \"E\", 9, \"F\", 127, \"G\"");
     }
 
     private GeneratedProgram Generate(string source, TargetLanguage language)
