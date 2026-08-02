@@ -1,4 +1,5 @@
 using System.IO;
+using System.Reflection;
 using System.Text;
 using System.Windows;
 using Microsoft.Win32;
@@ -24,6 +25,7 @@ PRINT "Different syntax, same idea."
     private string _operationStatus = "Ready";
     private string? _currentFilePath;
     private bool _isBusy;
+    private bool _openGeneratedFolderAfterBuild = true;
 
     public MainWindowViewModel()
     {
@@ -38,6 +40,8 @@ PRINT "Different syntax, same idea."
         TranspileAllCommand = new RelayCommand(TranspileAll, CanStartWork);
         BuildRunVisibleCommand = new AsyncRelayCommand(BuildRunVisibleAsync, CanBuildVisible);
         CancelCommand = new RelayCommand(Cancel, () => IsBusy);
+        ExitCommand = new RelayCommand(Exit, CanStartWork);
+        AboutCommand = new RelayCommand(ShowAbout);
     }
 
     public TargetPaneViewModel Pane1 { get; }
@@ -61,6 +65,10 @@ PRINT "Different syntax, same idea."
     public AsyncRelayCommand BuildRunVisibleCommand { get; }
 
     public RelayCommand CancelCommand { get; }
+
+    public RelayCommand ExitCommand { get; }
+
+    public RelayCommand AboutCommand { get; }
 
     public string SourceText
     {
@@ -103,6 +111,12 @@ PRINT "Different syntax, same idea."
                 RaiseCommandStateChanged();
             }
         }
+    }
+
+    public bool OpenGeneratedFolderAfterBuild
+    {
+        get => _openGeneratedFolderAfterBuild;
+        set => SetProperty(ref _openGeneratedFolderAfterBuild, value);
     }
 
     public async Task InitializeAsync()
@@ -242,6 +256,8 @@ PRINT "Different syntax, same idea."
 
     private async Task BuildRunVisibleAsync()
     {
+        var results = new List<BuildRunResult>();
+
         await RunOperationAsync(
             "Build & Run visible languages",
             async cancellationToken =>
@@ -253,26 +269,41 @@ PRINT "Different syntax, same idea."
                         break;
                     }
 
-                    await BuildRunPaneCoreAsync(pane, cancellationToken).ConfigureAwait(true);
+                    BuildRunResult? result = await BuildRunPaneCoreAsync(pane, cancellationToken).ConfigureAwait(true);
+                    if (result is not null)
+                    {
+                        results.Add(result);
+                    }
                 }
             }).ConfigureAwait(true);
+
+        OpenGeneratedFolderForResults(results);
     }
 
     private async Task BuildRunPaneAsync(TargetPaneViewModel pane)
     {
+        BuildRunResult? result = null;
+
         await RunOperationAsync(
             $"{TargetLanguageInfo.GetDisplayName(pane.Language)} {pane.BuildButtonText}",
-            cancellationToken => BuildRunPaneCoreAsync(pane, cancellationToken)).ConfigureAwait(true);
+            async cancellationToken =>
+            {
+                result = await BuildRunPaneCoreAsync(pane, cancellationToken).ConfigureAwait(true);
+            }).ConfigureAwait(true);
+
+        OpenGeneratedFolderForResults(result is null ? Array.Empty<BuildRunResult>() : new[] { result });
     }
 
-    private async Task BuildRunPaneCoreAsync(TargetPaneViewModel pane, CancellationToken cancellationToken)
+    private async Task<BuildRunResult?> BuildRunPaneCoreAsync(
+        TargetPaneViewModel pane,
+        CancellationToken cancellationToken)
     {
         if (!_generatedPrograms.TryGetValue(pane.Language, out GeneratedProgram? generatedProgram))
         {
             TranspileAll();
             if (!_generatedPrograms.TryGetValue(pane.Language, out generatedProgram))
             {
-                return;
+                return null;
             }
         }
 
@@ -285,6 +316,7 @@ PRINT "Different syntax, same idea."
 
         pane.Status = result.Success ? "Completed" : result.Stage;
         AppendBuildRunResult(result);
+        return result;
     }
 
     private async Task RunOperationAsync(string title, Func<CancellationToken, Task> operation)
@@ -389,6 +421,53 @@ PRINT "Different syntax, same idea."
         }
     }
 
+    private void OpenGeneratedFolderForResults(IReadOnlyList<BuildRunResult> results)
+    {
+        if (!OpenGeneratedFolderAfterBuild)
+        {
+            return;
+        }
+
+        string[] folders = results
+            .Select(result => result.WorkingDirectory)
+            .Where(path => !string.IsNullOrWhiteSpace(path) && Directory.Exists(path))
+            .Select(path => Path.GetFullPath(path!))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (folders.Length == 0)
+        {
+            return;
+        }
+
+        string folderToOpen = GetFolderToOpen(folders);
+        AppendOutput($"Generated code folder: {folderToOpen}");
+        FolderOpener.OpenOrActivate(folderToOpen);
+    }
+
+    private static string GetFolderToOpen(IReadOnlyList<string> folders)
+    {
+        if (folders.Count == 1)
+        {
+            return folders[0];
+        }
+
+        // A visible-languages build creates one temp workspace per language.
+        // Opening their shared parent gives the learner one Explorer window
+        // where all generated-code folders from the operation can be inspected.
+        string? parent = Path.GetDirectoryName(folders[0]);
+        if (!string.IsNullOrWhiteSpace(parent) &&
+            folders.All(folder => string.Equals(
+                Path.GetDirectoryName(folder),
+                parent,
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            return parent;
+        }
+
+        return folders[^1];
+    }
+
     private bool CanStartWork() => !IsBusy;
 
     private bool CanBuildVisible() =>
@@ -403,6 +482,7 @@ PRINT "Different syntax, same idea."
         TranspileAllCommand.RaiseCanExecuteChanged();
         BuildRunVisibleCommand.RaiseCanExecuteChanged();
         CancelCommand.RaiseCanExecuteChanged();
+        ExitCommand.RaiseCanExecuteChanged();
 
         foreach (TargetPaneViewModel pane in Panes)
         {
@@ -467,5 +547,23 @@ PRINT "Different syntax, same idea."
         }
 
         OutputText += Environment.NewLine + Environment.NewLine + text;
+    }
+
+    private static void Exit() =>
+        Application.Current.Shutdown();
+
+    private static void ShowAbout()
+    {
+        Assembly assembly = typeof(MainWindowViewModel).Assembly;
+        string version =
+            assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ??
+            assembly.GetName().Version?.ToString() ??
+            "unknown";
+
+        MessageBox.Show(
+            $"SMILE{Environment.NewLine}Version {version}{Environment.NewLine}{Environment.NewLine}Educational BASIC-inspired multi-target transpiler.",
+            "About SMILE",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
     }
 }

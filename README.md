@@ -184,7 +184,9 @@ PRINT "Hello from SMILE!"
 PRINT "Different syntax, same idea."
 ```
 
-The top-left pane is editable SMILE source. The other three panes are read-only generated targets. They default to C#, Assembly - Windows x64 MASM, and C. Each generated pane can switch between C#, C, MASM x64, JavaScript, and Java.
+The desktop app opens maximized. The top-left pane is editable SMILE source. The other three panes are read-only generated targets. They default to C#, Assembly - Windows x64 MASM, and C. Each generated pane can switch between C#, C, MASM x64, JavaScript, and Java.
+
+![SMILE desktop app in maximized state](Requirements/Progress/2026-08-02-day-1-2-smile-desktop.png)
 
 Main actions:
 
@@ -195,10 +197,15 @@ Main actions:
 - Transpile All
 - Build & Run Visible Languages
 - Cancel while work is active
+- Open Generated Folder toggle
+- File menu for New, Open `.smile`, Save, Save As, and Exit
+- Help menu with About SMILE and the current desktop build version
 
 Each generated pane supports Copy, Save Source, and Build & Run. JavaScript runs directly with Node.js, so its button says Run.
 
-Diagnostics, build output, program output, exit code, duration, timeout, cancellation, and missing-tool messages appear in the output area.
+Diagnostics, build output, program output, exit code, duration, timeout, cancellation, and missing-tool messages appear in the output area. The output area scrolls to the newest text as build/run messages are appended.
+
+When Open Generated Folder is enabled, SMILE opens the generated-code workspace after a pane build/run. For Build & Run Visible Languages, it opens the shared SMILE run folder so the generated-code workspaces for all visible targets can be inspected. Generated workspace folder names end with the target language so learners can quickly identify them. If that folder is already open, SMILE brings the existing Explorer window to the front instead of opening a duplicate.
 
 ## CLI Developer Harness
 
@@ -274,7 +281,7 @@ Source -> Lexer -> Parser -> Syntax Tree -> Target Generator -> Generated Files
 
 `SMILE.Engine` owns the lexer, parser, diagnostics, AST, transpiler facade, and target generators. `SMILE.Toolchains` owns detection, temporary workspaces, async process execution, cancellation, timeouts, build, and run. `SMILE.Cli` and `SMILE.Desktop` reuse both projects.
 
-SMILE-owned build/output artifacts older than 2 days may be cleaned from known generated locations such as `bin`, `obj`, `out`, and `%TEMP%\SMILE\Runs`.
+SMILE-owned build/output artifacts older than 1 day may be cleaned from known generated locations such as `bin`, `obj`, `out`, and `%TEMP%\SMILE\Runs`.
 
 ## Current Limitations
 

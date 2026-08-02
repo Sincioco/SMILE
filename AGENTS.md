@@ -2,8 +2,9 @@
 
 - SMILE is a public repo, so write detailed commit messages that help people follow its progression.
 - Whenever Codex creates a commit for this project, prefix the commit subject with `Sin and Codex:`.
-- When there is no unresolved work left in the queue and all relevant tests are green, Codex should commit and push the intentional changes to the current branch.
-- Do not wait for a separate push request in that situation. The project is currently single-developer, and a bad final push can be reverted with a later commit.
+- Do not commit or push unless Sin explicitly asks for it.
+- When Sin says to "commit all files" and push, interpret that as staging and committing all current unstaged and untracked repo changes, while still respecting `.gitignore`.
+- Never include build/output folders or generated build/output files in commits, even when committing all files. Do not force-add ignored artifacts.
 - Never force-push, never discard user work, and do not commit unrelated local changes.
 
 ## Guiding Principles
@@ -22,7 +23,7 @@
 
 ## Build Artifact Cleanup
 
-- Codex has permission to permanently delete SMILE-owned build and output artifacts older than 2 days when they are discovered.
+- Codex has permission to permanently delete SMILE-owned build and output artifacts older than 1 day when they are discovered.
 - This permission applies only to known generated artifact locations such as `bin`, `obj`, `out`, and `%TEMP%\SMILE\Runs`.
 - Before deleting recursively, verify resolved absolute paths are inside the SMILE repository or the SMILE-owned temporary root. Never delete outside those roots.
 
@@ -32,3 +33,8 @@
 - Every feature, command, target language, toolchain, UI behavior, build/run behavior, prerequisite, architecture change, renamed path, changed limitation, or changed generated output must update `README.md` in the same commit.
 - Documentation must describe the code that actually exists after the change. Never present a roadmap item as implemented.
 - When a change genuinely requires no README update, explain why in the commit or pull-request summary.
+
+## Versioning
+
+- When adding a new SMILE language keyword or reaching an important project milestone, Codex may increment the SMILE build/version number as appropriate.
+- Keep About SMILE and documented version references aligned with the project file version.

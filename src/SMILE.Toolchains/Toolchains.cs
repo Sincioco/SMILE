@@ -109,7 +109,11 @@ public abstract class ToolchainBase : IToolchain
 
         string workspace = Path.Combine(
             root,
-            DateTime.UtcNow.ToString("yyyyMMddHHmmssfff") + "-" + Guid.NewGuid().ToString("N"));
+            DateTime.UtcNow.ToString("yyyyMMddHHmmssfff") +
+            "-" +
+            Guid.NewGuid().ToString("N") +
+            " - " +
+            GetSafeWorkspaceLanguageName(generatedProgram.Language));
         Directory.CreateDirectory(workspace);
 
         string workspaceFullPath = Path.GetFullPath(workspace);
@@ -207,13 +211,26 @@ public abstract class ToolchainBase : IToolchain
     protected static string QuoteForCmd(string value) =>
         "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
 
+    private static string GetSafeWorkspaceLanguageName(TargetLanguage language)
+    {
+        string displayName = TargetLanguageInfo.GetDisplayName(language);
+        char[] invalidChars = Path.GetInvalidFileNameChars();
+
+        foreach (char invalidChar in invalidChars)
+        {
+            displayName = displayName.Replace(invalidChar, '-');
+        }
+
+        return displayName;
+    }
+
     private static void CleanOldWorkspaces(string root)
     {
         string rootFullPath = Path.GetFullPath(root);
         // Keep temporary compiler output from piling up between experiments.
-        // Two days gives enough room for troubleshooting without letting build
+        // One day gives enough room for troubleshooting without letting build
         // folders quietly grow into multi-gigabyte clutter.
-        var cutoff = DateTime.UtcNow.AddDays(-2);
+        var cutoff = DateTime.UtcNow.AddDays(-1);
 
         foreach (string directory in Directory.EnumerateDirectories(rootFullPath))
         {

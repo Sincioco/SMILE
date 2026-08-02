@@ -9,7 +9,8 @@
         Height="820"
         Width="1180"
         MinHeight="620"
-        MinWidth="900">
+        MinWidth="900"
+        WindowState="Maximized">
     <Window.Resources>
         <Style TargetType="Button">
             <Setter Property="Margin" Value="0,0,6,0" />
@@ -72,12 +73,33 @@
     <Grid Margin="10">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="6" />
             <RowDefinition Height="170" />
         </Grid.RowDefinitions>
 
-        <DockPanel Grid.Row="0" LastChildFill="False" Margin="0,0,0,8">
+        <Menu Grid.Row="0" Margin="-10,-10,-10,8">
+            <MenuItem Header="_File">
+                <MenuItem Header="_New" Command="{Binding NewCommand}" />
+                <MenuItem Header="_Open .smile..." Command="{Binding OpenCommand}" />
+                <Separator />
+                <MenuItem Header="_Save" Command="{Binding SaveCommand}" />
+                <MenuItem Header="Save _As..." Command="{Binding SaveAsCommand}" />
+                <Separator />
+                <MenuItem Header="E_xit" Command="{Binding ExitCommand}" />
+            </MenuItem>
+            <MenuItem Header="_Options">
+                <MenuItem Header="_Open Generated Folder After Build"
+                          IsCheckable="True"
+                          IsChecked="{Binding OpenGeneratedFolderAfterBuild}" />
+            </MenuItem>
+            <MenuItem Header="_Help">
+                <MenuItem Header="_About SMILE" Command="{Binding AboutCommand}" />
+            </MenuItem>
+        </Menu>
+
+        <DockPanel Grid.Row="1" LastChildFill="False" Margin="0,0,0,8">
             <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
                 <Button Content="New" Command="{Binding NewCommand}" />
                 <Button Content="Open" Command="{Binding OpenCommand}" />
@@ -86,6 +108,10 @@
                 <Button Content="Transpile All" Command="{Binding TranspileAllCommand}" />
                 <Button Content="Build &amp; Run Visible Languages" Command="{Binding BuildRunVisibleCommand}" />
                 <Button Content="Cancel" Command="{Binding CancelCommand}" />
+                <CheckBox Content="Open Generated Folder"
+                          IsChecked="{Binding OpenGeneratedFolderAfterBuild}"
+                          VerticalAlignment="Center"
+                          Margin="8,0,0,0" />
             </StackPanel>
 
             <TextBlock DockPanel.Dock="Right"
@@ -94,7 +120,7 @@
                        VerticalAlignment="Center" />
         </DockPanel>
 
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" MinWidth="320" />
                 <ColumnDefinition Width="6" />
@@ -138,12 +164,12 @@
             <ContentControl Grid.Row="2" Grid.Column="2" Content="{Binding Pane3}" />
         </Grid>
 
-        <GridSplitter Grid.Row="2"
+        <GridSplitter Grid.Row="3"
                       Height="6"
                       HorizontalAlignment="Stretch"
                       VerticalAlignment="Stretch" />
 
-        <Border Grid.Row="3" BorderBrush="#CFCFCF" BorderThickness="1" Padding="8">
+        <Border Grid.Row="4" BorderBrush="#CFCFCF" BorderThickness="1" Padding="8">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -152,10 +178,12 @@
                 <TextBlock Text="Diagnostics, Build, and Program Output"
                            FontWeight="SemiBold"
                            Margin="0,0,0,6" />
-                <TextBox Grid.Row="1"
+                <TextBox x:Name="OutputTextBox"
+                         Grid.Row="1"
                          Text="{Binding OutputText}"
                          IsReadOnly="True"
-                         TextWrapping="NoWrap" />
+                         TextWrapping="NoWrap"
+                         TextChanged="OutputTextBox_TextChanged" />
             </Grid>
         </Border>
     </Grid>

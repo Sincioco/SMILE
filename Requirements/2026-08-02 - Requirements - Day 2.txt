@@ -1,1 +1,35 @@
-Daily requirements, designs, sketches, diagrams, and ideas for Day 2.
+AI Instructions
+--------------
+Design and Coding Methodology:
+	KISS (Keep It Simple Stupid) - The simpler the better.  Avoid over-engineering.  Avoid unnecessary complexity.  Avoid unnecessary features.  Avoid unnecessary bells and whistles.  Avoid unnecessary abstractions.  Avoid unnecessary patterns.  Avoid unnecessary frameworks.  Avoid unnecessary libraries.  Avoid unnecessary dependencies.  Avoid unnecessary code.  Avoid unnecessary files.  Avoid unnecessary folders.  Avoid unnecessary classes.  Avoid unnecessary methods.  Avoid unnecessary variables.
+
+	KISS v2 (Keep It Speedy Sin) "The Sin Way" - Follow the original KISS method but with the mindset of creating a solution that gives the best possible performance both in terms of user-experience (first priority) and functional performance (second priority).  The user-experience may take precedence over the functional performance for any task.  For example, if perform a long-running task such as recalculating the positions of objects on screen (think Diagram 1), it should not lock the thread the user is on and give the impression that the application is stuck or sluggish.  The actual work, the functional part that does the calculations and moving objects on the screen, may be done slower, in chunks, or in a background / unobtrusive way, in order to give the user the best user-experience and responsiveness.  Never sacrifice performance for simplicity.  Speed is King!  But always design solutions and write code, that respect the user's experience and the application's responsiveness, over pure performance that often results in a negative user experience in the end.  If the two directions are in conflict, I will make it simple:  pick the user-experience first and just display a gauge to perform long running tasks in the background, but never lock the user-interface or render partial re-draws of the UI.  "Perceived Speed" from the user's point of view (meaning responsiveness) is King!
+
+Testing:
+	In addition to your normal testing, be sure to inform me if I have to recompile the .Net portion of the project or just Press Ctrl + F5 on the browser to reload to see the latest changes.  If making CSS / image changes, ensure that I will encounter no caching issue when testing in the browser.  Do not test the 3D About flyby unless you made changes to it.
+
+Environment:
+	You are in a dev machine.  You can drop and re-create the database as you see fit, especially when testing migrations scripts.  You don't need to preseve data in the backend or frontend.  You can also clear preferences, local storage settings and any cache as you see fit.
+
+Database:
+	If making changes to the database, that affects existing users see database-versioning.md under the docs folder.
+
+Commits:
+	SMILE is a public repo, write a detailed commit message so people can follow its progression.  Prefix all of your commits with "Sin and Codex: ".
+
+Task Completion:
+	As you complete each task and you are ready for me to test it, highlight them in bold and echo the task and tell me when it is ready for testing.  And when all of your tasks are completed, when there is nothing left in the prompt queue, re-display all the tasks that are ready for me to test in bold.
+
+Tasks
+-----
+1.) When SMILE launches, default the window to its maximize state.
+2.) As it is Building and Running, I want to see the Output window scroll.
+3.) After the Build process is done, can you open the folder where the resulting code is for that (or all) languages.  If a folder was already opened, re-use the previous folder but just bring it to the forefront.
+4.) Have an option (or a menu option) where #3 can be toggled on/off.
+5.) We want the user to be able to inspect the generated code for the languages as a part of their learning.
+
+6.) Can you add File menu option so that the user can save/load their SMILE code?  The file extension can be .smile.
+7.) Put an About menu option also and update it with the correct build version of SMILE as we progress.
+8.) Your build runs folder generate folders with names like this "20260802002305394-5b26ce70b98a4a8180b8246959341d26", can you also put a " - {language}" so the user has some sort of clue which programming language that folder is for?
+9.) Let's make it a permanent rule that you clean up your build folder after 1 day.  Delete anything older than 1 day old.
+10.) Is it possible to take a screenshot of SMILE as it is right now and make that be part of Day 1-2 progress and have that screenshot be featured in the README.md file?

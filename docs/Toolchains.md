@@ -58,12 +58,14 @@ java Program
 Each build/run writes generated files to:
 
 ```text
-%TEMP%\SMILE\Runs\<unique-id>\
+%TEMP%\SMILE\Runs\<unique-id> - <language>\
 ```
 
 SMILE never builds generated targets inside the repository.
 
-SMILE-owned temporary run workspaces older than 2 days may be deleted automatically.
+The language suffix helps learners identify which generated-code workspace belongs to each target.
+
+SMILE-owned temporary run workspaces older than 1 day may be deleted automatically.
 
 ## Timeout And Cancellation
 
