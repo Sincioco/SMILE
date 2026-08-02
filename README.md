@@ -249,6 +249,7 @@ AGENTS.md
 .editorconfig
 .gitignore
 examples/
+Requirements/
 docs/
 src/
   SMILE.Engine/
@@ -258,6 +259,8 @@ src/
 tests/
   SMILE.Tests/
 ```
+
+`Requirements/` stores daily project instructions and can also hold future designs, sketches, diagrams, and ideas.
 
 ## Architecture
 
