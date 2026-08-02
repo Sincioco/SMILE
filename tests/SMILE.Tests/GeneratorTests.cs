@@ -23,6 +23,17 @@ PRINT Literal braces: {{Name}}
 PRINT A; B; C
 """;
 
+    private const string PrimaryFriendlyPrintSource = """
+LET Name = "Sin"
+
+PRINT
+PRINT "Hello World!"
+PRINT Hello World!
+PRINT Hello {Name}!
+PRINT $"Hello {Name}!"
+PRINT "Hello " + Name + "!"
+""";
+
     private readonly SmileTranspiler _transpiler = new();
 
     [TestMethod]
@@ -60,9 +71,9 @@ PRINT A; B; C
     }
 
     [TestMethod]
-    public void C_generator_produces_minimal_puts_program()
+    public void C_generator_produces_idiomatic_printf_program()
     {
-        GeneratedProgram program = Generate(SampleSource, TargetLanguage.C);
+        GeneratedProgram program = Generate(PrimaryFriendlyPrintSource, TargetLanguage.C);
 
         Assert.AreEqual("Program.c", program.PrimaryFile.RelativePath);
         Assert.AreEqual(
@@ -71,13 +82,22 @@ PRINT A; B; C
                 "",
                 "int main(void)",
                 "{",
-                "    fputs(\"Hello from SMILE!\", stdout);",
-                "    putchar('\\n');",
-                "    fputs(\"Different syntax, same idea.\", stdout);",
-                "    putchar('\\n');",
+                "    const char *Name = \"Sin\";",
+                "",
+                "    printf(\"\\n\");",
+                "    printf(\"Hello World!\\n\");",
+                "    printf(\"Hello World!\\n\");",
+                "    printf(\"Hello %s!\\n\", Name);",
+                "    printf(\"Hello %s!\\n\", Name);",
+                "    printf(\"Hello %s!\\n\", Name);",
+                "",
                 "    return 0;",
                 "}"),
             program.PrimaryFile.Content);
+
+        Assert.AreEqual(6, CountOccurrences(program.PrimaryFile.Content, "printf("));
+        Assert.IsFalse(program.PrimaryFile.Content.Contains("fputs(", StringComparison.Ordinal));
+        Assert.IsFalse(program.PrimaryFile.Content.Contains("putchar(", StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -196,10 +216,9 @@ PRINT A; B; C
                 "{",
                 "    @autoreleasepool",
                 "    {",
-                "        fputs(\"Hello from SMILE!\", stdout);",
-                "        putchar('\\n');",
-                "        fputs(\"Different syntax, same idea.\", stdout);",
-                "        putchar('\\n');",
+                "        printf(\"Hello from SMILE!\\n\");",
+                "        printf(\"Different syntax, same idea.\\n\");",
+                "",
                 "    }",
                 "",
                 "    return 0;",
@@ -291,12 +310,16 @@ PRINT A; B; C
 
         string c = Generate(FriendlyPrintSource, TargetLanguage.C).PrimaryFile.Content;
         StringAssert.Contains(c, "const char *Name = \"Sin\";");
-        StringAssert.Contains(c, "fputs(Name, stdout);");
-        StringAssert.Contains(c, "fputs(\"Literal braces: {Name}\", stdout);");
+        StringAssert.Contains(c, "printf(\"Hello %s!\\n\", Name);");
+        StringAssert.Contains(c, "printf(\"Literal braces: {Name}\\n\");");
+        Assert.IsFalse(c.Contains("fputs(", StringComparison.Ordinal));
+        Assert.IsFalse(c.Contains("putchar(", StringComparison.Ordinal));
 
         string objectiveC = Generate(FriendlyPrintSource, TargetLanguage.ObjectiveC).PrimaryFile.Content;
         StringAssert.Contains(objectiveC, "NSString *Name = @\"Sin\";");
-        StringAssert.Contains(objectiveC, "fputs([Name UTF8String], stdout);");
+        StringAssert.Contains(objectiveC, "printf(\"Hello %s!\\n\", [Name UTF8String]);");
+        Assert.IsFalse(objectiveC.Contains("NSLog", StringComparison.Ordinal));
+        Assert.IsFalse(objectiveC.Contains("fputs(", StringComparison.Ordinal));
 
         string masm = Generate(FriendlyPrintSource, TargetLanguage.MasmX64).PrimaryFile.Content;
         StringAssert.Contains(masm, "variable0Ptr QWORD ?");
@@ -485,6 +508,88 @@ PRINT ""
     }
 
     [TestMethod]
+    public void C_generator_escapes_printf_percent_literals_and_preserves_variable_arguments()
+    {
+        string percentOnly = Generate("PRINT Progress: 100%", TargetLanguage.C).PrimaryFile.Content;
+        StringAssert.Contains(percentOnly, "printf(\"Progress: 100%%\\n\");");
+
+        string percentWithVariable = Generate("""
+LET Name = "Sin"
+PRINT {Name} is 100% ready.
+""", TargetLanguage.C).PrimaryFile.Content;
+        StringAssert.Contains(percentWithVariable, "printf(\"%s is 100%% ready.\\n\", Name);");
+        Assert.IsFalse(percentWithVariable.Contains("printf(Name", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void C_generator_preserves_ordered_adjacent_and_repeated_printf_arguments()
+    {
+        string multiple = Generate("""
+LET FirstName = "Sin"
+LET LastName = "Cioco"
+PRINT $"{FirstName} {LastName}"
+""", TargetLanguage.C).PrimaryFile.Content;
+        StringAssert.Contains(multiple, "printf(\"%s %s\\n\", FirstName, LastName);");
+
+        string adjacent = Generate("""
+LET A = "A"
+LET B = "B"
+PRINT $"{A}{B}{A}"
+""", TargetLanguage.C).PrimaryFile.Content;
+        StringAssert.Contains(adjacent, "printf(\"%s%s%s\\n\", A, B, A);");
+    }
+
+    [TestMethod]
+    public void C_generator_preserves_literal_and_ordinary_quoted_braces_without_arguments()
+    {
+        string braces = Generate("""
+LET Name = "Sin"
+PRINT Literal braces: {{Name}}
+PRINT $"Literal braces: {{Name}}"
+PRINT "Hello {Name}!"
+""", TargetLanguage.C).PrimaryFile.Content;
+
+        Assert.AreEqual(3, CountOccurrences(braces, "printf("));
+        Assert.AreEqual(0, CountOccurrences(braces, ", Name);"));
+        StringAssert.Contains(braces, "printf(\"Literal braces: {Name}\\n\");");
+        StringAssert.Contains(braces, "printf(\"Hello {Name}!\\n\");");
+    }
+
+    [TestMethod]
+    public void C_generator_uses_printf_for_blank_and_empty_string_prints()
+    {
+        GeneratedProgram program = Generate("""
+PRINT
+PRINT ""
+""", TargetLanguage.C);
+
+        Assert.AreEqual(2, CountOccurrences(program.PrimaryFile.Content, "printf(\"\\n\");"));
+        Assert.IsFalse(program.PrimaryFile.Content.Contains("putchar(", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void Objective_c_generator_uses_idiomatic_printf_for_print()
+    {
+        string source = """
+LET Name = "Sin"
+
+PRINT
+PRINT Hello {Name}!
+PRINT Progress: 100%
+""";
+
+        string objectiveC = Generate(source, TargetLanguage.ObjectiveC).PrimaryFile.Content;
+
+        Assert.AreEqual(3, CountOccurrences(objectiveC, "printf("));
+        StringAssert.Contains(objectiveC, "printf(\"\\n\");");
+        StringAssert.Contains(objectiveC, "printf(\"Hello %s!\\n\", [Name UTF8String]);");
+        StringAssert.Contains(objectiveC, "printf(\"Progress: 100%%\\n\");");
+        Assert.IsFalse(objectiveC.Contains("NSLog", StringComparison.Ordinal));
+        Assert.IsFalse(objectiveC.Contains("fputs(", StringComparison.Ordinal));
+        Assert.IsFalse(objectiveC.Contains("putchar(", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     [DataRow(TargetLanguage.CSharp)]
     [DataRow(TargetLanguage.C)]
     [DataRow(TargetLanguage.MasmX64)]
@@ -523,10 +628,10 @@ PRINT ""
         const string source = "PRINT \"C:\\Temp\\SMILE\"";
 
         StringAssert.Contains(Generate(source, TargetLanguage.CSharp).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\"");
-        StringAssert.Contains(Generate(source, TargetLanguage.C).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\"");
+        StringAssert.Contains(Generate(source, TargetLanguage.C).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\\n\"");
         StringAssert.Contains(Generate(source, TargetLanguage.JavaScript).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\"");
         StringAssert.Contains(Generate(source, TargetLanguage.Java).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\"");
-        StringAssert.Contains(Generate(source, TargetLanguage.ObjectiveC).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\"");
+        StringAssert.Contains(Generate(source, TargetLanguage.ObjectiveC).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\\n\"");
         StringAssert.Contains(Generate(source, TargetLanguage.Swift).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\"");
         StringAssert.Contains(Generate(source, TargetLanguage.MasmX64).PrimaryFile.Content, "\"C:\\Temp\\SMILE\"");
     }
@@ -541,10 +646,10 @@ PRINT ""
             "\"A\\\\B\\0C\\aD\\vE\\tF\\u007fG\"");
         StringAssert.Contains(
             Generate(source, TargetLanguage.C).PrimaryFile.Content,
-            "\"A\\\\B\\000C\\007D\\013E\\tF\\177G\"");
+            "\"A\\\\B\\000C\\007D\\013E\\tF\\177G\\n\"");
         StringAssert.Contains(
             Generate(source, TargetLanguage.ObjectiveC).PrimaryFile.Content,
-            "\"A\\\\B\\000C\\007D\\013E\\tF\\177G\"");
+            "\"A\\\\B\\000C\\007D\\013E\\tF\\177G\\n\"");
         StringAssert.Contains(
             Generate(source, TargetLanguage.JavaScript).PrimaryFile.Content,
             "\"A\\\\B\\u0000C\\u0007D\\u000bE\\tF\\u007fG\"");

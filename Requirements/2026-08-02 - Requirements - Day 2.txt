@@ -87,3 +87,108 @@ Codex Completion Notes
 **26 ready for testing:** SMILE now preserves PRINT expression intent in generated code. Friendly raw interpolation and explicit `$"..."` interpolation generate native interpolation in C#, JavaScript, and Swift; explicit `"..." + Name` concatenation remains concatenation; Java uses concatenation as the interpolation fallback; and C, Objective-C, and MASM still use equivalent segment output.
 
 Validation completed locally: `dotnet restore SMILE.sln`, Debug build/tests, Release build/tests, CLI generation for all seven targets, and CLI compile/run for C#, C, MASM x64, JavaScript, and Java with identical normalized runtime output.
+
+
+Sin's Review of Codex's Work So Far with ChatGPT
+------------------------------------------------
+Codex just committed the latest code in GitHub.com/Sincioco/smile .
+
+Examine the SMILE source code below and the target languages (C# and C below).  The C# one looks close to the way I would write the code manually so don't make any changes there.  But the C version of the code does not look like the kind of code a normal C developer would write.  While syntactically correct, I'm sure it compiles and runs fine, it's not conventional.  Is it possible for SMILE to generate a "better looking" more "human natural" code that a typical human being / developer would write?  Again the C# version is fine, it's the C version of the code that I question.  I prefer a more idiomatic version (see below).
+
+And would it be possible to make this a general rule across all the target languages? I would always prefer: Generated target code should be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write.
+
+------------------------
+SMILE Code
+------------------------
+
+LET Name = "Sin"
+
+PRINT
+PRINT "Hello World!"
+PRINT Hello World!
+PRINT Hello {Name}!
+PRINT $"Hello {Name}!"
+PRINT "Hello " + Name + "!"
+
+
+------------------------
+C# Code
+------------------------
+
+using System;
+
+internal static class Program
+{
+    private static void Main()
+    {
+        string Name = "Sin";
+        Console.WriteLine();
+        Console.WriteLine("Hello World!");
+        Console.WriteLine("Hello World!");
+        Console.WriteLine($"Hello {Name}!");
+        Console.WriteLine($"Hello {Name}!");
+        Console.WriteLine("Hello " + Name + "!");
+    }
+}
+
+------------------------
+C Code - What SMILE Generates Right now
+------------------------
+
+#include <stdio.h>
+
+int main(void)
+{
+    const char *Name = "Sin";
+    putchar('\n');
+    fputs("Hello World!", stdout);
+    putchar('\n');
+    fputs("Hello World!", stdout);
+    putchar('\n');
+    fputs("Hello ", stdout);
+    fputs(Name, stdout);
+    fputs("!", stdout);
+    putchar('\n');
+    fputs("Hello ", stdout);
+    fputs(Name, stdout);
+    fputs("!", stdout);
+    putchar('\n');
+    fputs("Hello ", stdout);
+    fputs(Name, stdout);
+    fputs("!", stdout);
+    putchar('\n');
+    return 0;
+}
+
+
+
+------------------------
+C Code - Idiomatic Version (preferred version)
+------------------------
+#include <stdio.h>
+
+int main(void)
+{
+    const char *name = "Sin";
+
+    printf("\n");
+    printf("Hello World!\n");
+    printf("Hello World!\n");
+
+    printf("Hello %s!\n", name);
+    printf("Hello %s!\n", name);
+    printf("Hello %s!\n", name);
+
+    return 0;
+}
+
+
+To Codex
+--------
+27.) Remember this and make this a general rule for the project.  I would always prefer: Generated target code should be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write.
+
+Codex Completion Notes
+----------------------
+**27 ready for testing:** SMILE now records this as a project-wide target generation rule. C and Objective-C PRINT generation uses one safe `printf` statement per SMILE `PRINT` where practical, while C#, JavaScript, Swift, Java, and MASM continue to preserve SMILE behavior in the clearest natural form available for each destination language. SMILE preserves user-authored identifier spelling in generated target code.
+
+28.) Also the screenshot of the README.md file in the github repo of SMILE is still the original one....it still not updated.  Your last attempt to update it did not appear to have worked.

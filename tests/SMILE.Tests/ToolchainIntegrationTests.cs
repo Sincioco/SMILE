@@ -135,6 +135,87 @@ PRINT A; B; C
         Assert.IsTrue(outputs.Values.All(output => output == expected));
     }
 
+    [TestMethod]
+    public async Task Installed_targets_run_idiomatic_generation_acceptance_programs()
+    {
+        (string Source, string ExpectedOutput)[] cases =
+        {
+            (
+                """
+LET Name = "Sin"
+
+PRINT
+PRINT "Hello World!"
+PRINT Hello World!
+PRINT Hello {Name}!
+PRINT $"Hello {Name}!"
+PRINT "Hello " + Name + "!"
+""",
+                "\nHello World!\nHello World!\nHello Sin!\nHello Sin!\nHello Sin!\n"),
+            (
+                """
+LET Name = "Sin"
+
+PRINT Progress: 100%
+PRINT {Name} is 100% ready.
+""",
+                "Progress: 100%\nSin is 100% ready.\n"),
+            (
+                """
+LET FirstName = "Sin"
+LET LastName = "Cioco"
+
+PRINT $"{FirstName} {LastName}"
+PRINT $"{FirstName}{LastName}{FirstName}"
+""",
+                "Sin Cioco\nSinCiocoSin\n"),
+            (
+                """
+LET Name = "Sin"
+
+PRINT Literal braces: {{Name}}
+PRINT $"Literal braces: {{Name}}"
+PRINT "Literal braces: {Name}"
+""",
+                "Literal braces: {Name}\nLiteral braces: {Name}\nLiteral braces: {Name}\n")
+        };
+
+        TargetLanguage[] runnableTargets =
+        {
+            TargetLanguage.CSharp,
+            TargetLanguage.C,
+            TargetLanguage.MasmX64,
+            TargetLanguage.JavaScript,
+            TargetLanguage.Java
+        };
+
+        int executed = 0;
+        foreach ((string source, string expectedOutput) in cases)
+        {
+            foreach (TargetLanguage language in runnableTargets)
+            {
+                IToolchain toolchain = _toolchains.Get(language);
+                ToolchainStatus status = await toolchain.DetectAsync(CancellationToken.None);
+                if (!status.IsAvailable)
+                {
+                    continue;
+                }
+
+                GeneratedProgram program = _transpiler.Transpile(source, language).GeneratedProgram!;
+                BuildRunResult result = await toolchain.BuildAndRunAsync(program, CancellationToken.None);
+
+                Assert.IsTrue(result.Success, result.BuildOutput + Environment.NewLine + result.StandardError);
+                Assert.AreEqual(Normalize(expectedOutput), Normalize(result.StandardOutput));
+                executed++;
+            }
+        }
+
+        if (executed == 0)
+        {
+            Assert.Inconclusive("No runnable target toolchains are installed.");
+        }
+    }
+
     private static string Normalize(string text) =>
         text.Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd('\n');
 

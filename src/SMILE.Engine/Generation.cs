@@ -174,18 +174,36 @@ internal sealed class CCodeGenerator : ICodeGenerator
         source.AppendLine("int main(void)");
         source.AppendLine("{");
 
+        bool emittedDeclaration = false;
+        bool emittedExecutable = false;
+        bool emittedBodyStatement = false;
+
         foreach (BoundStatement statement in program.Statements)
         {
             switch (statement)
             {
                 case BoundLetStatement let:
                     source.AppendLine($"    const char *{let.Variable.Name} = {TargetEscapes.CString(GetLiteralInitializer(let))};");
+                    emittedDeclaration = true;
+                    emittedBodyStatement = true;
                     break;
 
                 case BoundPrintStatement print:
-                    AppendCPrint(source, print.Value);
+                    if (!emittedExecutable && emittedDeclaration)
+                    {
+                        source.AppendLine();
+                    }
+
+                    AppendCPrint(source, print);
+                    emittedExecutable = true;
+                    emittedBodyStatement = true;
                     break;
             }
+        }
+
+        if (emittedBodyStatement)
+        {
+            source.AppendLine();
         }
 
         source.AppendLine("    return 0;");
@@ -196,30 +214,25 @@ internal sealed class CCodeGenerator : ICodeGenerator
             new[] { new GeneratedFile("Program.c", TextOutput.EnsureOneTrailingNewLine(source.ToString()), IsPrimary: true) });
     }
 
-    private static void AppendCPrint(StringBuilder source, BoundExpression expression)
+    private static void AppendCPrint(StringBuilder source, BoundPrintStatement print)
     {
-        IReadOnlyList<PrintSegment> segments = BoundStringExpression.FlattenForOutput(expression);
-        if (segments.Count == 0)
+        CPrintfPlan plan = CPrintfPlan.FromPrint(print, variable => variable.Name);
+        AppendPrintfCall(source, "    ", plan);
+    }
+
+    internal static void AppendPrintfCall(StringBuilder source, string indent, CPrintfPlan plan)
+    {
+        source.Append(indent);
+        source.Append("printf(");
+        source.Append(TargetEscapes.CPrintfFormatString(plan.FormatText));
+
+        foreach (string argument in plan.Arguments)
         {
-            source.AppendLine("    putchar('\\n');");
-            return;
+            source.Append(", ");
+            source.Append(argument);
         }
 
-        foreach (PrintSegment segment in segments)
-        {
-            switch (segment)
-            {
-                case LiteralPrintSegment literal:
-                    source.AppendLine($"    fputs({TargetEscapes.CString(literal.Text)}, stdout);");
-                    break;
-
-                case VariablePrintSegment variable:
-                    source.AppendLine($"    fputs({variable.Variable.Name}, stdout);");
-                    break;
-            }
-        }
-
-        source.AppendLine("    putchar('\\n');");
+        source.AppendLine(");");
     }
 
     private static string GetLiteralInitializer(BoundLetStatement let) =>
@@ -495,18 +508,36 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
         source.AppendLine("    @autoreleasepool");
         source.AppendLine("    {");
 
+        bool emittedDeclaration = false;
+        bool emittedExecutable = false;
+        bool emittedBodyStatement = false;
+
         foreach (BoundStatement statement in program.Statements)
         {
             switch (statement)
             {
                 case BoundLetStatement let:
                     source.AppendLine($"        NSString *{let.Variable.Name} = {TargetEscapes.ObjectiveCString(GetLiteralInitializer(let))};");
+                    emittedDeclaration = true;
+                    emittedBodyStatement = true;
                     break;
 
                 case BoundPrintStatement print:
-                    AppendObjectiveCPrint(source, print.Value);
+                    if (!emittedExecutable && emittedDeclaration)
+                    {
+                        source.AppendLine();
+                    }
+
+                    AppendObjectiveCPrint(source, print);
+                    emittedExecutable = true;
+                    emittedBodyStatement = true;
                     break;
             }
+        }
+
+        if (emittedBodyStatement)
+        {
+            source.AppendLine();
         }
 
         source.AppendLine("    }");
@@ -519,30 +550,10 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
             new[] { new GeneratedFile("Program.m", TextOutput.EnsureOneTrailingNewLine(source.ToString()), IsPrimary: true) });
     }
 
-    private static void AppendObjectiveCPrint(StringBuilder source, BoundExpression expression)
+    private static void AppendObjectiveCPrint(StringBuilder source, BoundPrintStatement print)
     {
-        IReadOnlyList<PrintSegment> segments = BoundStringExpression.FlattenForOutput(expression);
-        if (segments.Count == 0)
-        {
-            source.AppendLine("        putchar('\\n');");
-            return;
-        }
-
-        foreach (PrintSegment segment in segments)
-        {
-            switch (segment)
-            {
-                case LiteralPrintSegment literal:
-                    source.AppendLine($"        fputs({TargetEscapes.CString(literal.Text)}, stdout);");
-                    break;
-
-                case VariablePrintSegment variable:
-                    source.AppendLine($"        fputs([{variable.Variable.Name} UTF8String], stdout);");
-                    break;
-            }
-        }
-
-        source.AppendLine("        putchar('\\n');");
+        CPrintfPlan plan = CPrintfPlan.FromPrint(print, variable => $"[{variable.Name} UTF8String]");
+        CCodeGenerator.AppendPrintfCall(source, "        ", plan);
     }
 
     private static string GetLiteralInitializer(BoundLetStatement let) =>
@@ -576,6 +587,50 @@ internal sealed class SwiftCodeGenerator : ICodeGenerator
         return new GeneratedProgram(
             Language,
             new[] { new GeneratedFile("Program.swift", TextOutput.EnsureOneTrailingNewLine(source.ToString()), IsPrimary: true) });
+    }
+}
+
+internal sealed record CPrintfPlan(
+    string FormatText,
+    IReadOnlyList<string> Arguments)
+{
+    public static CPrintfPlan FromPrint(
+        BoundPrintStatement print,
+        Func<VariableSymbol, string> renderVariable)
+    {
+        var format = new StringBuilder();
+        var arguments = new List<string>();
+
+        // FormatText is raw printf format text, not C source text. Literal
+        // percent signs are doubled here for printf safety; C string escaping
+        // happens later exactly once when the call is emitted.
+        foreach (PrintSegment segment in BoundStringExpression.FlattenForOutput(print.Value))
+        {
+            switch (segment)
+            {
+                case LiteralPrintSegment literal:
+                    AppendLiteralToFormat(format, literal.Text);
+                    break;
+
+                case VariablePrintSegment variable:
+                    format.Append("%s");
+                    arguments.Add(renderVariable(variable.Variable));
+                    break;
+            }
+        }
+
+        format.Append('\n');
+        return new CPrintfPlan(format.ToString(), arguments);
+    }
+
+    private static void AppendLiteralToFormat(StringBuilder format, string text)
+    {
+        foreach (char value in text)
+        {
+            // A user-authored '%' is data, never a printf directive. Doubling
+            // it keeps every generated format string compiler-owned and safe.
+            format.Append(value == '%' ? "%%" : value);
+        }
     }
 }
 
@@ -679,6 +734,8 @@ internal static class TargetEscapes
     public static string CString(string text) => Quote(EscapeCStyle(text));
 
     public static string ObjectiveCString(string text) => "@" + Quote(EscapeCStyle(text));
+
+    public static string CPrintfFormatString(string text) => CString(text);
 
     public static string JavaScriptString(string text) => Quote(EscapeJavaScript(text));
 

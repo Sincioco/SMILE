@@ -691,7 +691,9 @@ Raw templates and `$"..."` interpolated strings SHOULD lower to the same languag
 
 Target-language generators MUST consume the language-neutral representation rather than reparsing SMILE source text.
 
-The language-neutral representation MUST preserve enough expression shape for generators to distinguish interpolation-oriented expressions from explicit concatenation. Implementations MAY flatten expressions into literal and variable output segments inside targets that need segment output, such as C, Objective-C, or assembly, but that target-local lowering MUST NOT become the canonical semantic representation used by every backend.
+The language-neutral representation MUST preserve enough expression shape for generators to distinguish interpolation-oriented expressions from explicit concatenation. Implementations MAY flatten expressions into literal and variable output segments inside targets that need lower-level output planning, such as C, Objective-C, or assembly, but that target-local lowering MUST NOT become the canonical semantic representation used by every backend.
+
+Generated target code SHOULD be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write. C, Objective-C, assembly, and other lower-level targets MAY lower interpolation and concatenation into target-specific output operations. However, the generator SHOULD still choose the clearest idiomatic destination-language form. For C string output, a single safe `printf` call with a compiler-generated format string is generally preferred over exposing every internal literal and variable segment as a separate output statement.
 
 ---
 

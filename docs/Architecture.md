@@ -32,7 +32,9 @@ variable Name
 literal "!"
 ```
 
-C, Objective-C, MASM, and Java interpolation fallback use those segments where appropriate so v0.2.0 does not need a runtime string-concatenation library. The flattener is a target-local lowering helper, not the canonical semantic representation.
+C and Objective-C use those segments as target-local input to a safe `printf` format plan, which keeps one natural destination-language output call per SMILE `PRINT` where practical. MASM uses the segments directly with `WriteFile`, and Java uses them only where a clear concatenation fallback is appropriate. The flattener is a target-local lowering helper, not the canonical semantic representation.
+
+Generated target code should be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write. That rule applies even when a lower-level target must lower SMILE features into equivalent operations.
 
 `SMILE.Engine` has no WPF dependency. That keeps the language front end reusable from the CLI, the desktop app, tests, and a possible future web interface.
 

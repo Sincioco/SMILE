@@ -14,7 +14,9 @@
 - Choose the simplest complete solution. Avoid unnecessary complexity, abstractions, frameworks, dependencies, code, files, folders, classes, methods, variables, features, and bells and whistles.
 - User-experience performance is the first performance priority. Functional performance is second.
 - The WPF UI thread must never be blocked by toolchain detection, compilation, linking, execution, process output, long file operations, or other noticeable work.
-- Generated code must be minimal, idiomatic, readable, deterministic, educational, dependency-light, and fast without sacrificing clarity.
+- Generated target code should be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write.
+- Generated code must be minimal, readable, deterministic, educational, dependency-light, and fast without sacrificing clarity.
+- Prefer one natural destination-language statement for one SMILE statement when that keeps the generated code clear. Target-local lowering must preserve behavior without exposing compiler mechanics as awkward target code.
 
 ## Official Language Specifications
 
@@ -23,7 +25,8 @@
 - PRINT parsing must be deterministic and must never guess whether bare text is a variable.
 - Bare PRINT text is literal template text; expressions require braces.
 - Ordinary quoted strings do not interpolate; `$"..."` and raw templates do.
-- Target generators should preserve expression intent when a destination language has a clear idiomatic equivalent: interpolation should remain interpolation, explicit concatenation should remain concatenation, and lower-level targets may use equivalent segment output.
+- Target generators should preserve expression intent when a destination language has a clear idiomatic equivalent: interpolation should remain interpolation, explicit concatenation should remain concatenation, and lower-level targets may use equivalent output forms.
+- Lower-level targets should still choose the clearest conventional form available. For current C and Objective-C `PRINT`, prefer one safe `printf` call with a compiler-generated format string.
 - A physical source line normally contains one statement, and semicolons do not separate statements.
 - A second standalone `PRINT` keyword on the same line is a compiler error.
 - New language work must preserve asynchronous debounced WPF live transpilation.
