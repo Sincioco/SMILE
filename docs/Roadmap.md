@@ -18,9 +18,18 @@
 - Keep Build & Run tied to the latest source revision.
 - Use separate 120 second build and 10 second program execution timeouts.
 
+## Implemented In v0.2.1
+
+- Add AvalonEdit-backed SMILE and generated-code panes with line numbers.
+- Add lexical syntax highlighting for SMILE, C#, C, MASM x64, JavaScript, Java, Objective-C, and Swift.
+- Keep target-language highlighting in sync when a generated pane changes language.
+- Contain recoverable desktop Build & Run, process, command, folder-opening, and toolchain-detection failures.
+- Write desktop diagnostic logs under `%LOCALAPPDATA%\SMILE\Logs`, with a `%TEMP%\SMILE\Logs` fallback.
+- Bound captured child-process streams and desktop output history to protect the IDE from runaway generated-program output.
+
 ## Future Ideas
 
-These are not implemented in v0.2.0:
+These are not implemented in v0.2.1:
 
 1. Non-literal `LET` initializers
 2. Numeric and boolean expressions

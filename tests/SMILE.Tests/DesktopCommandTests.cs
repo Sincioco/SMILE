@@ -1,3 +1,4 @@
+using System.IO;
 using SMILE.Desktop;
 using SMILE.Engine;
 using SMILE.Toolchains;
@@ -65,6 +66,50 @@ public sealed class DesktopCommandTests
     }
 
     [TestMethod]
+    public void Relay_command_contains_can_execute_and_notification_failures()
+    {
+        Exception? reported = null;
+        var command = new RelayCommand(
+            () => Assert.Fail("Execute should not run when CanExecute fails."),
+            canExecute: () => throw new InvalidOperationException("can execute failed"),
+            onError: exception => reported = exception);
+
+        Assert.IsFalse(command.CanExecute(null));
+        command.Execute(null);
+
+        Assert.IsInstanceOfType(reported, typeof(InvalidOperationException));
+
+        var notifyCommand = new RelayCommand(() => { }, onError: exception => reported = exception);
+        notifyCommand.CanExecuteChanged += (_, _) => throw new InvalidOperationException("subscriber failed");
+
+        notifyCommand.RaiseCanExecuteChanged();
+
+        Assert.AreEqual("subscriber failed", reported?.Message);
+    }
+
+    [TestMethod]
+    public async Task Async_command_contains_error_callback_and_notification_failures()
+    {
+        var command = new AsyncRelayCommand(
+            () => throw new InvalidOperationException("execute failed"),
+            onError: _ => throw new InvalidOperationException("report failed"));
+
+        command.Execute(null);
+        await WaitUntilAsync(() => command.CanExecute(null));
+
+        Exception? reported = null;
+        var notifyCommand = new AsyncRelayCommand(
+            () => Task.CompletedTask,
+            onError: exception => reported = exception);
+        notifyCommand.CanExecuteChanged += (_, _) => throw new InvalidOperationException("async subscriber failed");
+
+        notifyCommand.Execute(null);
+        await WaitUntilAsync(() => notifyCommand.CanExecute(null));
+
+        Assert.AreEqual("async subscriber failed", reported?.Message);
+    }
+
+    [TestMethod]
     public void Target_pane_button_text_and_language_lock_match_target_capability()
     {
         var pane = new TargetPaneViewModel("Pane", TargetLanguage.JavaScript);
@@ -82,6 +127,21 @@ public sealed class DesktopCommandTests
 
         Assert.IsFalse(pane.CanBuild);
         Assert.IsFalse(pane.CanChangeLanguage);
+    }
+
+    [TestMethod]
+    public void Target_pane_reports_highlighting_id_and_change_notification()
+    {
+        var pane = new TargetPaneViewModel("Pane", TargetLanguage.CSharp);
+        var changedProperties = new List<string?>();
+        pane.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
+
+        Assert.AreEqual("csharp", pane.HighlightingId);
+
+        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Swift);
+
+        Assert.AreEqual("swift", pane.HighlightingId);
+        CollectionAssert.Contains(changedProperties, nameof(TargetPaneViewModel.HighlightingId));
     }
 
     [TestMethod]
@@ -114,6 +174,119 @@ public sealed class DesktopCommandTests
         Assert.AreEqual("Transpile Only", viewModel.Pane1.Status);
         Assert.AreEqual("Transpile Only", viewModel.Pane2.Status);
         StringAssert.Contains(viewModel.OutputText, "Skipped: this target is transpile-only on Windows for now.");
+    }
+
+    [TestMethod]
+    public async Task Visible_build_run_continues_after_one_target_throws()
+    {
+        var csharp = new FakeToolchain(TargetLanguage.CSharp);
+        var masm = new FakeToolchain(
+            TargetLanguage.MasmX64,
+            buildRunException: new IOException("workspace write failed"));
+        var c = new FakeToolchain(TargetLanguage.C);
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(csharp, masm, c),
+            new FakeErrorReporter(),
+            new FakeFolderOpener())
+        {
+            OpenGeneratedFolderAfterBuild = false
+        };
+        await viewModel.InitializeAsync();
+
+        viewModel.BuildRunVisibleCommand.Execute(null);
+        await WaitUntilAsync(() => !viewModel.IsBusy && viewModel.OperationStatus == "Completed with failures");
+
+        Assert.AreEqual(1, csharp.BuildRuns);
+        Assert.AreEqual(1, masm.BuildRuns);
+        Assert.AreEqual(1, c.BuildRuns);
+        Assert.AreEqual("Completed", viewModel.Pane1.Status);
+        Assert.AreEqual("Failed", viewModel.Pane2.Status);
+        Assert.AreEqual("Completed", viewModel.Pane3.Status);
+        StringAssert.Contains(viewModel.OutputText, "Unexpected failure during Assembling.");
+        StringAssert.Contains(viewModel.OutputText, "workspace write failed");
+    }
+
+    [TestMethod]
+    public async Task Build_run_operation_recovers_after_toolchain_exception()
+    {
+        var failing = new FakeToolchain(
+            TargetLanguage.CSharp,
+            buildRunException: new InvalidOperationException("compiler launch failed"));
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(failing),
+            new FakeErrorReporter(),
+            new FakeFolderOpener())
+        {
+            OpenGeneratedFolderAfterBuild = false
+        };
+        await viewModel.InitializeAsync();
+
+        viewModel.Pane1.BuildRunCommand!.Execute(null);
+        await WaitUntilAsync(() => !viewModel.IsBusy && viewModel.OperationStatus == "Failed");
+
+        Assert.AreEqual("Failed", viewModel.Pane1.Status);
+        StringAssert.Contains(viewModel.OutputText, "C#");
+        StringAssert.Contains(viewModel.OutputText, "Unexpected failure during Building.");
+        Assert.IsTrue(viewModel.BuildRunVisibleCommand.CanExecute(null));
+    }
+
+    [TestMethod]
+    public async Task Toolchain_detection_failure_is_target_specific()
+    {
+        var failing = new FakeToolchain(
+            TargetLanguage.CSharp,
+            detectException: new InvalidOperationException("broken SDK"));
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(failing),
+            new FakeErrorReporter(),
+            new FakeFolderOpener());
+
+        await viewModel.InitializeAsync();
+
+        Assert.AreEqual("Detection Failed", viewModel.Pane1.Status);
+        StringAssert.Contains(viewModel.Pane1.ToolchainStatusText, "Detection failed");
+        StringAssert.Contains(viewModel.OutputText, "broken SDK");
+        Assert.IsFalse(viewModel.IsBusy);
+    }
+
+    [TestMethod]
+    public async Task Folder_opening_failure_is_reported_as_warning()
+    {
+        string workspace = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "SMILE-Test-" + Guid.NewGuid())).FullName;
+        try
+        {
+            var viewModel = new MainWindowViewModel(
+                CreateRegistry(new FakeToolchain(TargetLanguage.CSharp, workingDirectory: workspace)),
+                new FakeErrorReporter(),
+                new FakeFolderOpener(new InvalidOperationException("explorer failed")));
+            await viewModel.InitializeAsync();
+
+            viewModel.Pane1.BuildRunCommand!.Execute(null);
+            await WaitUntilAsync(() => !viewModel.IsBusy && viewModel.OperationStatus == "Completed");
+
+            StringAssert.Contains(viewModel.OutputText, "Build completed, but the generated folder could not be opened.");
+            StringAssert.Contains(viewModel.OutputText, "explorer failed");
+        }
+        finally
+        {
+            Directory.Delete(workspace, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void Desktop_output_history_is_bounded()
+    {
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(),
+            new FakeErrorReporter(),
+            new FakeFolderOpener());
+
+        viewModel.AppendOutputForTesting(new string('a', MainWindowViewModel.MaxOutputTextLength));
+        viewModel.AppendOutputForTesting("newest output");
+
+        Assert.IsLessThanOrEqualTo(MainWindowViewModel.MaxOutputTextLength, viewModel.OutputText.Length);
+        StringAssert.Contains(viewModel.OutputText, MainWindowViewModel.OutputTruncatedMarker);
+        StringAssert.Contains(viewModel.OutputText, "newest output");
     }
 
     private static BuildRunResult Result(
@@ -149,5 +322,111 @@ public sealed class DesktopCommandTests
 
             await Task.Delay(10);
         }
+    }
+
+    private static ToolchainRegistry CreateRegistry(params FakeToolchain[] overrides)
+    {
+        var byLanguage = overrides.ToDictionary(toolchain => toolchain.Language);
+        var toolchains = TargetLanguageInfo.All.Select(language =>
+            byLanguage.TryGetValue(language, out FakeToolchain? toolchain)
+                ? toolchain
+                : new FakeToolchain(language));
+
+        return new ToolchainRegistry(toolchains);
+    }
+
+    private sealed class FakeToolchain : IToolchain
+    {
+        private readonly Exception? _detectException;
+        private readonly Exception? _buildRunException;
+        private readonly string? _workingDirectory;
+
+        public FakeToolchain(
+            TargetLanguage language,
+            Exception? detectException = null,
+            Exception? buildRunException = null,
+            string? workingDirectory = null)
+        {
+            Language = language;
+            _detectException = detectException;
+            _buildRunException = buildRunException;
+            _workingDirectory = workingDirectory;
+        }
+
+        public TargetLanguage Language { get; }
+
+        public int BuildRuns { get; private set; }
+
+        public Task<ToolchainStatus> DetectAsync(CancellationToken cancellationToken)
+        {
+            if (_detectException is not null)
+            {
+                throw _detectException;
+            }
+
+            string name = TargetLanguageInfo.GetDisplayName(Language);
+            return Task.FromResult(new ToolchainStatus(Language, true, name, "test", "test", $"{name} detected."));
+        }
+
+        public async Task<BuildRunResult> BuildAndRunAsync(
+            GeneratedProgram generatedProgram,
+            CancellationToken cancellationToken,
+            BuildRunOptions? options = null)
+        {
+            BuildRuns++;
+            if (_buildRunException is not null)
+            {
+                throw _buildRunException;
+            }
+
+            ToolchainStatus status = await DetectAsync(cancellationToken);
+            return new BuildRunResult(
+                Language,
+                Success: true,
+                status,
+                "Build completed.",
+                "Program output.",
+                string.Empty,
+                0,
+                TimeSpan.FromMilliseconds(1),
+                TimedOut: false,
+                Cancelled: false,
+                _workingDirectory,
+                null,
+                "Running");
+        }
+    }
+
+    private sealed class FakeFolderOpener : IFolderOpener
+    {
+        private readonly Exception? _exception;
+
+        public FakeFolderOpener(Exception? exception = null)
+        {
+            _exception = exception;
+        }
+
+        public Task OpenAsync(string folderPath, CancellationToken cancellationToken)
+        {
+            if (_exception is not null)
+            {
+                throw _exception;
+            }
+
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FakeErrorReporter : IAppErrorReporter
+    {
+        public string SessionId => "test-session";
+
+        public string Report(
+            string operation,
+            Exception exception,
+            string? target = null,
+            string? stage = null,
+            long? sourceRevision = null) =>
+            @"C:\SMILE\Test.log";
     }
 }

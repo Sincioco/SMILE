@@ -71,6 +71,8 @@ The language suffix helps learners identify which generated-code workspace belon
 
 SMILE-owned temporary run workspaces older than 1 day may be deleted automatically.
 
+Cleanup failures are non-fatal. SMILE may report or log them, but it should still create the new workspace needed for the current build/run.
+
 ## Pause Launcher
 
 When requested by the desktop app, a successful build/run also writes:
@@ -85,6 +87,10 @@ That launcher runs the generated program from the temporary workspace, prints `P
 
 The default program timeout is 10 seconds. Cancellation and timeout terminate the entire child process tree where possible. Standard output and standard error are captured asynchronously to avoid deadlocks and UI freezes.
 
+Each process stream is retained up to 1,000,000 characters. SMILE keeps draining the child process pipes after the display cap is reached, then appends a truncation marker so learners can see that output was shortened. This keeps runaway generated programs from consuming unbounded desktop memory.
+
+Detection, build, run, timeout, cancellation, folder opening, and process-launch failures are expected to be recoverable desktop events. A failing target should produce an output message and, when available, a diagnostic log path instead of closing the IDE or blocking other visible targets.
+
 ## Troubleshooting
 
 - Missing .NET SDK: install .NET SDK 10 or newer.
@@ -92,3 +98,4 @@ The default program timeout is 10 seconds. Cancellation and timeout terminate th
 - Missing JavaScript runtime: install Node.js.
 - Missing Java compiler: install a full JDK such as Microsoft OpenJDK 25 LTS, not only a JRE.
 - Objective-C or Swift Build & Run unavailable: inspect or save the generated source; Windows local compilation is not supported yet.
+- Desktop diagnostic logs: check `%LOCALAPPDATA%\SMILE\Logs`; if that folder is unavailable, SMILE falls back to `%TEMP%\SMILE\Logs`.

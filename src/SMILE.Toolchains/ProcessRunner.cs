@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Text;
 
@@ -35,84 +36,157 @@ public interface IProcessRunner
 
 public sealed class ProcessRunner : IProcessRunner
 {
+    public const int MaxCapturedCharactersPerStream = 1_000_000;
+    private static readonly TimeSpan KillGracePeriod = TimeSpan.FromSeconds(5);
+
     public async Task<ProcessResult> RunAsync(
         ProcessCommand command,
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(command);
-
         var stopwatch = Stopwatch.StartNew();
+
+        string? validationError = Validate(command, timeout);
+        if (validationError is not null)
+        {
+            stopwatch.Stop();
+            return Failure(validationError, stopwatch.Elapsed, cancellationToken.IsCancellationRequested);
+        }
+
         using var timeoutSource = new CancellationTokenSource(timeout);
         using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
             timeoutSource.Token);
 
-        // Redirecting both streams and reading them asynchronously prevents the
-        // classic deadlock where a child process blocks because its output pipe
-        // filled while the parent waits for exit.
-        using var process = new Process
-        {
-            StartInfo = CreateStartInfo(command),
-            EnableRaisingEvents = true
-        };
-
+        Process? process = null;
         try
         {
+            process = new Process
+            {
+                StartInfo = CreateStartInfo(command),
+                EnableRaisingEvents = true
+            };
+
             process.Start();
         }
-        catch (Win32Exception ex)
+        catch (Exception ex) when (IsExpectedProcessException(ex))
         {
+            process?.Dispose();
             stopwatch.Stop();
-            return new ProcessResult(
-                null,
-                string.Empty,
-                ex.Message,
+            return Failure(
+                $"Process launch failed: {ex.GetType().Name}: {ex.Message}",
                 stopwatch.Elapsed,
-                TimedOut: false,
-                Cancelled: cancellationToken.IsCancellationRequested);
+                cancellationToken.IsCancellationRequested);
         }
 
-        CloseStandardInput(process);
+        using (process)
+        {
+            CloseStandardInput(process);
 
-        Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
-        Task<string> errorTask = process.StandardError.ReadToEndAsync();
+            // The stream drainers keep reading even after the display cap is
+            // reached. That prevents child-process pipe deadlocks while also
+            // protecting the desktop process from unbounded output growth.
+            Task<CapturedStream> outputTask = DrainStreamAsync(process.StandardOutput, "stdout");
+            Task<CapturedStream> errorTask = DrainStreamAsync(process.StandardError, "stderr");
 
-        bool timedOut = false;
-        bool cancelled = false;
+            bool timedOut = false;
+            bool cancelled = false;
+            string? waitWarning = null;
+            string? killWarning = null;
+
+            try
+            {
+                await process.WaitForExitAsync(linkedSource.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                timedOut = timeoutSource.IsCancellationRequested && !cancellationToken.IsCancellationRequested;
+                cancelled = cancellationToken.IsCancellationRequested;
+
+                killWarning = TryKillProcessTree(process);
+                waitWarning = await WaitForExitAfterKillAsync(process).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (IsExpectedProcessException(ex))
+            {
+                waitWarning = $"Process wait failed: {ex.GetType().Name}: {ex.Message}";
+            }
+
+            CapturedStream output = await CompleteStreamAsync(outputTask, "stdout").ConfigureAwait(false);
+            CapturedStream error = await CompleteStreamAsync(errorTask, "stderr").ConfigureAwait(false);
+
+            stopwatch.Stop();
+
+            int? exitCode = SafeExitCode(process, out string? exitWarning);
+            string standardError = JoinNonEmpty(
+                error.Text,
+                output.Error,
+                error.Error,
+                killWarning,
+                waitWarning,
+                exitWarning);
+
+            return new ProcessResult(
+                exitCode,
+                output.Text,
+                standardError,
+                stopwatch.Elapsed,
+                timedOut,
+                cancelled);
+        }
+    }
+
+    private static string? Validate(ProcessCommand? command, TimeSpan timeout)
+    {
+        if (command is null)
+        {
+            return "Process command was not provided.";
+        }
+
+        if (string.IsNullOrWhiteSpace(command.FileName))
+        {
+            return "Process filename was blank.";
+        }
+
+        if (timeout <= TimeSpan.Zero)
+        {
+            return "Process timeout must be positive.";
+        }
+
+        if (string.IsNullOrWhiteSpace(command.WorkingDirectory))
+        {
+            return "Process working directory was blank.";
+        }
 
         try
         {
-            // WaitForExitAsync accepts a cancellation token, so the UI can
-            // cancel without blocking a window thread on Process.WaitForExit().
-            await process.WaitForExitAsync(linkedSource.Token).ConfigureAwait(false);
+            string fullWorkingDirectory = Path.GetFullPath(command.WorkingDirectory);
+            if (!Directory.Exists(fullWorkingDirectory))
+            {
+                return $"Process working directory does not exist: {fullWorkingDirectory}";
+            }
         }
-        catch (OperationCanceledException)
+        catch (Exception ex) when (IsExpectedProcessException(ex))
         {
-            timedOut = timeoutSource.IsCancellationRequested && !cancellationToken.IsCancellationRequested;
-            cancelled = cancellationToken.IsCancellationRequested;
-
-            // Killing the entire process tree matters for compiler tools that
-            // launch helper processes. Cancelling only the root process can
-            // leave children running in the background.
-            TryKillProcessTree(process);
-            await WaitForExitAfterKillAsync(process).ConfigureAwait(false);
+            return $"Process working directory was invalid: {ex.GetType().Name}: {ex.Message}";
         }
 
-        string output = await ReadCompletedOutputAsync(outputTask).ConfigureAwait(false);
-        string error = await ReadCompletedOutputAsync(errorTask).ConfigureAwait(false);
-
-        stopwatch.Stop();
-
-        int? exitCode = process.HasExited ? process.ExitCode : null;
-        return new ProcessResult(exitCode, output, error, stopwatch.Elapsed, timedOut, cancelled);
+        return null;
     }
+
+    private static ProcessResult Failure(string message, TimeSpan duration, bool cancelled) =>
+        new(
+            null,
+            string.Empty,
+            message,
+            duration,
+            TimedOut: false,
+            Cancelled: cancelled);
 
     private static ProcessStartInfo CreateStartInfo(ProcessCommand command)
     {
         var startInfo = new ProcessStartInfo(command.FileName)
         {
-            WorkingDirectory = command.WorkingDirectory,
+            WorkingDirectory = Path.GetFullPath(command.WorkingDirectory),
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -122,7 +196,7 @@ public sealed class ProcessRunner : IProcessRunner
             StandardErrorEncoding = Encoding.UTF8
         };
 
-        foreach (string argument in command.Arguments)
+        foreach (string argument in command.Arguments ?? Array.Empty<string>())
         {
             startInfo.ArgumentList.Add(argument);
         }
@@ -139,48 +213,169 @@ public sealed class ProcessRunner : IProcessRunner
             // instead of waiting forever inside an invisible console.
             process.StandardInput.Close();
         }
-        catch (InvalidOperationException)
-        {
-        }
-        catch (IOException)
+        catch (Exception ex) when (IsExpectedProcessException(ex) || ex is IOException)
         {
         }
     }
 
-    private static void TryKillProcessTree(Process process)
+    private static string? TryKillProcessTree(Process process)
     {
         try
         {
-            if (!process.HasExited)
+            if (!SafeHasExited(process, out string? hasExitedWarning))
             {
                 process.Kill(entireProcessTree: true);
             }
+
+            return hasExitedWarning;
         }
-        catch (InvalidOperationException)
+        catch (Exception ex) when (IsExpectedProcessException(ex))
         {
+            return $"Process termination warning: {ex.GetType().Name}: {ex.Message}";
         }
     }
 
-    private static async Task WaitForExitAfterKillAsync(Process process)
+    private static async Task<string?> WaitForExitAfterKillAsync(Process process)
     {
         try
         {
-            await process.WaitForExitAsync().ConfigureAwait(false);
+            using var graceSource = new CancellationTokenSource(KillGracePeriod);
+            await process.WaitForExitAsync(graceSource.Token).ConfigureAwait(false);
+            return null;
         }
-        catch (InvalidOperationException)
+        catch (OperationCanceledException)
         {
+            return "Process termination warning: process-tree exit could not be confirmed before the kill grace period expired.";
+        }
+        catch (Exception ex) when (IsExpectedProcessException(ex))
+        {
+            return $"Process termination warning: {ex.GetType().Name}: {ex.Message}";
         }
     }
 
-    private static async Task<string> ReadCompletedOutputAsync(Task<string> task)
+    private static bool SafeHasExited(Process process, out string? warning)
+    {
+        try
+        {
+            warning = null;
+            return process.HasExited;
+        }
+        catch (Exception ex) when (IsExpectedProcessException(ex))
+        {
+            warning = $"Process status warning: {ex.GetType().Name}: {ex.Message}";
+            return false;
+        }
+    }
+
+    private static int? SafeExitCode(Process process, out string? warning)
+    {
+        try
+        {
+            warning = null;
+            return process.HasExited ? process.ExitCode : null;
+        }
+        catch (Exception ex) when (IsExpectedProcessException(ex))
+        {
+            warning = $"Process exit-code warning: {ex.GetType().Name}: {ex.Message}";
+            return null;
+        }
+    }
+
+    private static async Task<CapturedStream> CompleteStreamAsync(
+        Task<CapturedStream> task,
+        string streamName)
     {
         try
         {
             return await task.ConfigureAwait(false);
         }
-        catch (ObjectDisposedException)
+        catch (Exception ex) when (IsExpectedStreamException(ex))
         {
-            return string.Empty;
+            return new CapturedStream(
+                string.Empty,
+                $"[SMILE could not finish reading {streamName}: {ex.GetType().Name}: {ex.Message}]");
         }
     }
+
+    private static async Task<CapturedStream> DrainStreamAsync(
+        StreamReader reader,
+        string streamName)
+    {
+        var builder = new StringBuilder();
+        var buffer = new char[8192];
+        long omitted = 0;
+
+        try
+        {
+            while (true)
+            {
+                int read = await reader.ReadAsync(buffer.AsMemory(0, buffer.Length)).ConfigureAwait(false);
+                if (read == 0)
+                {
+                    break;
+                }
+
+                int remaining = MaxCapturedCharactersPerStream - builder.Length;
+                if (remaining > 0)
+                {
+                    int toAppend = Math.Min(remaining, read);
+                    builder.Append(buffer, 0, toAppend);
+                    omitted += read - toAppend;
+                }
+                else
+                {
+                    omitted += read;
+                }
+            }
+        }
+        catch (Exception ex) when (IsExpectedStreamException(ex))
+        {
+            return new CapturedStream(
+                AppendTruncationMarker(builder, streamName, omitted),
+                $"[SMILE could not finish reading {streamName}: {ex.GetType().Name}: {ex.Message}]");
+        }
+
+        return new CapturedStream(AppendTruncationMarker(builder, streamName, omitted), null);
+    }
+
+    private static string AppendTruncationMarker(StringBuilder builder, string streamName, long omitted)
+    {
+        if (omitted <= 0)
+        {
+            return builder.ToString();
+        }
+
+        if (builder.Length > 0 && builder[^1] != '\n')
+        {
+            builder.AppendLine();
+        }
+
+        builder.Append("[SMILE truncated ");
+        builder.Append(omitted.ToString(CultureInfo.InvariantCulture));
+        builder.Append(" additional ");
+        builder.Append(streamName);
+        builder.Append(" characters.]");
+        return builder.ToString();
+    }
+
+    private static string JoinNonEmpty(params string?[] values) =>
+        string.Join(
+            Environment.NewLine,
+            values
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value!.TrimEnd()));
+
+    private static bool IsExpectedProcessException(Exception exception) =>
+        exception is Win32Exception or
+            InvalidOperationException or
+            IOException or
+            UnauthorizedAccessException or
+            ArgumentException or
+            NotSupportedException or
+            ObjectDisposedException;
+
+    private static bool IsExpectedStreamException(Exception exception) =>
+        exception is IOException or InvalidOperationException or ObjectDisposedException;
+
+    private sealed record CapturedStream(string Text, string? Error);
 }

@@ -55,12 +55,15 @@ public sealed class TargetPaneViewModel : ViewModelBase
                 OnPropertyChanged(nameof(Language));
                 OnPropertyChanged(nameof(Title));
                 OnPropertyChanged(nameof(BuildButtonText));
+                OnPropertyChanged(nameof(HighlightingId));
                 SelectedLanguageChanged?.Invoke(this, EventArgs.Empty);
             }
         }
     }
 
     public TargetLanguage Language => SelectedLanguageOption.Language;
+
+    public string HighlightingId => TargetLanguageInfo.GetStableId(Language);
 
     public string GeneratedCode
     {

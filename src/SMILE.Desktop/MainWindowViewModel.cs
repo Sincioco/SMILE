@@ -1,6 +1,7 @@
 using System.IO;
 using System.Reflection;
 using System.Text;
+using System.Diagnostics;
 using System.Windows;
 using Microsoft.Win32;
 using SMILE.Engine;
@@ -26,9 +27,13 @@ PRINT "Hello " + Name + "!"
     // lets the user finish a burst of typing before the lexer/parser/generator
     // pipeline runs in the background.
     private static readonly TimeSpan LiveTranspileDelay = TimeSpan.FromMilliseconds(250);
+    internal const int MaxOutputTextLength = 1_000_000;
+    internal const string OutputTruncatedMarker = "[Older SMILE output was truncated.]";
 
     private readonly SmileTranspiler _transpiler = new();
-    private readonly ToolchainRegistry _toolchains = ToolchainRegistry.CreateDefault();
+    private readonly ToolchainRegistry _toolchains;
+    private readonly IAppErrorReporter _errorReporter;
+    private readonly IFolderOpener _folderOpener;
     private readonly Dictionary<TargetLanguage, GeneratedSnapshot> _generatedPrograms = new();
     private readonly Dictionary<TargetLanguage, ToolchainStatus> _toolchainStatuses = new();
     private CancellationTokenSource? _operationCancellation;
@@ -45,7 +50,19 @@ PRINT "Hello " + Name + "!"
     private bool _outputShowsLiveDiagnostics;
 
     public MainWindowViewModel()
+        : this(ToolchainRegistry.CreateDefault(), AppErrorReporter.Shared, new SystemFolderOpener())
     {
+    }
+
+    public MainWindowViewModel(
+        ToolchainRegistry toolchains,
+        IAppErrorReporter? errorReporter = null,
+        IFolderOpener? folderOpener = null)
+    {
+        _toolchains = toolchains;
+        _errorReporter = errorReporter ?? AppErrorReporter.Shared;
+        _folderOpener = folderOpener ?? new SystemFolderOpener();
+
         Pane1 = CreatePane("Generated target 1", TargetLanguage.CSharp);
         Pane2 = CreatePane("Generated target 2", TargetLanguage.MasmX64);
         Pane3 = CreatePane("Generated target 3", TargetLanguage.C);
@@ -143,6 +160,8 @@ PRINT "Hello " + Name + "!"
         set => SetProperty(ref _createPauseLauncherAfterBuild, value);
     }
 
+    public string SessionId => _errorReporter.SessionId;
+
     public async Task InitializeAsync()
     {
         try
@@ -189,9 +208,26 @@ PRINT "Hello " + Name + "!"
 
         foreach (TargetLanguage language in TargetLanguageInfo.All)
         {
-            ToolchainStatus status = await _toolchains.Get(language)
-                .DetectAsync(CancellationToken.None)
-                .ConfigureAwait(true);
+            ToolchainStatus status;
+            try
+            {
+                status = await _toolchains.Get(language)
+                    .DetectAsync(CancellationToken.None)
+                    .ConfigureAwait(true);
+            }
+            catch (Exception ex) when (!DesktopExceptionPolicy.IsFatal(ex))
+            {
+                string languageName = TargetLanguageInfo.GetDisplayName(language);
+                string details = ReportException("Toolchain detection", ex, languageName, "Detection");
+                status = new ToolchainStatus(
+                    language,
+                    IsAvailable: false,
+                    languageName,
+                    Version: null,
+                    Location: null,
+                    $"Detection failed: {ex.GetType().Name}: {ex.Message}");
+                AppendConciseError("Toolchain detection", ex, details, languageName, "Detection");
+            }
 
             _toolchainStatuses[language] = status;
         }
@@ -466,7 +502,11 @@ PRINT "Hello " + Name + "!"
                 }
             }).ConfigureAwait(true);
 
-        OpenGeneratedFolderForResults(results);
+        OperationStatus = results.Any(result => !result.Success && !result.Cancelled)
+            ? "Completed with failures"
+            : OperationStatus;
+
+        await OpenGeneratedFolderForResultsAsync(results).ConfigureAwait(true);
     }
 
     private async Task BuildRunPaneAsync(TargetPaneViewModel pane)
@@ -480,50 +520,84 @@ PRINT "Hello " + Name + "!"
                 result = await BuildRunPaneCoreAsync(pane, cancellationToken).ConfigureAwait(true);
             }).ConfigureAwait(true);
 
-        OpenGeneratedFolderForResults(result is null ? Array.Empty<BuildRunResult>() : new[] { result });
+        if (result is not null && !result.Success)
+        {
+            OperationStatus = result.Cancelled ? "Cancelled" : "Failed";
+        }
+
+        await OpenGeneratedFolderForResultsAsync(result is null ? Array.Empty<BuildRunResult>() : new[] { result })
+            .ConfigureAwait(true);
     }
 
     private async Task<BuildRunResult?> BuildRunPaneCoreAsync(
         TargetPaneViewModel pane,
         CancellationToken cancellationToken)
     {
+        var stopwatch = Stopwatch.StartNew();
         TargetLanguage language = pane.Language;
         string languageName = TargetLanguageInfo.GetDisplayName(language);
 
-        if (IsTranspileOnlyLanguage(language))
+        try
         {
-            pane.Status = "Transpile Only";
-            await EnsureCurrentGeneratedProgramAsync(language, cancellationToken).ConfigureAwait(true);
-            AppendOutput($"=== {languageName} ==={Environment.NewLine}Skipped: this target is transpile-only on Windows for now.");
-            return null;
-        }
+            if (IsTranspileOnlyLanguage(language))
+            {
+                pane.Status = "Transpile Only";
+                await EnsureCurrentGeneratedProgramAsync(language, cancellationToken).ConfigureAwait(true);
+                AppendOutput($"=== {languageName} ==={Environment.NewLine}Skipped: this target is transpile-only on Windows for now.");
+                return null;
+            }
 
-        if (!_toolchainStatuses.TryGetValue(language, out ToolchainStatus? status) || !status.IsAvailable)
+            if (!_toolchainStatuses.TryGetValue(language, out ToolchainStatus? status) || !status.IsAvailable)
+            {
+                pane.Status = status?.Message.StartsWith("Detection failed:", StringComparison.Ordinal) == true
+                    ? "Detection Failed"
+                    : "Toolchain Missing";
+                AppendOutput($"=== {languageName} ==={Environment.NewLine}{status?.Message ?? "Toolchain not detected."}");
+                return null;
+            }
+
+            GeneratedProgram? generatedProgram = await EnsureCurrentGeneratedProgramAsync(language, cancellationToken)
+                .ConfigureAwait(true);
+            if (generatedProgram is null)
+            {
+                pane.Status = "Syntax Error";
+                return null;
+            }
+
+            pane.Status = GetInitialBuildStatus(language);
+            AppendOutput($"=== {languageName} ===");
+
+            var options = new BuildRunOptions(CreatePauseLauncher: CreatePauseLauncherAfterBuild);
+            BuildRunResult result = await _toolchains.Get(language)
+                .BuildAndRunAsync(generatedProgram, cancellationToken, options)
+                .ConfigureAwait(true);
+
+            pane.Status = BuildRunStatusText(result);
+            AppendBuildRunResult(result);
+            return result;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            pane.Status = "Toolchain Missing";
-            AppendOutput($"=== {languageName} ==={Environment.NewLine}{status?.Message ?? "Toolchain not detected."}");
-            return null;
+            pane.Status = "Cancelled";
+            BuildRunResult result = CreateDesktopFailureResult(
+                language,
+                "Cancelled",
+                new OperationCanceledException("Build & Run was cancelled by the user."),
+                "n/a",
+                stopwatch.Elapsed,
+                cancelled: true);
+            AppendBuildRunResult(result);
+            return result;
         }
-
-        GeneratedProgram? generatedProgram = await EnsureCurrentGeneratedProgramAsync(language, cancellationToken)
-            .ConfigureAwait(true);
-        if (generatedProgram is null)
+        catch (Exception ex) when (!DesktopExceptionPolicy.IsFatal(ex))
         {
-            pane.Status = "Syntax Error";
-            return null;
+            string stage = pane.Status is "Ready" or "Updating" ? "Build & Run" : pane.Status;
+            string details = ReportException("Build & Run", ex, languageName, stage);
+            pane.Status = "Failed";
+            BuildRunResult result = CreateDesktopFailureResult(language, stage, ex, details, stopwatch.Elapsed);
+            AppendBuildRunResult(result);
+            return result;
         }
-
-        pane.Status = GetInitialBuildStatus(language);
-        AppendOutput($"=== {languageName} ===");
-
-        var options = new BuildRunOptions(CreatePauseLauncher: CreatePauseLauncherAfterBuild);
-        BuildRunResult result = await _toolchains.Get(language)
-            .BuildAndRunAsync(generatedProgram, cancellationToken, options)
-            .ConfigureAwait(true);
-
-        pane.Status = BuildRunStatusText(result);
-        AppendBuildRunResult(result);
-        return result;
     }
 
     private async Task<GeneratedProgram?> EnsureCurrentGeneratedProgramAsync(
@@ -562,47 +636,50 @@ PRINT "Hello " + Name + "!"
             return;
         }
 
-        CancelLiveTranspilation();
-        _operationCancellation = new CancellationTokenSource();
-        IsBusy = true;
-        OperationStatus = title;
+        CancellationTokenSource? cancellation = null;
 
         try
         {
-            await operation(_operationCancellation.Token).ConfigureAwait(true);
-            OperationStatus = _operationCancellation.IsCancellationRequested ? "Cancelled" : "Completed";
+            cancellation = new CancellationTokenSource();
+            _operationCancellation = cancellation;
+            CancelLiveTranspilation();
+            SafeSetBusy(true);
+            OperationStatus = title;
+
+            await operation(cancellation.Token).ConfigureAwait(true);
+            OperationStatus = cancellation.IsCancellationRequested ? "Cancelled" : "Completed";
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellation?.IsCancellationRequested == true)
         {
-            OperationStatus = "Cancelled";
-
-            foreach (TargetPaneViewModel pane in Panes.Where(pane => pane.Status is "Building" or "Assembling" or "Linking" or "Running"))
-            {
-                pane.Status = "Cancelled";
-            }
+            RecoverAfterCancellation();
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!DesktopExceptionPolicy.IsFatal(ex))
         {
-            OperationStatus = "Failed";
-
-            foreach (TargetPaneViewModel pane in Panes.Where(pane => pane.Status is "Building" or "Assembling" or "Linking" or "Running"))
-            {
-                pane.Status = "Failed";
-            }
-
-            HandleUiError(title, ex);
+            RecoverAfterOperationFailure(title, ex);
         }
         finally
         {
-            _operationCancellation.Dispose();
-            _operationCancellation = null;
-            IsBusy = false;
+            if (ReferenceEquals(_operationCancellation, cancellation))
+            {
+                _operationCancellation = null;
+            }
+
+            cancellation?.Dispose();
+            SafeSetBusy(false);
+            SafeRaiseCommandStateChanged();
         }
     }
 
     private void Cancel()
     {
-        _operationCancellation?.Cancel();
+        try
+        {
+            _operationCancellation?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+
         AppendOutput("Cancellation requested.");
         OperationStatus = "Cancelling...";
     }
@@ -668,7 +745,7 @@ PRINT "Hello " + Name + "!"
         }
     }
 
-    private void OpenGeneratedFolderForResults(IReadOnlyList<BuildRunResult> results)
+    private async Task OpenGeneratedFolderForResultsAsync(IReadOnlyList<BuildRunResult> results)
     {
         if (!OpenGeneratedFolderAfterBuild)
         {
@@ -688,20 +765,25 @@ PRINT "Hello " + Name + "!"
         }
 
         string folderToOpen = GetFolderToOpen(folders);
-        _ = OpenGeneratedFolderAsync(folderToOpen);
+        await OpenGeneratedFolderAsync(folderToOpen).ConfigureAwait(true);
     }
 
     private async Task OpenGeneratedFolderAsync(string folderToOpen)
     {
-        AppendOutput($"Generated code folder: {folderToOpen}");
-
         try
         {
-            await Task.Run(() => FolderOpener.OpenOrActivate(folderToOpen)).ConfigureAwait(true);
+            AppendOutput($"Generated code folder: {folderToOpen}");
+            await _folderOpener.OpenAsync(folderToOpen, CancellationToken.None).ConfigureAwait(true);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!DesktopExceptionPolicy.IsFatal(ex))
         {
-            HandleUiError("Open generated folder", ex);
+            string details = ReportException("Open generated folder", ex, stage: "Explorer Launch");
+            AppendOutput(
+                "Build completed, but the generated folder could not be opened." +
+                Environment.NewLine +
+                $"{ex.GetType().Name}: {ex.Message}" +
+                Environment.NewLine +
+                $"Details: {details}");
         }
     }
 
@@ -713,8 +795,8 @@ PRINT "Hello " + Name + "!"
         }
 
         // A visible-languages build creates one temp workspace per language.
-        // Opening their shared parent gives the learner one Explorer window
-        // where all generated-code folders from the operation can be inspected.
+        // Opening their shared parent gives the learner one folder view where
+        // all generated-code folders from the operation can be inspected.
         string? parent = Path.GetDirectoryName(folders[0]);
         if (!string.IsNullOrWhiteSpace(parent) &&
             folders.All(folder => string.Equals(
@@ -755,6 +837,14 @@ PRINT "Hello " + Name + "!"
     {
         var builder = new StringBuilder();
         builder.AppendLine(result.ToolchainStatus.Message);
+
+        if (IsUnexpectedDesktopFailure(result))
+        {
+            builder.AppendLine(result.StandardError.TrimEnd());
+            builder.AppendLine($"Total duration: {result.Duration.TotalMilliseconds:0} ms");
+            AppendOutput(builder.ToString().TrimEnd());
+            return;
+        }
 
         if (!string.IsNullOrWhiteSpace(result.BuildOutput))
         {
@@ -806,13 +896,15 @@ PRINT "Hello " + Name + "!"
 
     private void AppendOutput(string text)
     {
+        text = BoundOutputChunk(text);
+
         if (string.IsNullOrWhiteSpace(OutputText) || OutputText == "Transpilation completed.")
         {
             OutputText = text;
             return;
         }
 
-        OutputText += Environment.NewLine + Environment.NewLine + text;
+        OutputText = TrimOutputHistory(OutputText + Environment.NewLine + Environment.NewLine + text);
     }
 
     private void HandleCommandException(Exception exception) =>
@@ -821,7 +913,139 @@ PRINT "Hello " + Name + "!"
     private void HandleUiError(string operation, Exception exception)
     {
         OperationStatus = "Failed";
-        AppendOutput($"{operation} failed: {exception.Message}");
+        string details = ReportException(operation, exception);
+        AppendConciseError(operation, exception, details);
+    }
+
+    public void HandleGlobalException(string operation, Exception exception, string details)
+    {
+        OperationStatus = "Failed";
+        foreach (TargetPaneViewModel pane in Panes.Where(IsActiveBuildStatus))
+        {
+            pane.Status = "Failed";
+        }
+
+        SafeSetBusy(false);
+        AppendConciseError(operation, exception, details);
+        SafeRaiseCommandStateChanged();
+    }
+
+    internal void AppendOutputForTesting(string text) => AppendOutput(text);
+
+    private void RecoverAfterCancellation()
+    {
+        OperationStatus = "Cancelled";
+        foreach (TargetPaneViewModel pane in Panes.Where(IsActiveBuildStatus))
+        {
+            pane.Status = "Cancelled";
+        }
+    }
+
+    private void RecoverAfterOperationFailure(string operation, Exception exception)
+    {
+        OperationStatus = "Failed";
+        foreach (TargetPaneViewModel pane in Panes.Where(IsActiveBuildStatus))
+        {
+            pane.Status = "Failed";
+        }
+
+        string details = ReportException(operation, exception);
+        AppendConciseError(operation, exception, details);
+    }
+
+    private void SafeSetBusy(bool value)
+    {
+        try
+        {
+            IsBusy = value;
+        }
+        catch (Exception ex) when (!DesktopExceptionPolicy.IsFatal(ex))
+        {
+            _isBusy = value;
+            ReportException("Set busy state", ex, stage: value ? "Busy" : "Idle");
+        }
+    }
+
+    private void SafeRaiseCommandStateChanged()
+    {
+        try
+        {
+            RaiseCommandStateChanged();
+        }
+        catch (Exception ex) when (!DesktopExceptionPolicy.IsFatal(ex))
+        {
+            ReportException("Raise command state", ex, stage: "Command Notification");
+        }
+    }
+
+    private string ReportException(
+        string operation,
+        Exception exception,
+        string? target = null,
+        string? stage = null) =>
+        _errorReporter.Report(operation, exception, target, stage, _sourceRevision);
+
+    private void AppendConciseError(
+        string operation,
+        Exception exception,
+        string details,
+        string? target = null,
+        string? stage = null)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine(target is null ? $"=== {operation} Error ===" : $"=== {target} {operation} Error ===");
+        if (!string.IsNullOrWhiteSpace(stage))
+        {
+            builder.AppendLine($"Stage: {stage}");
+        }
+
+        builder.AppendLine($"{exception.GetType().Name}: {exception.Message}");
+        builder.AppendLine($"Details: {details}");
+        builder.Append("SMILE remains open. Correct the issue and try again.");
+        AppendOutput(builder.ToString());
+    }
+
+    private BuildRunResult CreateDesktopFailureResult(
+        TargetLanguage language,
+        string stage,
+        Exception exception,
+        string details,
+        TimeSpan duration,
+        bool cancelled = false)
+    {
+        string languageName = TargetLanguageInfo.GetDisplayName(language);
+        var status = new ToolchainStatus(
+            language,
+            IsAvailable: true,
+            languageName,
+            Version: null,
+            Location: null,
+            cancelled ? "Cancelled by user." : "Unexpected desktop/toolchain failure.");
+
+        string message = cancelled
+            ? "Cancelled by user."
+            : $"Unexpected failure during {stage}." +
+              Environment.NewLine +
+              $"{exception.GetType().Name}: {exception.Message}" +
+              Environment.NewLine +
+              $"Details: {details}" +
+              Environment.NewLine +
+              "SMILE remains open.";
+
+        return new BuildRunResult(
+            language,
+            Success: false,
+            status,
+            BuildOutput: string.Empty,
+            StandardOutput: string.Empty,
+            StandardError: message,
+            ExitCode: null,
+            duration,
+            TimedOut: false,
+            Cancelled: cancelled,
+            WorkingDirectory: null,
+            PauseLauncherPath: null,
+            Stage: stage);
     }
 
     private void CancelLiveTranspilation()
@@ -837,10 +1061,23 @@ PRINT "Hello " + Name + "!"
             .Distinct()
             .ToArray();
 
-    private static string GetReadyStatus(TargetPaneViewModel pane) =>
-        IsTranspileOnlyLanguage(pane.Language)
-            ? "Transpile Only"
-            : pane.HasToolchain ? "Ready" : "Toolchain Missing";
+    private string GetReadyStatus(TargetPaneViewModel pane)
+    {
+        if (IsTranspileOnlyLanguage(pane.Language))
+        {
+            return "Transpile Only";
+        }
+
+        if (pane.HasToolchain)
+        {
+            return "Ready";
+        }
+
+        return _toolchainStatuses.TryGetValue(pane.Language, out ToolchainStatus? status) &&
+            status.Message.StartsWith("Detection failed:", StringComparison.Ordinal)
+            ? "Detection Failed"
+            : "Toolchain Missing";
+    }
 
     private static string GetInitialBuildStatus(TargetLanguage language) =>
         language switch
@@ -881,7 +1118,52 @@ PRINT "Hello " + Name + "!"
     private static void Exit() =>
         Application.Current.Shutdown();
 
-    private static void ShowAbout()
+    private static bool IsUnexpectedDesktopFailure(BuildRunResult result) =>
+        !result.Success &&
+        !result.TimedOut &&
+        !result.Cancelled &&
+        result.ExitCode is null &&
+        result.StandardError.StartsWith("Unexpected failure during", StringComparison.Ordinal);
+
+    private static bool IsActiveBuildStatus(TargetPaneViewModel pane) =>
+        pane.Status is "Building" or "Assembling" or "Linking" or "Running" or "Cancelling";
+
+    private static string BoundOutputChunk(string text)
+    {
+        if (text.Length <= MaxOutputTextLength)
+        {
+            return text;
+        }
+
+        return OutputTruncatedMarker +
+            Environment.NewLine +
+            text[^Math.Min(text.Length, MaxOutputTextLength - OutputTruncatedMarker.Length - Environment.NewLine.Length)..];
+    }
+
+    private static string TrimOutputHistory(string text)
+    {
+        if (text.Length <= MaxOutputTextLength)
+        {
+            return text;
+        }
+
+        int keep = MaxOutputTextLength - OutputTruncatedMarker.Length - Environment.NewLine.Length;
+        if (keep <= 0)
+        {
+            return OutputTruncatedMarker;
+        }
+
+        string newest = text[^keep..];
+        int sectionBoundary = newest.IndexOf(Environment.NewLine + Environment.NewLine, StringComparison.Ordinal);
+        if (sectionBoundary >= 0)
+        {
+            newest = newest[(sectionBoundary + Environment.NewLine.Length * 2)..];
+        }
+
+        return OutputTruncatedMarker + Environment.NewLine + newest;
+    }
+
+    private void ShowAbout()
     {
         Assembly assembly = typeof(MainWindowViewModel).Assembly;
         string version =
@@ -890,7 +1172,7 @@ PRINT "Hello " + Name + "!"
             "unknown";
 
         MessageBox.Show(
-            $"SMILE{Environment.NewLine}Version {version}{Environment.NewLine}{Environment.NewLine}Educational BASIC-inspired multi-target transpiler.",
+            $"SMILE - Simple Modern Interactive Learning Environment{Environment.NewLine}Version {version}{Environment.NewLine}Session {SessionId}{Environment.NewLine}{Environment.NewLine}Educational BASIC-inspired multi-target transpiler.",
             "About SMILE",
             MessageBoxButton.OK,
             MessageBoxImage.Information);

@@ -10,10 +10,12 @@
 
 ## Guiding Principles
 
+- SMILE stands for "Simple Modern Interactive Learning Environment." Use that expansion in public documentation and in the IDE title where the full project name is shown.
 - KISS and KISS v2, "The Sin Way," govern the entire SMILE project, including architecture, UI, runtime behavior, documentation, tests, and generated target-language code.
 - Choose the simplest complete solution. Avoid unnecessary complexity, abstractions, frameworks, dependencies, code, files, folders, classes, methods, variables, features, and bells and whistles.
 - User-experience performance is the first performance priority. Functional performance is second.
 - The WPF UI thread must never be blocked by toolchain detection, compilation, linking, execution, process output, long file operations, or other noticeable work.
+- Recoverable desktop failures must be contained. Build/run, toolchain detection, process execution, folder opening, command-state refresh, and logging failures should report a concise user-visible message, record diagnostics when possible, and keep the IDE open.
 - Generated target code should be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write.
 - Generated code must be minimal, readable, deterministic, educational, dependency-light, and fast without sacrificing clarity.
 - Prefer one natural destination-language statement for one SMILE statement when that keeps the generated code clear. Target-local lowering must preserve behavior without exposing compiler mechanics as awkward target code.

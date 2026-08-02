@@ -1,6 +1,6 @@
 # Architecture
 
-SMILE v0.2.0 uses a small direct compiler pipeline:
+SMILE v0.2.1 uses a small direct compiler pipeline:
 
 ```text
 Source -> Parser -> Syntax Tree -> Binder -> Bound Program -> Target Generator -> Generated Files
@@ -38,8 +38,12 @@ Generated target code should be semantically correct, idiomatic for the destinat
 
 `SMILE.Engine` has no WPF dependency. That keeps the language front end reusable from the CLI, the desktop app, tests, and a possible future web interface.
 
-`SMILE.Toolchains` owns local compiler/runtime detection, process execution, transpile-only target status, separate build/program timeouts, and optional press-any-key launcher scripts. Process work is asynchronous, cancellable, timed, and isolated in `%TEMP%\SMILE\Runs\<unique-id> - <language>\` so the WPF UI thread stays responsive, learners can identify each generated-code folder, and build artifacts stay out of the repository.
+`SMILE.Toolchains` owns local compiler/runtime detection, process execution, transpile-only target status, separate build/program timeouts, bounded process output, and optional press-any-key launcher scripts. Process work is asynchronous, cancellable, timed, and isolated in `%TEMP%\SMILE\Runs\<unique-id> - <language>\` so the WPF UI thread stays responsive, learners can identify each generated-code folder, and build artifacts stay out of the repository.
 
 The desktop app tracks source revisions for live preview. Typing schedules a short debounced background transpilation for the visible target languages only. Manual Transpile All runs asynchronously and generates every target. Build & Run asks for the current source revision before invoking a toolchain, which prevents a compiler from running stale generated code.
+
+`SMILE.Desktop` uses AvalonEdit for the editable SMILE source pane and the three generated target panes. Those four code panes show line numbers and lexical syntax highlighting, while the output area stays a plain append-only log for build and program output.
+
+Recoverable desktop failures are contained at the operation boundary. Toolchain detection, build/run, child-process output, command-state refresh, and folder-opening failures report concise output, write a diagnostic log when possible, and keep the IDE open.
 
 KISS keeps the architecture small: one engine project, one toolchain project, one CLI harness, one desktop app, and one test project. KISS v2 keeps the user experience responsive first.

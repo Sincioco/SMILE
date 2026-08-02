@@ -164,7 +164,7 @@ public abstract class ToolchainBase : IToolchain
         // gives every build/run operation an isolated directory.
         string root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "SMILE", "Runs"));
         Directory.CreateDirectory(root);
-        await CleanOldWorkspacesOnceAsync(root, cancellationToken).ConfigureAwait(false);
+        await CleanOldWorkspacesOnceAsync(root).ConfigureAwait(false);
 
         string workspace = Path.Combine(
             root,
@@ -322,21 +322,25 @@ public abstract class ToolchainBase : IToolchain
         return displayName;
     }
 
-    private static async Task CleanOldWorkspacesOnceAsync(
-        string root,
-        CancellationToken cancellationToken)
+    private static async Task CleanOldWorkspacesOnceAsync(string root)
     {
         if (Interlocked.Exchange(ref _oldWorkspaceCleanupStarted, 1) != 0)
         {
             return;
         }
 
-        await Task.Run(
-            () => CleanOldWorkspaces(root, cancellationToken),
-            cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await Task.Run(() => CleanOldWorkspaces(root)).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (IsExpectedCleanupException(ex))
+        {
+            // Cleanup is housekeeping. A locked or disappearing old folder must
+            // not prevent SMILE from creating a fresh build workspace.
+        }
     }
 
-    private static void CleanOldWorkspaces(string root, CancellationToken cancellationToken)
+    private static void CleanOldWorkspaces(string root)
     {
         string rootFullPath = Path.GetFullPath(root);
         // Keep temporary compiler output from piling up between experiments.
@@ -344,23 +348,46 @@ public abstract class ToolchainBase : IToolchain
         // folders quietly grow into multi-gigabyte clutter.
         var cutoff = DateTime.UtcNow.AddDays(-1);
 
-        foreach (string directory in Directory.EnumerateDirectories(rootFullPath))
+        string[] directories;
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            directories = Directory.EnumerateDirectories(rootFullPath).ToArray();
+        }
+        catch (Exception ex) when (IsExpectedCleanupException(ex))
+        {
+            return;
+        }
 
-            string fullPath = Path.GetFullPath(directory);
-            if (!fullPath.StartsWith(rootFullPath + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        foreach (string directory in directories)
+        {
+            string fullPath;
+            try
+            {
+                fullPath = Path.GetFullPath(directory);
+            }
+            catch (Exception ex) when (IsExpectedCleanupException(ex))
             {
                 continue;
             }
 
             try
             {
+                if (!fullPath.StartsWith(rootFullPath + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
                 var info = new DirectoryInfo(fullPath);
                 if (info.LastWriteTimeUtc < cutoff)
                 {
                     info.Delete(recursive: true);
                 }
+            }
+            catch (DirectoryNotFoundException)
+            {
+            }
+            catch (PathTooLongException)
+            {
             }
             catch (IOException)
             {
@@ -370,6 +397,14 @@ public abstract class ToolchainBase : IToolchain
             }
         }
     }
+
+    private static bool IsExpectedCleanupException(Exception exception) =>
+        exception is IOException or
+            UnauthorizedAccessException or
+            DirectoryNotFoundException or
+            PathTooLongException or
+            ArgumentException or
+            NotSupportedException;
 }
 
 public sealed class DotNetToolchain : ToolchainBase

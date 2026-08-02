@@ -3,9 +3,10 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:controls="clr-namespace:SMILE.Desktop.Controls"
         xmlns:vm="clr-namespace:SMILE.Desktop"
         mc:Ignorable="d"
-        Title="SMILE v0.2.0 - Friendly PRINT"
+        Title="SMILE - Simple Modern Interactive Learning Environment"
         Height="820"
         Width="1180"
         MinHeight="620"
@@ -56,10 +57,11 @@
                         <TextBlock Text="{Binding Status}" FontWeight="SemiBold" />
                     </StackPanel>
 
-                    <TextBox Grid.Row="2"
-                             Text="{Binding GeneratedCode}"
-                             IsReadOnly="True"
-                             TextWrapping="NoWrap" />
+                    <controls:SmileCodeEditor Grid.Row="2"
+                                              DocumentText="{Binding GeneratedCode, Mode=OneWay}"
+                                              LanguageId="{Binding HighlightingId}"
+                                              IsReadOnly="True"
+                                              AutomationProperties.Name="{Binding Title}" />
 
                     <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,8,0,0">
                         <Button Content="Copy" Command="{Binding CopyCommand}" />
@@ -147,10 +149,11 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
                     <TextBlock Text="SMILE" FontWeight="SemiBold" Margin="0,0,0,6" />
-                    <TextBox Grid.Row="1"
-                             Text="{Binding SourceText, UpdateSourceTrigger=PropertyChanged}"
-                             TextWrapping="NoWrap"
-                             IsReadOnly="{Binding IsBusy}" />
+                    <controls:SmileCodeEditor Grid.Row="1"
+                                              DocumentText="{Binding SourceText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              LanguageId="smile"
+                                              IsReadOnly="{Binding IsBusy}"
+                                              AutomationProperties.Name="SMILE source editor" />
                 </Grid>
             </Border>
 

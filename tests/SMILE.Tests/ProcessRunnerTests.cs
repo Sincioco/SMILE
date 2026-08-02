@@ -1,3 +1,4 @@
+using System.IO;
 using SMILE.Toolchains;
 
 namespace SMILE.Tests;
@@ -53,6 +54,32 @@ public sealed class ProcessRunnerTests
     }
 
     [TestMethod]
+    public async Task Process_runner_returns_failure_for_invalid_inputs()
+    {
+        ProcessResult blankFile = await _runner.RunAsync(
+            new ProcessCommand("", Array.Empty<string>(), Environment.CurrentDirectory),
+            TimeSpan.FromSeconds(5),
+            CancellationToken.None);
+
+        ProcessResult missingDirectory = await _runner.RunAsync(
+            new ProcessCommand("cmd.exe", Array.Empty<string>(), Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))),
+            TimeSpan.FromSeconds(5),
+            CancellationToken.None);
+
+        ProcessResult invalidTimeout = await _runner.RunAsync(
+            new ProcessCommand("cmd.exe", Array.Empty<string>(), Environment.CurrentDirectory),
+            TimeSpan.Zero,
+            CancellationToken.None);
+
+        Assert.IsFalse(blankFile.Success);
+        StringAssert.Contains(blankFile.StandardError, "filename was blank");
+        Assert.IsFalse(missingDirectory.Success);
+        StringAssert.Contains(missingDirectory.StandardError, "working directory does not exist");
+        Assert.IsFalse(invalidTimeout.Success);
+        StringAssert.Contains(invalidTimeout.StandardError, "timeout must be positive");
+    }
+
+    [TestMethod]
     public async Task Process_runner_times_out_and_kills_process_tree()
     {
         ProcessResult result = await _runner.RunAsync(
@@ -76,5 +103,21 @@ public sealed class ProcessRunnerTests
 
         Assert.IsFalse(result.Success);
         Assert.IsTrue(result.Cancelled);
+    }
+
+    [TestMethod]
+    public async Task Process_runner_bounds_standard_output_and_error()
+    {
+        string script = "$s='x' * " + (ProcessRunner.MaxCapturedCharactersPerStream + 1000) + "; [Console]::Out.Write($s); [Console]::Error.Write($s)";
+
+        ProcessResult result = await _runner.RunAsync(
+            new ProcessCommand("powershell", new[] { "-NoProfile", "-Command", script }, Environment.CurrentDirectory),
+            TimeSpan.FromSeconds(20),
+            CancellationToken.None);
+
+        Assert.IsLessThan(ProcessRunner.MaxCapturedCharactersPerStream + 200, result.StandardOutput.Length);
+        Assert.IsLessThan(ProcessRunner.MaxCapturedCharactersPerStream + 200, result.StandardError.Length);
+        StringAssert.Contains(result.StandardOutput, "SMILE truncated 1000 additional stdout characters");
+        StringAssert.Contains(result.StandardError, "SMILE truncated 1000 additional stderr characters");
     }
 }

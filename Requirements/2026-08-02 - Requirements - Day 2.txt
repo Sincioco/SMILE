@@ -192,3 +192,23 @@ Codex Completion Notes
 **27 ready for testing:** SMILE now records this as a project-wide target generation rule. C and Objective-C PRINT generation uses one safe `printf` statement per SMILE `PRINT` where practical, while C#, JavaScript, Swift, Java, and MASM continue to preserve SMILE behavior in the clearest natural form available for each destination language. SMILE preserves user-authored identifier spelling in generated target code.
 
 28.) Also the screenshot of the README.md file in the github repo of SMILE is still the original one....it still not updated.  Your last attempt to update it did not appear to have worked.
+
+IDE Stability
+-------------
+29.) In my earlier tests, I managed to crash the SMILE IDE several times when I was manually pressing the "Build and Run" for each target language.  ChatGPT has prepared instructions for you to assist in troubleshooting issues like that in the future.  Please read and execute the file in "C:\SMILE\Requirements\2026-08-02 2159 - SMILE Codex Instructions Build Run Crash Containment and Stability.md".  Commit and push.
+
+IDE Improvements - Color Coding / Syntax Highlighting
+-----------------------------------------------------
+30.) The SMILE IDE is looking pretty plain with no color coding or syntax highlighting.  As per my research with ChatGPT it recommended we add that capability.  Please execute the file "C:\SMILE\Requirements\2026-08-02 2159 - SMILE AvalonEdit Syntax Highlighting Codex Instructions.md".  Commit and push to the repo after all your tests are green.  And you have my permission to download anything you need from the internet.
+
+SMILE - What it Stands For
+--------------------------
+31.) Remember this permanently that SMILE stands for "Simple Modern Interactive Learning Environment".  Please update all documentations and the IDE.  On the IDE's Title Bar, put "SMILE - Simple Modern Interactive Learning Environment".
+
+Codex Completion Notes
+----------------------
+**29 ready for testing:** SMILE now contains recoverable IDE crash containment for Build & Run, toolchain detection, process launch/wait/output, command refresh, generated-folder opening, and global WPF/Task/AppDomain exception paths. Recoverable failures are reported in the output area, detailed logs are written under `%LOCALAPPDATA%\SMILE\Logs` with `%TEMP%\SMILE\Logs` fallback, and one failed visible target should not close the IDE or stop the other visible targets.
+
+**30 ready for testing:** The four code panes now use AvalonEdit. The SMILE source pane and all three generated target panes display line numbers and syntax highlighting for SMILE, C#, C, MASM x64, JavaScript, Java, Objective-C, and Swift. The output window remains a plain scrolling build/program log.
+
+**31 ready for testing:** SMILE is now documented as "Simple Modern Interactive Learning Environment." The IDE title bar shows `SMILE - Simple Modern Interactive Learning Environment`, About SMILE shows the same full name and the current build version, and the README/project docs have been updated for the new meaning.

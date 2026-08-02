@@ -20,12 +20,28 @@ public sealed class RelayCommand : ICommand
 
     public event EventHandler? CanExecuteChanged;
 
-    public bool CanExecute(object? parameter) => _canExecute?.Invoke() ?? true;
+    public bool CanExecute(object? parameter)
+    {
+        try
+        {
+            return _canExecute?.Invoke() ?? true;
+        }
+        catch (Exception ex)
+        {
+            ReportError(ex);
+            return false;
+        }
+    }
 
     public void Execute(object? parameter)
     {
         try
         {
+            if (!CanExecute(parameter))
+            {
+                return;
+            }
+
             _execute();
         }
         catch (OperationCanceledException)
@@ -39,8 +55,17 @@ public sealed class RelayCommand : ICommand
         }
     }
 
-    public void RaiseCanExecuteChanged() =>
-        CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+    public void RaiseCanExecuteChanged()
+    {
+        try
+        {
+            CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            ReportError(ex);
+        }
+    }
 
     private void ReportError(Exception exception)
     {
@@ -75,10 +100,36 @@ public sealed class AsyncRelayCommand : ICommand
 
     public event EventHandler? CanExecuteChanged;
 
-    public bool CanExecute(object? parameter) =>
-        !_isRunning && (_canExecute?.Invoke() ?? true);
+    public bool CanExecute(object? parameter)
+    {
+        try
+        {
+            return !_isRunning && (_canExecute?.Invoke() ?? true);
+        }
+        catch (Exception ex)
+        {
+            ReportError(ex);
+            return false;
+        }
+    }
 
     public async void Execute(object? parameter)
+    {
+        try
+        {
+            await ExecuteCoreAsync(parameter).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancellation is expected for long-running commands.
+        }
+        catch (Exception ex)
+        {
+            ReportError(ex);
+        }
+    }
+
+    private async Task ExecuteCoreAsync(object? parameter)
     {
         if (!CanExecute(parameter))
         {
@@ -90,15 +141,17 @@ public sealed class AsyncRelayCommand : ICommand
 
         try
         {
-            await _execute();
-        }
-        catch (OperationCanceledException)
-        {
-            // Async commands are frequently cancelled by the user pressing the
-            // Cancel button. The view-model decides what status text to show.
+            await _execute().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
+            if (ex is OperationCanceledException)
+            {
+                // Async commands are frequently cancelled by the user pressing
+                // Cancel. The view-model decides what status text to show.
+                return;
+            }
+
             ReportError(ex);
         }
         finally
@@ -108,8 +161,17 @@ public sealed class AsyncRelayCommand : ICommand
         }
     }
 
-    public void RaiseCanExecuteChanged() =>
-        CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+    public void RaiseCanExecuteChanged()
+    {
+        try
+        {
+            CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            ReportError(ex);
+        }
+    }
 
     private void ReportError(Exception exception)
     {

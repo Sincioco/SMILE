@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<SyntaxDefinition name="MASM x64" extensions=".asm" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+  <Color name="Instruction" foreground="#0000FF" fontWeight="bold" />
+  <Color name="Directive" foreground="#AF00DB" fontWeight="bold" />
+  <Color name="Register" foreground="#267F99" />
+  <Color name="String" foreground="#A31515" />
+  <Color name="Comment" foreground="#008000" />
+  <Color name="Number" foreground="#098658" />
+  <Color name="Operator" foreground="#1F1F1F" />
+
+  <RuleSet ignoreCase="true">
+    <Span color="Comment" begin=";" />
+    <Span color="String" begin="&quot;" end="&quot;" />
+
+    <Keywords color="Instruction">
+      <Word>call</Word>
+      <Word>lea</Word>
+      <Word>mov</Word>
+      <Word>sub</Word>
+      <Word>xor</Word>
+    </Keywords>
+
+    <Keywords color="Directive">
+      <Word>PROC</Word>
+      <Word>ENDP</Word>
+      <Word>END</Word>
+      <Word>EXTERN</Word>
+      <Word>EQU</Word>
+      <Word>BYTE</Word>
+      <Word>DWORD</Word>
+      <Word>QWORD</Word>
+      <Word>PTR</Word>
+      <Word>option</Word>
+      <Word>casemap</Word>
+    </Keywords>
+
+    <Keywords color="Register">
+      <Word>rax</Word>
+      <Word>rcx</Word>
+      <Word>rdx</Word>
+      <Word>r8</Word>
+      <Word>r9</Word>
+      <Word>rsp</Word>
+      <Word>ecx</Word>
+      <Word>r8d</Word>
+      <Word>r9d</Word>
+    </Keywords>
+
+    <Rule color="Directive">\.(data|code)\b</Rule>
+    <Rule color="Number">\b([0-9]+|[0-9A-F]+h)\b</Rule>
+    <Rule color="Operator">[\[\]+\-*,.:]</Rule>
+  </RuleSet>
+</SyntaxDefinition>
