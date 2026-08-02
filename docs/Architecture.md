@@ -1,6 +1,6 @@
 # Architecture
 
-SMILE v0.3.1 uses a small direct compiler pipeline:
+SMILE v0.3.2 uses a small direct compiler pipeline:
 
 ```text
 Source -> Parser -> Syntax Tree -> Binder -> Bound Program -> Target Generator -> Generated Files
@@ -46,7 +46,7 @@ Generated target code should be semantically correct, idiomatic for the destinat
 
 `SMILE.Engine` has no WPF dependency. That keeps the language front end reusable from the CLI, the desktop app, tests, and a possible future web interface.
 
-`SMILE.Toolchains` owns local compiler/runtime detection, process execution, transpile-only target status, separate build/program timeouts, bounded process output, and optional press-any-key launcher scripts. Process work is asynchronous, cancellable, timed, and isolated in `%TEMP%\SMILE\Runs\<unique-id> - <language>\` so the WPF UI thread stays responsive, learners can identify each generated-code folder, and build artifacts stay out of the repository.
+`SMILE.Toolchains` owns local compiler/runtime detection, process execution, target availability status, separate build/program timeouts, bounded process output, and optional press-any-key launcher scripts. Objective-C uses MSYS2 Clang for SMILE's Foundation-free console profile, and Swift uses Swift.Toolchain with the Visual Studio C++ linker environment. Process work is asynchronous, cancellable, timed, and isolated in `%TEMP%\SMILE\Runs\<unique-id> - <language>\` so the WPF UI thread stays responsive, learners can identify each generated-code folder, and build artifacts stay out of the repository.
 
 The desktop app tracks source revisions for live preview. Typing schedules a short debounced background transpilation for the visible target languages only. Manual Transpile All runs asynchronously and generates every target. Build & Run asks for the current source revision before invoking a toolchain, which prevents a compiler from running stale generated code.
 

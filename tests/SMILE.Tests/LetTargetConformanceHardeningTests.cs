@@ -110,7 +110,9 @@ PRINT {_smile_class_2}
         TargetLanguage.C,
         TargetLanguage.MasmX64,
         TargetLanguage.JavaScript,
-        TargetLanguage.Java
+        TargetLanguage.Java,
+        TargetLanguage.ObjectiveC,
+        TargetLanguage.Swift
     };
 
     private readonly SmileTranspiler _transpiler = new();
@@ -245,13 +247,13 @@ PRINT {Middle}
         StringAssert.Contains(java, "String _smile_args = \"args\";");
 
         string objectiveC = Generate(AdversarialIdentifierSource, TargetLanguage.ObjectiveC).PrimaryFile.Content;
-        StringAssert.Contains(objectiveC, "NSString *_smile_printf = @\"printf\";");
-        StringAssert.Contains(objectiveC, "NSString *_smile_main = @\"main\";");
-        StringAssert.Contains(objectiveC, "NSString *_smile_self = @\"self\";");
-        StringAssert.Contains(objectiveC, "NSString *_smile_super = @\"super\";");
-        StringAssert.Contains(objectiveC, "NSString *_smile_NSString = @\"NSString\";");
-        StringAssert.Contains(objectiveC, "NSString *_smile___internal = @\"__internal\";");
-        StringAssert.Contains(objectiveC, "NSString *_smile__Upper = @\"_Upper\";");
+        StringAssert.Contains(objectiveC, "const char *_smile_printf = \"printf\";");
+        StringAssert.Contains(objectiveC, "const char *_smile_main = \"main\";");
+        StringAssert.Contains(objectiveC, "const char *_smile_self = \"self\";");
+        StringAssert.Contains(objectiveC, "const char *_smile_super = \"super\";");
+        StringAssert.Contains(objectiveC, "const char *_smile_NSString = \"NSString\";");
+        StringAssert.Contains(objectiveC, "const char *_smile___internal = \"__internal\";");
+        StringAssert.Contains(objectiveC, "const char *_smile__Upper = \"_Upper\";");
 
         string swift = Generate(AdversarialIdentifierSource, TargetLanguage.Swift).PrimaryFile.Content;
         StringAssert.Contains(swift, "let _smile_ = \"_\"");
@@ -283,10 +285,10 @@ PRINT {YES}
 PRINT {NO}
 """, TargetLanguage.ObjectiveC).PrimaryFile.Content;
 
-        StringAssert.Contains(objectiveC, "NSString *_smile_Class = @\"Class\";");
-        StringAssert.Contains(objectiveC, "NSString *_smile_Nil = @\"Nil\";");
-        StringAssert.Contains(objectiveC, "NSString *_smile_YES = @\"YES\";");
-        StringAssert.Contains(objectiveC, "NSString *_smile_NO = @\"NO\";");
+        StringAssert.Contains(objectiveC, "const char *_smile_Class = \"Class\";");
+        StringAssert.Contains(objectiveC, "const char *_smile_Nil = \"Nil\";");
+        StringAssert.Contains(objectiveC, "const char *_smile_YES = \"YES\";");
+        StringAssert.Contains(objectiveC, "const char *_smile_NO = \"NO\";");
 
         string swift = Generate("LET Self = \"Self\"\nPRINT {Self}", TargetLanguage.Swift).PrimaryFile.Content;
         StringAssert.Contains(swift, "let _smile_Self = \"Self\"");

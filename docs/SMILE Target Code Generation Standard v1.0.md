@@ -88,12 +88,14 @@ printf("Progress: 100%%\n");
 printf("%s is 100%% ready.\n", Name);
 ```
 
-Objective-C follows the same stdout style while preserving Objective-C strings:
+Objective-C follows the same stdout style in the Windows-local console profile:
 
 ```objc
-NSString *Name = @"Sin";
-printf("Hello %s!\n", [Name UTF8String]);
+const char *Name = "Sin";
+printf("Hello %s!\n", Name);
 ```
+
+This profile intentionally avoids Foundation/NSString until the local Windows runtime path is hardened. The file is still generated as Objective-C (`.m`) and compiled with an Objective-C compiler.
 
 MASM stays dependency-light and uses explicit output operations, but the generated assembly should keep explanatory right-side comments so learners can follow the code.
 

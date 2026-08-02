@@ -248,8 +248,8 @@ LET Greeting = $"Hello {FullName}!"
         StringAssert.Contains(c, "const char *Greeting = \"Hello Sin Cioco!\";");
 
         string objectiveC = Generate(source, TargetLanguage.ObjectiveC).PrimaryFile.Content;
-        StringAssert.Contains(objectiveC, "NSString *FullName = @\"Sin Cioco\";");
-        StringAssert.Contains(objectiveC, "NSString *Greeting = @\"Hello Sin Cioco!\";");
+        StringAssert.Contains(objectiveC, "const char *FullName = \"Sin Cioco\";");
+        StringAssert.Contains(objectiveC, "const char *Greeting = \"Hello Sin Cioco!\";");
 
         string masm = Generate(source, TargetLanguage.MasmX64).PrimaryFile.Content;
         StringAssert.Contains(masm, "variable2Value BYTE \"Sin Cioco\"");

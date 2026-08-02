@@ -11,7 +11,6 @@
 - Reject missing `PRINT` whitespace, malformed interpolation, semicolon statement separators, and a second standalone `PRINT` keyword on one line.
 - Generate C#, C, Windows x64 MASM, JavaScript, Java, Objective-C, and Swift directly from the bound SMILE program.
 - Build and run installed local target toolchains.
-- Report Objective-C and Swift as transpile-only targets on Windows.
 - Provide a CLI developer harness.
 - Provide a responsive WPF desktop app with three generated panes.
 - Debounce live desktop previews so typing stays responsive.
@@ -52,9 +51,17 @@
 - Add `SMILE1116` for missing `LET` initializer expressions.
 - Add evaluator-versus-toolchain tests for empty strings and adversarial valid SMILE identifiers.
 
+## Implemented In v0.3.2
+
+- Add local Objective-C Build & Run through MSYS2 MinGW64 Clang.
+- Add local Swift Build & Run through Swift.Toolchain for Windows and Visual Studio C++ linker tools.
+- Switch Objective-C generation to a Foundation-free Windows console profile that compiles reliably as `.m` locally.
+- Enable Objective-C and Swift in desktop Build & Run when their toolchains are detected.
+- Extend evaluator-versus-toolchain tests to Objective-C and Swift when those local toolchains are installed.
+
 ## Future Ideas
 
-These are not implemented in v0.3.1:
+These are not implemented in v0.3.2:
 
 1. Numeric and boolean expressions
 2. `INPUT`

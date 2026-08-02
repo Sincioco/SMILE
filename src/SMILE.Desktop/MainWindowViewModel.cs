@@ -570,14 +570,6 @@ PRINT {Greeting}
 
         try
         {
-            if (IsTranspileOnlyLanguage(language))
-            {
-                pane.Status = "Transpile Only";
-                await EnsureCurrentGeneratedProgramAsync(language, cancellationToken).ConfigureAwait(true);
-                AppendOutput($"=== {languageName} ==={Environment.NewLine}Skipped: this target is transpile-only on Windows for now.");
-                return null;
-            }
-
             if (!_toolchainStatuses.TryGetValue(language, out ToolchainStatus? status) || !status.IsAvailable)
             {
                 pane.Status = status?.Message.StartsWith("Detection failed:", StringComparison.Ordinal) == true
@@ -852,7 +844,7 @@ PRINT {Greeting}
 
     private bool CanBuildVisible() =>
         !IsBusy &&
-        Panes.Any(pane => !pane.HasSyntaxError && (pane.HasToolchain || IsTranspileOnlyLanguage(pane.Language)));
+        Panes.Any(pane => !pane.HasSyntaxError && pane.HasToolchain);
 
     private void RaiseCommandStateChanged()
     {
@@ -1095,11 +1087,6 @@ PRINT {Greeting}
 
     private string GetReadyStatus(TargetPaneViewModel pane)
     {
-        if (IsTranspileOnlyLanguage(pane.Language))
-        {
-            return "Transpile Only";
-        }
-
         if (pane.HasToolchain)
         {
             return "Ready";
@@ -1143,9 +1130,6 @@ PRINT {Greeting}
 
         return result.Success ? "Completed" : "Failed";
     }
-
-    private static bool IsTranspileOnlyLanguage(TargetLanguage language) =>
-        language is TargetLanguage.ObjectiveC or TargetLanguage.Swift;
 
     private static void Exit() =>
         Application.Current.Shutdown();

@@ -202,24 +202,19 @@ PRINT "Hello " + Name + "!"
     }
 
     [TestMethod]
-    public void Objective_c_generator_produces_minimal_foundation_program()
+    public void Objective_c_generator_produces_minimal_console_program()
     {
         GeneratedProgram program = Generate(SampleSource, TargetLanguage.ObjectiveC);
 
         Assert.AreEqual("Program.m", program.PrimaryFile.RelativePath);
         Assert.AreEqual(
             Lines(
-                "#import <Foundation/Foundation.h>",
                 "#include <stdio.h>",
                 "",
                 "int main(void)",
                 "{",
-                "    @autoreleasepool",
-                "    {",
-                "        printf(\"Hello from SMILE!\\n\");",
-                "        printf(\"Different syntax, same idea.\\n\");",
-                "",
-                "    }",
+                "    printf(\"Hello from SMILE!\\n\");",
+                "    printf(\"Different syntax, same idea.\\n\");",
                 "",
                 "    return 0;",
                 "}"),
@@ -316,8 +311,8 @@ PRINT "Hello " + Name + "!"
         Assert.IsFalse(c.Contains("putchar(", StringComparison.Ordinal));
 
         string objectiveC = Generate(FriendlyPrintSource, TargetLanguage.ObjectiveC).PrimaryFile.Content;
-        StringAssert.Contains(objectiveC, "NSString *Name = @\"Sin\";");
-        StringAssert.Contains(objectiveC, "printf(\"Hello %s!\\n\", [Name UTF8String]);");
+        StringAssert.Contains(objectiveC, "const char *Name = \"Sin\";");
+        StringAssert.Contains(objectiveC, "printf(\"Hello %s!\\n\", Name);");
         Assert.IsFalse(objectiveC.Contains("NSLog", StringComparison.Ordinal));
         Assert.IsFalse(objectiveC.Contains("fputs(", StringComparison.Ordinal));
 
@@ -582,7 +577,7 @@ PRINT Progress: 100%
 
         Assert.AreEqual(3, CountOccurrences(objectiveC, "printf("));
         StringAssert.Contains(objectiveC, "printf(\"\\n\");");
-        StringAssert.Contains(objectiveC, "printf(\"Hello %s!\\n\", [Name UTF8String]);");
+        StringAssert.Contains(objectiveC, "printf(\"Hello %s!\\n\", Name);");
         StringAssert.Contains(objectiveC, "printf(\"Progress: 100%%\\n\");");
         Assert.IsFalse(objectiveC.Contains("NSLog", StringComparison.Ordinal));
         Assert.IsFalse(objectiveC.Contains("fputs(", StringComparison.Ordinal));

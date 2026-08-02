@@ -86,26 +86,6 @@ PRINT A; B; C
     }
 
     [TestMethod]
-    [DataRow(TargetLanguage.ObjectiveC)]
-    [DataRow(TargetLanguage.Swift)]
-    public async Task Transpile_only_targets_report_unavailable_local_build_run(TargetLanguage language)
-    {
-        IToolchain toolchain = _toolchains.Get(language);
-        ToolchainStatus status = await toolchain.DetectAsync(CancellationToken.None);
-
-        Assert.IsFalse(status.IsAvailable);
-        StringAssert.Contains(status.Message, "transpilation is available");
-
-        GeneratedProgram program = _transpiler.Transpile(SampleSource, language).GeneratedProgram!;
-        BuildRunResult result = await toolchain.BuildAndRunAsync(program, CancellationToken.None);
-
-        Assert.IsFalse(result.Success);
-        Assert.AreEqual("Transpile Only", result.Stage);
-        Assert.IsNull(result.WorkingDirectory);
-        Assert.IsNull(result.PauseLauncherPath);
-    }
-
-    [TestMethod]
     public async Task Installed_targets_produce_identical_normalized_output()
     {
         var outputs = new Dictionary<TargetLanguage, string>();
@@ -187,7 +167,9 @@ PRINT "Literal braces: {Name}"
             TargetLanguage.C,
             TargetLanguage.MasmX64,
             TargetLanguage.JavaScript,
-            TargetLanguage.Java
+            TargetLanguage.Java,
+            TargetLanguage.ObjectiveC,
+            TargetLanguage.Swift
         };
 
         int executed = 0;
@@ -268,7 +250,9 @@ PRINT {System}
             TargetLanguage.C,
             TargetLanguage.MasmX64,
             TargetLanguage.JavaScript,
-            TargetLanguage.Java
+            TargetLanguage.Java,
+            TargetLanguage.ObjectiveC,
+            TargetLanguage.Swift
         };
 
         int executed = 0;
@@ -313,6 +297,8 @@ PRINT {System}
             TargetLanguage.MasmX64 => "\"Program.exe\"",
             TargetLanguage.JavaScript => "node Program.js",
             TargetLanguage.Java => "java Program",
+            TargetLanguage.ObjectiveC => "\"Program.exe\"",
+            TargetLanguage.Swift => "\"Program.exe\"",
             _ => throw new ArgumentOutOfRangeException(nameof(language), language, null)
         };
 

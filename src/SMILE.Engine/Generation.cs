@@ -520,13 +520,10 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
     {
         TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
         var source = new StringBuilder();
-        source.AppendLine("#import <Foundation/Foundation.h>");
         source.AppendLine("#include <stdio.h>");
         source.AppendLine();
         source.AppendLine("int main(void)");
         source.AppendLine("{");
-        source.AppendLine("    @autoreleasepool");
-        source.AppendLine("    {");
 
         bool emittedDeclaration = false;
         bool emittedExecutable = false;
@@ -537,7 +534,11 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
             switch (statement)
             {
                 case BoundLetStatement let:
-                    source.AppendLine($"        NSString *{identifiers.Get(let.Variable)} = {TargetEscapes.ObjectiveCString(let.ConstantValue)};");
+                    // The Windows-local Objective-C toolchain uses Clang/MSYS2
+                    // without Foundation. SMILE v1.0 strings are immutable
+                    // compile-time values, so plain C string pointers keep this
+                    // target easy to build while still compiling as Objective-C.
+                    source.AppendLine($"    const char *{identifiers.Get(let.Variable)} = {TargetEscapes.CString(let.ConstantValue)};");
                     emittedDeclaration = true;
                     emittedBodyStatement = true;
                     break;
@@ -560,8 +561,6 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
             source.AppendLine();
         }
 
-        source.AppendLine("    }");
-        source.AppendLine();
         source.AppendLine("    return 0;");
         source.AppendLine("}");
 
@@ -575,8 +574,8 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
         BoundPrintStatement print,
         TargetIdentifierMap identifiers)
     {
-        CPrintfPlan plan = CPrintfPlan.FromPrint(print, variable => $"[{identifiers.Get(variable)} UTF8String]");
-        CCodeGenerator.AppendPrintfCall(source, "        ", plan);
+        CPrintfPlan plan = CPrintfPlan.FromPrint(print, variable => identifiers.Get(variable));
+        CCodeGenerator.AppendPrintfCall(source, "    ", plan);
     }
 }
 

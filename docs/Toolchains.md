@@ -11,10 +11,10 @@ Transpilation does not require target compilers or runtimes. Build & Run require
 | MASM x64 | Same Visual Studio C++ environment, plus `ml64` and `link.exe` |
 | JavaScript | `node --version` |
 | Java | `javac -version` and `java -version` |
-| Objective-C | Transpile only on Windows |
-| Swift | Transpile only on Windows |
+| Objective-C | MSYS2 `mingw64\bin\clang.exe --version` |
+| Swift | Swift.Toolchain layout plus Visual Studio C++ linker tools |
 
-SMILE uses `vswhere.exe` from `%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe` to locate Visual Studio. It does not hardcode the Visual Studio year, edition, or installation path.
+SMILE uses `vswhere.exe` from `%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe` to locate Visual Studio. It does not hardcode the Visual Studio year, edition, or installation path. Swift Build & Run uses this same Visual Studio environment because Swift for Windows links through the Microsoft toolchain.
 
 ## Commands
 
@@ -55,7 +55,24 @@ javac Program.java
 java Program
 ```
 
-Objective-C and Swift are generated for inspection, copy, and save. Local Build & Run is not supported on Windows yet.
+Objective-C:
+
+```bat
+set "PATH=<msys64>\mingw64\bin;<msys64>\usr\bin;%PATH%"
+"<msys64>\mingw64\bin\clang.exe" -x objective-c Program.m -o Program.exe
+Program.exe
+```
+
+Objective-C currently uses SMILE's Foundation-free console profile on Windows. The generated file is still compiled as Objective-C (`.m`), but SMILE avoids Foundation/NSString until that runtime path is hardened locally.
+
+Swift:
+
+```bat
+call "<vcvars64.bat>" >nul
+set "PATH=<Swift toolchain>\usr\bin;<Swift runtime>\usr\bin;<Swift Python>\usr\bin;%PATH%"
+"<Swift toolchain>\usr\bin\swiftc.exe" -sdk "<Swift Windows.sdk>" Program.swift -o Program.exe
+Program.exe
+```
 
 ## Temporary Workspaces
 
@@ -97,5 +114,6 @@ Detection, build, run, timeout, cancellation, folder opening, and process-launch
 - Missing C or MASM: install Visual Studio 2026 Enterprise or Build Tools with Desktop development with C++.
 - Missing JavaScript runtime: install Node.js.
 - Missing Java compiler: install a full JDK such as Microsoft OpenJDK 25 LTS, not only a JRE.
-- Objective-C or Swift Build & Run unavailable: inspect or save the generated source; Windows local compilation is not supported yet.
+- Missing Objective-C compiler: install MSYS2 and `mingw-w64-x86_64-clang`.
+- Missing Swift compiler: install Swift.Toolchain for Windows and the Visual Studio C++ linker tools.
 - Desktop diagnostic logs: check `%LOCALAPPDATA%\SMILE\Logs`; if that folder is unavailable, SMILE falls back to `%TEMP%\SMILE\Logs`.

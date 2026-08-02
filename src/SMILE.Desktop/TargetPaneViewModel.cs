@@ -136,8 +136,6 @@ public sealed class TargetPaneViewModel : ViewModelBase
         Language switch
         {
             TargetLanguage.JavaScript => "Run",
-            TargetLanguage.ObjectiveC => "Transpile Only",
-            TargetLanguage.Swift => "Transpile Only",
             _ => "Build & Run"
         };
 
@@ -145,7 +143,7 @@ public sealed class TargetPaneViewModel : ViewModelBase
         HasValidSource && !string.IsNullOrWhiteSpace(GeneratedCode);
 
     public bool CanBuild =>
-        (HasToolchain || IsTranspileOnlyLanguage(Language)) && !HasSyntaxError && !IsBusy;
+        HasToolchain && !HasSyntaxError && !IsBusy;
 
     public bool CanChangeLanguage => !IsBusy;
 
@@ -177,6 +175,4 @@ public sealed class TargetPaneViewModel : ViewModelBase
         }
     }
 
-    private static bool IsTranspileOnlyLanguage(TargetLanguage language) =>
-        language is TargetLanguage.ObjectiveC or TargetLanguage.Swift;
 }

@@ -33,4 +33,6 @@ Finish LET v1.0 Specification Implementation
 
 3.) I'd like to add the ability to compile Objective-C and Swift programs locally.  You have my permission to download any tooling you need from the Internet, providing it is free or open-source, so that SMILE can compile and test Objective-C and Swift programs locally.  Commit all and push when all your tests are green.
 
+	Status: **Ready for testing** after installing the local MSYS2 Clang and Swift.Toolchain compiler paths, wiring Objective-C and Swift into Build & Run, and validating generated output against the SMILE reference evaluator.
+
 4.) I'd like to add COBOL as one of the target languages in SMILE.  You have my permission to download any tooling you need from the Internet, providing it is free or open-source, so that SMILE can compile and test COBOL programs locally.  Commit all and push when all your tests are green.

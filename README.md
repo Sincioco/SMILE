@@ -6,7 +6,7 @@ Write a simple SMILE program once, then view equivalent programs in C#, C, Windo
 
 ## Mission
 
-SMILE v0.3.1, "LET and PRINT v1.0 Target-Conformance Hardening," implements the official beginner-friendly `LET` and `PRINT` syntax:
+SMILE v0.3.2, "Local Objective-C and Swift Toolchains," implements the official beginner-friendly `LET` and `PRINT` syntax:
 
 ```text
 SMILE source
@@ -104,7 +104,7 @@ Implemented rules:
 - Java and Swift map a single `_` SMILE identifier because those languages cannot use `_` as an ordinary readable local variable.
 - C and Objective-C map implementation-reserved prefixes such as `__internal` and `_Upper`.
 
-Not implemented in v0.3.1: numeric types, comments, `INPUT`, conditions, loops, functions, arrays, classes, escaping embedded quotes inside SMILE strings, non-string `LET` initializers, and reassignment.
+Not implemented in v0.3.2: numeric types, comments, `INPUT`, conditions, loops, functions, arrays, classes, escaping embedded quotes inside SMILE strings, non-string `LET` initializers, and reassignment.
 
 ## Generated Examples
 
@@ -173,20 +173,16 @@ public final class Program
 Objective-C:
 
 ```objc
-#import <Foundation/Foundation.h>
 #include <stdio.h>
 
 int main(void)
 {
-    @autoreleasepool
-    {
-        NSString *FirstName = @"Sin";
-        NSString *LastName = @"Cioco";
-        NSString *FullName = @"Sin Cioco";
-        NSString *Greeting = @"Hello Sin Cioco!";
+    const char *FirstName = "Sin";
+    const char *LastName = "Cioco";
+    const char *FullName = "Sin Cioco";
+    const char *Greeting = "Hello Sin Cioco!";
 
-        printf("%s\n", [Greeting UTF8String]);
-    }
+    printf("%s\n", Greeting);
 
     return 0;
 }
@@ -213,10 +209,10 @@ Generated target code is expected to be semantically correct, idiomatic for the 
 | `masm-x64` | Assembly - Windows x64 MASM | `Program.asm` | Visual Studio C++ x64 tools with `ml64` and `link.exe` |
 | `javascript` | JavaScript | `Program.js` | Node.js |
 | `java` | Java | `Program.java` | JDK with `javac` and `java` |
-| `objective-c` | Objective-C | `Program.m` | Transpile only on Windows |
-| `swift` | Swift | `Program.swift` | Transpile only on Windows |
+| `objective-c` | Objective-C | `Program.m` | MSYS2 MinGW64 Clang |
+| `swift` | Swift | `Program.swift` | Swift.Toolchain for Windows plus Visual Studio C++ linker tools |
 
-Transpilation works even when optional target toolchains are missing. Build & Run is enabled only when the matching local tools are detected. Objective-C and Swift are available for source inspection, copy, and save on Windows, but local Build & Run is intentionally disabled until SMILE has a supported compiler path for them.
+Transpilation works even when optional target toolchains are missing. Build & Run is enabled only when the matching local tools are detected. Objective-C local Build & Run currently uses SMILE's Foundation-free console profile so generated `.m` files compile reliably with MSYS2 Clang on Windows.
 
 ## Requirements
 
@@ -225,8 +221,10 @@ Transpilation works even when optional target toolchains are missing. Build & Ru
 - Visual Studio 2026 Enterprise or Build Tools with Desktop development with C++ for C and MASM
 - Optional: Node.js for JavaScript
 - Optional: JDK 25 LTS or newer for Java
+- Optional: MSYS2 with `mingw-w64-x86_64-clang` for Objective-C
+- Optional: Swift.Toolchain for Windows for Swift
 
-Visual Studio setup must include the x64 C++ tools and `VC\Auxiliary\Build\vcvars64.bat`. SMILE discovers Visual Studio with `vswhere.exe`; it does not hardcode an edition or install folder.
+Visual Studio setup must include the x64 C++ tools and `VC\Auxiliary\Build\vcvars64.bat`. SMILE discovers Visual Studio with `vswhere.exe`; it does not hardcode an edition or install folder. Swift Build & Run also uses those Visual Studio linker tools plus Swift's Windows SDK.
 
 ## Build, Test, And Run
 
@@ -253,6 +251,8 @@ cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\Friendly
 cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\CompleteLetV1.smile --target all
 cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\LetEmptyStringHardening.smile --target all
 cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\LetIdentifierHardening.smile --target all
+cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\FriendlyPrint.smile --target objective-c --run
+cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\FriendlyPrint.smile --target swift --run
 ```
 
 Valid targets are `csharp`, `c`, `masm-x64`, `javascript`, `java`, `objective-c`, `swift`, and `all`.
@@ -267,7 +267,7 @@ The four code panes use AvalonEdit. The SMILE source pane and all three generate
 
 Typing in the SMILE source editor schedules a short debounced live transpilation for the visible target languages only. The latest source revision always wins, so stale generated code is never used for Build & Run. The Transpile All command is asynchronous and regenerates all seven targets.
 
-Each generated pane supports Copy, Save Source, and Build & Run. JavaScript runs directly with Node.js, so its button says Run. Objective-C and Swift are transpile-only on Windows, so their buttons say Transpile Only and visible-language build runs skip them without failing the whole operation.
+Each generated pane supports Copy, Save Source, and Build & Run. JavaScript runs directly with Node.js, so its button says Run. Objective-C and Swift use Build & Run when their local toolchains are detected; otherwise the IDE reports the normal missing-toolchain message without closing SMILE.
 
 Diagnostics, build output, program output, exit code, total duration, timeout, cancellation, generated workspace paths, pause-launcher paths, and missing-tool messages appear in the output area. The output area scrolls to the newest text as build/run messages are appended. Successful automatic live transpiles do not erase build logs. Very large process streams and desktop log history are bounded so runaway output cannot consume unbounded memory.
 
@@ -275,7 +275,7 @@ When Open Generated Folder is enabled, SMILE asks Windows Explorer to open the g
 
 When Press Any Key Launcher is enabled, SMILE writes `Run Program - Press Any Key.cmd` into each successful build/run workspace. Double-clicking that launcher runs the generated program and then shows `Press any key to exit...`, which keeps the console window open long enough to inspect the output.
 
-Current desktop build version: `0.3.1 LET and PRINT v1.0 Target-Conformance Hardening`.
+Current desktop build version: `0.3.2 Local Objective-C and Swift Toolchains`.
 
 ## Diagnostics
 
@@ -347,13 +347,14 @@ SMILE-owned build/output artifacts older than 1 day may be cleaned from known ge
 - Embedded quote escaping inside SMILE string literals is not implemented.
 - Syntax highlighting is lexical only; semantic highlighting, autocomplete, and diagnostic squiggles are not implemented.
 - C and MASM target output is focused on Windows local toolchains.
-- Objective-C and Swift output is transpile-only on Windows in this version.
+- Objective-C local output currently uses a Foundation-free console profile on Windows; Foundation/NSString output remains future hardening.
+- Swift local output requires Swift.Toolchain for Windows and Visual Studio C++ linker tools.
 - Unicode output beyond UTF-8 source text remains an area for later hardening.
 - Full UI automation coverage is not included; manual WPF smoke testing is still required for release validation.
 
 ## Roadmap
 
-Future ideas, not implemented in v0.3.1:
+Future ideas, not implemented in v0.3.2:
 
 1. Numeric and boolean expressions
 2. `INPUT`

@@ -59,8 +59,8 @@ public sealed class ToolchainRegistry
         var runner = new ProcessRunner();
         var visualStudioLocator = new VisualStudioLocator(runner);
 
-        // The registry stays explicit for v0.1: each target gets one clear
-        // toolchain object, including targets that can only transpile today.
+        // The registry stays explicit: each target gets one clear toolchain
+        // object, so detection and Build & Run behavior remain easy to trace.
         return new ToolchainRegistry(new IToolchain[]
         {
             new DotNetToolchain(runner),
@@ -68,8 +68,8 @@ public sealed class ToolchainRegistry
             new MasmX64Toolchain(runner, visualStudioLocator),
             new NodeToolchain(runner),
             new JavaToolchain(runner),
-            new TranspileOnlyToolchain(TargetLanguage.ObjectiveC),
-            new TranspileOnlyToolchain(TargetLanguage.Swift)
+            new ObjectiveCToolchain(runner),
+            new SwiftToolchain(runner, visualStudioLocator)
         });
     }
 
@@ -222,7 +222,8 @@ public abstract class ToolchainBase : IToolchain
         string workspace,
         IEnumerable<string> programCommandLines,
         BuildRunOptions? options,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IEnumerable<string>? setupLines = null)
     {
         if ((options ?? BuildRunOptions.Default).CreatePauseLauncher is false)
         {
@@ -237,6 +238,11 @@ public abstract class ToolchainBase : IToolchain
             "@echo off",
             "cd /d \"%~dp0\""
         };
+        if (setupLines is not null)
+        {
+            lines.AddRange(setupLines);
+        }
+
         lines.AddRange(programCommandLines);
         lines.Add("echo.");
         lines.Add("echo Press any key to exit...");
@@ -305,6 +311,23 @@ public abstract class ToolchainBase : IToolchain
 
     protected static string QuoteForCmd(string value) =>
         "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
+
+    protected static string SetPathForCmd(IEnumerable<string?> directories)
+    {
+        // A small generated script is safer than mutating the parent process
+        // environment. The compiler/runtime PATH applies only to this one
+        // build or run, which keeps SMILE and the user's shell state tidy.
+        string pathPrefix = string.Join(
+            ";",
+            directories
+                .Where(directory => !string.IsNullOrWhiteSpace(directory))
+                .Select(directory => directory!.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase));
+
+        return string.IsNullOrWhiteSpace(pathPrefix)
+            ? "rem No additional PATH entries required."
+            : $"set \"PATH={pathPrefix};%PATH%\"";
+    }
 
     protected static TimeSpan TotalDuration(params ProcessResult[] results) =>
         TimeSpan.FromTicks(results.Sum(result => result.Duration.Ticks));
@@ -944,6 +967,646 @@ public sealed class JavaToolchain : ToolchainBase
         commands.Java.Equals("java", StringComparison.OrdinalIgnoreCase)
             ? "java Program"
             : QuoteForCmd(commands.Java) + " Program";
+}
+
+public sealed class ObjectiveCToolchain : ToolchainBase
+{
+    private sealed record ObjectiveCCommands(
+        string Clang,
+        string MingwBinDirectory,
+        string MsysBinDirectory)
+    {
+        public IReadOnlyList<string> PathEntries { get; } =
+            new[] { MingwBinDirectory, MsysBinDirectory };
+    }
+
+    private sealed record ObjectiveCDetection(
+        ObjectiveCCommands Commands,
+        ToolchainStatus Status);
+
+    public ObjectiveCToolchain(IProcessRunner runner)
+        : base(runner)
+    {
+    }
+
+    public override TargetLanguage Language => TargetLanguage.ObjectiveC;
+
+    public override async Task<ToolchainStatus> DetectAsync(CancellationToken cancellationToken)
+    {
+        ObjectiveCDetection detection = await DetectInstallationAsync(cancellationToken).ConfigureAwait(false);
+        return detection.Status;
+    }
+
+    public override async Task<BuildRunResult> BuildAndRunAsync(
+        GeneratedProgram generatedProgram,
+        CancellationToken cancellationToken,
+        BuildRunOptions? options = null)
+    {
+        ObjectiveCDetection detection = await DetectInstallationAsync(cancellationToken).ConfigureAwait(false);
+        if (!detection.Status.IsAvailable)
+        {
+            return MissingResult(detection.Status);
+        }
+
+        string workspace = await WriteGeneratedProgramAsync(generatedProgram, cancellationToken)
+            .ConfigureAwait(false);
+
+        string pathSetup = SetPathForCmd(detection.Commands.PathEntries);
+        await WriteCommandScriptAsync(
+            workspace,
+            "build-objective-c.cmd",
+            new[]
+            {
+                "@echo off",
+                "cd /d \"%~dp0\"",
+                pathSetup,
+                $"{QuoteForCmd(detection.Commands.Clang)} -x objective-c Program.m -o Program.exe"
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        ProcessResult build = await Runner.RunAsync(
+            ProcessCommand.ForCmd("build-objective-c.cmd", workspace),
+            BuildTimeout,
+            cancellationToken).ConfigureAwait(false);
+
+        string buildOutput = Combine(build);
+        if (!build.Success)
+        {
+            return FromProcessResults(detection.Status, buildOutput, build, workspace, "Building", buildSucceeded: false);
+        }
+
+        await WriteCommandScriptAsync(
+            workspace,
+            "run-objective-c.cmd",
+            new[]
+            {
+                "@echo off",
+                "cd /d \"%~dp0\"",
+                pathSetup,
+                "Program.exe"
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        string? pauseLauncherPath = await WritePauseLauncherAsync(
+            workspace,
+            new[] { "\"Program.exe\"" },
+            options,
+            cancellationToken,
+            setupLines: new[] { pathSetup }).ConfigureAwait(false);
+
+        ProcessResult run = await Runner.RunAsync(
+            ProcessCommand.ForCmd("run-objective-c.cmd", workspace),
+            ProgramTimeout,
+            cancellationToken).ConfigureAwait(false);
+
+        return FromProcessResults(
+            detection.Status,
+            buildOutput,
+            run,
+            workspace,
+            "Running",
+            pauseLauncherPath: pauseLauncherPath,
+            totalDuration: TotalDuration(build, run));
+    }
+
+    private async Task<ObjectiveCDetection> DetectInstallationAsync(CancellationToken cancellationToken)
+    {
+        foreach (ObjectiveCCommands commands in EnumerateCommandCandidates())
+        {
+            ProcessResult clang = await Runner.RunAsync(
+                new ProcessCommand(commands.Clang, new[] { "--version" }, Environment.CurrentDirectory),
+                DetectionTimeout,
+                cancellationToken).ConfigureAwait(false);
+
+            if (!clang.Success)
+            {
+                continue;
+            }
+
+            string version = JoinNonEmpty(clang.StandardOutput, clang.StandardError);
+            return new ObjectiveCDetection(
+                commands,
+                Available(version, commands.Clang, "MSYS2 Clang Objective-C toolchain detected."));
+        }
+
+        return new ObjectiveCDetection(
+            new ObjectiveCCommands("clang", string.Empty, string.Empty),
+            Missing("MSYS2 Clang was not found. Install MSYS2 with mingw-w64-x86_64-clang to build Objective-C locally."));
+    }
+
+    private static IEnumerable<ObjectiveCCommands> EnumerateCommandCandidates()
+    {
+        var roots = new List<string?>();
+        roots.Add(Environment.GetEnvironmentVariable("MSYS2_ROOT"));
+        roots.Add(@"C:\msys64");
+
+        var seenRoots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string? root in roots)
+        {
+            if (string.IsNullOrWhiteSpace(root))
+            {
+                continue;
+            }
+
+            string fullRoot;
+            try
+            {
+                fullRoot = Path.GetFullPath(root);
+            }
+            catch (Exception ex) when (IsExpectedProbeException(ex))
+            {
+                continue;
+            }
+
+            if (!seenRoots.Add(fullRoot))
+            {
+                continue;
+            }
+
+            string mingwBin = Path.Combine(fullRoot, "mingw64", "bin");
+            string msysBin = Path.Combine(fullRoot, "usr", "bin");
+            string clang = Path.Combine(mingwBin, "clang.exe");
+            if (File.Exists(clang))
+            {
+                yield return new ObjectiveCCommands(clang, mingwBin, msysBin);
+            }
+        }
+    }
+
+    private static bool IsExpectedProbeException(Exception exception) =>
+        exception is IOException or
+            UnauthorizedAccessException or
+            ArgumentException or
+            NotSupportedException or
+            PathTooLongException;
+}
+
+public sealed class SwiftToolchain : ToolchainBase
+{
+    private sealed record SwiftCommands(
+        string SwiftCompiler,
+        string SwiftSdkPath,
+        string ToolchainBinDirectory,
+        string RuntimeBinDirectory,
+        string? RuntimeSwiftDirectory,
+        string? RuntimeSwiftArchitectureDirectory,
+        string? PythonBinDirectory)
+    {
+        public IReadOnlyList<string?> PathEntries { get; } =
+            new[]
+            {
+                ToolchainBinDirectory,
+                RuntimeBinDirectory,
+                RuntimeSwiftDirectory,
+                RuntimeSwiftArchitectureDirectory,
+                PythonBinDirectory
+            };
+    }
+
+    private sealed record SwiftDetection(
+        SwiftCommands? Commands,
+        VisualStudioTools? VisualStudio,
+        ToolchainStatus Status);
+
+    private readonly VisualStudioLocator _visualStudioLocator;
+
+    public SwiftToolchain(IProcessRunner runner, VisualStudioLocator visualStudioLocator)
+        : base(runner)
+    {
+        _visualStudioLocator = visualStudioLocator;
+    }
+
+    public override TargetLanguage Language => TargetLanguage.Swift;
+
+    public override async Task<ToolchainStatus> DetectAsync(CancellationToken cancellationToken)
+    {
+        SwiftDetection detection = await DetectInstallationAsync(cancellationToken).ConfigureAwait(false);
+        return detection.Status;
+    }
+
+    public override async Task<BuildRunResult> BuildAndRunAsync(
+        GeneratedProgram generatedProgram,
+        CancellationToken cancellationToken,
+        BuildRunOptions? options = null)
+    {
+        SwiftDetection detection = await DetectInstallationAsync(cancellationToken).ConfigureAwait(false);
+        if (!detection.Status.IsAvailable || detection.Commands is null || detection.VisualStudio is null)
+        {
+            return MissingResult(detection.Status);
+        }
+
+        string workspace = await WriteGeneratedProgramAsync(generatedProgram, cancellationToken)
+            .ConfigureAwait(false);
+
+        string pathSetup = SetPathForCmd(detection.Commands.PathEntries);
+        await WriteCommandScriptAsync(
+            workspace,
+            "build-swift.cmd",
+            new[]
+            {
+                "@echo off",
+                "cd /d \"%~dp0\"",
+                $"call {QuoteForCmd(detection.VisualStudio.VcVars64Path)} >nul",
+                "if errorlevel 1 exit /b %errorlevel%",
+                pathSetup,
+                $"{QuoteForCmd(detection.Commands.SwiftCompiler)} -sdk {QuoteForCmd(detection.Commands.SwiftSdkPath)} Program.swift -o Program.exe"
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        ProcessResult build = await Runner.RunAsync(
+            ProcessCommand.ForCmd("build-swift.cmd", workspace),
+            BuildTimeout,
+            cancellationToken).ConfigureAwait(false);
+
+        string buildOutput = Combine(build);
+        if (!build.Success)
+        {
+            return FromProcessResults(detection.Status, buildOutput, build, workspace, "Building", buildSucceeded: false);
+        }
+
+        await WriteCommandScriptAsync(
+            workspace,
+            "run-swift.cmd",
+            new[]
+            {
+                "@echo off",
+                "cd /d \"%~dp0\"",
+                pathSetup,
+                "Program.exe"
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        string? pauseLauncherPath = await WritePauseLauncherAsync(
+            workspace,
+            new[] { "\"Program.exe\"" },
+            options,
+            cancellationToken,
+            setupLines: new[] { pathSetup }).ConfigureAwait(false);
+
+        ProcessResult run = await Runner.RunAsync(
+            ProcessCommand.ForCmd("run-swift.cmd", workspace),
+            ProgramTimeout,
+            cancellationToken).ConfigureAwait(false);
+
+        return FromProcessResults(
+            detection.Status,
+            buildOutput,
+            run,
+            workspace,
+            "Running",
+            pauseLauncherPath: pauseLauncherPath,
+            totalDuration: TotalDuration(build, run));
+    }
+
+    private async Task<SwiftDetection> DetectInstallationAsync(CancellationToken cancellationToken)
+    {
+        foreach (SwiftCommands commands in EnumerateCommandCandidates())
+        {
+            VisualStudioTools? visualStudio = await _visualStudioLocator.FindAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (visualStudio is null)
+            {
+                return new SwiftDetection(
+                    commands,
+                    null,
+                    Missing("Swift was found, but Visual Studio C++ linker tools were not found. Install the Visual Studio Desktop development with C++ workload."));
+            }
+
+            string version = await ReadSwiftVersionAsync(commands, cancellationToken).ConfigureAwait(false);
+            string combinedVersion = JoinNonEmpty(version, visualStudio.Version);
+            return new SwiftDetection(
+                commands,
+                visualStudio,
+                Available(combinedVersion, commands.SwiftCompiler, "Swift for Windows toolchain detected."));
+        }
+
+        return new SwiftDetection(
+            null,
+            null,
+            Missing("Swift for Windows was not found. Install the free Swift.Toolchain package to build Swift locally."));
+    }
+
+    private async Task<string> ReadSwiftVersionAsync(
+        SwiftCommands commands,
+        CancellationToken cancellationToken)
+    {
+        ProcessResult swift = await Runner.RunAsync(
+            ProcessCommand.ForCmd(
+                $"{SetPathForCmd(commands.PathEntries)} && {QuoteForCmd(commands.SwiftCompiler)} --version",
+                Environment.CurrentDirectory),
+            DetectionTimeout,
+            cancellationToken).ConfigureAwait(false);
+
+        // Version output is helpful in the UI, but failing to print a version
+        // should not hide an otherwise valid installed compiler. The build
+        // step is the real proof that the local Swift setup works.
+        return swift.Success
+            ? JoinNonEmpty(swift.StandardOutput, swift.StandardError)
+            : "Swift compiler";
+    }
+
+    private static IEnumerable<SwiftCommands> EnumerateCommandCandidates()
+    {
+        var seenCompilers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string swiftCompiler in EnumerateSwiftCompilers())
+        {
+            string fullCompiler;
+            try
+            {
+                fullCompiler = Path.GetFullPath(swiftCompiler);
+            }
+            catch (Exception ex) when (IsExpectedProbeException(ex))
+            {
+                continue;
+            }
+
+            if (!seenCompilers.Add(fullCompiler))
+            {
+                continue;
+            }
+
+            SwiftCommands? commands = CreateCommands(fullCompiler);
+            if (commands is not null)
+            {
+                yield return commands;
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateSwiftCompilers()
+    {
+        foreach (string pathDirectory in EnumeratePathDirectories())
+        {
+            string swiftCompiler = Path.Combine(pathDirectory, "swiftc.exe");
+            if (File.Exists(swiftCompiler))
+            {
+                yield return swiftCompiler;
+            }
+        }
+
+        foreach (string root in EnumerateSwiftRoots())
+        {
+            string toolchainsRoot = Path.Combine(root, "Toolchains");
+            foreach (string swiftCompiler in EnumerateFiles(toolchainsRoot, "swiftc.exe"))
+            {
+                yield return swiftCompiler;
+            }
+        }
+    }
+
+    private static SwiftCommands? CreateCommands(string swiftCompiler)
+    {
+        string? swiftRoot = FindSwiftRoot(swiftCompiler);
+        string? toolchainDirectory = FindToolchainDirectory(swiftCompiler);
+        if (swiftRoot is null || toolchainDirectory is null)
+        {
+            return null;
+        }
+
+        string? toolchainVersion = GetToolchainVersion(toolchainDirectory);
+        string? sdkPath = FindWindowsSdk(swiftRoot, toolchainVersion);
+        string? runtimeBin = FindRuntimeBin(swiftRoot, toolchainVersion);
+        string toolchainBin = Path.GetDirectoryName(swiftCompiler) ?? string.Empty;
+        if (sdkPath is null || runtimeBin is null || string.IsNullOrWhiteSpace(toolchainBin))
+        {
+            return null;
+        }
+
+        string runtimeSwift = Path.Combine(toolchainDirectory, "usr", "lib", "swift", "windows");
+        string runtimeSwiftArchitecture = Path.Combine(runtimeSwift, "x86_64");
+        string? pythonBin = FindPythonBin(swiftRoot);
+
+        return new SwiftCommands(
+            swiftCompiler,
+            sdkPath,
+            toolchainBin,
+            runtimeBin,
+            Directory.Exists(runtimeSwift) ? runtimeSwift : null,
+            Directory.Exists(runtimeSwiftArchitecture) ? runtimeSwiftArchitecture : null,
+            pythonBin);
+    }
+
+    private static IEnumerable<string> EnumeratePathDirectories()
+    {
+        string? path = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            yield break;
+        }
+
+        foreach (string entry in path.Split(Path.PathSeparator))
+        {
+            if (!string.IsNullOrWhiteSpace(entry) && Directory.Exists(entry))
+            {
+                yield return entry;
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateSwiftRoots()
+    {
+        var rootCandidates = new List<string?>();
+        rootCandidates.Add(Environment.GetEnvironmentVariable("SWIFT_ROOT"));
+        rootCandidates.Add(Environment.GetEnvironmentVariable("LOCALAPPDATA"));
+        rootCandidates.Add(Environment.GetEnvironmentVariable("ProgramFiles"));
+        rootCandidates.Add(Environment.GetEnvironmentVariable("ProgramFiles(x86)"));
+
+        foreach (Environment.SpecialFolder folder in new[]
+        {
+            Environment.SpecialFolder.LocalApplicationData,
+            Environment.SpecialFolder.ProgramFiles,
+            Environment.SpecialFolder.ProgramFilesX86
+        })
+        {
+            rootCandidates.Add(Environment.GetFolderPath(folder));
+        }
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string? candidate in rootCandidates)
+        {
+            if (string.IsNullOrWhiteSpace(candidate))
+            {
+                continue;
+            }
+
+            string root;
+            try
+            {
+                root = Path.GetFullPath(candidate);
+            }
+            catch (Exception ex) when (IsExpectedProbeException(ex))
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(root))
+            {
+                continue;
+            }
+
+            foreach (string swiftRoot in new[]
+            {
+                root,
+                Path.Combine(root, "Programs", "Swift"),
+                Path.Combine(root, "Swift")
+            })
+            {
+                if (!Directory.Exists(swiftRoot))
+                {
+                    continue;
+                }
+
+                string fullSwiftRoot = Path.GetFullPath(swiftRoot);
+                if (seen.Add(fullSwiftRoot))
+                {
+                    yield return fullSwiftRoot;
+                }
+            }
+        }
+    }
+
+    private static string? FindSwiftRoot(string swiftCompiler)
+    {
+        DirectoryInfo? directory = new FileInfo(swiftCompiler).Directory;
+        while (directory is not null)
+        {
+            if (directory.Name.Equals("Toolchains", StringComparison.OrdinalIgnoreCase))
+            {
+                return directory.Parent?.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        return null;
+    }
+
+    private static string? FindToolchainDirectory(string swiftCompiler)
+    {
+        DirectoryInfo? directory = new FileInfo(swiftCompiler).Directory;
+        while (directory is not null)
+        {
+            if (directory.Parent?.Name.Equals("Toolchains", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        return null;
+    }
+
+    private static string? GetToolchainVersion(string toolchainDirectory)
+    {
+        string name = Path.GetFileName(toolchainDirectory);
+        int plus = name.IndexOf('+', StringComparison.Ordinal);
+        return plus > 0 ? name[..plus] : name;
+    }
+
+    private static string? FindWindowsSdk(string swiftRoot, string? toolchainVersion)
+    {
+        string platformsRoot = Path.Combine(swiftRoot, "Platforms");
+        foreach (string versionDirectory in EnumeratePreferredVersionDirectories(platformsRoot, toolchainVersion))
+        {
+            string sdkPath = Path.Combine(
+                versionDirectory,
+                "Windows.platform",
+                "Developer",
+                "SDKs",
+                "Windows.sdk");
+            if (Directory.Exists(sdkPath))
+            {
+                return sdkPath;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? FindRuntimeBin(string swiftRoot, string? toolchainVersion)
+    {
+        string runtimesRoot = Path.Combine(swiftRoot, "Runtimes");
+        foreach (string versionDirectory in EnumeratePreferredVersionDirectories(runtimesRoot, toolchainVersion))
+        {
+            string runtimeBin = Path.Combine(versionDirectory, "usr", "bin");
+            if (File.Exists(Path.Combine(runtimeBin, "swiftCore.dll")))
+            {
+                return runtimeBin;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? FindPythonBin(string swiftRoot)
+    {
+        foreach (string python in EnumerateFiles(swiftRoot, "python.exe"))
+        {
+            return Path.GetDirectoryName(python);
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<string> EnumeratePreferredVersionDirectories(string root, string? preferredVersion)
+    {
+        if (!Directory.Exists(root))
+        {
+            yield break;
+        }
+
+        if (!string.IsNullOrWhiteSpace(preferredVersion))
+        {
+            string preferred = Path.Combine(root, preferredVersion);
+            if (Directory.Exists(preferred))
+            {
+                yield return preferred;
+            }
+        }
+
+        foreach (string directory in EnumerateDirectories(root, "*").OrderByDescending(Path.GetFileName))
+        {
+            if (!string.IsNullOrWhiteSpace(preferredVersion) &&
+                Path.GetFileName(directory).Equals(preferredVersion, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            yield return directory;
+        }
+    }
+
+    private static IEnumerable<string> EnumerateDirectories(string path, string searchPattern)
+    {
+        try
+        {
+            return Directory.EnumerateDirectories(path, searchPattern).ToArray();
+        }
+        catch (Exception ex) when (IsExpectedProbeException(ex))
+        {
+            return Array.Empty<string>();
+        }
+    }
+
+    private static IEnumerable<string> EnumerateFiles(string path, string searchPattern)
+    {
+        try
+        {
+            return Directory.EnumerateFiles(path, searchPattern, SearchOption.AllDirectories).ToArray();
+        }
+        catch (Exception ex) when (IsExpectedProbeException(ex))
+        {
+            return Array.Empty<string>();
+        }
+    }
+
+    private static bool IsExpectedProbeException(Exception exception) =>
+        exception is IOException or
+            UnauthorizedAccessException or
+            ArgumentException or
+            NotSupportedException or
+            PathTooLongException;
 }
 
 public sealed record VisualStudioTools(

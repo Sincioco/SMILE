@@ -120,7 +120,11 @@ public sealed class DesktopCommandTests
         pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.ObjectiveC);
 
         Assert.AreEqual("Pane - Objective-C", pane.Title);
-        Assert.AreEqual("Transpile Only", pane.BuildButtonText);
+        Assert.AreEqual("Build & Run", pane.BuildButtonText);
+        Assert.IsFalse(pane.CanBuild);
+
+        pane.HasToolchain = true;
+
         Assert.IsTrue(pane.CanBuild);
 
         pane.IsBusy = true;
@@ -181,12 +185,18 @@ public sealed class DesktopCommandTests
     }
 
     [TestMethod]
-    public async Task Visible_build_run_skips_transpile_only_targets_without_failure()
+    public async Task Visible_build_run_executes_objective_c_and_swift_when_available()
     {
-        var viewModel = new MainWindowViewModel
+        var objectiveC = new FakeToolchain(TargetLanguage.ObjectiveC);
+        var swift = new FakeToolchain(TargetLanguage.Swift);
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(objectiveC, swift),
+            new FakeErrorReporter(),
+            new FakeFolderOpener())
         {
             OpenGeneratedFolderAfterBuild = false
         };
+        await viewModel.InitializeAsync();
 
         viewModel.Pane1.SelectedLanguageOption = viewModel.Pane1.LanguageOptions.Single(option => option.Language == TargetLanguage.ObjectiveC);
         viewModel.Pane2.SelectedLanguageOption = viewModel.Pane2.LanguageOptions.Single(option => option.Language == TargetLanguage.Swift);
@@ -196,9 +206,12 @@ public sealed class DesktopCommandTests
 
         await WaitUntilAsync(() => !viewModel.IsBusy && viewModel.OperationStatus == "Completed");
 
-        Assert.AreEqual("Transpile Only", viewModel.Pane1.Status);
-        Assert.AreEqual("Transpile Only", viewModel.Pane2.Status);
-        StringAssert.Contains(viewModel.OutputText, "Skipped: this target is transpile-only on Windows for now.");
+        Assert.AreEqual(1, objectiveC.BuildRuns);
+        Assert.AreEqual(1, swift.BuildRuns);
+        Assert.AreEqual("Completed", viewModel.Pane1.Status);
+        Assert.AreEqual("Completed", viewModel.Pane2.Status);
+        StringAssert.Contains(viewModel.OutputText, "Objective-C detected.");
+        StringAssert.Contains(viewModel.OutputText, "Swift detected.");
     }
 
     [TestMethod]
