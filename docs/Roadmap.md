@@ -9,7 +9,7 @@
 - Keep `PRINT Name` literal and `PRINT {Name}` evaluated.
 - Support `{{` and `}}` literal braces in raw templates and `$"..."`.
 - Reject missing `PRINT` whitespace, malformed interpolation, semicolon statement separators, and a second standalone `PRINT` keyword on one line.
-- Generate C#, C, Windows x64 MASM, JavaScript, Java, Objective-C, and Swift directly from the bound SMILE program.
+- Generate C#, C, Windows x64 MASM, JavaScript, Java, COBOL, Objective-C, and Swift directly from the bound SMILE program.
 - Build and run installed local target toolchains.
 - Provide a CLI developer harness.
 - Provide a responsive WPF desktop app with three generated panes.
@@ -20,7 +20,7 @@
 ## Implemented In v0.2.1
 
 - Add AvalonEdit-backed SMILE and generated-code panes with line numbers.
-- Add lexical syntax highlighting for SMILE, C#, C, MASM x64, JavaScript, Java, Objective-C, and Swift.
+- Add lexical syntax highlighting for SMILE, C#, C, MASM x64, JavaScript, Java, COBOL, Objective-C, and Swift.
 - Keep target-language highlighting in sync when a generated pane changes language.
 - Contain recoverable desktop Build & Run, process, command, folder-opening, and toolchain-detection failures.
 - Write desktop diagnostic logs under `%LOCALAPPDATA%\SMILE\Logs`, with a `%TEMP%\SMILE\Logs` fallback.
@@ -59,9 +59,17 @@
 - Enable Objective-C and Swift in desktop Build & Run when their toolchains are detected.
 - Extend evaluator-versus-toolchain tests to Objective-C and Swift when those local toolchains are installed.
 
+## Implemented In v0.3.3
+
+- Add COBOL as a generated target with stable ID `cobol` and primary file `Program.cob`.
+- Generate GnuCOBOL free-format source with readable divisions, fixed-length `WORKING-STORAGE` values, and `DISPLAY` output.
+- Preserve empty SMILE strings in COBOL by skipping zero-length display operands and using an exact newline operation for blank `PRINT`.
+- Add local COBOL Build & Run through MSYS2 GnuCOBOL.
+- Add COBOL syntax highlighting and evaluator-versus-toolchain test coverage.
+
 ## Future Ideas
 
-These are not implemented in v0.3.2:
+These are not implemented in v0.3.3:
 
 1. Numeric and boolean expressions
 2. `INPUT`

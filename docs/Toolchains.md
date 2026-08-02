@@ -11,6 +11,7 @@ Transpilation does not require target compilers or runtimes. Build & Run require
 | MASM x64 | Same Visual Studio C++ environment, plus `ml64` and `link.exe` |
 | JavaScript | `node --version` |
 | Java | `javac -version` and `java -version` |
+| COBOL | MSYS2 `mingw64\bin\cobc.exe --version` |
 | Objective-C | MSYS2 `mingw64\bin\clang.exe --version` |
 | Swift | Swift.Toolchain layout plus Visual Studio C++ linker tools |
 
@@ -54,6 +55,17 @@ Java:
 javac Program.java
 java Program
 ```
+
+COBOL:
+
+```bat
+set "PATH=<msys64>\mingw64\bin;<msys64>\usr\bin;%PATH%"
+set "COB_CONFIG_DIR=<msys64>\mingw64\share\gnucobol\config"
+"<msys64>\mingw64\bin\cobc.exe" -x -free Program.cob -o Program.exe
+Program.exe
+```
+
+SMILE generates free-format COBOL with `>>SOURCE FORMAT IS FREE`. `COB_CONFIG_DIR` is set explicitly because launching `cobc.exe` from a native Windows process can otherwise confuse MSYS-style and Windows-style config paths.
 
 Objective-C:
 
@@ -114,6 +126,7 @@ Detection, build, run, timeout, cancellation, folder opening, and process-launch
 - Missing C or MASM: install Visual Studio 2026 Enterprise or Build Tools with Desktop development with C++.
 - Missing JavaScript runtime: install Node.js.
 - Missing Java compiler: install a full JDK such as Microsoft OpenJDK 25 LTS, not only a JRE.
+- Missing COBOL compiler: install MSYS2 and `mingw-w64-x86_64-gnucobol`.
 - Missing Objective-C compiler: install MSYS2 and `mingw-w64-x86_64-clang`.
 - Missing Swift compiler: install Swift.Toolchain for Windows and the Visual Studio C++ linker tools.
 - Desktop diagnostic logs: check `%LOCALAPPDATA%\SMILE\Logs`; if that folder is unavailable, SMILE falls back to `%TEMP%\SMILE\Logs`.

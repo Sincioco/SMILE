@@ -8,12 +8,12 @@ SMILE v0.1 supported only:
 PRINT "text"
 ```
 
-SMILE v0.3.2 implements the official Friendly PRINT and LET language behavior defined in:
+SMILE v0.3.3 implements the official Friendly PRINT and LET language behavior defined in:
 
 - [SMILE - PRINT Statement Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20PRINT%20Statement%20Official%20Specification%20v1.0.md)
 - [SMILE - LET Statement Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20LET%20Statement%20Official%20Specification%20v1.0.md)
 
-Current v0.3.2 behavior includes:
+Current v0.3.3 behavior includes:
 
 - `LET Name = "Sin"` string variable declarations.
 - `LET Copy = Name` variable initializers.
@@ -21,8 +21,8 @@ Current v0.3.2 behavior includes:
 - `LET Greeting = $"Hello {FullName}!"` interpolated string initializers.
 - Compile-time string constant evaluation for official `LET` v1.0 values.
 - Empty string `LET` values preserved exactly across the evaluator and generated targets.
-- Target identifier mapping for destination keywords, generator-owned names, Java/Swift `_`, and C-family reserved identifier patterns.
-- Local Build & Run support for Objective-C and Swift when their Windows toolchains are installed.
+- Target identifier mapping for destination keywords, generator-owned names, Java/Swift `_`, COBOL data names, and C-family reserved identifier patterns.
+- Local Build & Run support for COBOL, Objective-C, and Swift when their Windows toolchains are installed.
 - Blank `PRINT`.
 - Ordinary quoted `PRINT`.
 - Quote-free raw `PRINT` templates.

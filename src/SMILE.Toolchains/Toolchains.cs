@@ -65,6 +65,7 @@ public sealed class ToolchainRegistry
         {
             new DotNetToolchain(runner),
             new MsvcCToolchain(runner, visualStudioLocator),
+            new CobolToolchain(runner),
             new MasmX64Toolchain(runner, visualStudioLocator),
             new NodeToolchain(runner),
             new JavaToolchain(runner),
@@ -711,6 +712,218 @@ public sealed class MasmX64Toolchain : ToolchainBase
             pauseLauncherPath: pauseLauncherPath,
             totalDuration: TotalDuration(assemble, link, run));
     }
+}
+
+public sealed class CobolToolchain : ToolchainBase
+{
+    private sealed record CobolCommands(
+        string Cobc,
+        string MingwBinDirectory,
+        string MsysBinDirectory,
+        string ConfigDirectory)
+    {
+        public IReadOnlyList<string> PathEntries { get; } =
+            new[] { MingwBinDirectory, MsysBinDirectory };
+    }
+
+    private sealed record CobolDetection(
+        CobolCommands? Commands,
+        ToolchainStatus Status);
+
+    public CobolToolchain(IProcessRunner runner)
+        : base(runner)
+    {
+    }
+
+    public override TargetLanguage Language => TargetLanguage.Cobol;
+
+    public override async Task<ToolchainStatus> DetectAsync(CancellationToken cancellationToken)
+    {
+        CobolDetection detection = await DetectInstallationAsync(cancellationToken).ConfigureAwait(false);
+        return detection.Status;
+    }
+
+    public override async Task<BuildRunResult> BuildAndRunAsync(
+        GeneratedProgram generatedProgram,
+        CancellationToken cancellationToken,
+        BuildRunOptions? options = null)
+    {
+        CobolDetection detection = await DetectInstallationAsync(cancellationToken).ConfigureAwait(false);
+        if (!detection.Status.IsAvailable || detection.Commands is null)
+        {
+            return MissingResult(detection.Status);
+        }
+
+        string workspace = await WriteGeneratedProgramAsync(generatedProgram, cancellationToken)
+            .ConfigureAwait(false);
+
+        string pathSetup = SetPathForCmd(detection.Commands.PathEntries);
+        string configSetup = SetCobolConfigForCmd(detection.Commands.ConfigDirectory);
+        await WriteCommandScriptAsync(
+            workspace,
+            "build-cobol.cmd",
+            new[]
+            {
+                "@echo off",
+                "cd /d \"%~dp0\"",
+                pathSetup,
+                configSetup,
+                $"{QuoteForCmd(detection.Commands.Cobc)} -x -free Program.cob -o Program.exe"
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        ProcessResult build = await Runner.RunAsync(
+            ProcessCommand.ForCmd("build-cobol.cmd", workspace),
+            BuildTimeout,
+            cancellationToken).ConfigureAwait(false);
+
+        string buildOutput = Combine(build);
+        if (!build.Success)
+        {
+            return FromProcessResults(detection.Status, buildOutput, build, workspace, "Building", buildSucceeded: false);
+        }
+
+        await WriteCommandScriptAsync(
+            workspace,
+            "run-cobol.cmd",
+            new[]
+            {
+                "@echo off",
+                "cd /d \"%~dp0\"",
+                pathSetup,
+                configSetup,
+                "Program.exe"
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        string? pauseLauncherPath = await WritePauseLauncherAsync(
+            workspace,
+            new[] { "\"Program.exe\"" },
+            options,
+            cancellationToken,
+            setupLines: new[] { pathSetup, configSetup }).ConfigureAwait(false);
+
+        ProcessResult run = await Runner.RunAsync(
+            ProcessCommand.ForCmd("run-cobol.cmd", workspace),
+            ProgramTimeout,
+            cancellationToken).ConfigureAwait(false);
+
+        return FromProcessResults(
+            detection.Status,
+            buildOutput,
+            run,
+            workspace,
+            "Running",
+            pauseLauncherPath: pauseLauncherPath,
+            totalDuration: TotalDuration(build, run));
+    }
+
+    private async Task<CobolDetection> DetectInstallationAsync(CancellationToken cancellationToken)
+    {
+        foreach (CobolCommands commands in EnumerateCommandCandidates())
+        {
+            ProcessResult cobc = await Runner.RunAsync(
+                new ProcessCommand(commands.Cobc, new[] { "--version" }, Environment.CurrentDirectory),
+                DetectionTimeout,
+                cancellationToken).ConfigureAwait(false);
+
+            if (!cobc.Success)
+            {
+                continue;
+            }
+
+            string version = JoinNonEmpty(cobc.StandardOutput, cobc.StandardError);
+            return new CobolDetection(
+                commands,
+                Available(version, commands.Cobc, "GnuCOBOL toolchain detected."));
+        }
+
+        return new CobolDetection(
+            null,
+            Missing("GnuCOBOL was not found. Install MSYS2 with mingw-w64-x86_64-gnucobol to build COBOL locally."));
+    }
+
+    private static IEnumerable<CobolCommands> EnumerateCommandCandidates()
+    {
+        var seenCompilers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string directory in EnumeratePathDirectories())
+        {
+            CobolCommands? commands = CreateCommandsFromBinDirectory(directory);
+            if (commands is not null && seenCompilers.Add(commands.Cobc))
+            {
+                yield return commands;
+            }
+        }
+
+        foreach (string root in EnumerateMsysRoots())
+        {
+            string mingwBin = Path.Combine(root, "mingw64", "bin");
+            CobolCommands? commands = CreateCommandsFromBinDirectory(mingwBin);
+            if (commands is not null && seenCompilers.Add(commands.Cobc))
+            {
+                yield return commands;
+            }
+        }
+    }
+
+    private static CobolCommands? CreateCommandsFromBinDirectory(string binDirectory)
+    {
+        string cobc = Path.Combine(binDirectory, "cobc.exe");
+        if (!File.Exists(cobc))
+        {
+            return null;
+        }
+
+        string? mingwDirectory = Directory.GetParent(binDirectory)?.FullName;
+        string? msysRoot = mingwDirectory is null
+            ? null
+            : Directory.GetParent(mingwDirectory)?.FullName;
+        if (mingwDirectory is null || msysRoot is null)
+        {
+            return null;
+        }
+
+        string configDirectory = Path.Combine(mingwDirectory, "share", "gnucobol", "config");
+        if (!File.Exists(Path.Combine(configDirectory, "default.conf")))
+        {
+            return null;
+        }
+
+        string msysBin = Path.Combine(msysRoot, "usr", "bin");
+        return new CobolCommands(cobc, binDirectory, msysBin, configDirectory);
+    }
+
+    private static IEnumerable<string> EnumeratePathDirectories()
+    {
+        string? path = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            yield break;
+        }
+
+        foreach (string entry in path.Split(Path.PathSeparator))
+        {
+            if (!string.IsNullOrWhiteSpace(entry) && Directory.Exists(entry))
+            {
+                yield return entry;
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateMsysRoots()
+    {
+        string? configuredRoot = Environment.GetEnvironmentVariable("MSYS2_ROOT");
+        if (!string.IsNullOrWhiteSpace(configuredRoot))
+        {
+            yield return configuredRoot;
+        }
+
+        yield return @"C:\msys64";
+    }
+
+    private static string SetCobolConfigForCmd(string configDirectory) =>
+        $"set \"COB_CONFIG_DIR={configDirectory}\"";
 }
 
 public sealed class NodeToolchain : ToolchainBase

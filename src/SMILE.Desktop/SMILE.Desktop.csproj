@@ -14,6 +14,8 @@
                       LogicalName="SMILE.Desktop.Highlighting.SMILE.xshd" />
     <EmbeddedResource Include="Highlighting\MasmX64.xshd"
                       LogicalName="SMILE.Desktop.Highlighting.MasmX64.xshd" />
+    <EmbeddedResource Include="Highlighting\Cobol.xshd"
+                      LogicalName="SMILE.Desktop.Highlighting.Cobol.xshd" />
     <EmbeddedResource Include="Highlighting\ObjectiveC.xshd"
                       LogicalName="SMILE.Desktop.Highlighting.ObjectiveC.xshd" />
     <EmbeddedResource Include="Highlighting\Swift.xshd"
@@ -27,10 +29,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
-    <Version>0.3.2</Version>
-    <AssemblyVersion>0.3.2.0</AssemblyVersion>
-    <FileVersion>0.3.2.0</FileVersion>
-    <InformationalVersion>0.3.2 Local Objective-C and Swift Toolchains</InformationalVersion>
+    <Version>0.3.3</Version>
+    <AssemblyVersion>0.3.3.0</AssemblyVersion>
+    <FileVersion>0.3.3.0</FileVersion>
+    <InformationalVersion>0.3.3 Local COBOL Toolchain</InformationalVersion>
   </PropertyGroup>
 
 </Project>

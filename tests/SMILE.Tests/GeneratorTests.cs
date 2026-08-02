@@ -202,6 +202,26 @@ PRINT "Hello " + Name + "!"
     }
 
     [TestMethod]
+    public void Cobol_generator_produces_free_format_program()
+    {
+        GeneratedProgram program = Generate(SampleSource, TargetLanguage.Cobol);
+
+        Assert.AreEqual("Program.cob", program.PrimaryFile.RelativePath);
+        Assert.AreEqual(
+            Lines(
+                ">>SOURCE FORMAT IS FREE",
+                "IDENTIFICATION DIVISION.",
+                "PROGRAM-ID. Program.",
+                "",
+                "PROCEDURE DIVISION.",
+                "*> Each SMILE PRINT becomes one DISPLAY operation.",
+                "    DISPLAY \"Hello from SMILE!\".",
+                "    DISPLAY \"Different syntax, same idea.\".",
+                "    STOP RUN."),
+            program.PrimaryFile.Content);
+    }
+
+    [TestMethod]
     public void Objective_c_generator_produces_minimal_console_program()
     {
         GeneratedProgram program = Generate(SampleSource, TargetLanguage.ObjectiveC);
@@ -315,6 +335,12 @@ PRINT "Hello " + Name + "!"
         StringAssert.Contains(objectiveC, "printf(\"Hello %s!\\n\", Name);");
         Assert.IsFalse(objectiveC.Contains("NSLog", StringComparison.Ordinal));
         Assert.IsFalse(objectiveC.Contains("fputs(", StringComparison.Ordinal));
+
+        string cobol = Generate(FriendlyPrintSource, TargetLanguage.Cobol).PrimaryFile.Content;
+        StringAssert.Contains(cobol, "01 Name PIC X(3) VALUE \"Sin\".");
+        StringAssert.Contains(cobol, "DISPLAY X\"0A\" WITH NO ADVANCING.");
+        StringAssert.Contains(cobol, "DISPLAY \"Hello \" Name \"!\".");
+        StringAssert.Contains(cobol, "DISPLAY \"Literal braces: {Name}\".");
 
         string masm = Generate(FriendlyPrintSource, TargetLanguage.MasmX64).PrimaryFile.Content;
         StringAssert.Contains(masm, "variable0Ptr QWORD ?");
@@ -590,6 +616,7 @@ PRINT Progress: 100%
     [DataRow(TargetLanguage.MasmX64)]
     [DataRow(TargetLanguage.JavaScript)]
     [DataRow(TargetLanguage.Java)]
+    [DataRow(TargetLanguage.Cobol)]
     [DataRow(TargetLanguage.ObjectiveC)]
     [DataRow(TargetLanguage.Swift)]
     public void Empty_programs_are_complete_and_end_with_one_newline(TargetLanguage language)
@@ -605,6 +632,7 @@ PRINT Progress: 100%
     [DataRow(TargetLanguage.MasmX64)]
     [DataRow(TargetLanguage.JavaScript)]
     [DataRow(TargetLanguage.Java)]
+    [DataRow(TargetLanguage.Cobol)]
     [DataRow(TargetLanguage.ObjectiveC)]
     [DataRow(TargetLanguage.Swift)]
     public void Generated_output_is_deterministic(TargetLanguage language)
@@ -626,6 +654,7 @@ PRINT Progress: 100%
         StringAssert.Contains(Generate(source, TargetLanguage.C).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\\n\"");
         StringAssert.Contains(Generate(source, TargetLanguage.JavaScript).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\"");
         StringAssert.Contains(Generate(source, TargetLanguage.Java).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\"");
+        StringAssert.Contains(Generate(source, TargetLanguage.Cobol).PrimaryFile.Content, "\"C:\\Temp\\SMILE\"");
         StringAssert.Contains(Generate(source, TargetLanguage.ObjectiveC).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\\n\"");
         StringAssert.Contains(Generate(source, TargetLanguage.Swift).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\"");
         StringAssert.Contains(Generate(source, TargetLanguage.MasmX64).PrimaryFile.Content, "\"C:\\Temp\\SMILE\"");
@@ -651,6 +680,9 @@ PRINT Progress: 100%
         StringAssert.Contains(
             Generate(source, TargetLanguage.Java).PrimaryFile.Content,
             "\"A\\\\B\\000C\\007D\\013E\\tF\\u007fG\"");
+        StringAssert.Contains(
+            Generate(source, TargetLanguage.Cobol).PrimaryFile.Content,
+            "X\"415C42004307440B4509467F47\"");
         StringAssert.Contains(
             Generate(source, TargetLanguage.Swift).PrimaryFile.Content,
             "\"A\\\\B\\0C\\u{7}D\\u{b}E\\tF\\u{7f}G\"");

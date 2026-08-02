@@ -111,6 +111,7 @@ PRINT {_smile_class_2}
         TargetLanguage.MasmX64,
         TargetLanguage.JavaScript,
         TargetLanguage.Java,
+        TargetLanguage.Cobol,
         TargetLanguage.ObjectiveC,
         TargetLanguage.Swift
     };
@@ -166,11 +167,25 @@ PRINT {Middle}
     }
 
     [TestMethod]
+    public void Cobol_empty_let_string_uses_placeholder_without_display_padding()
+    {
+        string cobol = Generate("LET Empty = \"\"\nPRINT \"[\" + Empty + \"]\"\nPRINT {Empty}", TargetLanguage.Cobol)
+            .PrimaryFile
+            .Content;
+
+        StringAssert.Contains(cobol, "01 Empty PIC X VALUE SPACE.");
+        StringAssert.Contains(cobol, "DISPLAY \"[\" \"]\".");
+        StringAssert.Contains(cobol, "DISPLAY X\"0A\" WITH NO ADVANCING.");
+        Assert.IsFalse(cobol.Contains("DISPLAY Empty.", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     [DataRow(TargetLanguage.CSharp)]
     [DataRow(TargetLanguage.C)]
     [DataRow(TargetLanguage.MasmX64)]
     [DataRow(TargetLanguage.JavaScript)]
     [DataRow(TargetLanguage.Java)]
+    [DataRow(TargetLanguage.Cobol)]
     [DataRow(TargetLanguage.ObjectiveC)]
     [DataRow(TargetLanguage.Swift)]
     public void Hardening_corpora_generate_deterministically_for_all_targets(TargetLanguage language)
@@ -254,6 +269,14 @@ PRINT {Middle}
         StringAssert.Contains(objectiveC, "const char *_smile_NSString = \"NSString\";");
         StringAssert.Contains(objectiveC, "const char *_smile___internal = \"__internal\";");
         StringAssert.Contains(objectiveC, "const char *_smile__Upper = \"_Upper\";");
+
+        string cobol = Generate(AdversarialIdentifierSource, TargetLanguage.Cobol).PrimaryFile.Content;
+        StringAssert.Contains(cobol, "01 SMILE-class PIC X(5) VALUE \"class\".");
+        StringAssert.Contains(cobol, "01 Console PIC X(7) VALUE \"Console\".");
+        StringAssert.Contains(cobol, "01 printf PIC X(6) VALUE \"printf\".");
+        StringAssert.Contains(cobol, "01 SMILE-VAR PIC X VALUE \"_\".");
+        StringAssert.Contains(cobol, "01 SMILE-internal PIC X(10) VALUE \"__internal\".");
+        StringAssert.Contains(cobol, "DISPLAY SMILE-internal.");
 
         string swift = Generate(AdversarialIdentifierSource, TargetLanguage.Swift).PrimaryFile.Content;
         StringAssert.Contains(swift, "let _smile_ = \"_\"");

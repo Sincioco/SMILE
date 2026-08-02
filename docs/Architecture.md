@@ -1,6 +1,6 @@
 # Architecture
 
-SMILE v0.3.2 uses a small direct compiler pipeline:
+SMILE v0.3.3 uses a small direct compiler pipeline:
 
 ```text
 Source -> Parser -> Syntax Tree -> Binder -> Bound Program -> Target Generator -> Generated Files
@@ -14,9 +14,9 @@ The parser is line-oriented because current SMILE statements are line-oriented. 
 
 The binder resolves variable names with an ordinal case-insensitive symbol table. A `LET` variable is deliberately absent while its initializer binds, then becomes visible only after the initializer is successfully evaluated. This keeps declarations-before-use, self-reference, failed declarations, duplicate declarations, and undefined variables target-independent. Target generators consume the bound program and do not reparse SMILE source text.
 
-The bound tree preserves expression intent. C#, JavaScript, and Swift can therefore render interpolation-oriented SMILE expressions as native interpolation, while explicit SMILE concatenation remains target-language concatenation. Java uses concatenation as the interpolation fallback.
+The bound tree preserves expression intent. C#, JavaScript, and Swift can therefore render interpolation-oriented SMILE expressions as native interpolation, while explicit SMILE concatenation remains target-language concatenation. Java uses concatenation as the interpolation fallback. COBOL uses target-local output segments because `DISPLAY` is clearer than building temporary runtime strings for SMILE v1.0.
 
-Official `LET` v1.0 initializers are all compile-time string constants. The engine evaluates string literals, variable references, concatenation, and interpolated strings once during binding and carries the resulting value on each bound declaration. C, Objective-C, and MASM use that value for declaration storage instead of generating premature runtime string buffers, while high-level targets still preserve the original initializer expression where the destination language has a natural form.
+Official `LET` v1.0 initializers are all compile-time string constants. The engine evaluates string literals, variable references, concatenation, and interpolated strings once during binding and carries the resulting value on each bound declaration. C, COBOL, Objective-C, and MASM use that value for declaration storage instead of generating premature runtime string buffers, while high-level targets still preserve the original initializer expression where the destination language has a natural form.
 
 The engine also exposes a tiny target-neutral string flattener for targets that need segment output. It turns bound string expressions such as:
 
@@ -34,11 +34,11 @@ variable Name
 literal "!"
 ```
 
-C and Objective-C use those segments as target-local input to a safe `printf` format plan, which keeps one natural destination-language output call per SMILE `PRINT` where practical. MASM uses the segments directly with `WriteFile`, and Java uses them only where a clear concatenation fallback is appropriate. The flattener is a target-local lowering helper, not the canonical semantic representation.
+C and Objective-C use those segments as target-local input to a safe `printf` format plan, which keeps one natural destination-language output call per SMILE `PRINT` where practical. COBOL uses the segments as `DISPLAY` operands, skipping zero-length variables so fixed-length padding never leaks into output. MASM uses the segments directly with `WriteFile`, and Java uses them only where a clear concatenation fallback is appropriate. The flattener is a target-local lowering helper, not the canonical semantic representation.
 
 The engine includes a small `SmileEvaluator` reference evaluator. It executes the bound program directly, stores string values for `LET`, and appends output for `PRINT`. Tests use it as the semantic oracle for runnable generated targets.
 
-Target generators use a symbol-based target identifier map. Valid SMILE identifiers are preserved when safe, and mapped to readable names such as `_smile_class` when they conflict with destination-language keywords, contextual/restricted identifiers, generator-owned runtime names, or target-specific reserved identifier patterns. C and Objective-C map names such as `__internal` and `_Upper` because those prefixes are reserved for implementations in ordinary C-family usage. Java and Swift map a single `_` because it is not a usable ordinary local variable in those targets. The map is built once per target from `BoundProgram.Variables`, so every reference to a variable uses the same generated name as its declaration.
+Target generators use a symbol-based target identifier map. Valid SMILE identifiers are preserved when safe, and mapped to readable names such as `_smile_class` or `SMILE-class` when they conflict with destination-language keywords, contextual/restricted identifiers, generator-owned runtime names, or target-specific reserved identifier patterns. C and Objective-C map names such as `__internal` and `_Upper` because those prefixes are reserved for implementations in ordinary C-family usage. COBOL maps underscores and reserved words to hyphenated COBOL data names. Java and Swift map a single `_` because it is not a usable ordinary local variable in those targets. The map is built once per target from `BoundProgram.Variables`, so every reference to a variable uses the same generated name as its declaration.
 
 MASM stores string bytes in static labels and writes them with `WriteFile`. For an empty string, the data label keeps a one-byte placeholder so the symbol has an address, but the generated logical length is `0`. This keeps `PRINT {Empty}` from emitting an invisible NUL byte before the normal newline.
 
@@ -46,7 +46,7 @@ Generated target code should be semantically correct, idiomatic for the destinat
 
 `SMILE.Engine` has no WPF dependency. That keeps the language front end reusable from the CLI, the desktop app, tests, and a possible future web interface.
 
-`SMILE.Toolchains` owns local compiler/runtime detection, process execution, target availability status, separate build/program timeouts, bounded process output, and optional press-any-key launcher scripts. Objective-C uses MSYS2 Clang for SMILE's Foundation-free console profile, and Swift uses Swift.Toolchain with the Visual Studio C++ linker environment. Process work is asynchronous, cancellable, timed, and isolated in `%TEMP%\SMILE\Runs\<unique-id> - <language>\` so the WPF UI thread stays responsive, learners can identify each generated-code folder, and build artifacts stay out of the repository.
+`SMILE.Toolchains` owns local compiler/runtime detection, process execution, target availability status, separate build/program timeouts, bounded process output, and optional press-any-key launcher scripts. COBOL uses MSYS2 GnuCOBOL, Objective-C uses MSYS2 Clang for SMILE's Foundation-free console profile, and Swift uses Swift.Toolchain with the Visual Studio C++ linker environment. Process work is asynchronous, cancellable, timed, and isolated in `%TEMP%\SMILE\Runs\<unique-id> - <language>\` so the WPF UI thread stays responsive, learners can identify each generated-code folder, and build artifacts stay out of the repository.
 
 The desktop app tracks source revisions for live preview. Typing schedules a short debounced background transpilation for the visible target languages only. Manual Transpile All runs asynchronously and generates every target. Build & Run asks for the current source revision before invoking a toolchain, which prevents a compiler from running stale generated code.
 

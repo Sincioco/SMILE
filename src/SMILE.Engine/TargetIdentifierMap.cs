@@ -20,8 +20,8 @@ internal sealed class TargetIdentifierMap
         {
             string preferred = IsSafeTargetIdentifier(variable.Name, language, reserved)
                 ? variable.Name
-                : BuildMappedName(variable.Name);
-            string unique = MakeUnique(preferred, used);
+                : BuildMappedName(variable.Name, language);
+            string unique = MakeUnique(preferred, used, language);
 
             used.Add(unique);
             names.Add(variable, unique);
@@ -36,12 +36,19 @@ internal sealed class TargetIdentifierMap
         string name,
         TargetLanguage language,
         ISet<string> reserved) =>
-        IsPortableIdentifier(name) && !RequiresMapping(language, name, reserved);
+        IsTargetIdentifierShape(name, language) && !RequiresMapping(language, name, reserved);
 
-    private static string BuildMappedName(string name) =>
-        // A single underscore is valid SMILE, but Java and Swift cannot use it
-        // as a normal variable. Map it to the cleanest readable prefix form.
-        name == "_" ? MappedPrefix : MappedPrefix + name;
+    private static bool IsTargetIdentifierShape(string name, TargetLanguage language) =>
+        language is TargetLanguage.Cobol
+            ? IsCobolIdentifier(name)
+            : IsPortableIdentifier(name);
+
+    private static string BuildMappedName(string name, TargetLanguage language) =>
+        language is TargetLanguage.Cobol
+            ? BuildCobolMappedName(name)
+            // A single underscore is valid SMILE, but Java and Swift cannot use it
+            // as a normal variable. Map it to the cleanest readable prefix form.
+            : name == "_" ? MappedPrefix : MappedPrefix + name;
 
     private static bool IsPortableIdentifier(string name)
     {
@@ -59,6 +66,63 @@ internal sealed class TargetIdentifierMap
         }
 
         return true;
+    }
+
+    private static bool IsCobolIdentifier(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || !SyntaxFacts.IsAsciiLetter(name[0]))
+        {
+            return false;
+        }
+
+        // SMILE identifiers can contain underscores, but ordinary COBOL data
+        // names use letters, digits, and hyphens. Since SMILE never permits
+        // hyphens, preserving the letter/digit-only subset is the cleanest
+        // readable mapping.
+        for (int index = 1; index < name.Length; index++)
+        {
+            if (!SyntaxFacts.IsAsciiLetter(name[index]) && name[index] is not (>= '0' and <= '9'))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static string BuildCobolMappedName(string name)
+    {
+        var characters = new List<char>();
+        bool lastWasHyphen = false;
+
+        foreach (char value in name)
+        {
+            bool isLetterOrDigit =
+                SyntaxFacts.IsAsciiLetter(value) ||
+                value is >= '0' and <= '9';
+            if (isLetterOrDigit)
+            {
+                characters.Add(value);
+                lastWasHyphen = false;
+                continue;
+            }
+
+            if (characters.Count > 0 && !lastWasHyphen)
+            {
+                characters.Add('-');
+                lastWasHyphen = true;
+            }
+        }
+
+        while (characters.Count > 0 && characters[^1] == '-')
+        {
+            characters.RemoveAt(characters.Count - 1);
+        }
+
+        string readablePart = characters.Count == 0
+            ? "VAR"
+            : new string(characters.ToArray());
+        return "SMILE-" + readablePart;
     }
 
     private static bool RequiresMapping(TargetLanguage language, string name, ISet<string> reserved)
@@ -85,7 +149,7 @@ internal sealed class TargetIdentifierMap
         name.StartsWith("__", StringComparison.Ordinal) ||
         (name.Length >= 2 && name[0] == '_' && SyntaxFacts.IsAsciiUppercaseLetter(name[1]));
 
-    private static string MakeUnique(string preferred, ISet<string> used)
+    private static string MakeUnique(string preferred, ISet<string> used, TargetLanguage language)
     {
         if (!used.Contains(preferred))
         {
@@ -95,7 +159,9 @@ internal sealed class TargetIdentifierMap
         int suffix = 2;
         while (true)
         {
-            string candidate = preferred + "_" + suffix;
+            string candidate = language is TargetLanguage.Cobol
+                ? preferred + "-" + suffix
+                : preferred + "_" + suffix;
             if (!used.Contains(candidate))
             {
                 return candidate;
@@ -157,6 +223,20 @@ internal sealed class TargetIdentifierMap
             "volatile", "while", "with", "yield", "_", "System", "String", "Program", "main", "args"
         };
 
+        private static readonly string[] Cobol =
+        {
+            "accept", "add", "all", "and", "any", "by", "call", "cancel", "class", "close", "compute", "configuration",
+            "copy",
+            "data", "display", "divide", "division", "else", "end", "entry", "environment", "evaluate",
+            "exit", "fd", "file", "from", "function", "global", "goback", "identification", "if", "in", "initialize",
+            "input-output", "inspect", "into", "is", "linkage", "merge", "move", "multiply", "not", "object",
+            "of", "open", "or", "perform", "pic", "picture", "procedure", "program", "program-id", "read",
+            "record", "return", "rewrite", "run", "section", "select", "self", "set", "sort", "stop",
+            "string", "subtract", "super", "then", "to", "type", "until", "using", "value", "when",
+            "working-storage", "write",
+            "Program", "SMILE-NEWLINE", "SPACE", "SPACES", "ZERO", "ZEROS", "ZEROES"
+        };
+
         private static readonly string[] ObjectiveC = C
             .Concat(new[]
             {
@@ -191,10 +271,13 @@ internal sealed class TargetIdentifierMap
                     TargetLanguage.MasmX64 => Masm,
                     TargetLanguage.JavaScript => JavaScript,
                     TargetLanguage.Java => Java,
+                    TargetLanguage.Cobol => Cobol,
                     TargetLanguage.ObjectiveC => ObjectiveC,
                     TargetLanguage.Swift => Swift,
                     _ => Array.Empty<string>()
                 },
-                StringComparer.Ordinal);
+                language is TargetLanguage.Cobol
+                    ? StringComparer.OrdinalIgnoreCase
+                    : StringComparer.Ordinal);
     }
 }

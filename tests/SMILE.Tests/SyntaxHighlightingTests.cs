@@ -17,6 +17,7 @@ public sealed class SyntaxHighlightingTests
             "masm-x64",
             "javascript",
             "java",
+            "cobol",
             "objective-c",
             "swift"
         };
@@ -40,6 +41,9 @@ public sealed class SyntaxHighlightingTests
         Assert.AreSame(
             SyntaxHighlightingCatalog.GetDefinition("masm-x64"),
             SyntaxHighlightingCatalog.GetDefinition("MASM-X64"));
+        Assert.AreSame(
+            SyntaxHighlightingCatalog.GetDefinition("cobol"),
+            SyntaxHighlightingCatalog.GetDefinition("COBOL"));
         Assert.AreSame(
             SyntaxHighlightingCatalog.GetDefinition("objective-c"),
             SyntaxHighlightingCatalog.GetDefinition("Objective-C"));

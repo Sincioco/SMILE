@@ -32,6 +32,7 @@ PRINT A; B; C
     [DataRow(TargetLanguage.MasmX64)]
     [DataRow(TargetLanguage.JavaScript)]
     [DataRow(TargetLanguage.Java)]
+    [DataRow(TargetLanguage.Cobol)]
     [DataRow(TargetLanguage.ObjectiveC)]
     [DataRow(TargetLanguage.Swift)]
     public async Task Installed_target_builds_or_runs_and_matches_expected_output(TargetLanguage language)
@@ -57,6 +58,7 @@ PRINT A; B; C
     [DataRow(TargetLanguage.MasmX64)]
     [DataRow(TargetLanguage.JavaScript)]
     [DataRow(TargetLanguage.Java)]
+    [DataRow(TargetLanguage.Cobol)]
     [DataRow(TargetLanguage.ObjectiveC)]
     [DataRow(TargetLanguage.Swift)]
     public async Task Installed_target_writes_press_any_key_launcher_when_requested(TargetLanguage language)
@@ -168,6 +170,7 @@ PRINT "Literal braces: {Name}"
             TargetLanguage.MasmX64,
             TargetLanguage.JavaScript,
             TargetLanguage.Java,
+            TargetLanguage.Cobol,
             TargetLanguage.ObjectiveC,
             TargetLanguage.Swift
         };
@@ -251,6 +254,7 @@ PRINT {System}
             TargetLanguage.MasmX64,
             TargetLanguage.JavaScript,
             TargetLanguage.Java,
+            TargetLanguage.Cobol,
             TargetLanguage.ObjectiveC,
             TargetLanguage.Swift
         };
@@ -297,6 +301,7 @@ PRINT {System}
             TargetLanguage.MasmX64 => "\"Program.exe\"",
             TargetLanguage.JavaScript => "node Program.js",
             TargetLanguage.Java => "java Program",
+            TargetLanguage.Cobol => "\"Program.exe\"",
             TargetLanguage.ObjectiveC => "\"Program.exe\"",
             TargetLanguage.Swift => "\"Program.exe\"",
             _ => throw new ArgumentOutOfRangeException(nameof(language), language, null)

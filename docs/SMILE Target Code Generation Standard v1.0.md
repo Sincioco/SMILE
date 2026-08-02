@@ -59,7 +59,7 @@ console.log("Hello " + Name + "!");
 
 Lower-level targets may need target-local lowering, but the emitted code should still look natural for that target.
 
-Official `LET` v1.0 initializers are immutable string constants. C, Objective-C, MASM, and other lower-level targets may emit the evaluated declaration value instead of building strings at runtime:
+Official `LET` v1.0 initializers are immutable string constants. C, COBOL, Objective-C, MASM, and other lower-level targets may emit the evaluated declaration value instead of building strings at runtime:
 
 ```c
 const char *FullName = "Sin Cioco";
@@ -97,6 +97,26 @@ printf("Hello %s!\n", Name);
 
 This profile intentionally avoids Foundation/NSString until the local Windows runtime path is hardened. The file is still generated as Objective-C (`.m`) and compiled with an Objective-C compiler.
 
+COBOL uses GnuCOBOL free-format source and stores `LET` values in `WORKING-STORAGE`:
+
+```cobol
+01 Name PIC X(3) VALUE "Sin".
+DISPLAY "Hello " Name "!".
+```
+
+COBOL fixed-length data items must not leak padding into SMILE output. Empty SMILE strings may use a one-character placeholder for storage, but generated `DISPLAY` operands must skip that variable when its compile-time SMILE value is empty:
+
+```cobol
+01 Empty PIC X VALUE SPACE.
+DISPLAY "[" "]".
+```
+
+Blank SMILE `PRINT` must emit an empty line, not a line containing a single space:
+
+```cobol
+DISPLAY X"0A" WITH NO ADVANCING.
+```
+
 MASM stays dependency-light and uses explicit output operations, but the generated assembly should keep explanatory right-side comments so learners can follow the code.
 
 For MASM empty strings, storage may use one placeholder byte so a label has an address:
@@ -131,6 +151,8 @@ Target generators must use the compiler's symbol-based target identifier map. A 
 - generator-owned runtime names such as `Console`, `Program`, `Main`, `printf`, `System`, `String`, `main`, `args`, `console`, or `print`;
 - destination-language reserved identifier patterns, such as C and Objective-C names beginning with `__` or with `_` followed by an uppercase ASCII letter;
 - another generated target name.
+
+COBOL must map reserved words and identifiers that are not valid COBOL data names. Underscores should become readable hyphenated names such as `SMILE-internal`.
 
 Java and Swift must map a single SMILE `_` identifier because `_` is not a usable ordinary local variable spelling in those targets.
 

@@ -19,6 +19,7 @@ public static class SyntaxHighlightingCatalog
             ["masm-x64"] = Embedded("MasmX64.xshd"),
             ["javascript"] = BuiltIn("JavaScript", "javascript"),
             ["java"] = BuiltIn("Java", "java"),
+            ["cobol"] = Embedded("Cobol.xshd"),
             ["objective-c"] = Embedded("ObjectiveC.xshd"),
             ["swift"] = Embedded("Swift.xshd")
         };

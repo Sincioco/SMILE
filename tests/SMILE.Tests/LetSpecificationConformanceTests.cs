@@ -251,6 +251,10 @@ LET Greeting = $"Hello {FullName}!"
         StringAssert.Contains(objectiveC, "const char *FullName = \"Sin Cioco\";");
         StringAssert.Contains(objectiveC, "const char *Greeting = \"Hello Sin Cioco!\";");
 
+        string cobol = Generate(source, TargetLanguage.Cobol).PrimaryFile.Content;
+        StringAssert.Contains(cobol, "01 FullName PIC X(9) VALUE \"Sin Cioco\".");
+        StringAssert.Contains(cobol, "01 Greeting PIC X(16) VALUE \"Hello Sin Cioco!\".");
+
         string masm = Generate(source, TargetLanguage.MasmX64).PrimaryFile.Content;
         StringAssert.Contains(masm, "variable2Value BYTE \"Sin Cioco\"");
         StringAssert.Contains(masm, "variable3Value BYTE \"Hello Sin Cioco!\"");
@@ -262,6 +266,7 @@ LET Greeting = $"Hello {FullName}!"
     [DataRow(TargetLanguage.MasmX64)]
     [DataRow(TargetLanguage.JavaScript)]
     [DataRow(TargetLanguage.Java)]
+    [DataRow(TargetLanguage.Cobol)]
     [DataRow(TargetLanguage.ObjectiveC)]
     [DataRow(TargetLanguage.Swift)]
     public void Generators_are_deterministic_for_complete_let_program(TargetLanguage language)

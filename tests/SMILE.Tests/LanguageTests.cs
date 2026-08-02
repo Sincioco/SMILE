@@ -240,6 +240,7 @@ PRINT {Name}
     [DataRow("masm-x64", TargetLanguage.MasmX64, "Assembly - Windows x64 MASM", "Program.asm")]
     [DataRow("javascript", TargetLanguage.JavaScript, "JavaScript", "Program.js")]
     [DataRow("java", TargetLanguage.Java, "Java", "Program.java")]
+    [DataRow("cobol", TargetLanguage.Cobol, "COBOL", "Program.cob")]
     [DataRow("objective-c", TargetLanguage.ObjectiveC, "Objective-C", "Program.m")]
     [DataRow("swift", TargetLanguage.Swift, "Swift", "Program.swift")]
     public void Target_language_metadata_is_stable(

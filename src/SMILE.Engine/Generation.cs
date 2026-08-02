@@ -95,6 +95,7 @@ public static class CodeGeneratorRegistry
             new MasmX64CodeGenerator(),
             new JavaScriptCodeGenerator(),
             new JavaCodeGenerator(),
+            new CobolCodeGenerator(),
             new ObjectiveCCodeGenerator(),
             new SwiftCodeGenerator()
         }.ToDictionary(generator => generator.Language);
@@ -512,6 +513,121 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
     }
 }
 
+internal sealed class CobolCodeGenerator : ICodeGenerator
+{
+    public TargetLanguage Language => TargetLanguage.Cobol;
+
+    public GeneratedProgram Generate(BoundProgram program)
+    {
+        TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
+        var source = new StringBuilder();
+        BoundLetStatement[] lets = program.Statements.OfType<BoundLetStatement>().ToArray();
+        var values = lets.ToDictionary(let => let.Variable, let => let.ConstantValue);
+
+        source.AppendLine(">>SOURCE FORMAT IS FREE");
+        source.AppendLine("IDENTIFICATION DIVISION.");
+        source.AppendLine("PROGRAM-ID. Program.");
+
+        if (lets.Length > 0)
+        {
+            source.AppendLine();
+            source.AppendLine("DATA DIVISION.");
+            source.AppendLine("WORKING-STORAGE SECTION.");
+            source.AppendLine("*> SMILE LET values are stored before PROCEDURE DIVISION.");
+
+            foreach (BoundLetStatement let in lets)
+            {
+                AppendCobolLet(source, let, identifiers);
+            }
+        }
+
+        source.AppendLine();
+        source.AppendLine("PROCEDURE DIVISION.");
+        source.AppendLine("*> Each SMILE PRINT becomes one DISPLAY operation.");
+
+        foreach (BoundStatement statement in program.Statements)
+        {
+            if (statement is BoundPrintStatement print)
+            {
+                AppendCobolPrint(source, print, identifiers, values);
+            }
+        }
+
+        source.AppendLine("    STOP RUN.");
+
+        return new GeneratedProgram(
+            Language,
+            new[] { new GeneratedFile("Program.cob", TextOutput.EnsureOneTrailingNewLine(source.ToString()), IsPrimary: true) });
+    }
+
+    private static void AppendCobolLet(
+        StringBuilder source,
+        BoundLetStatement let,
+        TargetIdentifierMap identifiers)
+    {
+        string name = identifiers.Get(let.Variable);
+        if (let.ConstantValue.Length == 0)
+        {
+            // COBOL has no zero-length PIC X storage item. The placeholder is
+            // never displayed for an empty SMILE value; the PRINT lowering skips
+            // zero-length variable operands so COBOL padding cannot leak out.
+            source.AppendLine($"01 {name} PIC X VALUE SPACE.");
+            return;
+        }
+
+        int byteLength = TargetEscapes.CobolByteLength(let.ConstantValue);
+        string picture = byteLength == 1 ? "PIC X" : $"PIC X({byteLength})";
+        source.AppendLine($"01 {name} {picture} VALUE {TargetEscapes.CobolString(let.ConstantValue)}.");
+    }
+
+    private static void AppendCobolPrint(
+        StringBuilder source,
+        BoundPrintStatement print,
+        TargetIdentifierMap identifiers,
+        IReadOnlyDictionary<VariableSymbol, string> values)
+    {
+        List<string> operands = BuildDisplayOperands(print, identifiers, values);
+        if (print.IsBlankLine || operands.Count == 0)
+        {
+            // DISPLAY "" emits one space in GnuCOBOL. A no-advancing line-feed
+            // emits exactly the blank line SMILE PRINT requires.
+            source.AppendLine("    DISPLAY X\"0A\" WITH NO ADVANCING.");
+            return;
+        }
+
+        source.Append("    DISPLAY ");
+        source.Append(string.Join(" ", operands));
+        source.AppendLine(".");
+    }
+
+    private static List<string> BuildDisplayOperands(
+        BoundPrintStatement print,
+        TargetIdentifierMap identifiers,
+        IReadOnlyDictionary<VariableSymbol, string> values)
+    {
+        var operands = new List<string>();
+        foreach (PrintSegment segment in BoundStringExpression.FlattenForOutput(print.Value))
+        {
+            switch (segment)
+            {
+                case LiteralPrintSegment literal when literal.Text.Length > 0:
+                    operands.Add(TargetEscapes.CobolString(literal.Text));
+                    break;
+
+                case VariablePrintSegment variable:
+                    if (values.TryGetValue(variable.Variable, out string? value) && value.Length > 0)
+                    {
+                        operands.Add(identifiers.Get(variable.Variable));
+                    }
+
+                    break;
+            }
+        }
+
+        return operands;
+    }
+}
+
 internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
 {
     public TargetLanguage Language => TargetLanguage.ObjectiveC;
@@ -777,6 +893,14 @@ internal static class TargetEscapes
 
     public static string JavaString(string text) => Quote(EscapeJava(text));
 
+    public static string CobolString(string text) =>
+        CanUsePlainCobolLiteral(text)
+            ? Quote(text.Replace("\"", "\"\"", StringComparison.Ordinal))
+            : "X\"" + ToHex(Encoding.UTF8.GetBytes(text)) + "\"";
+
+    public static int CobolByteLength(string text) =>
+        Encoding.UTF8.GetByteCount(text);
+
     public static string SwiftString(string text) => Quote(EscapeSwift(text));
 
     public static string CSharpInterpolatedText(string text) => EscapeCSharpInterpolatedText(text);
@@ -819,6 +943,24 @@ internal static class TargetEscapes
     }
 
     private static string Quote(string text) => $"\"{text}\"";
+
+    private static bool CanUsePlainCobolLiteral(string text) =>
+        text.Length > 0 &&
+        text.All(value => value is >= ' ' and <= '~');
+
+    private static string ToHex(byte[] bytes)
+    {
+        const string digits = "0123456789ABCDEF";
+        var builder = new StringBuilder(bytes.Length * 2);
+
+        foreach (byte value in bytes)
+        {
+            builder.Append(digits[value >> 4]);
+            builder.Append(digits[value & 0xF]);
+        }
+
+        return builder.ToString();
+    }
 
     private static string EscapeCSharp(string text)
     {

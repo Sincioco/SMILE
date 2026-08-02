@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<SyntaxDefinition name="COBOL" extensions=".cob;.cbl" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+  <Color name="Keyword" foreground="#0000FF" fontWeight="bold" />
+  <Color name="String" foreground="#A31515" />
+  <Color name="Comment" foreground="#008000" />
+  <Color name="Number" foreground="#098658" />
+  <Color name="Operator" foreground="#1F1F1F" />
+
+  <RuleSet ignoreCase="true">
+    <Span color="Comment" begin="\*&gt;" />
+    <Span color="String" begin="&quot;" end="&quot;" />
+    <Span color="String" begin="X&quot;" end="&quot;" />
+
+    <Keywords color="Keyword">
+      <Word>IDENTIFICATION</Word>
+      <Word>DIVISION</Word>
+      <Word>PROGRAM-ID</Word>
+      <Word>DATA</Word>
+      <Word>WORKING-STORAGE</Word>
+      <Word>SECTION</Word>
+      <Word>PROCEDURE</Word>
+      <Word>DISPLAY</Word>
+      <Word>WITH</Word>
+      <Word>NO</Word>
+      <Word>ADVANCING</Word>
+      <Word>STOP</Word>
+      <Word>RUN</Word>
+      <Word>PIC</Word>
+      <Word>PICTURE</Word>
+      <Word>VALUE</Word>
+      <Word>SPACE</Word>
+    </Keywords>
+
+    <Rule color="Number">\b\d+(\.\d+)?\b</Rule>
+    <Rule color="Operator">[().]</Rule>
+  </RuleSet>
+</SyntaxDefinition>

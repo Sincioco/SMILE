@@ -298,6 +298,7 @@ public enum TargetLanguage
     MasmX64,
     JavaScript,
     Java,
+    Cobol,
     ObjectiveC,
     Swift
 }
@@ -313,6 +314,7 @@ public static class TargetLanguageInfo
             TargetLanguage.MasmX64,
             TargetLanguage.JavaScript,
             TargetLanguage.Java,
+            TargetLanguage.Cobol,
             TargetLanguage.ObjectiveC,
             TargetLanguage.Swift
         });
@@ -325,6 +327,7 @@ public static class TargetLanguageInfo
             TargetLanguage.MasmX64 => "masm-x64",
             TargetLanguage.JavaScript => "javascript",
             TargetLanguage.Java => "java",
+            TargetLanguage.Cobol => "cobol",
             TargetLanguage.ObjectiveC => "objective-c",
             TargetLanguage.Swift => "swift",
             _ => throw new ArgumentOutOfRangeException(nameof(language), language, null)
@@ -338,6 +341,7 @@ public static class TargetLanguageInfo
             TargetLanguage.MasmX64 => "Assembly - Windows x64 MASM",
             TargetLanguage.JavaScript => "JavaScript",
             TargetLanguage.Java => "Java",
+            TargetLanguage.Cobol => "COBOL",
             TargetLanguage.ObjectiveC => "Objective-C",
             TargetLanguage.Swift => "Swift",
             _ => throw new ArgumentOutOfRangeException(nameof(language), language, null)
@@ -351,6 +355,7 @@ public static class TargetLanguageInfo
             TargetLanguage.MasmX64 => "Program.asm",
             TargetLanguage.JavaScript => "Program.js",
             TargetLanguage.Java => "Program.java",
+            TargetLanguage.Cobol => "Program.cob",
             TargetLanguage.ObjectiveC => "Program.m",
             TargetLanguage.Swift => "Program.swift",
             _ => throw new ArgumentOutOfRangeException(nameof(language), language, null)
