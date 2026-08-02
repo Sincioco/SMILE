@@ -17,7 +17,10 @@ SMILE source
   -> build and run locally when the matching toolchain is installed
 ```
 
-The official language specification for `PRINT` is published at [docs/SMILE-PRINT-Statement-Specification-v1.0.md](docs/SMILE-PRINT-Statement-Specification-v1.0.md).
+The official language specifications are published in [docs/SMILE Language Specification](docs/SMILE%20Language%20Specification):
+
+- [SMILE - PRINT Statement Official Specification v1.0](docs/SMILE%20Language%20Specification/SMILE%20-%20PRINT%20Statement%20Official%20Specification%20v1.0.md)
+- [SMILE - LET Statement Official Specification v1.0](docs/SMILE%20Language%20Specification/SMILE%20-%20LET%20Statement%20Official%20Specification%20v1.0.md)
 
 ## Guiding Principles
 
@@ -232,7 +235,7 @@ Valid targets are `csharp`, `c`, `masm-x64`, `javascript`, `java`, `objective-c`
 
 The desktop app opens maximized with the Friendly PRINT sample. The top-left pane is editable SMILE source. The other three panes are read-only generated targets. They default to C#, Assembly - Windows x64 MASM, and C. Each generated pane can switch between C#, C, MASM x64, JavaScript, Java, Objective-C, and Swift.
 
-![SMILE desktop app in maximized state](Requirements/Progress/2026-08-02-day-1-2-smile-desktop.png)
+![SMILE desktop app in maximized state](Requirements/Progress/2026-08-02-day-1-2-smile-desktop-v0.2.0-friendly-print.png)
 
 Typing in the SMILE source editor schedules a short debounced live transpilation for the visible target languages only. The latest source revision always wins, so stale generated code is never used for Build & Run. The Transpile All command is asynchronous and regenerates all seven targets.
 

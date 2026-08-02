@@ -54,7 +54,7 @@ Formalizing the PRINT Statement with ChatGPT
 
 To Codex
 --------
-19.) For background information, I have a the formal SMILE language declaration / specification for the PRINT statement.  It is located in "C:\SMILE\Requirements\SMILE Language Specification\SMILE - PRINT Statement Official Specification_v1.0.md".
+19.) For background information, I have a the formal SMILE language declaration / specification for the PRINT statement.  It is located in "C:\SMILE\docs\SMILE Language Specification\SMILE - PRINT Statement Official Specification v1.0.md".
 20.) I have the official Codex instructions provided by ChatGPT 5.6 for you to execute and implement the formal language PRINT statement for SMILE located in "C:\SMILE\Requirements\2026-08-02 1639 - SMILE PRINT Statement - Codex Implementation Instructions.md" read and follow its instructions.
 21.) When you are done implementing it and all your tests are green, commit all and push to the repo.
 
@@ -65,3 +65,14 @@ Codex Completion Notes
 Validation completed locally: Debug build/tests, Release build/tests, CLI generation for all seven targets, CLI compile/run for C#, C, MASM x64, JavaScript, and Java, and desktop WPF smoke validation with maximized launch, screenshot refresh, 100-line paste, diagnostics/fix flow, duplicate PRINT diagnostic, Build & Run output, and preservation of build logs after live transpilation.
 
 The Microsoft JDK installed on this VM is also detected from its Program Files folder when it is not on PATH, so Java Build & Run works locally without requiring a global PATH edit.
+
+To Codex
+--------
+22.) I have added the official SMILE language specification for the LET statement located in "C:\SMILE\docs\SMILE Language Specification\SMILE - LET Statement Official Specification v1.0.md"
+23.) I also moved the official SMILE language specification for the PRINT statement now located in "C:\SMILE\docs\SMILE Language Specification\SMILE - PRINT Statement Official Specification v1.0.md"
+24.) Update any internal references you may have, and commit all and push to the repo.
+25.) When I go to the Github repo of smile, I noticed the screenshot on the readme.md file is not getting updated to the latest one.  Can you update it based on what is stored in "C:\SMILE\Requirements\Progress\2026-08-02-day-1-2-smile-desktop.png"?  Thanks.
+
+Codex Completion Notes
+----------------------
+**22-25 ready for testing:** The official PRINT and LET specifications now live under `C:\SMILE\docs\SMILE Language Specification`, README/AGENTS/language docs point to that canonical folder, the old duplicate PRINT specification locations were removed, and README now uses a fresh versioned screenshot file copied from `C:\SMILE\Requirements\Progress\2026-08-02-day-1-2-smile-desktop.png` so GitHub should display the v0.2.0 Friendly PRINT image.

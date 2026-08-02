@@ -13,7 +13,7 @@ SMILE_PRINT_Statement_Official_Specification_v1.0.md
 Copy that document into the repository as:
 
 ```text
-docs/SMILE-PRINT-Statement-Specification-v1.0.md
+docs/SMILE Language Specification/SMILE - PRINT Statement Official Specification v1.0.md
 ```
 
 Do not stop after writing a plan. Inspect the current repository, implement the syntax, create comprehensive tests, run all validation locally on Sin's Windows VM, update documentation, commit the work, and push the feature branch when all local validation is green.
@@ -162,7 +162,7 @@ Manual `Transpile All` may generate all targets asynchronously.
 Add:
 
 ```text
-docs/SMILE-PRINT-Statement-Specification-v1.0.md
+docs/SMILE Language Specification/SMILE - PRINT Statement Official Specification v1.0.md
 ```
 
 Use the companion official specification verbatim except for repository-relative links or minor formatting corrections.
@@ -181,7 +181,7 @@ Update `README.md` to:
 Update `AGENTS.md` with permanent rules equivalent to:
 
 ```markdown
-- The official PRINT syntax is defined by docs/SMILE-PRINT-Statement-Specification-v1.0.md.
+- The official PRINT syntax is defined by docs/SMILE Language Specification/SMILE - PRINT Statement Official Specification v1.0.md.
 - PRINT parsing must be deterministic and must never guess whether bare text is a variable.
 - Bare PRINT text is literal template text; expressions require braces.
 - Ordinary quoted strings do not interpolate; $"..." and raw templates do.
@@ -1269,7 +1269,7 @@ Update:
 - `docs/Architecture.md`
 - `docs/Roadmap.md`
 - `docs/SMILE-Language-Specification-v0.1.md` or replace/link appropriately
-- `docs/SMILE-PRINT-Statement-Specification-v1.0.md`
+- `docs/SMILE Language Specification/SMILE - PRINT Statement Official Specification v1.0.md`
 - Daily `Requirements` notes
 - Progress screenshot
 

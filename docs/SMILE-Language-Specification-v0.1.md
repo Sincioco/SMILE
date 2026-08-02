@@ -8,9 +8,10 @@ SMILE v0.1 supported only:
 PRINT "text"
 ```
 
-SMILE v0.2.0 implements the official Friendly PRINT language behavior defined in:
+SMILE v0.2.0 implements the official Friendly PRINT and LET language behavior defined in:
 
-[SMILE PRINT Statement Specification v1.0](SMILE-PRINT-Statement-Specification-v1.0.md)
+- [SMILE - PRINT Statement Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20PRINT%20Statement%20Official%20Specification%20v1.0.md)
+- [SMILE - LET Statement Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20LET%20Statement%20Official%20Specification%20v1.0.md)
 
 Current v0.2.0 behavior includes:
 

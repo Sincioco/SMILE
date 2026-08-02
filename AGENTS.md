@@ -16,9 +16,10 @@
 - The WPF UI thread must never be blocked by toolchain detection, compilation, linking, execution, process output, long file operations, or other noticeable work.
 - Generated code must be minimal, idiomatic, readable, deterministic, educational, dependency-light, and fast without sacrificing clarity.
 
-## Official PRINT Syntax
+## Official Language Specifications
 
-- The official PRINT syntax is defined by `docs/SMILE-PRINT-Statement-Specification-v1.0.md`.
+- The official PRINT syntax is defined by `docs/SMILE Language Specification/SMILE - PRINT Statement Official Specification v1.0.md`.
+- The official LET syntax is defined by `docs/SMILE Language Specification/SMILE - LET Statement Official Specification v1.0.md`.
 - PRINT parsing must be deterministic and must never guess whether bare text is a variable.
 - Bare PRINT text is literal template text; expressions require braces.
 - Ordinary quoted strings do not interpolate; `$"..."` and raw templates do.

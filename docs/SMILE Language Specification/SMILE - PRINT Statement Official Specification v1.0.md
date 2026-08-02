@@ -4,7 +4,7 @@
 **Status:** Official  
 **Applies to:** SMILE language  
 **Primary statement:** `PRINT`  
-**Repository destination:** `docs/SMILE-PRINT-Statement-Specification-v1.0.md`
+**Repository destination:** `docs/SMILE Language Specification/SMILE - PRINT Statement Official Specification v1.0.md`
 
 ---
 
