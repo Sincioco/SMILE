@@ -238,7 +238,7 @@ PRINT {Middle}
         StringAssert.Contains(c, "const char *_smile_main = \"main\";");
         StringAssert.Contains(c, "const char *_smile___internal = \"__internal\";");
         StringAssert.Contains(c, "const char *_smile__Upper = \"_Upper\";");
-        StringAssert.Contains(c, "printf(\"__internal\\n\");");
+        StringAssert.Contains(c, "printf(\"%s\\n\", _smile___internal);");
 
         string javascript = Generate(AdversarialIdentifierSource, TargetLanguage.JavaScript).PrimaryFile.Content;
         StringAssert.Contains(javascript, "let _smile_class = \"class\";");

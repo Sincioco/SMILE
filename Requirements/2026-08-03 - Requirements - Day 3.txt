@@ -53,3 +53,7 @@ Testing Feedback
 7.) It's time to take SMILE to the next level and add Lexical and Typed Expressions.  Execute the markdown file I have prepared with ChatGPT 5.6 that is located in "C:\SMILE\Requirements\2026-08-03 1704 - SMILE Codex Instructions v0.4.0 Lexical and Typed Expression Core.md".  Commit all and push to the repo.
 
 	Status: **Ready for testing** after adding the v0.4.0 lexer, typed expression parser, strict binder, typed `SmileValue` evaluator, string escapes, integer/boolean operators, diagnostics SMILE1201-SMILE1209, updated target generators, official specs, documentation, examples, and conformance coverage.
+
+8.) Now that we have the core of Lexical and Typed Expressions, it's time to harden the implementation and make sure it is fully conformant with the SMILE language specification.  Execute the markdown file I have prepared with ChatGPT 5.6 that is located in "D:\SMILE\Requirements\2026-08-03 1854 - SMILE Codex Instructions v0.4.1 Typed Expression Conformance Hardening.md".  Commit all and push when all your tests are green.
+
+	Status: **Ready for testing** after adding v0.4.1 short-circuit semantics, removing obsolete concatenation nodes, hardening signed 64-bit and string conformance, preserving C/Objective-C typed expression intent, adding the fixed-seed evaluator-versus-target corpus, and validating every installed target.

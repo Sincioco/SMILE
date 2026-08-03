@@ -798,7 +798,7 @@ This specification is designed to remain valid as SMILE gains:
 - Additional target languages.
 - A full semantic type system.
 
-SMILE v0.4.0 now defines official numeric and boolean expressions for these expression positions:
+SMILE v0.4.1 defines official numeric and boolean expressions for these expression positions:
 
 ```basic
 PRINT {expression}
@@ -806,7 +806,7 @@ PRINT $"...{expression}..."
 PRINT "text" + expression
 ```
 
-The official v0.4.0 expression grammar is defined in:
+The official v0.4.1 expression grammar and short-circuit evaluation rules are defined in:
 
 - [SMILE - Core Types and Expressions Official Specification v1.0](SMILE%20-%20Core%20Types%20and%20Expressions%20Official%20Specification%20v1.0.md)
 

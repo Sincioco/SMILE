@@ -982,7 +982,7 @@ A semantic binding phase SHOULD:
 
 Target-language generators MUST consume the language-neutral semantic representation rather than reparsing SMILE source.
 
-For v0.4.0, every valid `LET` initializer is also a compile-time `SmileValue` constant because the language has no runtime input or reassignment. A conforming implementation MAY carry that evaluated value on the bound declaration. This is the recommended KISS strategy for low-level targets that do not yet need a runtime expression library.
+For v0.4.1, every valid `LET` initializer is also a compile-time `SmileValue` constant because the language has no runtime input or reassignment. A conforming implementation MAY carry that evaluated value on the bound declaration. This is the recommended KISS strategy for low-level targets that do not yet need a runtime expression library. `AND` and `OR` evaluation follows the normative left-to-right short-circuit rules in the core expression specification even though binding and type checking still examine both operands.
 
 ---
 
@@ -1368,14 +1368,14 @@ This specification is designed to remain valid as SMILE gains:
 - User-defined types.
 - Additional target languages.
 
-SMILE v0.4.0 now uses the same form for the official `String`, `Integer`, and `Boolean` core types:
+SMILE v0.4.1 uses the same form for the official `String`, `Integer`, and `Boolean` core types:
 
 ```basic
 LET Age = 49
 LET Enabled = TRUE
 ```
 
-The official v0.4.0 expression grammar is defined in:
+The official v0.4.1 expression grammar and short-circuit evaluation rules are defined in:
 
 - [SMILE - Core Types and Expressions Official Specification v1.0](SMILE%20-%20Core%20Types%20and%20Expressions%20Official%20Specification%20v1.0.md)
 
@@ -1405,7 +1405,7 @@ The official SMILE `LET` rules are:
 1. `LET` and `PRINT` are the first two official SMILE statement keywords.
 2. SMILE keywords and identifiers are case-insensitive.
 3. `LET` declares and initializes a new variable.
-4. Version 1.0 originally introduced string variables; SMILE v0.4.0 extends official `LET` initializers to `String`, `Integer`, and `Boolean` through the core expression specification.
+4. Version 1.0 originally introduced string variables; SMILE v0.4.1 supports official `LET` initializers for `String`, `Integer`, and `Boolean` through the core expression specification.
 5. An initializer is required.
 6. A variable becomes visible only after its declaration succeeds.
 7. A variable must be declared before use.

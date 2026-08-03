@@ -85,9 +85,19 @@
 - Add official string literal and core expression specification documents.
 - Expand conformance tests for lexer behavior, typed binding/evaluation, target generation, and evaluator-versus-toolchain runtime output.
 
+## Implemented In v0.4.1
+
+- Make `AND` and `OR` evaluation explicitly left-to-right and short-circuiting while continuing to bind and type-check both operands.
+- Remove obsolete concatenation syntax and bound-node paths so typed binary `+` is the one canonical string-concatenation representation.
+- Harden signed 64-bit boundaries, checked overflow, truncating integer division, associativity, precedence, ordinal string equality, and exact official escape behavior.
+- Preserve native integer and boolean expressions in generated C and Objective-C declarations.
+- Generate safe typed C and Objective-C `printf` calls with `%lld`, `%s`, canonical boolean display, literal-percent protection, embedded-NUL support, and ordinal `strcmp` string equality.
+- Add a deterministic fixed-seed typed-expression corpus plus all-eight-target runtime comparisons against the reference evaluator for the corpus, shipped example, and exact control-character output.
+- Synchronize the public specifications, architecture, target-code standard, README, project history, and desktop version at `0.4.1 Typed Expression Conformance Hardening`.
+
 ## Future Ideas
 
-These are not implemented in v0.4.0:
+These are not implemented in v0.4.1:
 
 1. `INPUT`
 2. `IF / THEN / ELSE`

@@ -6,7 +6,7 @@ Write a simple SMILE program once, then view equivalent programs in C#, C, COBOL
 
 ## Mission
 
-SMILE v0.4.0, "Lexical and Typed Expression Core," implements the official beginner-friendly `LET`, `PRINT`, string literal, and typed expression syntax:
+SMILE v0.4.1, "Typed Expression Conformance Hardening," implements and hardens the official beginner-friendly `LET`, `PRINT`, string literal, and typed expression syntax:
 
 ```text
 SMILE source
@@ -91,8 +91,9 @@ Implemented rules:
 - String concatenation supports `+` on strings only.
 - Comparison supports `=`, `<>`, `<`, `<=`, `>`, and `>=` where the type rules allow it.
 - Boolean logic supports `NOT`, `AND`, and `OR`.
+- `AND` and `OR` evaluate left to right and short-circuit at runtime: `FALSE AND ...` and `TRUE OR ...` do not evaluate their right operands. Both operands are still parsed, bound, and type-checked.
 - Parentheses control expression grouping.
-- SMILE does not perform implicit conversions in v0.4.0. For example, `"Age " + 49` is a type error.
+- SMILE does not perform implicit conversions in v0.4.1. For example, `"Age " + 49` is a type error.
 - `PRINT` alone, or followed only by spaces/tabs, prints one blank line.
 - `PRINT "Hello"` prints an ordinary quoted string.
 - Ordinary quoted strings do not interpolate, so `PRINT "Hello {Name}!"` prints `{Name}` literally.
@@ -112,7 +113,7 @@ Implemented rules:
 - Java and Swift map a single `_` SMILE identifier because those languages cannot use `_` as an ordinary readable local variable.
 - C and Objective-C map implementation-reserved prefixes such as `__internal` and `_Upper`.
 
-Not implemented in v0.4.0: comments, `INPUT`, conditions, loops, functions, arrays, classes, floating-point numbers, reassignment, and user-defined types.
+Not implemented in v0.4.1: comments, `INPUT`, conditions, loops, functions, arrays, classes, floating-point numbers, reassignment, and user-defined types.
 
 ## Generated Examples
 
@@ -146,11 +147,11 @@ int main(void)
 {
     const char *Name = "Sin";
     long long Age = 49LL;
-    bool Adult = true;
+    bool Adult = Age >= 18LL;
     const char *Message = "Hello Sin! Age=49, Adult=TRUE";
 
-    printf("Hello Sin! Age=49, Adult=TRUE\n");
-    printf("2 + 3 = 5\n");
+    printf("%s\n", Message);
+    printf("2 + 3 = %lld\n", 2LL + 3LL);
 
     return 0;
 }
@@ -216,11 +217,11 @@ int main(void)
 {
     const char *Name = "Sin";
     long long Age = 49LL;
-    bool Adult = true;
+    bool Adult = Age >= 18LL;
     const char *Message = "Hello Sin! Age=49, Adult=TRUE";
 
-    printf("Hello Sin! Age=49, Adult=TRUE\n");
-    printf("2 + 3 = 5\n");
+    printf("%s\n", Message);
+    printf("2 + 3 = %lld\n", 2LL + 3LL);
 
     return 0;
 }
@@ -237,7 +238,7 @@ print(Message)
 print("2 + 3 = \(String(2 + 3))")
 ```
 
-Generated target code is expected to be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write. C#, JavaScript, Java, and Swift preserve the closest natural expression syntax. C, COBOL, Objective-C, and MASM lower current compile-time `LET` and `PRINT` values to canonical text where that keeps the target small and reliable. C and Objective-C `PRINT` output uses one safe `printf` call per SMILE `PRINT`; COBOL uses free-format `DISPLAY`; MASM output uses UTF-8 byte labels, pointer-plus-length variables, and `WriteFile`. The generated assembly and COBOL include short comments to support learning. See [SMILE Target Code Generation Standard v1.0](docs/SMILE%20Target%20Code%20Generation%20Standard%20v1.0.md).
+Generated target code is expected to be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write. C#, JavaScript, Java, and Swift preserve the closest natural expression syntax. C and Objective-C also preserve native integer and boolean declaration expressions, use ordinal `strcmp` equality for strings, and emit one safe typed `printf` call per SMILE `PRINT` with compiler-owned `%lld`, `%s`, and canonical boolean arguments. COBOL and MASM lower current compile-time values where that keeps those targets small and reliable; COBOL uses free-format `DISPLAY`, while MASM uses UTF-8 byte labels, pointer-plus-length variables, and `WriteFile`. The generated assembly and COBOL include short comments to support learning. See [SMILE Target Code Generation Standard v1.0](docs/SMILE%20Target%20Code%20Generation%20Standard%20v1.0.md).
 
 ## Supported Targets
 
@@ -318,7 +319,7 @@ When Open Generated Folder is enabled, SMILE asks Windows Explorer to open the g
 
 When Press Any Key Launcher is enabled, SMILE writes `Run Program - Press Any Key.cmd` into each successful build/run workspace. Double-clicking that launcher runs the generated program and then shows `Press any key to exit...`, which keeps the console window open long enough to inspect the output.
 
-Current desktop build version: `0.4.0 Lexical and Typed Expression Core`.
+Current desktop build version: `0.4.1 Typed Expression Conformance Hardening`.
 
 ## Diagnostics
 
@@ -406,7 +407,7 @@ SMILE-owned build/output artifacts older than 1 day may be cleaned from known ge
 
 ## Roadmap
 
-Future ideas, not implemented in v0.4.0:
+Future ideas, not implemented in v0.4.1:
 
 1. `INPUT`
 2. `IF / THEN / ELSE`

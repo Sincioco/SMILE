@@ -8,14 +8,14 @@ SMILE v0.1 supported only:
 PRINT "text"
 ```
 
-SMILE v0.4.0 implements the official Friendly PRINT, LET, string literal, and typed expression behavior defined in:
+SMILE v0.4.1 implements and hardens the official Friendly PRINT, LET, string literal, and typed expression behavior defined in:
 
 - [SMILE - LET Statement Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20LET%20Statement%20Official%20Specification%20v1.0.md)
 - [SMILE - PRINT Statement Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20PRINT%20Statement%20Official%20Specification%20v1.0.md)
 - [SMILE - String Literals Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20String%20Literals%20Official%20Specification%20v1.0.md)
 - [SMILE - Core Types and Expressions Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20Core%20Types%20and%20Expressions%20Official%20Specification%20v1.0.md)
 
-Current v0.4.0 behavior includes:
+Current v0.4.1 behavior includes:
 
 - `LET Name = "Sin"` string variable declarations.
 - `LET Age = 49` integer variable declarations.
@@ -28,6 +28,10 @@ Current v0.4.0 behavior includes:
 - Official string escapes for quote, backslash, control characters, and tab/newline text.
 - Signed 64-bit integer arithmetic, comparison, and grouping with parentheses.
 - Boolean literals, comparison results, and `NOT`/`AND`/`OR`.
+- Left-to-right short-circuit evaluation for `AND` and `OR`, with both operands still bound and type-checked.
+- One canonical syntax and bound-tree representation for every typed expression feature.
+- Native integer and boolean expression generation plus safe typed `printf` and ordinal string equality in C and Objective-C.
+- Deterministic all-target runtime conformance tests against the SMILE reference evaluator.
 - Target identifier mapping for destination keywords, generator-owned names, Java/Swift `_`, COBOL data names, and C-family reserved identifier patterns.
 - Local Build & Run support for COBOL, Objective-C, and Swift when their Windows toolchains are installed.
 - Blank `PRINT`.

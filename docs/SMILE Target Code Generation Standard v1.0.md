@@ -16,7 +16,7 @@ Generated target code should be semantically correct, idiomatic for the destinat
 
 ## Expression Intent
 
-SMILE keeps a language-neutral bound representation before target generation. Targets should use that representation instead of reparsing source text.
+SMILE keeps one canonical language-neutral bound representation for each expression feature before target generation. String concatenation is the typed binary `+` operator rather than a target-specific or compatibility node. Targets must use that representation instead of reparsing source text or inventing parallel expression semantics.
 
 Interpolation-oriented SMILE expressions should remain interpolation in languages where that is natural:
 
@@ -61,23 +61,23 @@ Typed SMILE values must display exactly like the reference evaluator. `Integer` 
 
 Lower-level targets may need target-local lowering, but the emitted code should still look natural for that target.
 
-Current SMILE `LET` initializers are compile-time constants. C, COBOL, Objective-C, MASM, and other lower-level targets may emit the evaluated declaration value instead of building strings or expression runtimes:
+Current SMILE `LET` initializers are compile-time constants. COBOL, MASM, and other lower-level targets may emit evaluated declaration values instead of building strings or expression runtimes. C and Objective-C preserve native integer and boolean expression intent while string declarations may use their evaluated value:
 
 ```c
 const char *FullName = "Sin Cioco";
 long long Age = 49LL;
-bool Adult = true;
+bool Adult = Age >= 18LL;
 ```
 
 This keeps early generated programs dependency-light and avoids introducing premature buffers or a SMILE runtime library.
 
-For current C `PRINT`, SMILE should prefer one safe `printf` statement per SMILE `PRINT`:
+For current C `PRINT`, SMILE emits one safe typed `printf` statement per SMILE `PRINT`:
 
 ```c
 printf("\n");
 printf("Hello World!\n");
-printf("Hello Sin!\n");
-printf("Age=49, Adult=TRUE\n");
+printf("Hello %s!\n", Name);
+printf("Age=%lld, Adult=%s\n", Age, Adult ? "TRUE" : "FALSE");
 ```
 
 The generated `printf` format string must always be compiler-generated. Literal percent signs from SMILE source must be escaped in the generated format string:
@@ -87,17 +87,19 @@ printf("Progress: 100%%\n");
 printf("Sin is 100%% ready.\n");
 ```
 
-If a future target-lowering path reintroduces printf arguments, SMILE variables must be passed as arguments and never as the format string:
+String variables and expressions must be passed as arguments and never as the format string:
 
 ```c
 printf("%s\n", Name);
 ```
 
+Integer expressions use `%lld`. Boolean expressions use `%s` with an argument that selects canonical `TRUE` or `FALSE`. Literal percent signs are doubled in the compiler-generated format, and embedded NUL literal text uses a `%c` argument with value `0` so the NUL cannot terminate the format string early. String equality and inequality use ordinal, case-sensitive `strcmp(...) == 0` and `strcmp(...) != 0`; `<string.h>` is included only when generated expressions need it.
+
 Objective-C follows the same stdout style in the Windows-local console profile:
 
 ```objc
 const char *Name = "Sin";
-printf("Hello Sin!\n");
+printf("Hello %s!\n", Name);
 ```
 
 This profile intentionally avoids Foundation/NSString until the local Windows runtime path is hardened. The file is still generated as Objective-C (`.m`) and compiled with an Objective-C compiler.
@@ -177,3 +179,7 @@ string _smile_class_2 = "B";
 ```
 
 Every reference to a SMILE symbol must use the same mapped target name as its declaration. Generators must not perform source-text replacement to accomplish this.
+
+## Conformance Validation
+
+Every expression feature is validated against the `SmileEvaluator` reference oracle. The generated-target suite includes a fixed seed (`20260401`) and fixed corpus hash, runs all locally installed target toolchains, compares exact runtime output after normalizing only CRLF to LF, and separately preserves official control characters including NUL, backspace, and form feed. This makes generated output deterministic while keeping semantic drift visible.

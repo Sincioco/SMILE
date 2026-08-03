@@ -27,6 +27,8 @@
 - Official string literal behavior is defined by `docs/SMILE Language Specification/SMILE - String Literals Official Specification v1.0.md`.
 - Official core type and expression behavior is defined by `docs/SMILE Language Specification/SMILE - Core Types and Expressions Official Specification v1.0.md`.
 - Every expression feature must be defined once in the official core expression specification and implemented through the shared lexer, parser, binder, evaluator, and bound tree.
+- SMILE `AND` and `OR` use left-to-right short-circuit evaluation. Binding and type checking still examine both operands, but evaluation-time failures in an unreachable operand are not produced.
+- Each expression concept must have one canonical syntax and bound representation. Remove obsolete parallel representations rather than maintaining duplicate compiler paths.
 - Target generators must consume the shared bound tree and must not invent expression semantics or reparse SMILE source text.
 - Cross-target runtime tests for expression features must compare generated output to the `SmileEvaluator` reference evaluator whenever the target toolchain is locally runnable.
 - PRINT parsing must be deterministic and must never guess whether bare text is a variable.

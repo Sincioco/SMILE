@@ -87,9 +87,9 @@ PRINT "Hello " + Name + "!"
                 "    printf(\"\\n\");",
                 "    printf(\"Hello World!\\n\");",
                 "    printf(\"Hello World!\\n\");",
-                "    printf(\"Hello Sin!\\n\");",
-                "    printf(\"Hello Sin!\\n\");",
-                "    printf(\"Hello Sin!\\n\");",
+                "    printf(\"Hello %s!\\n\", Name);",
+                "    printf(\"Hello %s!\\n\", Name);",
+                "    printf(\"Hello %s!\\n\", Name);",
                 "",
                 "    return 0;",
                 "}"),
@@ -325,14 +325,14 @@ PRINT "Hello " + Name + "!"
 
         string c = Generate(FriendlyPrintSource, TargetLanguage.C).PrimaryFile.Content;
         StringAssert.Contains(c, "const char *Name = \"Sin\";");
-        StringAssert.Contains(c, "printf(\"Hello Sin!\\n\");");
+        StringAssert.Contains(c, "printf(\"Hello %s!\\n\", Name);");
         StringAssert.Contains(c, "printf(\"Literal braces: {Name}\\n\");");
         Assert.IsFalse(c.Contains("fputs(", StringComparison.Ordinal));
         Assert.IsFalse(c.Contains("putchar(", StringComparison.Ordinal));
 
         string objectiveC = Generate(FriendlyPrintSource, TargetLanguage.ObjectiveC).PrimaryFile.Content;
         StringAssert.Contains(objectiveC, "const char *Name = \"Sin\";");
-        StringAssert.Contains(objectiveC, "printf(\"Hello Sin!\\n\");");
+        StringAssert.Contains(objectiveC, "printf(\"Hello %s!\\n\", Name);");
         Assert.IsFalse(objectiveC.Contains("NSLog", StringComparison.Ordinal));
         Assert.IsFalse(objectiveC.Contains("fputs(", StringComparison.Ordinal));
 
@@ -538,26 +538,26 @@ PRINT ""
 LET Name = "Sin"
 PRINT {Name} is 100% ready.
 """, TargetLanguage.C).PrimaryFile.Content;
-        StringAssert.Contains(percentWithVariable, "printf(\"Sin is 100%% ready.\\n\");");
+        StringAssert.Contains(percentWithVariable, "printf(\"%s is 100%% ready.\\n\", Name);");
         Assert.IsFalse(percentWithVariable.Contains("printf(Name", StringComparison.Ordinal));
     }
 
     [TestMethod]
-    public void C_generator_lowers_adjacent_and_repeated_interpolation_to_canonical_text()
+    public void C_generator_preserves_adjacent_and_repeated_interpolation_arguments()
     {
         string multiple = Generate("""
 LET FirstName = "Sin"
 LET LastName = "Cioco"
 PRINT $"{FirstName} {LastName}"
 """, TargetLanguage.C).PrimaryFile.Content;
-        StringAssert.Contains(multiple, "printf(\"Sin Cioco\\n\");");
+        StringAssert.Contains(multiple, "printf(\"%s %s\\n\", FirstName, LastName);");
 
         string adjacent = Generate("""
 LET A = "A"
 LET B = "B"
 PRINT $"{A}{B}{A}"
 """, TargetLanguage.C).PrimaryFile.Content;
-        StringAssert.Contains(adjacent, "printf(\"ABA\\n\");");
+        StringAssert.Contains(adjacent, "printf(\"%s%s%s\\n\", A, B, A);");
     }
 
     [TestMethod]
@@ -603,7 +603,7 @@ PRINT Progress: 100%
 
         Assert.AreEqual(3, CountOccurrences(objectiveC, "printf("));
         StringAssert.Contains(objectiveC, "printf(\"\\n\");");
-        StringAssert.Contains(objectiveC, "printf(\"Hello Sin!\\n\");");
+        StringAssert.Contains(objectiveC, "printf(\"Hello %s!\\n\", Name);");
         StringAssert.Contains(objectiveC, "printf(\"Progress: 100%%\\n\");");
         Assert.IsFalse(objectiveC.Contains("NSLog", StringComparison.Ordinal));
         Assert.IsFalse(objectiveC.Contains("fputs(", StringComparison.Ordinal));
@@ -672,10 +672,10 @@ PRINT "A\\B\0C\bD\fE\tF"
             "\"A\\\\B\\0C\\bD\\fE\\tF\"");
         StringAssert.Contains(
             Generate(source, TargetLanguage.C).PrimaryFile.Content,
-            "\"A\\\\B\\000C\\bD\\fE\\tF\\n\"");
+            "printf(\"A\\\\B%cC\\bD\\fE\\tF\\n\", 0);");
         StringAssert.Contains(
             Generate(source, TargetLanguage.ObjectiveC).PrimaryFile.Content,
-            "\"A\\\\B\\000C\\bD\\fE\\tF\\n\"");
+            "printf(\"A\\\\B%cC\\bD\\fE\\tF\\n\", 0);");
         StringAssert.Contains(
             Generate(source, TargetLanguage.JavaScript).PrimaryFile.Content,
             "\"A\\\\B\\u0000C\\bD\\fE\\tF\"");

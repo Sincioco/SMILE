@@ -230,7 +230,7 @@ internal sealed class TargetIdentifierMap
             "data", "display", "divide", "division", "else", "end", "entry", "environment", "evaluate",
             "exit", "fd", "file", "from", "function", "global", "goback", "identification", "if", "in", "initialize",
             "input-output", "inspect", "into", "is", "linkage", "merge", "message", "move", "multiply", "not", "object",
-            "of", "open", "or", "perform", "pic", "picture", "procedure", "program", "program-id", "read",
+            "negative", "of", "open", "or", "perform", "pic", "picture", "procedure", "program", "program-id", "quote", "read",
             "record", "return", "rewrite", "run", "section", "select", "self", "set", "sort", "stop",
             "string", "subtract", "super", "then", "to", "type", "until", "using", "value", "when",
             "working-storage", "write",

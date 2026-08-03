@@ -27,10 +27,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
-    <Version>0.4.0</Version>
-    <AssemblyVersion>0.4.0.0</AssemblyVersion>
-    <FileVersion>0.4.0.0</FileVersion>
-    <InformationalVersion>0.4.0 Lexical and Typed Expression Core</InformationalVersion>
+    <Version>0.4.1</Version>
+    <AssemblyVersion>0.4.1.0</AssemblyVersion>
+    <FileVersion>0.4.1.0</FileVersion>
+    <InformationalVersion>0.4.1 Typed Expression Conformance Hardening</InformationalVersion>
   </PropertyGroup>
 
 </Project>

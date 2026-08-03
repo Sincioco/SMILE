@@ -304,8 +304,8 @@ PRINT {System}
         string c = Generate(source, TargetLanguage.C).PrimaryFile.Content;
         StringAssert.Contains(c, "const char *class = \"A\";");
         StringAssert.Contains(c, "const char *_smile_printf = \"C\";");
-        StringAssert.Contains(c, "printf(\"A\\n\");");
-        StringAssert.Contains(c, "printf(\"C\\n\");");
+        StringAssert.Contains(c, "printf(\"%s\\n\", class);");
+        StringAssert.Contains(c, "printf(\"%s\\n\", _smile_printf);");
 
         string java = Generate(source, TargetLanguage.Java).PrimaryFile.Content;
         StringAssert.Contains(java, "String _smile_class = \"A\";");

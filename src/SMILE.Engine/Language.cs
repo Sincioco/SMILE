@@ -98,14 +98,6 @@ public sealed record ParenthesizedExpressionSyntax(
     TextSpan Span)
     : ExpressionSyntax(Span);
 
-// Kept for compatibility with older tests and docs that name the old string
-// concatenation syntax node. New parsing lowers '+' through BinaryExpression.
-public sealed record ConcatenationExpressionSyntax(
-    ExpressionSyntax Left,
-    ExpressionSyntax Right,
-    TextSpan Span)
-    : ExpressionSyntax(Span);
-
 public sealed record InterpolatedStringExpressionSyntax(
     IReadOnlyList<InterpolatedPartSyntax> Parts,
     TextSpan Span)
@@ -238,11 +230,6 @@ public sealed record BoundBinaryExpression(
     BoundExpression Right,
     TextSpan OperatorSpan)
     : BoundExpression(Operator.ResultType);
-
-public sealed record BoundConcatenationExpression(
-    BoundExpression Left,
-    BoundExpression Right)
-    : BoundExpression(SmileType.String);
 
 public sealed record BoundInterpolatedStringExpression(
     IReadOnlyList<BoundInterpolatedPart> Parts)
@@ -448,11 +435,6 @@ public static class BoundStringExpression
                 Append(binary.Right, segments);
                 break;
 
-            case BoundConcatenationExpression concatenation:
-                Append(concatenation.Left, segments);
-                Append(concatenation.Right, segments);
-                break;
-
             case BoundInterpolatedStringExpression interpolated:
                 foreach (BoundInterpolatedPart part in interpolated.Parts)
                 {
@@ -508,14 +490,6 @@ public static class BoundConstantEvaluator
             case BoundBinaryExpression binary:
                 return TryEvaluateBinary(binary, values, out value, diagnostics);
 
-            case BoundConcatenationExpression concatenation:
-                return TryEvaluateStringConcatenation(
-                    concatenation.Left,
-                    concatenation.Right,
-                    values,
-                    out value,
-                    diagnostics);
-
             case BoundInterpolatedStringExpression interpolated:
                 return TryEvaluateInterpolatedString(interpolated, values, out value, diagnostics);
 
@@ -566,8 +540,28 @@ public static class BoundConstantEvaluator
         out SmileValue value,
         ICollection<Diagnostic>? diagnostics)
     {
-        if (!TryEvaluate(binary.Left, values, out SmileValue left, diagnostics) ||
-            !TryEvaluate(binary.Right, values, out SmileValue right, diagnostics))
+        if (!TryEvaluate(binary.Left, values, out SmileValue left, diagnostics))
+        {
+            value = default;
+            return false;
+        }
+
+        // Logical operands are evaluated left to right. The binder has already
+        // resolved and type-checked both sides, but an unreachable right side
+        // must not produce evaluation-time failures such as division by zero.
+        if (binary.Operator.Kind is BoundBinaryOperatorKind.LogicalAnd && !left.BooleanValue)
+        {
+            value = SmileValue.FromBoolean(false);
+            return true;
+        }
+
+        if (binary.Operator.Kind is BoundBinaryOperatorKind.LogicalOr && left.BooleanValue)
+        {
+            value = SmileValue.FromBoolean(true);
+            return true;
+        }
+
+        if (!TryEvaluate(binary.Right, values, out SmileValue right, diagnostics))
         {
             value = default;
             return false;
@@ -616,24 +610,6 @@ public static class BoundConstantEvaluator
             value = default;
             return false;
         }
-    }
-
-    private static bool TryEvaluateStringConcatenation(
-        BoundExpression leftExpression,
-        BoundExpression rightExpression,
-        IReadOnlyDictionary<VariableSymbol, SmileValue> values,
-        out SmileValue value,
-        ICollection<Diagnostic>? diagnostics)
-    {
-        if (TryEvaluate(leftExpression, values, out SmileValue left, diagnostics) &&
-            TryEvaluate(rightExpression, values, out SmileValue right, diagnostics))
-        {
-            value = SmileValue.FromString(left.StringValue + right.StringValue);
-            return true;
-        }
-
-        value = default;
-        return false;
     }
 
     private static bool TryEvaluateInterpolatedString(

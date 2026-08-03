@@ -1,10 +1,10 @@
 # SMILE - Core Types and Expressions Official Specification v1.0
 
-This document defines the SMILE v0.4.0 lexical and typed expression core.
+This document defines the SMILE lexical and typed expression core, including the v0.4.1 conformance rules.
 
 ## Core Types
 
-SMILE v0.4.0 has three value types:
+SMILE v0.4.1 has three value types:
 
 | Type | Meaning | Display Text |
 |---|---|---|
@@ -12,7 +12,7 @@ SMILE v0.4.0 has three value types:
 | `Integer` | Signed 64-bit integer | Decimal digits using invariant culture |
 | `Boolean` | Truth value | `TRUE` or `FALSE` |
 
-All current `LET` initializers are compile-time evaluable because SMILE v0.4.0 has no runtime input, reassignment, or side effects.
+All current `LET` initializers are compile-time evaluable because SMILE v0.4.1 has no runtime input, reassignment, or side effects.
 
 ## Lexical Tokens
 
@@ -57,6 +57,17 @@ Operator precedence, from strongest to weakest:
 
 Binary operators are left-associative.
 
+## Canonical Expression Representation
+
+Each expression concept has one syntax representation and one bound representation. Every binary operator, including String `+`, is represented by:
+
+```text
+BinaryExpressionSyntax
+BoundBinaryExpression
+```
+
+The bound operator distinguishes Integer addition from `StringConcatenation`. Implementations must not maintain a second concatenation syntax or bound node in parallel with the typed binary-expression path.
+
 ## Operator Types
 
 | Operator | Operand Types | Result Type |
@@ -70,6 +81,49 @@ Binary operators are left-associative.
 | `AND`, `OR` | `Boolean`, `Boolean` | `Boolean` |
 
 SMILE does not perform implicit conversions in v1.0. For example, `"Age " + 49` is invalid because one operand is `String` and the other is `Integer`.
+
+## Boolean Evaluation And Short-Circuiting
+
+`AND` and `OR` evaluate operands from left to right and use short-circuit evaluation.
+
+| Expression shape | Right operand evaluated? | Result rule |
+|---|---|---|
+| `FALSE AND right` | No | `FALSE` |
+| `TRUE AND right` | Yes | value of `right` |
+| `TRUE OR right` | No | `TRUE` |
+| `FALSE OR right` | Yes | value of `right` |
+
+Short-circuiting affects evaluation only. Parsing, name resolution, and type checking still examine both operands. Therefore these are invalid even though the right operand would be unreachable during evaluation:
+
+```basic
+LET Result = FALSE AND MissingName
+LET Other = TRUE OR 42
+```
+
+The first has an undefined variable and the second has an invalid Boolean operand type.
+
+Evaluation-time failures in an unreachable operand are not produced:
+
+```basic
+LET Result = FALSE AND (1 / 0 = 0)
+PRINT {Result}
+```
+
+Output:
+
+```text
+FALSE
+```
+
+The same failure remains an error when the right operand is reachable:
+
+```basic
+LET Result = TRUE AND (1 / 0 = 0)
+```
+
+This produces `SMILE1207`. Likewise, reachable signed 64-bit overflow produces `SMILE1206`.
+
+These rules remain normative when future SMILE versions add runtime expressions, functions, or other operations with observable evaluation behavior.
 
 ## Interpolation
 
@@ -93,6 +147,27 @@ Integers are signed 64-bit values. `-9223372036854775808` through `9223372036854
 
 Division uses integer division with truncation toward zero.
 
+The valid signed boundaries are `-9223372036854775808` and `9223372036854775807`. Overflow includes, but is not limited to:
+
+- `-9223372036854775808 / -1`;
+- `-(-9223372036854775808)`;
+- `9223372036854775807 + 1`;
+- `-9223372036854775808 - 1`;
+- `3037000500 * 3037000500`.
+
+Each produces `SMILE1206` when evaluated.
+
+## Equality Semantics
+
+String equality and inequality compare the complete String value case-sensitively using ordinal value semantics. Identifier lookup remains case-insensitive; that identifier rule does not change String data.
+
+```basic
+LET Same = "Sin" = "Sin"
+LET DifferentCase = "Sin" = "sin"
+```
+
+`Same` is `TRUE`; `DifferentCase` is `FALSE`. Equality applies equally to literals, variables, concatenation results, and interpolation-produced strings.
+
 ## Diagnostics
 
 | Code | Meaning |
@@ -110,3 +185,7 @@ Division uses integer division with truncation toward zero.
 ## Target Generation Rule
 
 Every target generator must consume the shared bound tree produced by the lexer, parser, binder, and evaluator. A target generator must not invent its own expression semantics or reparse SMILE source text.
+
+C and Objective-C preserve native Integer and Boolean expression intent where the destination language has a direct equivalent. String-producing declarations may continue to use evaluated constants while SMILE has no runtime string library. C-family String equality uses value comparison such as `strcmp`, not pointer equality. Compiler-owned `printf` format strings use `%lld`, `%s`, and safe literal-percent escaping as appropriate.
+
+Deterministic generated-expression conformance tests use a fixed seed, evaluate one larger valid SMILE program with `SmileEvaluator`, build every locally available target, normalize line endings only, and compare stdout exactly.

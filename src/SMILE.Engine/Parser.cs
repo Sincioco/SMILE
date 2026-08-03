@@ -883,7 +883,6 @@ internal sealed class Binder
             UnaryExpressionSyntax unary => BindUnaryExpression(unary),
             BinaryExpressionSyntax binary => BindBinaryExpression(binary),
             ParenthesizedExpressionSyntax parenthesized => BindExpression(parenthesized.Expression),
-            ConcatenationExpressionSyntax concatenation => BindBinaryLikeConcatenation(concatenation),
             InterpolatedStringExpressionSyntax interpolated => BindInterpolatedString(interpolated),
             _ => new BoundErrorExpression()
         };
@@ -970,14 +969,6 @@ internal sealed class Binder
         }
 
         return new BoundBinaryExpression(left, op, right, syntax.OperatorToken.Span);
-    }
-
-    private BoundExpression BindBinaryLikeConcatenation(ConcatenationExpressionSyntax syntax)
-    {
-        BoundExpression left = BindExpression(syntax.Left);
-        BoundExpression right = BindExpression(syntax.Right);
-        BoundBinaryOperator op = BoundBinaryOperator.Bind(SyntaxKind.PlusToken, SmileType.String, SmileType.String)!;
-        return new BoundBinaryExpression(left, op, right, syntax.Span);
     }
 
     private BoundExpression BindInterpolatedString(InterpolatedStringExpressionSyntax syntax)

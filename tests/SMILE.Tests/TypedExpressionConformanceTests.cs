@@ -148,7 +148,7 @@ PRINT {Message}
     }
 
     [TestMethod]
-    public void Lower_level_generators_lower_typed_constants_to_reference_display_text()
+    public void Lower_level_generators_preserve_C_family_typed_intent_and_lower_other_targets()
     {
         const string source = """
 LET Age = 49
@@ -163,15 +163,17 @@ PRINT {Message}
         string c = Generate(source, TargetLanguage.C).PrimaryFile.Content;
         StringAssert.Contains(c, "#include <stdbool.h>");
         StringAssert.Contains(c, "long long Age = 49LL;");
-        StringAssert.Contains(c, "bool Adult = true;");
+        StringAssert.Contains(c, "bool Adult = Age >= 18LL;");
         StringAssert.Contains(c, "const char *Message = \"Age=49, Adult=TRUE\";");
-        StringAssert.Contains(c, "printf(\"49\\n\");");
-        StringAssert.Contains(c, "printf(\"TRUE\\n\");");
+        StringAssert.Contains(c, "printf(\"%lld\\n\", Age);");
+        StringAssert.Contains(c, "printf(\"%s\\n\", Adult ? \"TRUE\" : \"FALSE\");");
+        StringAssert.Contains(c, "printf(\"%s\\n\", Message);");
 
         string objectiveC = Generate(source, TargetLanguage.ObjectiveC).PrimaryFile.Content;
         StringAssert.Contains(objectiveC, "#include <stdbool.h>");
         StringAssert.Contains(objectiveC, "long long Age = 49LL;");
-        StringAssert.Contains(objectiveC, "printf(\"Age=49, Adult=TRUE\\n\");");
+        StringAssert.Contains(objectiveC, "bool Adult = Age >= 18LL;");
+        StringAssert.Contains(objectiveC, "printf(\"%s\\n\", Message);");
 
         string cobol = Generate(source, TargetLanguage.Cobol).PrimaryFile.Content;
         StringAssert.Contains(cobol, "01 Age PIC X(2) VALUE \"49\".");
