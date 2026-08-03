@@ -6,13 +6,14 @@ Write a simple SMILE program once, then view equivalent programs in C#, C, COBOL
 
 ## Mission
 
-SMILE v0.3.3, "Local COBOL Toolchain," implements the official beginner-friendly `LET` and `PRINT` syntax:
+SMILE v0.4.0, "Lexical and Typed Expression Core," implements the official beginner-friendly `LET`, `PRINT`, string literal, and typed expression syntax:
 
 ```text
 SMILE source
+  -> lex source into tokens
   -> parse once into syntax nodes
-  -> bind variables and string expressions once
-  -> evaluate official LET v1.0 string constants once
+  -> bind variables and typed expressions once
+  -> evaluate compile-time constants once
   -> map SMILE symbols to safe target identifiers once per target
   -> generate eight target programs from the bound program
   -> compare generated runtime behavior to the SMILE reference evaluator in tests
@@ -23,8 +24,10 @@ SMILE source
 
 The official language specifications are published in [docs/SMILE Language Specification](docs/SMILE%20Language%20Specification):
 
-- [SMILE - PRINT Statement Official Specification v1.0](docs/SMILE%20Language%20Specification/SMILE%20-%20PRINT%20Statement%20Official%20Specification%20v1.0.md)
 - [SMILE - LET Statement Official Specification v1.0](docs/SMILE%20Language%20Specification/SMILE%20-%20LET%20Statement%20Official%20Specification%20v1.0.md)
+- [SMILE - PRINT Statement Official Specification v1.0](docs/SMILE%20Language%20Specification/SMILE%20-%20PRINT%20Statement%20Official%20Specification%20v1.0.md)
+- [SMILE - String Literals Official Specification v1.0](docs/SMILE%20Language%20Specification/SMILE%20-%20String%20Literals%20Official%20Specification%20v1.0.md)
+- [SMILE - Core Types and Expressions Official Specification v1.0](docs/SMILE%20Language%20Specification/SMILE%20-%20Core%20Types%20and%20Expressions%20Official%20Specification%20v1.0.md)
 
 ## Guiding Principles
 
@@ -37,15 +40,13 @@ Generated code follows the same rules: complete, minimal, idiomatic, readable, d
 ## Simple SMILE Program
 
 ```basic
-LET FirstName = "Sin"
-LET LastName = "Cioco"
-LET CopyOfFirstName = FirstName
-LET FullName = FirstName + " " + LastName
-LET Greeting = $"Hello {FullName}!"
+LET Name = "Sin"
+LET Age = 49
+LET Adult = Age >= 18
+LET Message = $"Hello {Name}! Age={Age}, Adult={Adult}"
 
-PRINT {CopyOfFirstName}
-PRINT {FullName}
-PRINT {Greeting}
+PRINT {Message}
+PRINT 2 + 3 = {2 + 3}
 PRINT Literal braces: {{Name}}
 PRINT A; B; C
 ```
@@ -53,9 +54,8 @@ PRINT A; B; C
 Output:
 
 ```text
-Sin
-Sin Cioco
-Hello Sin Cioco!
+Hello Sin! Age=49, Adult=TRUE
+2 + 3 = 5
 Literal braces: {Name}
 A; B; C
 ```
@@ -68,13 +68,12 @@ Implemented grammar:
 program          -> line* end-of-file
 line             -> whitespace* statement? whitespace* newline
 statement        -> let-statement | print-statement
-let-statement    -> LET hspace+ identifier hspace* '=' hspace* string-expression
+let-statement    -> LET hspace+ identifier hspace* '=' hspace* expression
 print-statement  -> PRINT
                   | PRINT hspace+ interpolated-string
-                  | PRINT hspace+ quoted-string-expression
+                  | PRINT hspace+ quoted-expression
                   | PRINT hspace+ raw-template
-string-expression -> string-term (hspace* '+' hspace* string-term)*
-string-term       -> string-literal | identifier | interpolated-string
+expression       -> typed expression with precedence
 ```
 
 Implemented rules:
@@ -82,18 +81,27 @@ Implemented rules:
 - `PRINT` and `LET` are case-insensitive.
 - Variable lookup is ordinal case-insensitive.
 - SMILE v1.0 identifiers use portable ASCII letters, digits, and `_`; identifiers must start with an ASCII letter or `_`.
-- `LET` and `PRINT` are reserved SMILE keywords and cannot be variable names in any casing.
-- `LET` v1.0 declares string variables initialized from ordinary string literals, previously declared string variables, string concatenation, or interpolated quoted strings.
+- `LET`, `PRINT`, `TRUE`, `FALSE`, `NOT`, `AND`, and `OR` are reserved SMILE keywords and cannot be variable names in any casing.
+- `LET` declares immutable compile-time constants of type `String`, `Integer`, or `Boolean`.
 - A `LET` variable becomes visible only after its initializer binds and evaluates successfully, so forward references and self-references fail as undefined variables.
+- Strings use official escapes: `\\`, `\"`, `\n`, `\r`, `\t`, `\0`, `\b`, and `\f`.
+- Integers are signed 64-bit values.
+- Booleans are `TRUE` and `FALSE`; display text is always `TRUE` or `FALSE`.
+- Arithmetic supports `+`, `-`, `*`, and `/` on integers.
+- String concatenation supports `+` on strings only.
+- Comparison supports `=`, `<>`, `<`, `<=`, `>`, and `>=` where the type rules allow it.
+- Boolean logic supports `NOT`, `AND`, and `OR`.
+- Parentheses control expression grouping.
+- SMILE does not perform implicit conversions in v0.4.0. For example, `"Age " + 49` is a type error.
 - `PRINT` alone, or followed only by spaces/tabs, prints one blank line.
 - `PRINT "Hello"` prints an ordinary quoted string.
 - Ordinary quoted strings do not interpolate, so `PRINT "Hello {Name}!"` prints `{Name}` literally.
 - `PRINT Hello World!` is a raw template and prints `Hello World!`.
-- Raw templates and `$"..."` support `{Name}` interpolation.
+- Raw templates and `$"..."` support `{expression}` interpolation.
 - Raw placeholders are interpolation-oriented friendly syntax, so targets with native interpolation should show interpolation.
 - `{{` and `}}` produce literal braces in raw templates and `$"..."`.
 - `PRINT Name` prints the literal text `Name`.
-- `PRINT {Name}` evaluates the variable `Name`.
+- `PRINT {Name}` evaluates the variable `Name`; `PRINT {Age + 1}` evaluates the expression.
 - `PRINT "Hello " + Name + "!"` supports string concatenation for `PRINT`.
 - Explicit concatenation remains concatenation in generated code when the target language supports it.
 - A semicolon is not a statement separator. In raw templates, `PRINT A; B; C` prints the semicolons literally.
@@ -104,7 +112,7 @@ Implemented rules:
 - Java and Swift map a single `_` SMILE identifier because those languages cannot use `_` as an ordinary readable local variable.
 - C and Objective-C map implementation-reserved prefixes such as `__internal` and `_Upper`.
 
-Not implemented in v0.3.3: numeric types, comments, `INPUT`, conditions, loops, functions, arrays, classes, escaping embedded quotes inside SMILE strings, non-string `LET` initializers, and reassignment.
+Not implemented in v0.4.0: comments, `INPUT`, conditions, loops, functions, arrays, classes, floating-point numbers, reassignment, and user-defined types.
 
 ## Generated Examples
 
@@ -112,16 +120,18 @@ C#:
 
 ```csharp
 using System;
+using System.Globalization;
 
 internal static class Program
 {
     private static void Main()
     {
-        string FirstName = "Sin";
-        string LastName = "Cioco";
-        string FullName = FirstName + " " + LastName;
-        string Greeting = $"Hello {FullName}!";
-        Console.WriteLine($"{Greeting}");
+        string Name = "Sin";
+        long Age = 49L;
+        bool Adult = Age >= 18L;
+        string Message = $"Hello {Name}! Age={Age.ToString(CultureInfo.InvariantCulture)}, Adult={(Adult ? "TRUE" : "FALSE")}";
+        Console.WriteLine(Message);
+        Console.WriteLine($"2 + 3 = {(2L + 3L).ToString(CultureInfo.InvariantCulture)}");
     }
 }
 ```
@@ -130,15 +140,17 @@ C:
 
 ```c
 #include <stdio.h>
+#include <stdbool.h>
 
 int main(void)
 {
-    const char *FirstName = "Sin";
-    const char *LastName = "Cioco";
-    const char *FullName = "Sin Cioco";
-    const char *Greeting = "Hello Sin Cioco!";
+    const char *Name = "Sin";
+    long long Age = 49LL;
+    bool Adult = true;
+    const char *Message = "Hello Sin! Age=49, Adult=TRUE";
 
-    printf("%s\n", Greeting);
+    printf("Hello Sin! Age=49, Adult=TRUE\n");
+    printf("2 + 3 = 5\n");
 
     return 0;
 }
@@ -147,11 +159,12 @@ int main(void)
 JavaScript:
 
 ```javascript
-let FirstName = "Sin";
-let LastName = "Cioco";
-let FullName = FirstName + " " + LastName;
-let Greeting = `Hello ${FullName}!`;
-console.log(`${Greeting}`);
+let Name = "Sin";
+let Age = 49n;
+let Adult = Age >= 18n;
+let Message = `Hello ${Name}! Age=${(Age).toString()}, Adult=${(Adult ? "TRUE" : "FALSE")}`;
+console.log(Message);
+console.log(`2 + 3 = ${(2n + 3n).toString()}`);
 ```
 
 Java:
@@ -161,11 +174,12 @@ public final class Program
 {
     public static void main(String[] args)
     {
-        String FirstName = "Sin";
-        String LastName = "Cioco";
-        String FullName = FirstName + " " + LastName;
-        String Greeting = "Hello " + FullName + "!";
-        System.out.println(Greeting);
+        String Name = "Sin";
+        long Age = 49L;
+        boolean Adult = Age >= 18L;
+        String Message = "Hello " + Name + "! Age=" + Long.toString(Age) + ", Adult=" + (Adult ? "TRUE" : "FALSE");
+        System.out.println(Message);
+        System.out.println("2 + 3 = " + Long.toString(2L + 3L));
     }
 }
 ```
@@ -180,15 +194,15 @@ PROGRAM-ID. Program.
 DATA DIVISION.
 WORKING-STORAGE SECTION.
 *> SMILE LET values are stored before PROCEDURE DIVISION.
-01 FirstName PIC X(3) VALUE "Sin".
-01 LastName PIC X(5) VALUE "Cioco".
-01 CopyOfFirstName PIC X(3) VALUE "Sin".
-01 FullName PIC X(9) VALUE "Sin Cioco".
-01 Greeting PIC X(16) VALUE "Hello Sin Cioco!".
+01 Name PIC X(3) VALUE "Sin".
+01 Age PIC X(2) VALUE "49".
+01 Adult PIC X(4) VALUE "TRUE".
+01 SMILE-Message PIC X(29) VALUE "Hello Sin! Age=49, Adult=TRUE".
 
 PROCEDURE DIVISION.
 *> Each SMILE PRINT becomes one DISPLAY operation.
-    DISPLAY Greeting.
+    DISPLAY "Hello Sin! Age=49, Adult=TRUE".
+    DISPLAY "2 + 3 = 5".
     STOP RUN.
 ```
 
@@ -196,15 +210,17 @@ Objective-C:
 
 ```objc
 #include <stdio.h>
+#include <stdbool.h>
 
 int main(void)
 {
-    const char *FirstName = "Sin";
-    const char *LastName = "Cioco";
-    const char *FullName = "Sin Cioco";
-    const char *Greeting = "Hello Sin Cioco!";
+    const char *Name = "Sin";
+    long long Age = 49LL;
+    bool Adult = true;
+    const char *Message = "Hello Sin! Age=49, Adult=TRUE";
 
-    printf("%s\n", Greeting);
+    printf("Hello Sin! Age=49, Adult=TRUE\n");
+    printf("2 + 3 = 5\n");
 
     return 0;
 }
@@ -213,14 +229,15 @@ int main(void)
 Swift:
 
 ```swift
-let FirstName = "Sin"
-let LastName = "Cioco"
-let FullName = FirstName + " " + LastName
-let Greeting = "Hello \(FullName)!"
-print("\(Greeting)")
+let Name: String = "Sin"
+let Age: Int64 = 49
+let Adult: Bool = Age >= 18
+let Message: String = "Hello \(Name)! Age=\(String(Age)), Adult=\((Adult ? "TRUE" : "FALSE"))"
+print(Message)
+print("2 + 3 = \(String(2 + 3))")
 ```
 
-Generated target code is expected to be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write. C#, JavaScript, Java, and Swift preserve the closest natural initializer expression syntax. C, COBOL, Objective-C, and MASM lower official string-only `LET` initializers to compile-time constant string values, avoiding premature runtime buffer management. C and Objective-C `PRINT` output uses one safe `printf` call per SMILE `PRINT` where practical; COBOL uses free-format `DISPLAY`; MASM output uses UTF-8 byte labels, pointer-plus-length variables, and `WriteFile`. The generated assembly and COBOL include short comments to support learning. See [SMILE Target Code Generation Standard v1.0](docs/SMILE%20Target%20Code%20Generation%20Standard%20v1.0.md).
+Generated target code is expected to be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write. C#, JavaScript, Java, and Swift preserve the closest natural expression syntax. C, COBOL, Objective-C, and MASM lower current compile-time `LET` and `PRINT` values to canonical text where that keeps the target small and reliable. C and Objective-C `PRINT` output uses one safe `printf` call per SMILE `PRINT`; COBOL uses free-format `DISPLAY`; MASM output uses UTF-8 byte labels, pointer-plus-length variables, and `WriteFile`. The generated assembly and COBOL include short comments to support learning. See [SMILE Target Code Generation Standard v1.0](docs/SMILE%20Target%20Code%20Generation%20Standard%20v1.0.md).
 
 ## Supported Targets
 
@@ -273,6 +290,7 @@ Run the CLI developer harness:
 cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\FriendlyPrint.smile --target all
 cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\FriendlyPrint.smile --target csharp --run
 cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\CompleteLetV1.smile --target all
+cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\TypedExpressionCore.smile --target all
 cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\LetEmptyStringHardening.smile --target all
 cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\LetIdentifierHardening.smile --target all
 cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\FriendlyPrint.smile --target cobol --run
@@ -284,11 +302,11 @@ Valid targets are `csharp`, `c`, `masm-x64`, `javascript`, `java`, `cobol`, `obj
 
 ## Desktop Application
 
-The desktop app title is `SMILE - Simple Modern Interactive Learning Environment`. It opens maximized with the LET v1.0 learning sample. The top-left pane is editable SMILE source. The other three panes are read-only generated targets. They default to C#, Assembly - Windows x64 MASM, and C. Each generated pane can switch between C#, C, MASM x64, JavaScript, Java, COBOL, Objective-C, and Swift.
+The desktop app title is `SMILE - Simple Modern Interactive Learning Environment`. It opens maximized with a typed LET/PRINT learning sample that covers string, integer, boolean, interpolation, concatenation, raw templates, and expression placeholders. The top-left pane is editable SMILE source. The other three panes are read-only generated targets. They default to C#, Assembly - Windows x64 MASM, and C. Each generated pane can switch between C#, C, MASM x64, JavaScript, Java, COBOL, Objective-C, and Swift.
 
 ![SMILE desktop app in maximized state](Requirements/Progress/2026-08-02-day-1-2-smile-desktop.png)
 
-The four code panes use AvalonEdit. The SMILE source pane and all three generated target panes show line numbers and lexical syntax highlighting. Target panes switch highlighting when their selected language changes. Language switching reuses generated code already cached for the current source revision and only schedules live transpilation for visible targets that are actually missing. The output area remains a plain build/program log without line numbers.
+The four code panes use AvalonEdit. The SMILE source pane and all three generated target panes show line numbers and lexical syntax highlighting. Target panes switch highlighting when their selected language changes. Objective-C uses AvalonEdit's mature C/C++ highlighting because SMILE's current Objective-C output is a Foundation-free C-compatible console profile. Language switching reuses generated code already cached for the current source revision and only schedules live transpilation for visible targets that are actually missing. The output area remains a plain build/program log without line numbers.
 
 Typing in the SMILE source editor schedules a short debounced live transpilation for the visible target languages only. The latest source revision always wins, so stale generated code is never used for Build & Run. The Transpile All command is asynchronous and regenerates all eight targets.
 
@@ -300,7 +318,7 @@ When Open Generated Folder is enabled, SMILE asks Windows Explorer to open the g
 
 When Press Any Key Launcher is enabled, SMILE writes `Run Program - Press Any Key.cmd` into each successful build/run workspace. Double-clicking that launcher runs the generated program and then shows `Press any key to exit...`, which keeps the console window open long enough to inspect the output.
 
-Current desktop build version: `0.3.3 Local COBOL Toolchain`.
+Current desktop build version: `0.4.0 Lexical and Typed Expression Core`.
 
 ## Diagnostics
 
@@ -318,7 +336,6 @@ SMILE reports source errors as diagnostics instead of ordinary crashes. Current 
 | `SMILE1105` | Interpolation expression cannot be empty |
 | `SMILE1106` | Undefined variable |
 | `SMILE1107` | Duplicate variable declaration |
-| `SMILE1108` | Invalid string expression |
 | `SMILE1109` | Semicolons cannot separate SMILE statements |
 | `SMILE1110` | Unterminated interpolated string |
 | `SMILE1111` | Unexpected text after a string expression |
@@ -326,6 +343,15 @@ SMILE reports source errors as diagnostics instead of ordinary crashes. Current 
 | `SMILE1113` | `LET` requires `=` before its initializer |
 | `SMILE1115` | Reserved SMILE keyword used as a variable name |
 | `SMILE1116` | `LET` requires an initializer expression |
+| `SMILE1201` | Invalid or unexpected token in expression |
+| `SMILE1202` | Integer literal is outside the signed 64-bit range |
+| `SMILE1203` | Unary operator is not defined for the operand type |
+| `SMILE1204` | Binary operator is not defined for the operand types |
+| `SMILE1205` | Missing closing parenthesis |
+| `SMILE1206` | Integer arithmetic overflow |
+| `SMILE1207` | Division by zero |
+| `SMILE1208` | Unknown or invalid string escape sequence |
+| `SMILE1209` | Unterminated string escape sequence |
 
 Desktop crash containment is intentionally defensive. Recoverable Build & Run, toolchain detection, process execution, command refresh, and folder-opening failures are reported in the output area without closing the IDE. Detailed desktop diagnostics are written to `%LOCALAPPDATA%\SMILE\Logs\SMILE-yyyy-MM-dd.log`, with `%TEMP%\SMILE\Logs` used as a fallback if the normal log folder is unavailable.
 
@@ -355,24 +381,24 @@ tests/
 ## Architecture
 
 ```text
-Source -> Parser -> Syntax Tree -> Binder -> Bound Program -> Target Generator -> Generated Files
-                                                        |
-                                                 Optional Toolchain
-                                                        |
-                                                 Build and Run Result
+Source -> Lexer -> Tokens -> Parser -> Syntax Tree -> Binder -> Bound Program -> Target Generator -> Generated Files
+                                                                          |
+                                                                   Optional Toolchain
+                                                                          |
+                                                                   Build and Run Result
 ```
 
-`SMILE.Engine` owns parsing, diagnostics, syntax nodes, binding, variable symbols, bound expressions, compile-time string constant evaluation, target-neutral print segment flattening, the SMILE reference evaluator, target identifier mapping, and target generators. The target identifier map is symbol-based and uses exact reserved-word checks plus target-specific pattern rules, such as C implementation-reserved prefixes, COBOL reserved words and data-name spelling, and Java/Swift `_`. `SMILE.Toolchains` owns detection, temporary workspaces, async process execution, cancellation, timeouts, bounded process output, build, and run. `SMILE.Cli` and `SMILE.Desktop` reuse both projects. `SMILE.Desktop` uses AvalonEdit for the four code panes and keeps build/run work isolated from the WPF UI thread.
+`SMILE.Engine` owns lexing, parsing, diagnostics, syntax nodes, binding, variable symbols, typed bound expressions, compile-time constant evaluation, the SMILE reference evaluator, target identifier mapping, and target generators. The target identifier map is symbol-based and uses exact reserved-word checks plus target-specific pattern rules, such as C implementation-reserved prefixes, COBOL reserved words and data-name spelling, and Java/Swift `_`. `SMILE.Toolchains` owns detection, temporary workspaces, async process execution, cancellation, timeouts, bounded process output, build, and run. `SMILE.Cli` and `SMILE.Desktop` reuse both projects. `SMILE.Desktop` uses AvalonEdit for the four code panes and keeps build/run work isolated from the WPF UI thread.
 
 SMILE-owned build/output artifacts older than 1 day may be cleaned from known generated locations such as `bin`, `obj`, `out`, and `%TEMP%\SMILE\Runs`.
 
 ## Current Limitations
 
-- `LET` v1.0 is string-only; numeric, boolean, and other future value types are intentionally rejected until they have official specifications.
-- Embedded quote escaping inside SMILE string literals is not implemented.
+- Only `String`, `Integer`, and `Boolean` core types are implemented.
+- Integer is signed 64-bit only; floating-point and decimal types are not implemented.
 - Syntax highlighting is lexical only; semantic highlighting, autocomplete, and diagnostic squiggles are not implemented.
 - C and MASM target output is focused on Windows local toolchains.
-- COBOL local output uses GnuCOBOL free-format source and exact fixed-length string storage for SMILE v1.0 strings.
+- COBOL local output uses GnuCOBOL free-format source and fixed-length storage for current SMILE display values.
 - Objective-C local output currently uses a Foundation-free console profile on Windows; Foundation/NSString output remains future hardening.
 - Swift local output requires Swift.Toolchain for Windows and Visual Studio C++ linker tools.
 - Unicode output beyond UTF-8 source text remains an area for later hardening.
@@ -380,15 +406,15 @@ SMILE-owned build/output artifacts older than 1 day may be cleaned from known ge
 
 ## Roadmap
 
-Future ideas, not implemented in v0.3.3:
+Future ideas, not implemented in v0.4.0:
 
-1. Numeric and boolean expressions
-2. `INPUT`
-3. `IF / THEN / ELSE`
-4. Loops
-5. Functions
-6. Type checking beyond string-only expressions
-7. Debugging and source mapping
+1. `INPUT`
+2. `IF / THEN / ELSE`
+3. Loops
+4. Functions
+5. Floating-point and decimal numeric types
+6. Debugging and source mapping
+7. Semantic highlighting, autocomplete, and diagnostic squiggles
 8. Reusable web interface
 9. Evolution toward a full SMILE language
 

@@ -12,9 +12,14 @@
     <Keywords color="Keyword">
       <Word>LET</Word>
       <Word>PRINT</Word>
+      <Word>TRUE</Word>
+      <Word>FALSE</Word>
+      <Word>NOT</Word>
+      <Word>AND</Word>
+      <Word>OR</Word>
     </Keywords>
 
     <Rule color="Number">\b\d+(\.\d+)?\b</Rule>
-    <Rule color="Operator">[=+\{\}]</Rule>
+    <Rule color="Operator">&lt;&gt;|&lt;=|&gt;=|[=+\-*/()&lt;&gt;\{\}]</Rule>
   </RuleSet>
 </SyntaxDefinition>

@@ -75,8 +75,8 @@ public sealed class LanguageTests
     {
         PrintStatementSyntax statement = ParseSinglePrint("PRINT \"Hello \" + Name + \"!\"");
 
-        var outer = (ConcatenationExpressionSyntax)statement.Value;
-        Assert.IsInstanceOfType(outer.Left, typeof(ConcatenationExpressionSyntax));
+        var outer = (BinaryExpressionSyntax)statement.Value;
+        Assert.IsInstanceOfType(outer.Left, typeof(BinaryExpressionSyntax));
         Assert.AreEqual("!", ((StringLiteralExpressionSyntax)outer.Right).Value);
     }
 
@@ -94,8 +94,7 @@ PRINT {CUSTOMERNAME}
         Assert.AreEqual("CustomerName", variable.Name);
 
         var firstPrint = (BoundPrintStatement)result.Program.Statements[1];
-        var firstExpression = (BoundInterpolatedStringExpression)firstPrint.Value;
-        var firstVariable = (BoundVariableExpression)((BoundInterpolationExpressionPart)firstExpression.Parts.Single()).Expression;
+        var firstVariable = (BoundVariableExpression)firstPrint.Value;
         Assert.AreSame(variable, firstVariable.Variable);
     }
 
@@ -117,7 +116,7 @@ PRINT "Hello " + Name + "!"
 
         Assert.IsInstanceOfType(GetPrintExpression(raw), typeof(BoundInterpolatedStringExpression));
         Assert.IsInstanceOfType(GetPrintExpression(quoted), typeof(BoundInterpolatedStringExpression));
-        Assert.IsInstanceOfType(GetPrintExpression(concatenated), typeof(BoundConcatenationExpression));
+        Assert.IsInstanceOfType(GetPrintExpression(concatenated), typeof(BoundBinaryExpression));
 
         AssertSegments(raw, "Hello ", "Name", "!");
         AssertSegments(quoted, "Hello ", "Name", "!");
@@ -169,7 +168,7 @@ PRINT {Name}
     [DataRow("PRINT Hello Name}", "SMILE1104", 1, 17)]
     [DataRow("PRINT $\"Hello {Name\"", "SMILE1103", 1, 15)]
     [DataRow("PRINT $\"Hello }\"", "SMILE1104", 1, 15)]
-    [DataRow("PRINT \"Hello\" +", "SMILE1108", 1, 16)]
+    [DataRow("PRINT \"Hello\" +", "SMILE1201", 1, 16)]
     [DataRow("PRINT \"A\"; \"B\"", "SMILE1109", 1, 10)]
     [DataRow("PRINT \"Hello\" \"World\"", "SMILE1111", 1, 15)]
     [DataRow("PRONT \"Typo\"", "SMILE1001", 1, 1)]

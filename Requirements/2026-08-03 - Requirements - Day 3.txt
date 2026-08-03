@@ -38,3 +38,18 @@ Finish LET v1.0 Specification Implementation
 4.) I'd like to add COBOL as one of the target languages in SMILE.  You have my permission to download any tooling you need from the Internet, providing it is free or open-source, so that SMILE can compile and test COBOL programs locally.  Commit all and push when all your tests are green.
 
 	Status: **Ready for testing** after adding COBOL generation, syntax highlighting, local GnuCOBOL Build & Run, documentation updates, and evaluator-versus-toolchain validation.
+
+
+Testing Feedback
+----------------
+5.) Major Bug: Switching the language to Objective-C makes the SMILE Editor hang (non-responsive).
+
+	Status: **Ready for testing** after routing Objective-C to AvalonEdit's built-in C/C++ highlighting path, removing the custom Objective-C highlighter, and adding regression coverage for generated Objective-C highlighting.
+
+6.) Whenever we start the SMILE Editor, default the code to all permutation of the LET statement, then all permutation of PRINT, then both LET and PRITN so both language syntax are throughly tested the moment the SMILE editor comes up.  As we add more language features and statements, keep adding more to this default text / code so new users can see examples of all the available language syntax and features.
+
+	Status: **Ready for testing** after replacing the startup SMILE source with a broader v0.4.0 learning sample that covers LET strings, integers, booleans, escapes, arithmetic, comparisons, boolean logic, grouping, PRINT raw templates, quoted strings, interpolation, concatenation, literal braces, and expression placeholders.
+
+7.) It's time to take SMILE to the next level and add Lexical and Typed Expressions.  Execute the markdown file I have prepared with ChatGPT 5.6 that is located in "C:\SMILE\Requirements\2026-08-03 1704 - SMILE Codex Instructions v0.4.0 Lexical and Typed Expression Core.md".  Commit all and push to the repo.
+
+	Status: **Ready for testing** after adding the v0.4.0 lexer, typed expression parser, strict binder, typed `SmileValue` evaluator, string escapes, integer/boolean operators, diagnostics SMILE1201-SMILE1209, updated target generators, official specs, documentation, examples, and conformance coverage.

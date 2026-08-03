@@ -57,7 +57,7 @@ PRINT {Greeting}
     [DataRow("LET Name =", "SMILE1116")]
     [DataRow("LET Name =    ", "SMILE1116")]
     [DataRow("LET Name = Hello World!", "SMILE1111")]
-    [DataRow("LET Name = \"Sin\" +", "SMILE1108")]
+    [DataRow("LET Name = \"Sin\" +", "SMILE1201")]
     [DataRow("LET Name = MissingName", "SMILE1106")]
     [DataRow("LET Name = $\"Hello {", "SMILE1103")]
     [DataRow("LET Name = $\"Hello {}", "SMILE1105")]
@@ -159,11 +159,12 @@ LET Greeting = $"Hello {FullName}!"
         BoundLetStatement[] lets = result.Program!.Statements.OfType<BoundLetStatement>().ToArray();
 
         Assert.IsInstanceOfType(lets[1].Initializer, typeof(BoundVariableExpression));
-        Assert.IsInstanceOfType(lets[2].Initializer, typeof(BoundConcatenationExpression));
+        var fullName = (BoundBinaryExpression)lets[2].Initializer;
+        Assert.AreEqual(BoundBinaryOperatorKind.StringConcatenation, fullName.Operator.Kind);
         Assert.IsInstanceOfType(lets[3].Initializer, typeof(BoundInterpolatedStringExpression));
         CollectionAssert.AreEqual(
             new[] { "Sin", "Sin", "Sin Cioco", "Hello Sin Cioco!" },
-            lets.Select(let => let.ConstantValue).ToArray());
+            lets.Select(let => let.ConstantValue.ToDisplayText()).ToArray());
     }
 
     [TestMethod]
@@ -228,9 +229,9 @@ LET Greeting = $"Hello {FullName}!"
         StringAssert.Contains(java, "String Greeting = \"Hello \" + FullName + \"!\";");
 
         string swift = Generate(source, TargetLanguage.Swift).PrimaryFile.Content;
-        StringAssert.Contains(swift, "let Copy = FirstName");
-        StringAssert.Contains(swift, "let FullName = FirstName + \" Cioco\"");
-        StringAssert.Contains(swift, "let Greeting = \"Hello \\(FullName)!\"");
+        StringAssert.Contains(swift, "let Copy: String = FirstName");
+        StringAssert.Contains(swift, "let FullName: String = FirstName + \" Cioco\"");
+        StringAssert.Contains(swift, "let Greeting: String = \"Hello \\(FullName)!\"");
     }
 
     [TestMethod]
@@ -297,14 +298,14 @@ PRINT {System}
         string csharp = Generate(source, TargetLanguage.CSharp).PrimaryFile.Content;
         StringAssert.Contains(csharp, "string _smile_class = \"A\";");
         StringAssert.Contains(csharp, "string _smile_Console = \"B\";");
-        StringAssert.Contains(csharp, "Console.WriteLine($\"{_smile_class}\");");
-        StringAssert.Contains(csharp, "Console.WriteLine($\"{_smile_Console}\");");
+        StringAssert.Contains(csharp, "Console.WriteLine(_smile_class);");
+        StringAssert.Contains(csharp, "Console.WriteLine(_smile_Console);");
 
         string c = Generate(source, TargetLanguage.C).PrimaryFile.Content;
         StringAssert.Contains(c, "const char *class = \"A\";");
         StringAssert.Contains(c, "const char *_smile_printf = \"C\";");
-        StringAssert.Contains(c, "printf(\"%s\\n\", class);");
-        StringAssert.Contains(c, "printf(\"%s\\n\", _smile_printf);");
+        StringAssert.Contains(c, "printf(\"A\\n\");");
+        StringAssert.Contains(c, "printf(\"C\\n\");");
 
         string java = Generate(source, TargetLanguage.Java).PrimaryFile.Content;
         StringAssert.Contains(java, "String _smile_class = \"A\";");
@@ -313,7 +314,7 @@ PRINT {System}
 
         string javascript = Generate("LET console = \"A\"\nPRINT {console}", TargetLanguage.JavaScript).PrimaryFile.Content;
         StringAssert.Contains(javascript, "let _smile_console = \"A\";");
-        StringAssert.Contains(javascript, "console.log(`${_smile_console}`);");
+        StringAssert.Contains(javascript, "console.log(_smile_console);");
     }
 
     [TestMethod]
@@ -329,8 +330,8 @@ PRINT {_smile_class}
 
         StringAssert.Contains(csharp, "string _smile_class = \"A\";");
         StringAssert.Contains(csharp, "string _smile_class_2 = \"B\";");
-        StringAssert.Contains(csharp, "Console.WriteLine($\"{_smile_class}\");");
-        StringAssert.Contains(csharp, "Console.WriteLine($\"{_smile_class_2}\");");
+        StringAssert.Contains(csharp, "Console.WriteLine(_smile_class);");
+        StringAssert.Contains(csharp, "Console.WriteLine(_smile_class_2);");
     }
 
     private GeneratedProgram Generate(string source, TargetLanguage language)

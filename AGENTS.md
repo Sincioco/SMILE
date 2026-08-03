@@ -24,6 +24,11 @@
 
 - The official PRINT syntax is defined by `docs/SMILE Language Specification/SMILE - PRINT Statement Official Specification v1.0.md`.
 - The official LET syntax is defined by `docs/SMILE Language Specification/SMILE - LET Statement Official Specification v1.0.md`.
+- Official string literal behavior is defined by `docs/SMILE Language Specification/SMILE - String Literals Official Specification v1.0.md`.
+- Official core type and expression behavior is defined by `docs/SMILE Language Specification/SMILE - Core Types and Expressions Official Specification v1.0.md`.
+- Every expression feature must be defined once in the official core expression specification and implemented through the shared lexer, parser, binder, evaluator, and bound tree.
+- Target generators must consume the shared bound tree and must not invent expression semantics or reparse SMILE source text.
+- Cross-target runtime tests for expression features must compare generated output to the `SmileEvaluator` reference evaluator whenever the target toolchain is locally runnable.
 - PRINT parsing must be deterministic and must never guess whether bare text is a variable.
 - Bare PRINT text is literal template text; expressions require braces.
 - Ordinary quoted strings do not interpolate; `$"..."` and raw templates do.

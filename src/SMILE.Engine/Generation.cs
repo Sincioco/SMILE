@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 
 namespace SMILE.Engine;
@@ -112,6 +113,11 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
         TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
         var source = new StringBuilder();
         source.AppendLine("using System;");
+        if (CSharpGenerationFacts.NeedsInvariantCulture(program))
+        {
+            source.AppendLine("using System.Globalization;");
+        }
+
         source.AppendLine();
         source.AppendLine("internal static class Program");
         source.AppendLine("{");
@@ -123,7 +129,7 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
             switch (statement)
             {
                 case BoundLetStatement let:
-                    source.AppendLine($"        string {identifiers.Get(let.Variable)} = {TargetExpression.CSharp(let.Initializer, identifiers)};");
+                    source.AppendLine($"        {TargetTypes.CSharp(let.Variable.Type)} {identifiers.Get(let.Variable)} = {TargetExpression.CSharp(let.Initializer, identifiers)};");
                     break;
 
                 case BoundPrintStatement print:
@@ -133,7 +139,7 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
                     }
                     else
                     {
-                        source.AppendLine($"        Console.WriteLine({TargetExpression.CSharp(print.Value, identifiers)});");
+                        source.AppendLine($"        Console.WriteLine({TargetExpression.CSharpDisplay(print.Value, identifiers)});");
                     }
 
                     break;
@@ -171,8 +177,14 @@ internal sealed class CCodeGenerator : ICodeGenerator
     public GeneratedProgram Generate(BoundProgram program)
     {
         TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values = GeneratorValueFacts.ConstantValues(program);
         var source = new StringBuilder();
         source.AppendLine("#include <stdio.h>");
+        if (program.Variables.Any(variable => variable.Type is SmileType.Boolean))
+        {
+            source.AppendLine("#include <stdbool.h>");
+        }
+
         source.AppendLine();
         source.AppendLine("int main(void)");
         source.AppendLine("{");
@@ -186,7 +198,7 @@ internal sealed class CCodeGenerator : ICodeGenerator
             switch (statement)
             {
                 case BoundLetStatement let:
-                    source.AppendLine($"    const char *{identifiers.Get(let.Variable)} = {TargetEscapes.CString(let.ConstantValue)};");
+                    source.AppendLine($"    {TargetTypes.CDeclaration(let.Variable.Type, identifiers.Get(let.Variable))} = {TargetExpression.CConstant(let.ConstantValue)};");
                     emittedDeclaration = true;
                     emittedBodyStatement = true;
                     break;
@@ -197,7 +209,7 @@ internal sealed class CCodeGenerator : ICodeGenerator
                         source.AppendLine();
                     }
 
-                    AppendCPrint(source, print, identifiers);
+                    AppendCPrint(source, print, values);
                     emittedExecutable = true;
                     emittedBodyStatement = true;
                     break;
@@ -220,9 +232,9 @@ internal sealed class CCodeGenerator : ICodeGenerator
     private static void AppendCPrint(
         StringBuilder source,
         BoundPrintStatement print,
-        TargetIdentifierMap identifiers)
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values)
     {
-        CPrintfPlan plan = CPrintfPlan.FromPrint(print, variable => identifiers.Get(variable));
+        CPrintfPlan plan = CPrintfPlan.FromText(GeneratorValueFacts.DisplayText(print.Value, values));
         AppendPrintfCall(source, "    ", plan);
     }
 
@@ -251,6 +263,7 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
     {
         BoundLetStatement[] lets = program.Statements.OfType<BoundLetStatement>().ToArray();
         BoundPrintStatement[] prints = program.Statements.OfType<BoundPrintStatement>().ToArray();
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values = GeneratorValueFacts.ConstantValues(program);
         var source = new StringBuilder();
 
         AppendMasmLine(source, "option casemap:none", "Keep symbol names case-sensitive.");
@@ -265,7 +278,7 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         AppendMasmLine(source, "EXTERN ExitProcess:PROC", "Windows API: terminate the process.");
         source.AppendLine();
 
-        AppendMasmData(source, lets, prints);
+        AppendMasmData(source, lets, prints, values);
         AppendMasmCode(source, lets, prints);
 
         return new GeneratedProgram(
@@ -276,7 +289,8 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
     private static void AppendMasmData(
         StringBuilder source,
         IReadOnlyList<BoundLetStatement> lets,
-        IReadOnlyList<BoundPrintStatement> prints)
+        IReadOnlyList<BoundPrintStatement> prints,
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values)
     {
         if (lets.Count == 0 && prints.Count == 0)
         {
@@ -294,24 +308,18 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         {
             BoundLetStatement let = lets[index];
             string valueLabel = VariableValueLabel(index);
-            AppendMasmStringData(source, valueLabel, let.ConstantValue, $"LET {let.Variable.Name} initial text.", "Length of the variable's current text.");
+            AppendMasmStringData(source, valueLabel, let.ConstantValue.ToDisplayText(), $"LET {let.Variable.Name} initial text.", "Length of the variable's current text.");
             AppendMasmLine(source, $"{VariablePointerLabel(index)} QWORD ?", $"Runtime pointer for {let.Variable.Name}.");
             AppendMasmLine(source, $"{VariableLengthLabel(index)} DWORD ?", $"Runtime length for {let.Variable.Name}.");
         }
 
         for (int printIndex = 0; printIndex < prints.Count; printIndex++)
         {
-            IReadOnlyList<PrintSegment> segments = BoundStringExpression.FlattenForOutput(prints[printIndex].Value);
-            for (int segmentIndex = 0; segmentIndex < segments.Count; segmentIndex++)
-            {
-                if (segments[segmentIndex] is not LiteralPrintSegment literal)
-                {
-                    continue;
-                }
-
-                string label = PrintLiteralLabel(printIndex, segmentIndex);
-                AppendMasmStringData(source, label, literal.Text, $"PRINT #{printIndex + 1} literal segment.", "Length of this literal segment.");
-            }
+            string text = prints[printIndex].IsBlankLine
+                ? string.Empty
+                : GeneratorValueFacts.DisplayText(prints[printIndex].Value, values);
+            string label = PrintLiteralLabel(printIndex, 0);
+            AppendMasmStringData(source, label, text, $"PRINT #{printIndex + 1} canonical text.", "Length of this print text.");
         }
 
         if (prints.Count > 0)
@@ -373,22 +381,7 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         {
             source.AppendLine();
             AppendMasmLine(source, $"; PRINT #{printIndex + 1}", "Write each expression segment, then newline.");
-            IReadOnlyList<PrintSegment> segments = BoundStringExpression.FlattenForOutput(prints[printIndex].Value);
-            for (int segmentIndex = 0; segmentIndex < segments.Count; segmentIndex++)
-            {
-                switch (segments[segmentIndex])
-                {
-                    case LiteralPrintSegment:
-                        AppendMasmWriteLiteral(source, PrintLiteralLabel(printIndex, segmentIndex));
-                        break;
-
-                    case VariablePrintSegment variable:
-                        int variableIndex = lets.IndexOf(let => ReferenceEquals(let.Variable, variable.Variable));
-                        AppendMasmWriteVariable(source, variable.Variable.Name, variableIndex);
-                        break;
-                }
-            }
-
+            AppendMasmWriteLiteral(source, PrintLiteralLabel(printIndex, 0));
             AppendMasmWriteLiteral(source, "newline");
         }
 
@@ -464,7 +457,7 @@ internal sealed class JavaScriptCodeGenerator : ICodeGenerator
                 case BoundPrintStatement print:
                     source.AppendLine(print.IsBlankLine
                         ? "console.log();"
-                        : $"console.log({TargetExpression.JavaScript(print.Value, identifiers)});");
+                        : $"console.log({TargetExpression.JavaScriptDisplay(print.Value, identifiers)});");
                     break;
             }
         }
@@ -493,13 +486,13 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
             switch (statement)
             {
                 case BoundLetStatement let:
-                    source.AppendLine($"        String {identifiers.Get(let.Variable)} = {TargetExpression.Java(let.Initializer, identifiers)};");
+                    source.AppendLine($"        {TargetTypes.Java(let.Variable.Type)} {identifiers.Get(let.Variable)} = {TargetExpression.Java(let.Initializer, identifiers)};");
                     break;
 
                 case BoundPrintStatement print:
                     source.AppendLine(print.IsBlankLine
                         ? "        System.out.println();"
-                        : $"        System.out.println({TargetExpression.Java(print.Value, identifiers)});");
+                        : $"        System.out.println({TargetExpression.JavaDisplay(print.Value, identifiers)});");
                     break;
             }
         }
@@ -566,7 +559,8 @@ internal sealed class CobolCodeGenerator : ICodeGenerator
         TargetIdentifierMap identifiers)
     {
         string name = identifiers.Get(let.Variable);
-        if (let.ConstantValue.Length == 0)
+        string value = let.ConstantValue.ToDisplayText();
+        if (value.Length == 0)
         {
             // COBOL has no zero-length PIC X storage item. The placeholder is
             // never displayed for an empty SMILE value; the PRINT lowering skips
@@ -575,19 +569,21 @@ internal sealed class CobolCodeGenerator : ICodeGenerator
             return;
         }
 
-        int byteLength = TargetEscapes.CobolByteLength(let.ConstantValue);
+        int byteLength = TargetEscapes.CobolByteLength(value);
         string picture = byteLength == 1 ? "PIC X" : $"PIC X({byteLength})";
-        source.AppendLine($"01 {name} {picture} VALUE {TargetEscapes.CobolString(let.ConstantValue)}.");
+        source.AppendLine($"01 {name} {picture} VALUE {TargetEscapes.CobolString(value)}.");
     }
 
     private static void AppendCobolPrint(
         StringBuilder source,
         BoundPrintStatement print,
         TargetIdentifierMap identifiers,
-        IReadOnlyDictionary<VariableSymbol, string> values)
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values)
     {
-        List<string> operands = BuildDisplayOperands(print, identifiers, values);
-        if (print.IsBlankLine || operands.Count == 0)
+        string text = print.IsBlankLine
+            ? string.Empty
+            : GeneratorValueFacts.DisplayText(print.Value, values);
+        if (text.Length == 0)
         {
             // DISPLAY "" emits one space in GnuCOBOL. A no-advancing line-feed
             // emits exactly the blank line SMILE PRINT requires.
@@ -596,35 +592,8 @@ internal sealed class CobolCodeGenerator : ICodeGenerator
         }
 
         source.Append("    DISPLAY ");
-        source.Append(string.Join(" ", operands));
+        source.Append(TargetEscapes.CobolString(text));
         source.AppendLine(".");
-    }
-
-    private static List<string> BuildDisplayOperands(
-        BoundPrintStatement print,
-        TargetIdentifierMap identifiers,
-        IReadOnlyDictionary<VariableSymbol, string> values)
-    {
-        var operands = new List<string>();
-        foreach (PrintSegment segment in BoundStringExpression.FlattenForOutput(print.Value))
-        {
-            switch (segment)
-            {
-                case LiteralPrintSegment literal when literal.Text.Length > 0:
-                    operands.Add(TargetEscapes.CobolString(literal.Text));
-                    break;
-
-                case VariablePrintSegment variable:
-                    if (values.TryGetValue(variable.Variable, out string? value) && value.Length > 0)
-                    {
-                        operands.Add(identifiers.Get(variable.Variable));
-                    }
-
-                    break;
-            }
-        }
-
-        return operands;
     }
 }
 
@@ -635,8 +604,14 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
     public GeneratedProgram Generate(BoundProgram program)
     {
         TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values = GeneratorValueFacts.ConstantValues(program);
         var source = new StringBuilder();
         source.AppendLine("#include <stdio.h>");
+        if (program.Variables.Any(variable => variable.Type is SmileType.Boolean))
+        {
+            source.AppendLine("#include <stdbool.h>");
+        }
+
         source.AppendLine();
         source.AppendLine("int main(void)");
         source.AppendLine("{");
@@ -651,10 +626,9 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
             {
                 case BoundLetStatement let:
                     // The Windows-local Objective-C toolchain uses Clang/MSYS2
-                    // without Foundation. SMILE v1.0 strings are immutable
-                    // compile-time values, so plain C string pointers keep this
+                    // without Foundation. C-compatible console types keep this
                     // target easy to build while still compiling as Objective-C.
-                    source.AppendLine($"    const char *{identifiers.Get(let.Variable)} = {TargetEscapes.CString(let.ConstantValue)};");
+                    source.AppendLine($"    {TargetTypes.CDeclaration(let.Variable.Type, identifiers.Get(let.Variable))} = {TargetExpression.CConstant(let.ConstantValue)};");
                     emittedDeclaration = true;
                     emittedBodyStatement = true;
                     break;
@@ -665,7 +639,7 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
                         source.AppendLine();
                     }
 
-                    AppendObjectiveCPrint(source, print, identifiers);
+                    AppendObjectiveCPrint(source, print, values);
                     emittedExecutable = true;
                     emittedBodyStatement = true;
                     break;
@@ -688,9 +662,9 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
     private static void AppendObjectiveCPrint(
         StringBuilder source,
         BoundPrintStatement print,
-        TargetIdentifierMap identifiers)
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values)
     {
-        CPrintfPlan plan = CPrintfPlan.FromPrint(print, variable => identifiers.Get(variable));
+        CPrintfPlan plan = CPrintfPlan.FromText(GeneratorValueFacts.DisplayText(print.Value, values));
         CCodeGenerator.AppendPrintfCall(source, "    ", plan);
     }
 }
@@ -709,13 +683,13 @@ internal sealed class SwiftCodeGenerator : ICodeGenerator
             switch (statement)
             {
                 case BoundLetStatement let:
-                    source.AppendLine($"let {identifiers.Get(let.Variable)} = {TargetExpression.Swift(let.Initializer, identifiers)}");
+                    source.AppendLine($"let {identifiers.Get(let.Variable)}: {TargetTypes.Swift(let.Variable.Type)} = {TargetExpression.Swift(let.Initializer, identifiers)}");
                     break;
 
                 case BoundPrintStatement print:
                     source.AppendLine(print.IsBlankLine
                         ? "print()"
-                        : $"print({TargetExpression.Swift(print.Value, identifiers)})");
+                        : $"print({TargetExpression.SwiftDisplay(print.Value, identifiers)})");
                     break;
             }
         }
@@ -730,6 +704,14 @@ internal sealed record CPrintfPlan(
     string FormatText,
     IReadOnlyList<string> Arguments)
 {
+    public static CPrintfPlan FromText(string text)
+    {
+        var format = new StringBuilder();
+        AppendLiteralToFormat(format, text);
+        format.Append('\n');
+        return new CPrintfPlan(format.ToString(), Array.Empty<string>());
+    }
+
     public static CPrintfPlan FromPrint(
         BoundPrintStatement print,
         Func<VariableSymbol, string> renderVariable)
@@ -770,112 +752,456 @@ internal sealed record CPrintfPlan(
     }
 }
 
+internal static class TargetTypes
+{
+    public static string CSharp(SmileType type) =>
+        type switch
+        {
+            SmileType.String => "string",
+            SmileType.Integer => "long",
+            SmileType.Boolean => "bool",
+            _ => "object"
+        };
+
+    public static string Java(SmileType type) =>
+        type switch
+        {
+            SmileType.String => "String",
+            SmileType.Integer => "long",
+            SmileType.Boolean => "boolean",
+            _ => "Object"
+        };
+
+    public static string Swift(SmileType type) =>
+        type switch
+        {
+            SmileType.String => "String",
+            SmileType.Integer => "Int64",
+            SmileType.Boolean => "Bool",
+            _ => "String"
+        };
+
+    public static string C(SmileType type) =>
+        type switch
+        {
+            SmileType.String => "const char *",
+            SmileType.Integer => "long long",
+            SmileType.Boolean => "bool",
+            _ => "const char *"
+        };
+
+    public static string CDeclaration(SmileType type, string name) =>
+        type is SmileType.String
+            ? C(type) + name
+            : C(type) + " " + name;
+}
+
+internal static class CSharpGenerationFacts
+{
+    public static bool NeedsInvariantCulture(BoundProgram program) =>
+        program.Statements.Any(statement => statement switch
+        {
+            BoundLetStatement let => NeedsInvariantCulture(let.Initializer, displayContext: false),
+            BoundPrintStatement print => !print.IsBlankLine && NeedsInvariantCulture(print.Value, displayContext: true),
+            _ => false
+        });
+
+    private static bool NeedsInvariantCulture(BoundExpression expression, bool displayContext)
+    {
+        // C# only needs CultureInfo when a SMILE Integer is converted to text.
+        // Integer arithmetic itself stays plain long arithmetic with L suffixes.
+        if (displayContext && expression.Type is SmileType.Integer)
+        {
+            return true;
+        }
+
+        return expression switch
+        {
+            BoundUnaryExpression unary => NeedsInvariantCulture(unary.Operand, displayContext: false),
+            BoundBinaryExpression binary => NeedsInvariantCulture(binary.Left, displayContext: false) ||
+                NeedsInvariantCulture(binary.Right, displayContext: false),
+            BoundConcatenationExpression concatenation => NeedsInvariantCulture(concatenation.Left, displayContext: false) ||
+                NeedsInvariantCulture(concatenation.Right, displayContext: false),
+            BoundInterpolatedStringExpression interpolated => interpolated.Parts.Any(part =>
+                part is BoundInterpolationExpressionPart interpolation &&
+                NeedsInvariantCulture(interpolation.Expression, displayContext: true)),
+            _ => false
+        };
+    }
+}
+
+internal static class GeneratorValueFacts
+{
+    public static IReadOnlyDictionary<VariableSymbol, SmileValue> ConstantValues(BoundProgram program) =>
+        program.Statements
+            .OfType<BoundLetStatement>()
+            .ToDictionary(let => let.Variable, let => let.ConstantValue);
+
+    public static string DisplayText(
+        BoundExpression expression,
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values)
+    {
+        if (BoundConstantEvaluator.TryEvaluate(expression, values, out SmileValue value))
+        {
+            return value.ToDisplayText();
+        }
+
+        throw new InvalidOperationException("Bound expression could not be evaluated for target lowering.");
+    }
+}
+
 internal static class TargetExpression
 {
     public static string CSharp(BoundExpression expression, TargetIdentifierMap identifiers) =>
-        expression switch
-        {
-            BoundStringLiteralExpression literal => TargetEscapes.CSharpString(literal.Value),
-            BoundVariableExpression variable => identifiers.Get(variable.Variable),
-            BoundConcatenationExpression concatenation => JoinConcatenation(
-                concatenation,
-                part => CSharp(part, identifiers)),
-            BoundInterpolatedStringExpression interpolated => CSharpInterpolatedString(interpolated, identifiers),
-            _ => TargetEscapes.CSharpString(string.Empty)
-        };
+        new Writer(TargetLanguage.CSharp, identifiers).Write(expression);
+
+    public static string CSharpDisplay(BoundExpression expression, TargetIdentifierMap identifiers) =>
+        new Writer(TargetLanguage.CSharp, identifiers).WriteDisplay(expression);
 
     public static string JavaScript(BoundExpression expression, TargetIdentifierMap identifiers) =>
-        expression switch
-        {
-            BoundStringLiteralExpression literal => TargetEscapes.JavaScriptString(literal.Value),
-            BoundVariableExpression variable => identifiers.Get(variable.Variable),
-            BoundConcatenationExpression concatenation => JoinConcatenation(
-                concatenation,
-                part => JavaScript(part, identifiers)),
-            BoundInterpolatedStringExpression interpolated => JavaScriptTemplateLiteral(interpolated, identifiers),
-            _ => TargetEscapes.JavaScriptString(string.Empty)
-        };
+        new Writer(TargetLanguage.JavaScript, identifiers).Write(expression);
+
+    public static string JavaScriptDisplay(BoundExpression expression, TargetIdentifierMap identifiers) =>
+        new Writer(TargetLanguage.JavaScript, identifiers).WriteDisplay(expression);
 
     public static string Java(BoundExpression expression, TargetIdentifierMap identifiers) =>
-        expression switch
-        {
-            BoundStringLiteralExpression literal => TargetEscapes.JavaString(literal.Value),
-            BoundVariableExpression variable => identifiers.Get(variable.Variable),
-            BoundConcatenationExpression concatenation => JoinConcatenation(
-                concatenation,
-                part => Java(part, identifiers)),
-            BoundInterpolatedStringExpression interpolated => JoinSegments(
-                BoundStringExpression.FlattenForOutput(interpolated),
-                TargetEscapes.JavaString,
-                identifiers),
-            _ => TargetEscapes.JavaString(string.Empty)
-        };
+        new Writer(TargetLanguage.Java, identifiers).Write(expression);
+
+    public static string JavaDisplay(BoundExpression expression, TargetIdentifierMap identifiers) =>
+        new Writer(TargetLanguage.Java, identifiers).WriteDisplay(expression);
 
     public static string Swift(BoundExpression expression, TargetIdentifierMap identifiers) =>
-        expression switch
+        new Writer(TargetLanguage.Swift, identifiers).Write(expression);
+
+    public static string SwiftDisplay(BoundExpression expression, TargetIdentifierMap identifiers) =>
+        new Writer(TargetLanguage.Swift, identifiers).WriteDisplay(expression);
+
+    public static string CConstant(SmileValue value) =>
+        value.Type switch
         {
-            BoundStringLiteralExpression literal => TargetEscapes.SwiftString(literal.Value),
-            BoundVariableExpression variable => identifiers.Get(variable.Variable),
-            BoundConcatenationExpression concatenation => JoinConcatenation(
-                concatenation,
-                part => Swift(part, identifiers)),
-            BoundInterpolatedStringExpression interpolated => SwiftInterpolatedString(interpolated, identifiers),
-            _ => TargetEscapes.SwiftString(string.Empty)
+            SmileType.String => TargetEscapes.CString(value.StringValue),
+            SmileType.Integer => CIntegerLiteral(value.IntegerValue),
+            SmileType.Boolean => value.BooleanValue ? "true" : "false",
+            _ => TargetEscapes.CString(string.Empty)
         };
 
-    private static string JoinConcatenation(
-        BoundConcatenationExpression expression,
-        Func<BoundExpression, string> renderExpression) =>
-        renderExpression(expression.Left) + " + " + renderExpression(expression.Right);
+    private static string CIntegerLiteral(long value) =>
+        value == long.MinValue
+            ? "(-9223372036854775807LL - 1LL)"
+            : value.ToString(CultureInfo.InvariantCulture) + "LL";
 
-    private static string CSharpInterpolatedString(
-        BoundInterpolatedStringExpression expression,
-        TargetIdentifierMap identifiers) =>
-        "$\"" + string.Concat(expression.Parts.Select(part => part switch
-        {
-            BoundInterpolatedTextPart text => TargetEscapes.CSharpInterpolatedText(text.Text),
-            BoundInterpolationExpressionPart interpolation => "{" + CSharp(interpolation.Expression, identifiers) + "}",
-            _ => string.Empty
-        })) + "\"";
-
-    private static string JavaScriptTemplateLiteral(
-        BoundInterpolatedStringExpression expression,
-        TargetIdentifierMap identifiers) =>
-        "`" + string.Concat(expression.Parts.Select(part => part switch
-        {
-            BoundInterpolatedTextPart text => TargetEscapes.JavaScriptTemplateText(text.Text),
-            BoundInterpolationExpressionPart interpolation => "${" + JavaScript(interpolation.Expression, identifiers) + "}",
-            _ => string.Empty
-        })) + "`";
-
-    private static string SwiftInterpolatedString(
-        BoundInterpolatedStringExpression expression,
-        TargetIdentifierMap identifiers) =>
-        "\"" + string.Concat(expression.Parts.Select(part => part switch
-        {
-            BoundInterpolatedTextPart text => TargetEscapes.SwiftInterpolatedText(text.Text),
-            BoundInterpolationExpressionPart interpolation => "\\(" + Swift(interpolation.Expression, identifiers) + ")",
-            _ => string.Empty
-        })) + "\"";
-
-    private static string JoinSegments(
-        IReadOnlyList<PrintSegment> segments,
-        Func<string, string> quoteLiteral,
-        TargetIdentifierMap identifiers)
+    private sealed class Writer
     {
-        if (segments.Count == 0)
+        private readonly TargetLanguage _language;
+        private readonly TargetIdentifierMap _identifiers;
+
+        public Writer(TargetLanguage language, TargetIdentifierMap identifiers)
         {
-            return quoteLiteral(string.Empty);
+            _language = language;
+            _identifiers = identifiers;
         }
 
-        return string.Join(
-            " + ",
-            segments.Select(segment => segment switch
+        public string Write(BoundExpression expression) =>
+            WriteExpression(expression, parentPrecedence: 0, isRightChild: false, parentOperator: null);
+
+        public string WriteDisplay(BoundExpression expression) =>
+            expression.Type switch
             {
-                LiteralPrintSegment literal => quoteLiteral(literal.Text),
-                VariablePrintSegment variable => identifiers.Get(variable.Variable),
-                _ => quoteLiteral(string.Empty)
-            }));
+                SmileType.String => Write(expression),
+                SmileType.Integer => _language switch
+                {
+                    TargetLanguage.CSharp => $"{MaybeParenthesizeForCall(Write(expression))}.ToString(CultureInfo.InvariantCulture)",
+                    TargetLanguage.JavaScript => $"({Write(expression)}).toString()",
+                    TargetLanguage.Java => $"Long.toString({Write(expression)})",
+                    TargetLanguage.Swift => $"String({Write(expression)})",
+                    _ => Write(expression)
+                },
+                SmileType.Boolean => _language switch
+                {
+                    TargetLanguage.CSharp => $"({Write(expression)} ? \"TRUE\" : \"FALSE\")",
+                    TargetLanguage.JavaScript => $"({Write(expression)} ? \"TRUE\" : \"FALSE\")",
+                    TargetLanguage.Java => $"({Write(expression)} ? \"TRUE\" : \"FALSE\")",
+                    TargetLanguage.Swift => $"({Write(expression)} ? \"TRUE\" : \"FALSE\")",
+                    _ => Write(expression)
+                },
+                _ => EmptyStringLiteral()
+            };
+
+        private string WriteExpression(
+            BoundExpression expression,
+            int parentPrecedence,
+            bool isRightChild,
+            BoundBinaryOperatorKind? parentOperator)
+        {
+            return expression switch
+            {
+                BoundStringLiteralExpression literal => StringLiteral(literal.Value),
+                BoundIntegerLiteralExpression literal => IntegerLiteral(literal.Value),
+                BoundBooleanLiteralExpression literal => BooleanLiteral(literal.Value),
+                BoundVariableExpression variable => _identifiers.Get(variable.Variable),
+                BoundUnaryExpression unary => WriteUnary(unary, parentPrecedence),
+                BoundBinaryExpression binary => WriteBinary(binary, parentPrecedence, isRightChild, parentOperator),
+                BoundConcatenationExpression concatenation => WriteExpression(
+                    new BoundBinaryExpression(
+                        concatenation.Left,
+                        BoundBinaryOperator.Bind(SyntaxKind.PlusToken, SmileType.String, SmileType.String)!,
+                        concatenation.Right,
+                        new TextSpan(0, 0, 1, 1)),
+                    parentPrecedence,
+                    isRightChild,
+                    parentOperator),
+                BoundInterpolatedStringExpression interpolated => WriteInterpolatedString(interpolated),
+                _ => EmptyStringLiteral()
+            };
+        }
+
+        private string WriteUnary(BoundUnaryExpression expression, int parentPrecedence)
+        {
+            int precedence = 7;
+            string op = expression.Operator.Kind switch
+            {
+                BoundUnaryOperatorKind.Identity => "+",
+                BoundUnaryOperatorKind.Negation => "-",
+                BoundUnaryOperatorKind.LogicalNegation => _language is TargetLanguage.Swift ? "!" : "!",
+                _ => string.Empty
+            };
+
+            string operand = WriteExpression(expression.Operand, precedence, isRightChild: true, parentOperator: null);
+            string text = op + operand;
+            return precedence < parentPrecedence ? "(" + text + ")" : text;
+        }
+
+        private string WriteBinary(
+            BoundBinaryExpression expression,
+            int parentPrecedence,
+            bool isRightChild,
+            BoundBinaryOperatorKind? parentOperator)
+        {
+            if (_language is TargetLanguage.Java &&
+                expression.Left.Type is SmileType.String &&
+                expression.Operator.Kind is BoundBinaryOperatorKind.Equality or BoundBinaryOperatorKind.Inequality)
+            {
+                return WriteJavaStringEquality(expression, parentPrecedence, isRightChild, parentOperator);
+            }
+
+            int precedence = Precedence(expression.Operator.Kind);
+            string left = WriteExpression(expression.Left, precedence, isRightChild: false, expression.Operator.Kind);
+            string right = WriteExpression(expression.Right, precedence, isRightChild: true, expression.Operator.Kind);
+            string text = left + " " + OperatorText(expression.Operator.Kind) + " " + right;
+
+            if (NeedsParentheses(precedence, parentPrecedence, isRightChild, parentOperator))
+            {
+                return "(" + text + ")";
+            }
+
+            return text;
+        }
+
+        private string WriteJavaStringEquality(
+            BoundBinaryExpression expression,
+            int parentPrecedence,
+            bool isRightChild,
+            BoundBinaryOperatorKind? parentOperator)
+        {
+            int precedence = expression.Operator.Kind is BoundBinaryOperatorKind.Inequality
+                ? 7
+                : Precedence(expression.Operator.Kind);
+            string receiver = IsSimpleReceiver(expression.Left)
+                ? WriteExpression(expression.Left, 8, isRightChild: false, parentOperator: null)
+                : "(" + WriteExpression(expression.Left, 0, isRightChild: false, parentOperator: null) + ")";
+            string text = receiver + ".equals(" + WriteExpression(expression.Right, 0, isRightChild: false, parentOperator: null) + ")";
+            if (expression.Operator.Kind is BoundBinaryOperatorKind.Inequality)
+            {
+                text = "!" + text;
+            }
+
+            return NeedsParentheses(precedence, parentPrecedence, isRightChild, parentOperator)
+                ? "(" + text + ")"
+                : text;
+        }
+
+        private string WriteInterpolatedString(BoundInterpolatedStringExpression expression) =>
+            _language switch
+            {
+                TargetLanguage.CSharp => "$\"" + string.Concat(expression.Parts.Select(part => part switch
+                {
+                    BoundInterpolatedTextPart text => TargetEscapes.CSharpInterpolatedText(text.Text),
+                    BoundInterpolationExpressionPart interpolation => "{" + WriteDisplay(interpolation.Expression) + "}",
+                    _ => string.Empty
+                })) + "\"",
+
+                TargetLanguage.JavaScript => "`" + string.Concat(expression.Parts.Select(part => part switch
+                {
+                    BoundInterpolatedTextPart text => TargetEscapes.JavaScriptTemplateText(text.Text),
+                    BoundInterpolationExpressionPart interpolation => "${" + WriteDisplay(interpolation.Expression) + "}",
+                    _ => string.Empty
+                })) + "`",
+
+                TargetLanguage.Java => JoinJavaDisplaySegments(expression.Parts),
+
+                TargetLanguage.Swift => "\"" + string.Concat(expression.Parts.Select(part => part switch
+                {
+                    BoundInterpolatedTextPart text => TargetEscapes.SwiftInterpolatedText(text.Text),
+                    BoundInterpolationExpressionPart interpolation => "\\(" + WriteDisplay(interpolation.Expression) + ")",
+                    _ => string.Empty
+                })) + "\"",
+
+                _ => EmptyStringLiteral()
+            };
+
+        private string JoinJavaDisplaySegments(IReadOnlyList<BoundInterpolatedPart> parts)
+        {
+            string[] segments = parts
+                .Select(part => part switch
+                {
+                    BoundInterpolatedTextPart text => TargetEscapes.JavaString(text.Text),
+                    BoundInterpolationExpressionPart interpolation => WriteDisplay(interpolation.Expression),
+                    _ => TargetEscapes.JavaString(string.Empty)
+                })
+                .Where(segment => segment != TargetEscapes.JavaString(string.Empty))
+                .ToArray();
+            return segments.Length == 0
+                ? TargetEscapes.JavaString(string.Empty)
+                : string.Join(" + ", segments);
+        }
+
+        private string StringLiteral(string value) =>
+            _language switch
+            {
+                TargetLanguage.CSharp => TargetEscapes.CSharpString(value),
+                TargetLanguage.JavaScript => TargetEscapes.JavaScriptString(value),
+                TargetLanguage.Java => TargetEscapes.JavaString(value),
+                TargetLanguage.Swift => TargetEscapes.SwiftString(value),
+                _ => TargetEscapes.CString(value)
+            };
+
+        private string EmptyStringLiteral() => StringLiteral(string.Empty);
+
+        private string IntegerLiteral(long value) =>
+            _language switch
+            {
+                TargetLanguage.CSharp => value == long.MinValue
+                    ? "long.MinValue"
+                    : value.ToString(CultureInfo.InvariantCulture) + "L",
+                TargetLanguage.JavaScript => value == long.MinValue
+                    ? "(-9223372036854775808n)"
+                    : value.ToString(CultureInfo.InvariantCulture) + "n",
+                TargetLanguage.Java => value == long.MinValue
+                    ? "Long.MIN_VALUE"
+                    : value.ToString(CultureInfo.InvariantCulture) + "L",
+                TargetLanguage.Swift => value == long.MinValue
+                    ? "Int64.min"
+                    : value.ToString(CultureInfo.InvariantCulture),
+                _ => CIntegerLiteral(value)
+            };
+
+        private string BooleanLiteral(bool value) =>
+            _language is TargetLanguage.Swift
+                ? value ? "true" : "false"
+                : value ? "true" : "false";
+
+        private string OperatorText(BoundBinaryOperatorKind kind) =>
+            _language switch
+            {
+                TargetLanguage.JavaScript => kind switch
+                {
+                    BoundBinaryOperatorKind.Equality => "===",
+                    BoundBinaryOperatorKind.Inequality => "!==",
+                    BoundBinaryOperatorKind.LogicalAnd => "&&",
+                    BoundBinaryOperatorKind.LogicalOr => "||",
+                    _ => CommonOperatorText(kind)
+                },
+                TargetLanguage.Swift => kind switch
+                {
+                    BoundBinaryOperatorKind.LogicalAnd => "&&",
+                    BoundBinaryOperatorKind.LogicalOr => "||",
+                    _ => CommonOperatorText(kind)
+                },
+                _ => kind switch
+                {
+                    BoundBinaryOperatorKind.LogicalAnd => "&&",
+                    BoundBinaryOperatorKind.LogicalOr => "||",
+                    _ => CommonOperatorText(kind)
+                }
+            };
+
+        private static string CommonOperatorText(BoundBinaryOperatorKind kind) =>
+            kind switch
+            {
+                BoundBinaryOperatorKind.Addition or BoundBinaryOperatorKind.StringConcatenation => "+",
+                BoundBinaryOperatorKind.Subtraction => "-",
+                BoundBinaryOperatorKind.Multiplication => "*",
+                BoundBinaryOperatorKind.Division => "/",
+                BoundBinaryOperatorKind.Equality => "==",
+                BoundBinaryOperatorKind.Inequality => "!=",
+                BoundBinaryOperatorKind.Less => "<",
+                BoundBinaryOperatorKind.LessOrEquals => "<=",
+                BoundBinaryOperatorKind.Greater => ">",
+                BoundBinaryOperatorKind.GreaterOrEquals => ">=",
+                _ => string.Empty
+            };
+
+        private static int Precedence(BoundBinaryOperatorKind kind) =>
+            kind switch
+            {
+                BoundBinaryOperatorKind.Multiplication or BoundBinaryOperatorKind.Division => 6,
+                BoundBinaryOperatorKind.Addition or
+                BoundBinaryOperatorKind.Subtraction or
+                BoundBinaryOperatorKind.StringConcatenation => 5,
+                BoundBinaryOperatorKind.Less or
+                BoundBinaryOperatorKind.LessOrEquals or
+                BoundBinaryOperatorKind.Greater or
+                BoundBinaryOperatorKind.GreaterOrEquals => 4,
+                BoundBinaryOperatorKind.Equality or BoundBinaryOperatorKind.Inequality => 3,
+                BoundBinaryOperatorKind.LogicalAnd => 2,
+                BoundBinaryOperatorKind.LogicalOr => 1,
+                _ => 0
+            };
+
+        private static bool NeedsParentheses(
+            int precedence,
+            int parentPrecedence,
+            bool isRightChild,
+            BoundBinaryOperatorKind? parentOperator)
+        {
+            if (precedence < parentPrecedence)
+            {
+                return true;
+            }
+
+            return isRightChild &&
+                precedence == parentPrecedence &&
+                parentOperator is not (
+                    BoundBinaryOperatorKind.Addition or
+                    BoundBinaryOperatorKind.Multiplication or
+                    BoundBinaryOperatorKind.StringConcatenation or
+                    BoundBinaryOperatorKind.LogicalAnd or
+                    BoundBinaryOperatorKind.LogicalOr);
+        }
+
+        private static bool IsSimpleReceiver(BoundExpression expression) =>
+            expression is BoundStringLiteralExpression or BoundVariableExpression;
+
+        private static string MaybeParenthesizeForCall(string expression) =>
+            IsSimpleCSharpCallReceiver(expression)
+                ? expression
+                : "(" + expression + ")";
+
+        private static bool IsSimpleCSharpCallReceiver(string expression)
+        {
+            if (string.IsNullOrEmpty(expression) ||
+                !SyntaxFacts.IsIdentifierStart(expression[0]))
+            {
+                return false;
+            }
+
+            // Identifiers and dotted constants such as long.MinValue can receive
+            // a method call directly. Operators, negative literals, and grouped
+            // expressions are parenthesized before .ToString(...) is appended.
+            return expression.All(character =>
+                SyntaxFacts.IsIdentifierPart(character) ||
+                character == '.');
+        }
     }
 }
 

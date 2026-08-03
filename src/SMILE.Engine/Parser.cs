@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 
 namespace SMILE.Engine;
@@ -79,8 +80,6 @@ internal sealed class Parser
 
         if (payloadStart >= line.Text.Length)
         {
-            // PRINT by itself is an expression too: it means "print the empty
-            // string and then the normal PRINT newline."
             return new PrintStatementSyntax(
                 new StringLiteralExpressionSyntax(string.Empty, line.Span(afterKeyword, 0)),
                 fullSpan,
@@ -107,16 +106,11 @@ internal sealed class Parser
         }
 
         ExpressionSyntax? value;
-        if (StartsInterpolatedString(line.Text, payloadStart))
+        if (StartsInterpolatedString(line.Text, payloadStart) ||
+            SyntaxFacts.IsDoubleQuote(line.Text[payloadStart]))
         {
             var parser = new ExpressionParser(this, line, payloadStart, line.Text.Length);
-            value = parser.ParseInterpolatedString();
-            RequireOnlyTrailingWhitespace(line, parser.Position, "SMILE1111", "Unexpected text after PRINT expression.");
-        }
-        else if (SyntaxFacts.IsDoubleQuote(line.Text[payloadStart]))
-        {
-            var parser = new ExpressionParser(this, line, payloadStart, line.Text.Length);
-            value = parser.ParseStringExpression();
+            value = parser.ParseExpression();
             RequireOnlyTrailingWhitespace(line, parser.Position, "SMILE1111", "Unexpected text after PRINT expression.");
         }
         else
@@ -180,13 +174,8 @@ internal sealed class Parser
         }
 
         var parser = new ExpressionParser(this, line, position, line.Text.Length);
-        ExpressionSyntax? initializer = parser.ParseStringExpression();
+        ExpressionSyntax initializer = parser.ParseExpression();
         RequireOnlyTrailingWhitespace(line, parser.Position, "SMILE1111", "Unexpected text after LET initializer.");
-
-        if (initializer is null)
-        {
-            return null;
-        }
 
         return new LetStatementSyntax(
             name.Text,
@@ -229,14 +218,10 @@ internal sealed class Parser
                 }
 
                 var parser = new ExpressionParser(this, line, position + 1, close);
-                ExpressionSyntax? expression = parser.ParseStringExpression();
-                if (expression is null || !parser.IsAtEndAfterWhitespace())
+                ExpressionSyntax expression = parser.ParseExpression();
+                if (!parser.IsAtEndAfterWhitespace())
                 {
-                    if (expression is not null)
-                    {
-                        AddDiagnostic("SMILE1108", "Invalid string expression.", line.Span(parser.Position, Math.Max(0, close - parser.Position)));
-                    }
-
+                    AddDiagnostic("SMILE1201", "Invalid or unexpected token in expression.", line.Span(parser.Position, Math.Max(0, close - parser.Position)));
                     return null;
                 }
 
@@ -268,6 +253,11 @@ internal sealed class Parser
         if (parts.Count == 1 && parts[0] is InterpolatedTextPartSyntax textPart)
         {
             return new StringLiteralExpressionSyntax(textPart.Text, line.Span(start, end - start));
+        }
+
+        if (parts.Count == 1 && parts[0] is InterpolationExpressionPartSyntax expressionPart)
+        {
+            return expressionPart.Expression;
         }
 
         return new InterpolatedStringExpressionSyntax(parts, line.Span(start, end - start));
@@ -318,7 +308,7 @@ internal sealed class Parser
             char current = line.Text[position];
             if (StartsInterpolatedString(line.Text, position))
             {
-                position = SkipInterpolatedString(line.Text, position + 2, end);
+                position = SkipInterpolatedString(line.Text, position, end);
                 continue;
             }
 
@@ -353,11 +343,17 @@ internal sealed class Parser
         return null;
     }
 
-    private int SkipInterpolatedString(string text, int start, int end)
+    private static int SkipInterpolatedString(string text, int start, int end)
     {
-        int position = start;
+        int position = start + 2;
         while (position < end)
         {
+            if (text[position] == '\\')
+            {
+                position += position + 1 < end ? 2 : 1;
+                continue;
+            }
+
             if (text[position] == '{')
             {
                 int close = FindInterpolationClose(text, position + 1, end);
@@ -381,6 +377,12 @@ internal sealed class Parser
         int position = start;
         while (position < end)
         {
+            if (text[position] == '\\')
+            {
+                position += position + 1 < end ? 2 : 1;
+                continue;
+            }
+
             if (SyntaxFacts.IsDoubleQuote(text[position]))
             {
                 return position + 1;
@@ -397,6 +399,12 @@ internal sealed class Parser
         int position = start;
         while (position < end)
         {
+            if (StartsInterpolatedString(text, position))
+            {
+                position = SkipInterpolatedString(text, position, end);
+                continue;
+            }
+
             if (SyntaxFacts.IsDoubleQuote(text[position]))
             {
                 position = SkipQuotedText(text, position + 1, end);
@@ -506,6 +514,7 @@ internal sealed class Parser
         private readonly Parser _owner;
         private readonly SourceLine _line;
         private readonly int _end;
+        private SyntaxToken? _current;
 
         public ExpressionParser(Parser owner, SourceLine line, int start, int end)
         {
@@ -517,50 +526,136 @@ internal sealed class Parser
 
         public int Position { get; private set; }
 
-        public ExpressionSyntax? ParseStringExpression()
+        public ExpressionSyntax ParseExpression(int parentPrecedence = 0)
         {
-            ExpressionSyntax? left = ParseStringTerm();
-            if (left is null)
+            ExpressionSyntax left;
+            SyntaxToken current = Current;
+            int unaryPrecedence = SyntaxFacts.GetUnaryOperatorPrecedence(current.Kind);
+            if (unaryPrecedence != 0 && unaryPrecedence >= parentPrecedence)
             {
-                return null;
+                SyntaxToken operatorToken = NextToken();
+                ExpressionSyntax operand = ParseExpression(unaryPrecedence);
+                int start = operatorToken.Span.Start - _line.Start;
+                int end = operand.Span.Start - _line.Start + operand.Span.Length;
+                left = new UnaryExpressionSyntax(operatorToken, operand, _line.Span(start, end - start));
+            }
+            else
+            {
+                left = ParsePrimaryExpression();
             }
 
             while (true)
             {
-                Position = SkipHorizontalWhitespace(_line.Text, Position);
-                if (Position >= _end || _line.Text[Position] != '+')
+                current = Current;
+                int precedence = SyntaxFacts.GetBinaryOperatorPrecedence(current.Kind);
+                if (precedence == 0 || precedence <= parentPrecedence)
                 {
-                    return left;
+                    break;
                 }
 
-                int operatorPosition = Position;
-                Position = SkipHorizontalWhitespace(_line.Text, Position + 1);
-                ExpressionSyntax? right = ParseStringTerm();
-                if (right is null)
-                {
-                    _owner.AddDiagnostic(
-                        "SMILE1108",
-                        "Invalid string expression.",
-                        _line.Span(operatorPosition, 1));
-                    return left;
-                }
-
+                SyntaxToken operatorToken = NextToken();
+                ExpressionSyntax right = ParseExpression(precedence);
                 int start = left.Span.Start - _line.Start;
                 int end = right.Span.Start - _line.Start + right.Span.Length;
-                left = new ConcatenationExpressionSyntax(left, right, _line.Span(start, end - start));
+                left = new BinaryExpressionSyntax(left, operatorToken, right, _line.Span(start, end - start));
+            }
+
+            return left;
+        }
+
+        public bool IsAtEndAfterWhitespace() =>
+            SkipHorizontalWhitespace(_line.Text, Position) >= _end;
+
+        private SyntaxToken Current
+        {
+            get
+            {
+                _current ??= ReadToken();
+                return _current;
             }
         }
 
-        public ExpressionSyntax? ParseInterpolatedString()
+        private SyntaxToken NextToken()
+        {
+            SyntaxToken token = Current;
+            _current = null;
+            Position = Math.Max(Position, token.Span.Start - _line.Start + token.Span.Length);
+            return token;
+        }
+
+        private SyntaxToken ReadToken() =>
+            Lexer.LexOne(_line.Text, _line.Start, _line.LineNumber, Position, _end, _owner._diagnostics);
+
+        private ExpressionSyntax ParsePrimaryExpression()
+        {
+            SyntaxToken token = Current;
+            switch (token.Kind)
+            {
+                case SyntaxKind.OpenParenthesisToken:
+                    return ParseParenthesizedExpression();
+
+                case SyntaxKind.InterpolatedStringStartToken:
+                    return ParseInterpolatedString();
+
+                case SyntaxKind.StringLiteralToken:
+                    NextToken();
+                    return new StringLiteralExpressionSyntax((string?)token.Value ?? string.Empty, token.Span);
+
+                case SyntaxKind.IntegerLiteralToken:
+                    NextToken();
+                    return new IntegerLiteralExpressionSyntax((string?)token.Value ?? token.Text, token.Span);
+
+                case SyntaxKind.TrueKeyword:
+                case SyntaxKind.FalseKeyword:
+                    NextToken();
+                    return new BooleanLiteralExpressionSyntax(token.Kind is SyntaxKind.TrueKeyword, token.Span);
+
+                case SyntaxKind.IdentifierToken:
+                    NextToken();
+                    return new NameExpressionSyntax(token.Text, token.Span);
+
+                default:
+                    _owner.AddDiagnostic("SMILE1201", "Invalid or unexpected token in expression.", token.Span);
+                    if (token.Kind is not SyntaxKind.EndOfFileToken)
+                    {
+                        NextToken();
+                    }
+
+                    return new ErrorExpressionSyntax(token.Span);
+            }
+        }
+
+        private ExpressionSyntax ParseParenthesizedExpression()
+        {
+            SyntaxToken open = NextToken();
+            ExpressionSyntax expression = ParseExpression();
+            SyntaxToken close;
+            if (Current.Kind is SyntaxKind.CloseParenthesisToken)
+            {
+                close = NextToken();
+            }
+            else
+            {
+                _owner.AddDiagnostic("SMILE1205", "Missing closing parenthesis.", Current.Span);
+                close = new SyntaxToken(SyntaxKind.CloseParenthesisToken, string.Empty, null, Current.Span);
+            }
+
+            int start = open.Span.Start - _line.Start;
+            int end = close.Span.Start - _line.Start + close.Span.Length;
+            return new ParenthesizedExpressionSyntax(open, expression, close, _line.Span(start, Math.Max(0, end - start)));
+        }
+
+        private ExpressionSyntax ParseInterpolatedString()
         {
             if (!StartsInterpolatedString(_line.Text, Position))
             {
-                _owner.AddDiagnostic("SMILE1108", "Invalid string expression.", _line.Span(Position, 0));
-                return null;
+                _owner.AddDiagnostic("SMILE1201", "Invalid or unexpected token in expression.", _line.Span(Position, 0));
+                return new ErrorExpressionSyntax(_line.Span(Position, 0));
             }
 
             int start = Position;
             Position += 2;
+            _current = null;
             var parts = new List<InterpolatedPartSyntax>();
             var currentText = new StringBuilder();
             int currentTextStart = Position;
@@ -573,6 +668,33 @@ internal sealed class Parser
                     FlushText(Position);
                     Position++;
                     return new InterpolatedStringExpressionSyntax(parts, _line.Span(start, Position - start));
+                }
+
+                if (current == '\\')
+                {
+                    if (Position + 1 >= _end)
+                    {
+                        _owner.AddDiagnostic(
+                            "SMILE1209",
+                            "String literal ends with an unterminated escape sequence.",
+                            _line.Span(Position, 1));
+                        Position++;
+                        return new InterpolatedStringExpressionSyntax(parts, _line.Span(start, Position - start));
+                    }
+
+                    char escape = _line.Text[Position + 1];
+                    if (TryAppendEscape(escape, currentText))
+                    {
+                        Position += 2;
+                        continue;
+                    }
+
+                    _owner.AddDiagnostic(
+                        "SMILE1208",
+                        $"Unknown string escape sequence '\\{escape}'.",
+                        _line.Span(Position, 2));
+                    Position += 2;
+                    continue;
                 }
 
                 if (current == '{')
@@ -589,25 +711,21 @@ internal sealed class Parser
                     if (close < 0)
                     {
                         _owner.AddDiagnostic("SMILE1103", "Unterminated interpolation expression.", _line.Span(Position, 1));
-                        return null;
+                        return new ErrorExpressionSyntax(_line.Span(start, Math.Max(0, Position - start)));
                     }
 
                     if (IsOnlyHorizontalWhitespace(_line.Text, Position + 1, close))
                     {
                         _owner.AddDiagnostic("SMILE1105", "Interpolation expression cannot be empty.", _line.Span(Position, close - Position + 1));
-                        return null;
+                        return new ErrorExpressionSyntax(_line.Span(start, close - start + 1));
                     }
 
                     var parser = new ExpressionParser(_owner, _line, Position + 1, close);
-                    ExpressionSyntax? expression = parser.ParseStringExpression();
-                    if (expression is null || !parser.IsAtEndAfterWhitespace())
+                    ExpressionSyntax expression = parser.ParseExpression();
+                    if (!parser.IsAtEndAfterWhitespace())
                     {
-                        if (expression is not null)
-                        {
-                            _owner.AddDiagnostic("SMILE1108", "Invalid string expression.", _line.Span(parser.Position, Math.Max(0, close - parser.Position)));
-                        }
-
-                        return null;
+                        _owner.AddDiagnostic("SMILE1201", "Invalid or unexpected token in expression.", _line.Span(parser.Position, Math.Max(0, close - parser.Position)));
+                        return new ErrorExpressionSyntax(_line.Span(start, close - start + 1));
                     }
 
                     parts.Add(new InterpolationExpressionPartSyntax(expression, _line.Span(Position, close - Position + 1)));
@@ -626,7 +744,7 @@ internal sealed class Parser
                     }
 
                     _owner.AddDiagnostic("SMILE1104", "Unexpected closing brace in template.", _line.Span(Position, 1));
-                    return null;
+                    return new ErrorExpressionSyntax(_line.Span(start, Position - start + 1));
                 }
 
                 currentText.Append(current);
@@ -634,7 +752,7 @@ internal sealed class Parser
             }
 
             _owner.AddDiagnostic("SMILE1110", "Unterminated interpolated string.", _line.Span(start, Math.Max(0, _end - start)));
-            return null;
+            return new ErrorExpressionSyntax(_line.Span(start, Math.Max(0, _end - start)));
 
             void FlushText(int flushPosition)
             {
@@ -649,81 +767,48 @@ internal sealed class Parser
                 currentText.Clear();
             }
         }
+    }
 
-        public bool IsAtEndAfterWhitespace() =>
-            SkipHorizontalWhitespace(_line.Text, Position) >= _end;
-
-        private ExpressionSyntax? ParseStringTerm()
+    private static bool TryAppendEscape(char escape, StringBuilder builder)
+    {
+        switch (escape)
         {
-            Position = SkipHorizontalWhitespace(_line.Text, Position);
-            if (Position >= _end)
-            {
-                _owner.AddDiagnostic("SMILE1108", "Invalid string expression.", _line.Span(Position, 0));
-                return null;
-            }
-
-            if (StartsInterpolatedString(_line.Text, Position))
-            {
-                return ParseInterpolatedString();
-            }
-
-            if (SyntaxFacts.IsDoubleQuote(_line.Text[Position]))
-            {
-                return ParseStringLiteral();
-            }
-
-            if (SyntaxFacts.IsIdentifierStart(_line.Text[Position]))
-            {
-                int start = Position;
-                Position++;
-                while (Position < _end && SyntaxFacts.IsIdentifierPart(_line.Text[Position]))
-                {
-                    Position++;
-                }
-
-                return new NameExpressionSyntax(
-                    _line.Text[start..Position],
-                    _line.Span(start, Position - start));
-            }
-
-            _owner.AddDiagnostic("SMILE1108", "Invalid string expression.", _line.Span(Position, 1));
-            return null;
-        }
-
-        private ExpressionSyntax? ParseStringLiteral()
-        {
-            int start = Position;
-            Position++;
-            var builder = new StringBuilder();
-
-            while (Position < _end)
-            {
-                if (SyntaxFacts.IsDoubleQuote(_line.Text[Position]))
-                {
-                    Position++;
-                    return new StringLiteralExpressionSyntax(
-                        builder.ToString(),
-                        _line.Span(start, Position - start));
-                }
-
-                builder.Append(_line.Text[Position]);
-                Position++;
-            }
-
-            _owner.AddDiagnostic(
-                "SMILE1003",
-                "Unterminated string literal.",
-                _line.Span(start, Math.Max(0, _end - start)));
-            return null;
+            case '\\':
+                builder.Append('\\');
+                return true;
+            case '"':
+                builder.Append('"');
+                return true;
+            case 'n':
+                builder.Append('\n');
+                return true;
+            case 'r':
+                builder.Append('\r');
+                return true;
+            case 't':
+                builder.Append('\t');
+                return true;
+            case '0':
+                builder.Append('\0');
+                return true;
+            case 'b':
+                builder.Append('\b');
+                return true;
+            case 'f':
+                builder.Append('\f');
+                return true;
+            default:
+                return false;
         }
     }
 }
 
 internal sealed class Binder
 {
+    private static readonly ulong MinIntegerMagnitude = (ulong)long.MaxValue + 1UL;
     private readonly List<Diagnostic> _diagnostics = new();
     private readonly Dictionary<string, VariableSymbol> _variables = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<VariableSymbol, string> _constantValues = new();
+    private readonly Dictionary<VariableSymbol, SmileValue> _constantValues = new();
     private readonly List<VariableSymbol> _declaredVariables = new();
 
     public BindResult Bind(SmileProgramSyntax program)
@@ -769,22 +854,18 @@ internal sealed class Binder
         // self-reference naturally become the normal undefined-variable error.
         int diagnosticCountBeforeInitializer = _diagnostics.Count;
         BoundExpression initializer = BindExpression(syntax.Initializer);
-        if (_diagnostics.Count != diagnosticCountBeforeInitializer)
+        if (initializer.Type is SmileType.Error ||
+            _diagnostics.Count != diagnosticCountBeforeInitializer)
         {
             return null;
         }
 
-        if (!BoundStringConstantEvaluator.TryEvaluate(initializer, _constantValues, out string constantValue))
+        if (!BoundConstantEvaluator.TryEvaluate(initializer, _constantValues, out SmileValue constantValue, _diagnostics))
         {
-            _diagnostics.Add(new Diagnostic(
-                "SMILE1108",
-                DiagnosticSeverity.Error,
-                "Invalid string expression.",
-                syntax.Initializer.Span));
             return null;
         }
 
-        var symbol = new VariableSymbol(syntax.Name, syntax.NameSpan, SmileType.String);
+        var symbol = new VariableSymbol(syntax.Name, syntax.NameSpan, initializer.Type);
         _variables.Add(syntax.Name, symbol);
         _constantValues.Add(symbol, constantValue);
         _declaredVariables.Add(symbol);
@@ -794,14 +875,34 @@ internal sealed class Binder
     private BoundExpression BindExpression(ExpressionSyntax expression) =>
         expression switch
         {
+            ErrorExpressionSyntax => new BoundErrorExpression(),
             StringLiteralExpressionSyntax literal => new BoundStringLiteralExpression(literal.Value),
+            IntegerLiteralExpressionSyntax literal => BindIntegerLiteral(literal),
+            BooleanLiteralExpressionSyntax literal => new BoundBooleanLiteralExpression(literal.Value),
             NameExpressionSyntax name => BindNameExpression(name),
-            ConcatenationExpressionSyntax concatenation => new BoundConcatenationExpression(
-                BindExpression(concatenation.Left),
-                BindExpression(concatenation.Right)),
+            UnaryExpressionSyntax unary => BindUnaryExpression(unary),
+            BinaryExpressionSyntax binary => BindBinaryExpression(binary),
+            ParenthesizedExpressionSyntax parenthesized => BindExpression(parenthesized.Expression),
+            ConcatenationExpressionSyntax concatenation => BindBinaryLikeConcatenation(concatenation),
             InterpolatedStringExpressionSyntax interpolated => BindInterpolatedString(interpolated),
-            _ => new BoundStringLiteralExpression(string.Empty)
+            _ => new BoundErrorExpression()
         };
+
+    private BoundExpression BindIntegerLiteral(IntegerLiteralExpressionSyntax syntax)
+    {
+        if (TryParseIntegerMagnitude(syntax.Text, out ulong magnitude) &&
+            magnitude <= long.MaxValue)
+        {
+            return new BoundIntegerLiteralExpression((long)magnitude);
+        }
+
+        _diagnostics.Add(new Diagnostic(
+            "SMILE1202",
+            DiagnosticSeverity.Error,
+            "Integer literal is outside the signed 64-bit range.",
+            syntax.Span));
+        return new BoundErrorExpression();
+    }
 
     private BoundExpression BindNameExpression(NameExpressionSyntax syntax)
     {
@@ -815,7 +916,68 @@ internal sealed class Binder
             DiagnosticSeverity.Error,
             $"Undefined variable '{syntax.Name}'.",
             syntax.Span));
-        return new BoundStringLiteralExpression(string.Empty);
+        return new BoundErrorExpression();
+    }
+
+    private BoundExpression BindUnaryExpression(UnaryExpressionSyntax syntax)
+    {
+        if (syntax.OperatorToken.Kind is SyntaxKind.MinusToken &&
+            syntax.Operand is IntegerLiteralExpressionSyntax literal &&
+            TryParseIntegerMagnitude(literal.Text, out ulong magnitude) &&
+            magnitude == MinIntegerMagnitude)
+        {
+            return new BoundIntegerLiteralExpression(long.MinValue);
+        }
+
+        BoundExpression operand = BindExpression(syntax.Operand);
+        if (operand.Type is SmileType.Error)
+        {
+            return new BoundErrorExpression();
+        }
+
+        BoundUnaryOperator? op = BoundUnaryOperator.Bind(syntax.OperatorToken.Kind, operand.Type);
+        if (op is null)
+        {
+            _diagnostics.Add(new Diagnostic(
+                "SMILE1203",
+                DiagnosticSeverity.Error,
+                $"Unary operator '{syntax.OperatorToken.Text}' is not defined for type '{operand.Type}'.",
+                syntax.OperatorToken.Span));
+            return new BoundErrorExpression();
+        }
+
+        return new BoundUnaryExpression(op, operand, syntax.OperatorToken.Span);
+    }
+
+    private BoundExpression BindBinaryExpression(BinaryExpressionSyntax syntax)
+    {
+        BoundExpression left = BindExpression(syntax.Left);
+        BoundExpression right = BindExpression(syntax.Right);
+        if (left.Type is SmileType.Error || right.Type is SmileType.Error)
+        {
+            return new BoundErrorExpression();
+        }
+
+        BoundBinaryOperator? op = BoundBinaryOperator.Bind(syntax.OperatorToken.Kind, left.Type, right.Type);
+        if (op is null)
+        {
+            _diagnostics.Add(new Diagnostic(
+                "SMILE1204",
+                DiagnosticSeverity.Error,
+                $"Binary operator '{syntax.OperatorToken.Text}' is not defined for types '{left.Type}' and '{right.Type}'.",
+                syntax.OperatorToken.Span));
+            return new BoundErrorExpression();
+        }
+
+        return new BoundBinaryExpression(left, op, right, syntax.OperatorToken.Span);
+    }
+
+    private BoundExpression BindBinaryLikeConcatenation(ConcatenationExpressionSyntax syntax)
+    {
+        BoundExpression left = BindExpression(syntax.Left);
+        BoundExpression right = BindExpression(syntax.Right);
+        BoundBinaryOperator op = BoundBinaryOperator.Bind(SyntaxKind.PlusToken, SmileType.String, SmileType.String)!;
+        return new BoundBinaryExpression(left, op, right, syntax.Span);
     }
 
     private BoundExpression BindInterpolatedString(InterpolatedStringExpressionSyntax syntax)
@@ -837,6 +999,13 @@ internal sealed class Binder
 
         return new BoundInterpolatedStringExpression(parts);
     }
+
+    private static bool TryParseIntegerMagnitude(string text, out ulong magnitude) =>
+        ulong.TryParse(
+            text,
+            NumberStyles.None,
+            CultureInfo.InvariantCulture,
+            out magnitude);
 }
 
 internal static class SyntaxFacts
@@ -848,8 +1017,47 @@ internal static class SyntaxFacts
         value is '"' or '\u201c' or '\u201d';
 
     public static bool IsReservedKeyword(string text) =>
-        text.Equals("LET", StringComparison.OrdinalIgnoreCase) ||
-        text.Equals("PRINT", StringComparison.OrdinalIgnoreCase);
+        GetKeywordKind(text) is not SyntaxKind.IdentifierToken;
+
+    public static SyntaxKind GetKeywordKind(string text) =>
+        text.ToUpperInvariant() switch
+        {
+            "LET" => SyntaxKind.LetKeyword,
+            "PRINT" => SyntaxKind.PrintKeyword,
+            "TRUE" => SyntaxKind.TrueKeyword,
+            "FALSE" => SyntaxKind.FalseKeyword,
+            "NOT" => SyntaxKind.NotKeyword,
+            "AND" => SyntaxKind.AndKeyword,
+            "OR" => SyntaxKind.OrKeyword,
+            _ => SyntaxKind.IdentifierToken
+        };
+
+    public static int GetUnaryOperatorPrecedence(SyntaxKind kind) =>
+        kind switch
+        {
+            SyntaxKind.PlusToken or
+            SyntaxKind.MinusToken or
+            SyntaxKind.NotKeyword => 7,
+            _ => 0
+        };
+
+    public static int GetBinaryOperatorPrecedence(SyntaxKind kind) =>
+        kind switch
+        {
+            SyntaxKind.StarToken or
+            SyntaxKind.SlashToken => 6,
+            SyntaxKind.PlusToken or
+            SyntaxKind.MinusToken => 5,
+            SyntaxKind.LessToken or
+            SyntaxKind.LessOrEqualsToken or
+            SyntaxKind.GreaterToken or
+            SyntaxKind.GreaterOrEqualsToken => 4,
+            SyntaxKind.EqualsToken or
+            SyntaxKind.NotEqualsToken => 3,
+            SyntaxKind.AndKeyword => 2,
+            SyntaxKind.OrKeyword => 1,
+            _ => 0
+        };
 
     public static bool IsAsciiLetter(char value) =>
         value is >= 'A' and <= 'Z' or >= 'a' and <= 'z';

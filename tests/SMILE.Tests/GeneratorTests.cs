@@ -87,9 +87,9 @@ PRINT "Hello " + Name + "!"
                 "    printf(\"\\n\");",
                 "    printf(\"Hello World!\\n\");",
                 "    printf(\"Hello World!\\n\");",
-                "    printf(\"Hello %s!\\n\", Name);",
-                "    printf(\"Hello %s!\\n\", Name);",
-                "    printf(\"Hello %s!\\n\", Name);",
+                "    printf(\"Hello Sin!\\n\");",
+                "    printf(\"Hello Sin!\\n\");",
+                "    printf(\"Hello Sin!\\n\");",
                 "",
                 "    return 0;",
                 "}"),
@@ -116,10 +116,10 @@ PRINT "Hello " + Name + "!"
                 "",
                 ".data                                           ; Static bytes and variables live here.",
                 "STD_OUTPUT_HANDLE EQU -11                       ; Magic value for the console output handle.",
-                "print0Segment0 BYTE \"Hello from SMILE!\"         ; PRINT #1 literal segment.",
-                "print0Segment0Length EQU $ - print0Segment0     ; Length of this literal segment.",
-                "print1Segment0 BYTE \"Different syntax, same idea.\" ; PRINT #2 literal segment.",
-                "print1Segment0Length EQU $ - print1Segment0     ; Length of this literal segment.",
+                "print0Segment0 BYTE \"Hello from SMILE!\"         ; PRINT #1 canonical text.",
+                "print0Segment0Length EQU $ - print0Segment0     ; Length of this print text.",
+                "print1Segment0 BYTE \"Different syntax, same idea.\" ; PRINT #2 canonical text.",
+                "print1Segment0Length EQU $ - print1Segment0     ; Length of this print text.",
                 "newline BYTE 13, 10                             ; SMILE PRINT appends CR/LF on Windows.",
                 "newlineLength EQU $ - newline                   ; Length of the newline bytes.",
                 "stdoutHandle QWORD ?                            ; Cached standard output handle.",
@@ -293,7 +293,7 @@ PRINT "Hello " + Name + "!"
 
         Assert.AreEqual(
             Lines(
-                "let Name = \"Sin\"",
+                "let Name: String = \"Sin\"",
                 "print()",
                 "print(\"Hello World!\")",
                 "print(\"Hello World!\")",
@@ -325,26 +325,26 @@ PRINT "Hello " + Name + "!"
 
         string c = Generate(FriendlyPrintSource, TargetLanguage.C).PrimaryFile.Content;
         StringAssert.Contains(c, "const char *Name = \"Sin\";");
-        StringAssert.Contains(c, "printf(\"Hello %s!\\n\", Name);");
+        StringAssert.Contains(c, "printf(\"Hello Sin!\\n\");");
         StringAssert.Contains(c, "printf(\"Literal braces: {Name}\\n\");");
         Assert.IsFalse(c.Contains("fputs(", StringComparison.Ordinal));
         Assert.IsFalse(c.Contains("putchar(", StringComparison.Ordinal));
 
         string objectiveC = Generate(FriendlyPrintSource, TargetLanguage.ObjectiveC).PrimaryFile.Content;
         StringAssert.Contains(objectiveC, "const char *Name = \"Sin\";");
-        StringAssert.Contains(objectiveC, "printf(\"Hello %s!\\n\", Name);");
+        StringAssert.Contains(objectiveC, "printf(\"Hello Sin!\\n\");");
         Assert.IsFalse(objectiveC.Contains("NSLog", StringComparison.Ordinal));
         Assert.IsFalse(objectiveC.Contains("fputs(", StringComparison.Ordinal));
 
         string cobol = Generate(FriendlyPrintSource, TargetLanguage.Cobol).PrimaryFile.Content;
         StringAssert.Contains(cobol, "01 Name PIC X(3) VALUE \"Sin\".");
         StringAssert.Contains(cobol, "DISPLAY X\"0A\" WITH NO ADVANCING.");
-        StringAssert.Contains(cobol, "DISPLAY \"Hello \" Name \"!\".");
+        StringAssert.Contains(cobol, "DISPLAY \"Hello Sin!\".");
         StringAssert.Contains(cobol, "DISPLAY \"Literal braces: {Name}\".");
 
         string masm = Generate(FriendlyPrintSource, TargetLanguage.MasmX64).PrimaryFile.Content;
         StringAssert.Contains(masm, "variable0Ptr QWORD ?");
-        StringAssert.Contains(masm, "mov rdx, QWORD PTR [variable0Ptr]");
+        StringAssert.Contains(masm, "print3Segment0 BYTE \"Hello Sin!\"");
         StringAssert.Contains(masm, "print6Segment0 BYTE \"Literal braces: {Name}\"");
     }
 
@@ -463,7 +463,7 @@ PRINT $"Literal ${{Name}} and `tick`"
 
         StringAssert.Contains(
             Generate("""
-PRINT $"Literal \(Name)"
+PRINT $"Literal \\(Name)"
 """, TargetLanguage.Swift).PrimaryFile.Content,
             "print(\"Literal \\\\(Name)\")");
     }
@@ -529,7 +529,7 @@ PRINT ""
     }
 
     [TestMethod]
-    public void C_generator_escapes_printf_percent_literals_and_preserves_variable_arguments()
+    public void C_generator_escapes_printf_percent_literals_in_lowered_text()
     {
         string percentOnly = Generate("PRINT Progress: 100%", TargetLanguage.C).PrimaryFile.Content;
         StringAssert.Contains(percentOnly, "printf(\"Progress: 100%%\\n\");");
@@ -538,26 +538,26 @@ PRINT ""
 LET Name = "Sin"
 PRINT {Name} is 100% ready.
 """, TargetLanguage.C).PrimaryFile.Content;
-        StringAssert.Contains(percentWithVariable, "printf(\"%s is 100%% ready.\\n\", Name);");
+        StringAssert.Contains(percentWithVariable, "printf(\"Sin is 100%% ready.\\n\");");
         Assert.IsFalse(percentWithVariable.Contains("printf(Name", StringComparison.Ordinal));
     }
 
     [TestMethod]
-    public void C_generator_preserves_ordered_adjacent_and_repeated_printf_arguments()
+    public void C_generator_lowers_adjacent_and_repeated_interpolation_to_canonical_text()
     {
         string multiple = Generate("""
 LET FirstName = "Sin"
 LET LastName = "Cioco"
 PRINT $"{FirstName} {LastName}"
 """, TargetLanguage.C).PrimaryFile.Content;
-        StringAssert.Contains(multiple, "printf(\"%s %s\\n\", FirstName, LastName);");
+        StringAssert.Contains(multiple, "printf(\"Sin Cioco\\n\");");
 
         string adjacent = Generate("""
 LET A = "A"
 LET B = "B"
 PRINT $"{A}{B}{A}"
 """, TargetLanguage.C).PrimaryFile.Content;
-        StringAssert.Contains(adjacent, "printf(\"%s%s%s\\n\", A, B, A);");
+        StringAssert.Contains(adjacent, "printf(\"ABA\\n\");");
     }
 
     [TestMethod]
@@ -603,7 +603,7 @@ PRINT Progress: 100%
 
         Assert.AreEqual(3, CountOccurrences(objectiveC, "printf("));
         StringAssert.Contains(objectiveC, "printf(\"\\n\");");
-        StringAssert.Contains(objectiveC, "printf(\"Hello %s!\\n\", Name);");
+        StringAssert.Contains(objectiveC, "printf(\"Hello Sin!\\n\");");
         StringAssert.Contains(objectiveC, "printf(\"Progress: 100%%\\n\");");
         Assert.IsFalse(objectiveC.Contains("NSLog", StringComparison.Ordinal));
         Assert.IsFalse(objectiveC.Contains("fputs(", StringComparison.Ordinal));
@@ -648,7 +648,7 @@ PRINT Progress: 100%
     [TestMethod]
     public void Generators_escape_backslashes_for_target_languages()
     {
-        const string source = "PRINT \"C:\\Temp\\SMILE\"";
+        const string source = "PRINT \"C:\\\\Temp\\\\SMILE\"";
 
         StringAssert.Contains(Generate(source, TargetLanguage.CSharp).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\"");
         StringAssert.Contains(Generate(source, TargetLanguage.C).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\\n\"");
@@ -663,32 +663,34 @@ PRINT Progress: 100%
     [TestMethod]
     public void Generators_use_target_specific_control_character_escapes()
     {
-        string source = "PRINT \"A\\B" + '\0' + "C" + '\a' + "D" + '\v' + "E" + '\t' + "F" + '\u007f' + "G\"";
+        const string source = """
+PRINT "A\\B\0C\bD\fE\tF"
+""";
 
         StringAssert.Contains(
             Generate(source, TargetLanguage.CSharp).PrimaryFile.Content,
-            "\"A\\\\B\\0C\\aD\\vE\\tF\\u007fG\"");
+            "\"A\\\\B\\0C\\bD\\fE\\tF\"");
         StringAssert.Contains(
             Generate(source, TargetLanguage.C).PrimaryFile.Content,
-            "\"A\\\\B\\000C\\007D\\013E\\tF\\177G\\n\"");
+            "\"A\\\\B\\000C\\bD\\fE\\tF\\n\"");
         StringAssert.Contains(
             Generate(source, TargetLanguage.ObjectiveC).PrimaryFile.Content,
-            "\"A\\\\B\\000C\\007D\\013E\\tF\\177G\\n\"");
+            "\"A\\\\B\\000C\\bD\\fE\\tF\\n\"");
         StringAssert.Contains(
             Generate(source, TargetLanguage.JavaScript).PrimaryFile.Content,
-            "\"A\\\\B\\u0000C\\u0007D\\u000bE\\tF\\u007fG\"");
+            "\"A\\\\B\\u0000C\\bD\\fE\\tF\"");
         StringAssert.Contains(
             Generate(source, TargetLanguage.Java).PrimaryFile.Content,
-            "\"A\\\\B\\000C\\007D\\013E\\tF\\u007fG\"");
+            "\"A\\\\B\\000C\\bD\\fE\\tF\"");
         StringAssert.Contains(
             Generate(source, TargetLanguage.Cobol).PrimaryFile.Content,
-            "X\"415C42004307440B4509467F47\"");
+            "X\"415C42004308440C450946\"");
         StringAssert.Contains(
             Generate(source, TargetLanguage.Swift).PrimaryFile.Content,
-            "\"A\\\\B\\0C\\u{7}D\\u{b}E\\tF\\u{7f}G\"");
+            "\"A\\\\B\\0C\\u{8}D\\u{c}E\\tF\"");
         StringAssert.Contains(
             Generate(source, TargetLanguage.MasmX64).PrimaryFile.Content,
-            "\"A\\B\", 0, \"C\", 7, \"D\", 11, \"E\", 9, \"F\", 127, \"G\"");
+            "\"A\\B\", 0, \"C\", 8, \"D\", 12, \"E\", 9, \"F\"");
     }
 
     private GeneratedProgram Generate(string source, TargetLanguage language)

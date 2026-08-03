@@ -174,7 +174,7 @@ PRINT {Middle}
             .Content;
 
         StringAssert.Contains(cobol, "01 Empty PIC X VALUE SPACE.");
-        StringAssert.Contains(cobol, "DISPLAY \"[\" \"]\".");
+        StringAssert.Contains(cobol, "DISPLAY \"[]\".");
         StringAssert.Contains(cobol, "DISPLAY X\"0A\" WITH NO ADVANCING.");
         Assert.IsFalse(cobol.Contains("DISPLAY Empty.", StringComparison.Ordinal));
     }
@@ -212,8 +212,8 @@ PRINT {Middle}
         StringAssert.Contains(java, "System.out.println(_smile_);");
 
         string swift = Generate(source, TargetLanguage.Swift).PrimaryFile.Content;
-        StringAssert.Contains(swift, "let _smile_ = \"Sin\"");
-        StringAssert.Contains(swift, "print(\"\\(_smile_)\")");
+        StringAssert.Contains(swift, "let _smile_: String = \"Sin\"");
+        StringAssert.Contains(swift, "print(_smile_)");
     }
 
     [TestMethod]
@@ -229,7 +229,7 @@ PRINT {Middle}
         StringAssert.Contains(csharp, "string _smile_Console = \"Console\";");
         StringAssert.Contains(csharp, "string _smile_Program = \"Program\";");
         StringAssert.Contains(csharp, "string _smile_String = \"String\";");
-        StringAssert.Contains(csharp, "Console.WriteLine($\"{_smile_Console}\");");
+        StringAssert.Contains(csharp, "Console.WriteLine(_smile_Console);");
 
         string c = Generate(AdversarialIdentifierSource, TargetLanguage.C).PrimaryFile.Content;
         StringAssert.Contains(c, "const char *class = \"class\";");
@@ -238,7 +238,7 @@ PRINT {Middle}
         StringAssert.Contains(c, "const char *_smile_main = \"main\";");
         StringAssert.Contains(c, "const char *_smile___internal = \"__internal\";");
         StringAssert.Contains(c, "const char *_smile__Upper = \"_Upper\";");
-        StringAssert.Contains(c, "printf(\"%s\\n\", _smile___internal);");
+        StringAssert.Contains(c, "printf(\"__internal\\n\");");
 
         string javascript = Generate(AdversarialIdentifierSource, TargetLanguage.JavaScript).PrimaryFile.Content;
         StringAssert.Contains(javascript, "let _smile_class = \"class\";");
@@ -249,7 +249,7 @@ PRINT {Middle}
 
         string javascriptConsole = Generate("LET console = \"console\"\nPRINT {console}", TargetLanguage.JavaScript).PrimaryFile.Content;
         StringAssert.Contains(javascriptConsole, "let _smile_console = \"console\";");
-        StringAssert.Contains(javascriptConsole, "console.log(`${_smile_console}`);");
+        StringAssert.Contains(javascriptConsole, "console.log(_smile_console);");
 
         string java = Generate(AdversarialIdentifierSource, TargetLanguage.Java).PrimaryFile.Content;
         StringAssert.Contains(java, "String _smile_ = \"_\";");
@@ -276,21 +276,21 @@ PRINT {Middle}
         StringAssert.Contains(cobol, "01 printf PIC X(6) VALUE \"printf\".");
         StringAssert.Contains(cobol, "01 SMILE-VAR PIC X VALUE \"_\".");
         StringAssert.Contains(cobol, "01 SMILE-internal PIC X(10) VALUE \"__internal\".");
-        StringAssert.Contains(cobol, "DISPLAY SMILE-internal.");
+        StringAssert.Contains(cobol, "DISPLAY \"__internal\".");
 
         string swift = Generate(AdversarialIdentifierSource, TargetLanguage.Swift).PrimaryFile.Content;
-        StringAssert.Contains(swift, "let _smile_ = \"_\"");
-        StringAssert.Contains(swift, "let _smile_class = \"class\"");
-        StringAssert.Contains(swift, "let _smile_struct = \"struct\"");
-        StringAssert.Contains(swift, "let _smile_protocol = \"protocol\"");
-        StringAssert.Contains(swift, "let _smile_extension = \"extension\"");
-        StringAssert.Contains(swift, "let _smile_var = \"var\"");
-        StringAssert.Contains(swift, "let _smile_func = \"func\"");
-        StringAssert.Contains(swift, "let _smile_self = \"self\"");
-        StringAssert.Contains(swift, "let _smile_super = \"super\"");
-        StringAssert.Contains(swift, "let _smile_Type = \"Type\"");
-        StringAssert.Contains(swift, "let _smile_Any = \"Any\"");
-        StringAssert.Contains(swift, "let _smile_String = \"String\"");
+        StringAssert.Contains(swift, "let _smile_: String = \"_\"");
+        StringAssert.Contains(swift, "let _smile_class: String = \"class\"");
+        StringAssert.Contains(swift, "let _smile_struct: String = \"struct\"");
+        StringAssert.Contains(swift, "let _smile_protocol: String = \"protocol\"");
+        StringAssert.Contains(swift, "let _smile_extension: String = \"extension\"");
+        StringAssert.Contains(swift, "let _smile_var: String = \"var\"");
+        StringAssert.Contains(swift, "let _smile_func: String = \"func\"");
+        StringAssert.Contains(swift, "let _smile_self: String = \"self\"");
+        StringAssert.Contains(swift, "let _smile_super: String = \"super\"");
+        StringAssert.Contains(swift, "let _smile_Type: String = \"Type\"");
+        StringAssert.Contains(swift, "let _smile_Any: String = \"Any\"");
+        StringAssert.Contains(swift, "let _smile_String: String = \"String\"");
     }
 
     [TestMethod]
@@ -314,8 +314,8 @@ PRINT {NO}
         StringAssert.Contains(objectiveC, "const char *_smile_NO = \"NO\";");
 
         string swift = Generate("LET Self = \"Self\"\nPRINT {Self}", TargetLanguage.Swift).PrimaryFile.Content;
-        StringAssert.Contains(swift, "let _smile_Self = \"Self\"");
-        StringAssert.Contains(swift, "print(\"\\(_smile_Self)\")");
+        StringAssert.Contains(swift, "let _smile_Self: String = \"Self\"");
+        StringAssert.Contains(swift, "print(_smile_Self)");
     }
 
     [TestMethod]
@@ -326,9 +326,9 @@ PRINT {NO}
         StringAssert.Contains(csharp, "string _smile_class = \"A\";");
         StringAssert.Contains(csharp, "string _smile_class_2 = \"B\";");
         StringAssert.Contains(csharp, "string _smile_class_2_2 = \"C\";");
-        StringAssert.Contains(csharp, "Console.WriteLine($\"{_smile_class}\");");
-        StringAssert.Contains(csharp, "Console.WriteLine($\"{_smile_class_2}\");");
-        StringAssert.Contains(csharp, "Console.WriteLine($\"{_smile_class_2_2}\");");
+        StringAssert.Contains(csharp, "Console.WriteLine(_smile_class);");
+        StringAssert.Contains(csharp, "Console.WriteLine(_smile_class_2);");
+        StringAssert.Contains(csharp, "Console.WriteLine(_smile_class_2_2);");
     }
 
     [TestMethod]
@@ -347,7 +347,7 @@ PRINT {NO}
     public void Missing_let_initializer_does_not_replace_malformed_present_initializers()
     {
         AssertDiagnostic("LET Name", "SMILE1113");
-        AssertDiagnostic("LET Name = \"Sin\" +", "SMILE1108");
+        AssertDiagnostic("LET Name = \"Sin\" +", "SMILE1201");
     }
 
     [TestMethod]

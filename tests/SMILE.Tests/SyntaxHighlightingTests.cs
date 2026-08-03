@@ -1,5 +1,8 @@
+using System.Diagnostics;
+using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Highlighting;
 using SMILE.Desktop.Highlighting;
+using SMILE.Engine;
 
 namespace SMILE.Tests;
 
@@ -56,5 +59,42 @@ public sealed class SyntaxHighlightingTests
         Assert.IsNull(SyntaxHighlightingCatalog.GetDefinition(""));
         Assert.IsNull(SyntaxHighlightingCatalog.GetDefinition("   "));
         Assert.IsNull(SyntaxHighlightingCatalog.GetDefinition("unknown"));
+    }
+
+    [TestMethod]
+    public void Objective_c_uses_safe_c_family_highlighting()
+    {
+        Assert.AreSame(
+            SyntaxHighlightingCatalog.GetDefinition("c"),
+            SyntaxHighlightingCatalog.GetDefinition("objective-c"));
+    }
+
+    [TestMethod]
+    public void Objective_c_highlighting_tokenizes_generated_source_quickly()
+    {
+        const string source = """
+LET Name = "Sin"
+PRINT "Hello " + Name + "!"
+""";
+        TranspileResult result = new SmileTranspiler().Transpile(source, TargetLanguage.ObjectiveC);
+        Assert.IsTrue(result.Success);
+
+        var document = new TextDocument(result.GeneratedProgram!.PrimaryFile.Content);
+        IHighlightingDefinition definition = SyntaxHighlightingCatalog.GetDefinition("objective-c")!;
+        var highlighter = new DocumentHighlighter(document, definition);
+
+        var stopwatch = Stopwatch.StartNew();
+        for (int line = 1; line <= document.LineCount; line++)
+        {
+            // This is the same synchronous tokenizer AvalonEdit uses when the
+            // Objective-C pane repaints. Keeping it fast protects the ComboBox
+            // selection path from turning into a frozen UI.
+            highlighter.HighlightLine(line);
+        }
+
+        Assert.IsLessThan(
+            500L,
+            stopwatch.ElapsedMilliseconds,
+            $"Objective-C highlighting took {stopwatch.ElapsedMilliseconds} ms.");
     }
 }

@@ -244,6 +244,17 @@ PRINT {class}
 PRINT {Console}
 PRINT {printf}
 PRINT {System}
+""",
+            """
+LET Age = 49
+LET Adult = Age >= 18
+LET Count = 2 + 3 * 4
+LET Message = $"Age={Age}, Adult={Adult}, Count={Count}"
+
+PRINT {Age}
+PRINT {Adult}
+PRINT {Count}
+PRINT {Message}
 """
         };
 

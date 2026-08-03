@@ -226,10 +226,10 @@ internal sealed class TargetIdentifierMap
         private static readonly string[] Cobol =
         {
             "accept", "add", "all", "and", "any", "by", "call", "cancel", "class", "close", "compute", "configuration",
-            "copy",
+            "copy", "count",
             "data", "display", "divide", "division", "else", "end", "entry", "environment", "evaluate",
             "exit", "fd", "file", "from", "function", "global", "goback", "identification", "if", "in", "initialize",
-            "input-output", "inspect", "into", "is", "linkage", "merge", "move", "multiply", "not", "object",
+            "input-output", "inspect", "into", "is", "linkage", "merge", "message", "move", "multiply", "not", "object",
             "of", "open", "or", "perform", "pic", "picture", "procedure", "program", "program-id", "read",
             "record", "return", "rewrite", "run", "section", "select", "self", "set", "sort", "stop",
             "string", "subtract", "super", "then", "to", "type", "until", "using", "value", "when",

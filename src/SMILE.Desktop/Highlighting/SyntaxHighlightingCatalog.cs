@@ -20,7 +20,11 @@ public static class SyntaxHighlightingCatalog
             ["javascript"] = BuiltIn("JavaScript", "javascript"),
             ["java"] = BuiltIn("Java", "java"),
             ["cobol"] = Embedded("Cobol.xshd"),
-            ["objective-c"] = Embedded("ObjectiveC.xshd"),
+            // SMILE's current Objective-C output is a Foundation-free console
+            // profile built from C-compatible syntax, so AvalonEdit's mature
+            // C/C++ highlighter gives learners useful colors without putting a
+            // custom Objective-C regex set on the UI-thread language switch path.
+            ["objective-c"] = BuiltIn("C++", "objective-c"),
             ["swift"] = Embedded("Swift.xshd")
         };
 

@@ -963,8 +963,11 @@ Recommended expression categories shared with `PRINT` include:
 
 ```text
 StringLiteralExpression
+IntegerLiteralExpression
+BooleanLiteralExpression
 NameExpression
-ConcatenationExpression
+UnaryExpression
+BinaryExpression
 InterpolatedStringExpression
 ```
 
@@ -974,19 +977,12 @@ A semantic binding phase SHOULD:
 - Resolve variable references.
 - Detect undefined variables.
 - Detect duplicate declarations.
-- Associate the initializer with the `String` type.
+- Associate the initializer with its SMILE type.
 - Preserve one canonical declaration spelling.
 
 Target-language generators MUST consume the language-neutral semantic representation rather than reparsing SMILE source.
 
-For version 1.0, every valid `LET` initializer is also a compile-time string constant because it is built only from:
-
-- String literals.
-- Previously declared string variables.
-- String concatenation.
-- Interpolated quoted strings.
-
-A conforming implementation MAY carry that evaluated string value on the bound declaration. This is the recommended KISS strategy for low-level targets that do not have a natural string concatenation or interpolation expression.
+For v0.4.0, every valid `LET` initializer is also a compile-time `SmileValue` constant because the language has no runtime input or reassignment. A conforming implementation MAY carry that evaluated value on the bound declaration. This is the recommended KISS strategy for low-level targets that do not yet need a runtime expression library.
 
 ---
 
@@ -1056,7 +1052,7 @@ System.out.println("Hello " + Name + "!");
 
 ```c
 const char *Name = "Sin";
-printf("Hello %s!\n", Name);
+printf("Hello Sin!\n");
 ```
 
 ```swift
@@ -1084,13 +1080,15 @@ For C and Objective-C, generators SHOULD map implementation-reserved identifier 
 
 For Java and Swift, a single SMILE identifier `_` MUST be mapped to a usable destination-language local variable name.
 
-Low-level targets such as C, Objective-C, and MASM MAY emit evaluated string constants for `LET` declarations:
+Low-level targets such as C, Objective-C, COBOL, and MASM MAY emit evaluated constants for `LET` declarations:
 
 ```c
 const char *FullName = "Sin Cioco";
+long long Age = 49LL;
+bool Adult = true;
 ```
 
-This is semantically equivalent for official immutable string-only `LET` v1.0 values and avoids premature runtime buffers or a SMILE runtime library.
+This is semantically equivalent for current immutable compile-time `LET` values and avoids premature runtime buffers or a SMILE runtime library.
 
 When MASM emits an empty string constant, it MAY use placeholder storage:
 
@@ -1333,7 +1331,6 @@ Current stable diagnostic codes for this specification include:
 | `SMILE1105` | Interpolation expression cannot be empty |
 | `SMILE1106` | Undefined variable |
 | `SMILE1107` | Duplicate variable declaration |
-| `SMILE1108` | Invalid string expression |
 | `SMILE1109` | Semicolons cannot separate SMILE statements |
 | `SMILE1110` | Unterminated interpolated string |
 | `SMILE1111` | Unexpected text after a string expression |
@@ -1341,6 +1338,15 @@ Current stable diagnostic codes for this specification include:
 | `SMILE1113` | `LET` requires `=` before its initializer |
 | `SMILE1115` | Reserved SMILE keyword used as a variable name |
 | `SMILE1116` | `LET` requires an initializer expression |
+| `SMILE1201` | Invalid or unexpected token in expression |
+| `SMILE1202` | Integer literal is outside the signed 64-bit range |
+| `SMILE1203` | Unary operator is not defined for the operand type |
+| `SMILE1204` | Binary operator is not defined for the operand types |
+| `SMILE1205` | Missing closing parenthesis |
+| `SMILE1206` | Integer arithmetic overflow |
+| `SMILE1207` | Division by zero |
+| `SMILE1208` | Unknown or invalid string escape sequence |
+| `SMILE1209` | Unterminated string escape sequence |
 
 ---
 
@@ -1348,9 +1354,7 @@ Current stable diagnostic codes for this specification include:
 
 This specification is designed to remain valid as SMILE gains:
 
-- Integer variables.
 - Decimal variables.
-- Boolean variables.
 - Dates and times.
 - Arrays.
 - Objects.
@@ -1364,15 +1368,18 @@ This specification is designed to remain valid as SMILE gains:
 - User-defined types.
 - Additional target languages.
 
-Future types may use the same form:
+SMILE v0.4.0 now uses the same form for the official `String`, `Integer`, and `Boolean` core types:
 
 ```basic
 LET Age = 49
-LET Price = 12.50
 LET Enabled = TRUE
 ```
 
-Future expression features may expand valid initializers:
+The official v0.4.0 expression grammar is defined in:
+
+- [SMILE - Core Types and Expressions Official Specification v1.0](SMILE%20-%20Core%20Types%20and%20Expressions%20Official%20Specification%20v1.0.md)
+
+Future expression features may expand valid initializers beyond this core:
 
 ```basic
 LET Total = Price * Quantity
@@ -1398,7 +1405,7 @@ The official SMILE `LET` rules are:
 1. `LET` and `PRINT` are the first two official SMILE statement keywords.
 2. SMILE keywords and identifiers are case-insensitive.
 3. `LET` declares and initializes a new variable.
-4. Version 1.0 officially supports string variables.
+4. Version 1.0 originally introduced string variables; SMILE v0.4.0 extends official `LET` initializers to `String`, `Integer`, and `Boolean` through the core expression specification.
 5. An initializer is required.
 6. A variable becomes visible only after its declaration succeeds.
 7. A variable must be declared before use.
@@ -1406,14 +1413,14 @@ The official SMILE `LET` rules are:
 9. Version 1.0 does not define reassignment.
 10. Ordinary quoted strings do not interpolate.
 11. `$"..."` strings interpolate using the same rules as `PRINT`.
-12. `+` concatenates strings using the same semantics as quoted `PRINT` expressions.
+12. `+` concatenates strings and adds integers according to the core expression type rules.
 13. Quote-free raw templates are exclusive to `PRINT`.
 14. `LET Name = Hello` is a variable reference, not literal text.
 15. `PRINT Name` prints literal text.
 16. `PRINT {Name}` evaluates the variable.
 17. A newline normally terminates one statement.
 18. Semicolons do not separate statements.
-19. Target generators consume a shared language-neutral semantic representation.
+19. Target generators consume the shared lexer/parser/binder/evaluator semantic representation.
 20. `LET` and `PRINT` MUST preserve identical expression and identifier behavior when used together.
 
 ---

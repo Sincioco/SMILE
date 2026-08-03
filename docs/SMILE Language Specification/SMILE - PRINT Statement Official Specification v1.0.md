@@ -673,8 +673,11 @@ Recommended expression categories include:
 
 ```text
 StringLiteralExpression
+IntegerLiteralExpression
+BooleanLiteralExpression
 NameExpression
-ConcatenationExpression
+UnaryExpression
+BinaryExpression
 InterpolatedStringExpression
 ```
 
@@ -788,8 +791,6 @@ Restricting quote omission to `PRINT` prevents ambiguity as SMILE grows.
 
 This specification is designed to remain valid as SMILE gains:
 
-- Numeric expressions.
-- Boolean expressions.
 - Functions.
 - Arrays and objects.
 - Formatting specifications.
@@ -797,7 +798,7 @@ This specification is designed to remain valid as SMILE gains:
 - Additional target languages.
 - A full semantic type system.
 
-Future versions may expand the expression grammar inside:
+SMILE v0.4.0 now defines official numeric and boolean expressions for these expression positions:
 
 ```basic
 PRINT {expression}
@@ -805,7 +806,11 @@ PRINT $"...{expression}..."
 PRINT "text" + expression
 ```
 
-without changing the raw-template rules.
+The official v0.4.0 expression grammar is defined in:
+
+- [SMILE - Core Types and Expressions Official Specification v1.0](SMILE%20-%20Core%20Types%20and%20Expressions%20Official%20Specification%20v1.0.md)
+
+Future versions may expand the expression grammar further without changing the raw-template rules.
 
 Future versions MUST preserve the deterministic distinction:
 

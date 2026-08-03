@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Text;
 
 namespace SMILE.Engine;
@@ -27,7 +28,7 @@ public readonly record struct TextSpan(
     int Column);
 
 // Syntax nodes describe what the user wrote, before the compiler resolves
-// names. Keeping this layer source-shaped makes diagnostics easier to place.
+// names or decides what an operator means for particular operand types.
 public abstract record SyntaxNode(TextSpan Span);
 
 public sealed record SmileProgramSyntax(
@@ -54,8 +55,21 @@ public sealed record LetStatementSyntax(
 public abstract record ExpressionSyntax(TextSpan Span)
     : SyntaxNode(Span);
 
+public sealed record ErrorExpressionSyntax(TextSpan Span)
+    : ExpressionSyntax(Span);
+
 public sealed record StringLiteralExpressionSyntax(
     string Value,
+    TextSpan Span)
+    : ExpressionSyntax(Span);
+
+public sealed record IntegerLiteralExpressionSyntax(
+    string Text,
+    TextSpan Span)
+    : ExpressionSyntax(Span);
+
+public sealed record BooleanLiteralExpressionSyntax(
+    bool Value,
     TextSpan Span)
     : ExpressionSyntax(Span);
 
@@ -64,6 +78,28 @@ public sealed record NameExpressionSyntax(
     TextSpan Span)
     : ExpressionSyntax(Span);
 
+public sealed record UnaryExpressionSyntax(
+    SyntaxToken OperatorToken,
+    ExpressionSyntax Operand,
+    TextSpan Span)
+    : ExpressionSyntax(Span);
+
+public sealed record BinaryExpressionSyntax(
+    ExpressionSyntax Left,
+    SyntaxToken OperatorToken,
+    ExpressionSyntax Right,
+    TextSpan Span)
+    : ExpressionSyntax(Span);
+
+public sealed record ParenthesizedExpressionSyntax(
+    SyntaxToken OpenParenthesis,
+    ExpressionSyntax Expression,
+    SyntaxToken CloseParenthesis,
+    TextSpan Span)
+    : ExpressionSyntax(Span);
+
+// Kept for compatibility with older tests and docs that name the old string
+// concatenation syntax node. New parsing lowers '+' through BinaryExpression.
 public sealed record ConcatenationExpressionSyntax(
     ExpressionSyntax Left,
     ExpressionSyntax Right,
@@ -101,7 +137,52 @@ public sealed record ParseResult(
 
 public enum SmileType
 {
-    String
+    String,
+    Integer,
+    Boolean,
+    Error
+}
+
+public readonly record struct SmileValue
+{
+    private readonly string? _stringValue;
+
+    private SmileValue(SmileType type, string? stringValue, long integerValue, bool booleanValue)
+    {
+        Type = type;
+        _stringValue = stringValue;
+        IntegerValue = integerValue;
+        BooleanValue = booleanValue;
+    }
+
+    public SmileType Type { get; }
+
+    public string StringValue =>
+        Type == SmileType.String
+            ? _stringValue ?? string.Empty
+            : throw new InvalidOperationException("SMILE value is not a String.");
+
+    public long IntegerValue { get; }
+
+    public bool BooleanValue { get; }
+
+    public static SmileValue FromString(string value) =>
+        new(SmileType.String, value, 0, false);
+
+    public static SmileValue FromInteger(long value) =>
+        new(SmileType.Integer, null, value, false);
+
+    public static SmileValue FromBoolean(bool value) =>
+        new(SmileType.Boolean, null, 0, value);
+
+    public string ToDisplayText() =>
+        Type switch
+        {
+            SmileType.String => StringValue,
+            SmileType.Integer => IntegerValue.ToString(CultureInfo.InvariantCulture),
+            SmileType.Boolean => BooleanValue ? "TRUE" : "FALSE",
+            _ => string.Empty
+        };
 }
 
 public sealed record VariableSymbol(
@@ -109,8 +190,8 @@ public sealed record VariableSymbol(
     TextSpan DeclarationSpan,
     SmileType Type);
 
-// Bound nodes describe what the program means after name lookup. Generators
-// consume this layer so no backend has to reparse SMILE source text.
+// Bound nodes describe what the program means after name lookup and type
+// checking. Generators consume this layer so no backend has to reparse SMILE.
 public sealed record BoundProgram(
     IReadOnlyList<BoundStatement> Statements,
     IReadOnlyList<VariableSymbol> Variables);
@@ -120,7 +201,7 @@ public abstract record BoundStatement;
 public sealed record BoundLetStatement(
     VariableSymbol Variable,
     BoundExpression Initializer,
-    string ConstantValue)
+    SmileValue ConstantValue)
     : BoundStatement;
 
 public sealed record BoundPrintStatement(
@@ -130,11 +211,33 @@ public sealed record BoundPrintStatement(
 
 public abstract record BoundExpression(SmileType Type);
 
+public sealed record BoundErrorExpression()
+    : BoundExpression(SmileType.Error);
+
 public sealed record BoundStringLiteralExpression(string Value)
     : BoundExpression(SmileType.String);
 
+public sealed record BoundIntegerLiteralExpression(long Value)
+    : BoundExpression(SmileType.Integer);
+
+public sealed record BoundBooleanLiteralExpression(bool Value)
+    : BoundExpression(SmileType.Boolean);
+
 public sealed record BoundVariableExpression(VariableSymbol Variable)
-    : BoundExpression(SmileType.String);
+    : BoundExpression(Variable.Type);
+
+public sealed record BoundUnaryExpression(
+    BoundUnaryOperator Operator,
+    BoundExpression Operand,
+    TextSpan OperatorSpan)
+    : BoundExpression(Operator.ResultType);
+
+public sealed record BoundBinaryExpression(
+    BoundExpression Left,
+    BoundBinaryOperator Operator,
+    BoundExpression Right,
+    TextSpan OperatorSpan)
+    : BoundExpression(Operator.ResultType);
 
 public sealed record BoundConcatenationExpression(
     BoundExpression Left,
@@ -152,6 +255,148 @@ public sealed record BoundInterpolatedTextPart(string Text)
 
 public sealed record BoundInterpolationExpressionPart(BoundExpression Expression)
     : BoundInterpolatedPart;
+
+public enum BoundUnaryOperatorKind
+{
+    Identity,
+    Negation,
+    LogicalNegation
+}
+
+public sealed class BoundUnaryOperator
+{
+    private static readonly BoundUnaryOperator[] Operators =
+    {
+        new(SyntaxKind.PlusToken, BoundUnaryOperatorKind.Identity, SmileType.Integer),
+        new(SyntaxKind.MinusToken, BoundUnaryOperatorKind.Negation, SmileType.Integer),
+        new(SyntaxKind.NotKeyword, BoundUnaryOperatorKind.LogicalNegation, SmileType.Boolean)
+    };
+
+    private BoundUnaryOperator(
+        SyntaxKind syntaxKind,
+        BoundUnaryOperatorKind kind,
+        SmileType operandType)
+        : this(syntaxKind, kind, operandType, operandType)
+    {
+    }
+
+    private BoundUnaryOperator(
+        SyntaxKind syntaxKind,
+        BoundUnaryOperatorKind kind,
+        SmileType operandType,
+        SmileType resultType)
+    {
+        SyntaxKind = syntaxKind;
+        Kind = kind;
+        OperandType = operandType;
+        ResultType = resultType;
+    }
+
+    public SyntaxKind SyntaxKind { get; }
+
+    public BoundUnaryOperatorKind Kind { get; }
+
+    public SmileType OperandType { get; }
+
+    public SmileType ResultType { get; }
+
+    public static BoundUnaryOperator? Bind(SyntaxKind syntaxKind, SmileType operandType) =>
+        Operators.SingleOrDefault(op => op.SyntaxKind == syntaxKind && op.OperandType == operandType);
+}
+
+public enum BoundBinaryOperatorKind
+{
+    Addition,
+    Subtraction,
+    Multiplication,
+    Division,
+    StringConcatenation,
+    Equality,
+    Inequality,
+    Less,
+    LessOrEquals,
+    Greater,
+    GreaterOrEquals,
+    LogicalAnd,
+    LogicalOr
+}
+
+public sealed class BoundBinaryOperator
+{
+    private static readonly BoundBinaryOperator[] Operators =
+    {
+        new(SyntaxKind.PlusToken, BoundBinaryOperatorKind.Addition, SmileType.Integer),
+        new(SyntaxKind.MinusToken, BoundBinaryOperatorKind.Subtraction, SmileType.Integer),
+        new(SyntaxKind.StarToken, BoundBinaryOperatorKind.Multiplication, SmileType.Integer),
+        new(SyntaxKind.SlashToken, BoundBinaryOperatorKind.Division, SmileType.Integer),
+        new(SyntaxKind.PlusToken, BoundBinaryOperatorKind.StringConcatenation, SmileType.String),
+
+        new(SyntaxKind.EqualsToken, BoundBinaryOperatorKind.Equality, SmileType.String, SmileType.Boolean),
+        new(SyntaxKind.NotEqualsToken, BoundBinaryOperatorKind.Inequality, SmileType.String, SmileType.Boolean),
+        new(SyntaxKind.EqualsToken, BoundBinaryOperatorKind.Equality, SmileType.Integer, SmileType.Boolean),
+        new(SyntaxKind.NotEqualsToken, BoundBinaryOperatorKind.Inequality, SmileType.Integer, SmileType.Boolean),
+        new(SyntaxKind.EqualsToken, BoundBinaryOperatorKind.Equality, SmileType.Boolean, SmileType.Boolean),
+        new(SyntaxKind.NotEqualsToken, BoundBinaryOperatorKind.Inequality, SmileType.Boolean, SmileType.Boolean),
+
+        new(SyntaxKind.LessToken, BoundBinaryOperatorKind.Less, SmileType.Integer, SmileType.Boolean),
+        new(SyntaxKind.LessOrEqualsToken, BoundBinaryOperatorKind.LessOrEquals, SmileType.Integer, SmileType.Boolean),
+        new(SyntaxKind.GreaterToken, BoundBinaryOperatorKind.Greater, SmileType.Integer, SmileType.Boolean),
+        new(SyntaxKind.GreaterOrEqualsToken, BoundBinaryOperatorKind.GreaterOrEquals, SmileType.Integer, SmileType.Boolean),
+
+        new(SyntaxKind.AndKeyword, BoundBinaryOperatorKind.LogicalAnd, SmileType.Boolean),
+        new(SyntaxKind.OrKeyword, BoundBinaryOperatorKind.LogicalOr, SmileType.Boolean)
+    };
+
+    private BoundBinaryOperator(
+        SyntaxKind syntaxKind,
+        BoundBinaryOperatorKind kind,
+        SmileType operandType)
+        : this(syntaxKind, kind, operandType, operandType, operandType)
+    {
+    }
+
+    private BoundBinaryOperator(
+        SyntaxKind syntaxKind,
+        BoundBinaryOperatorKind kind,
+        SmileType operandType,
+        SmileType resultType)
+        : this(syntaxKind, kind, operandType, operandType, resultType)
+    {
+    }
+
+    private BoundBinaryOperator(
+        SyntaxKind syntaxKind,
+        BoundBinaryOperatorKind kind,
+        SmileType leftType,
+        SmileType rightType,
+        SmileType resultType)
+    {
+        SyntaxKind = syntaxKind;
+        Kind = kind;
+        LeftType = leftType;
+        RightType = rightType;
+        ResultType = resultType;
+    }
+
+    public SyntaxKind SyntaxKind { get; }
+
+    public BoundBinaryOperatorKind Kind { get; }
+
+    public SmileType LeftType { get; }
+
+    public SmileType RightType { get; }
+
+    public SmileType ResultType { get; }
+
+    public static BoundBinaryOperator? Bind(
+        SyntaxKind syntaxKind,
+        SmileType leftType,
+        SmileType rightType) =>
+        Operators.SingleOrDefault(op =>
+            op.SyntaxKind == syntaxKind &&
+            op.LeftType == leftType &&
+            op.RightType == rightType);
+}
 
 public sealed record BindResult(
     BoundProgram? Program,
@@ -172,11 +417,6 @@ public sealed record VariablePrintSegment(VariableSymbol Variable)
 
 public static class BoundStringExpression
 {
-    // Some low-level targets do not have a convenient string-expression syntax.
-    // They lower a bound expression into "write this literal, then this
-    // variable" output segments at the last responsible moment. High-level
-    // targets should keep using the expression tree so interpolation and
-    // concatenation intent remains visible in generated educational code.
     public static IReadOnlyList<PrintSegment> FlattenForOutput(BoundExpression expression)
     {
         var segments = new List<PrintSegment>();
@@ -201,6 +441,11 @@ public static class BoundStringExpression
 
             case BoundVariableExpression variable:
                 segments.Add(new VariablePrintSegment(variable.Variable));
+                break;
+
+            case BoundBinaryExpression { Operator.Kind: BoundBinaryOperatorKind.StringConcatenation } binary:
+                Append(binary.Left, segments);
+                Append(binary.Right, segments);
                 break;
 
             case BoundConcatenationExpression concatenation:
@@ -232,62 +477,212 @@ public static class BoundStringExpression
     }
 }
 
-internal static class BoundStringConstantEvaluator
+public static class BoundConstantEvaluator
 {
     public static bool TryEvaluate(
         BoundExpression expression,
-        IReadOnlyDictionary<VariableSymbol, string> values,
-        out string value)
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values,
+        out SmileValue value,
+        ICollection<Diagnostic>? diagnostics = null)
     {
         switch (expression)
         {
             case BoundStringLiteralExpression literal:
-                value = literal.Value;
+                value = SmileValue.FromString(literal.Value);
+                return true;
+
+            case BoundIntegerLiteralExpression literal:
+                value = SmileValue.FromInteger(literal.Value);
+                return true;
+
+            case BoundBooleanLiteralExpression literal:
+                value = SmileValue.FromBoolean(literal.Value);
                 return true;
 
             case BoundVariableExpression variable:
-                return values.TryGetValue(variable.Variable, out value!);
+                return values.TryGetValue(variable.Variable, out value);
+
+            case BoundUnaryExpression unary:
+                return TryEvaluateUnary(unary, values, out value, diagnostics);
+
+            case BoundBinaryExpression binary:
+                return TryEvaluateBinary(binary, values, out value, diagnostics);
 
             case BoundConcatenationExpression concatenation:
-                if (TryEvaluate(concatenation.Left, values, out string left) &&
-                    TryEvaluate(concatenation.Right, values, out string right))
-                {
-                    value = left + right;
-                    return true;
-                }
-
-                value = string.Empty;
-                return false;
+                return TryEvaluateStringConcatenation(
+                    concatenation.Left,
+                    concatenation.Right,
+                    values,
+                    out value,
+                    diagnostics);
 
             case BoundInterpolatedStringExpression interpolated:
-                var builder = new StringBuilder();
-                foreach (BoundInterpolatedPart part in interpolated.Parts)
-                {
-                    switch (part)
-                    {
-                        case BoundInterpolatedTextPart text:
-                            builder.Append(text.Text);
-                            break;
-
-                        case BoundInterpolationExpressionPart interpolation:
-                            if (!TryEvaluate(interpolation.Expression, values, out string partValue))
-                            {
-                                value = string.Empty;
-                                return false;
-                            }
-
-                            builder.Append(partValue);
-                            break;
-                    }
-                }
-
-                value = builder.ToString();
-                return true;
+                return TryEvaluateInterpolatedString(interpolated, values, out value, diagnostics);
 
             default:
-                value = string.Empty;
+                value = default;
                 return false;
         }
+    }
+
+    private static bool TryEvaluateUnary(
+        BoundUnaryExpression unary,
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values,
+        out SmileValue value,
+        ICollection<Diagnostic>? diagnostics)
+    {
+        if (!TryEvaluate(unary.Operand, values, out SmileValue operand, diagnostics))
+        {
+            value = default;
+            return false;
+        }
+
+        try
+        {
+            value = unary.Operator.Kind switch
+            {
+                BoundUnaryOperatorKind.Identity => operand,
+                BoundUnaryOperatorKind.Negation => SmileValue.FromInteger(checked(-operand.IntegerValue)),
+                BoundUnaryOperatorKind.LogicalNegation => SmileValue.FromBoolean(!operand.BooleanValue),
+                _ => default
+            };
+            return true;
+        }
+        catch (OverflowException)
+        {
+            AddDiagnostic(
+                diagnostics,
+                "SMILE1206",
+                "Integer arithmetic overflow.",
+                unary.OperatorSpan);
+            value = default;
+            return false;
+        }
+    }
+
+    private static bool TryEvaluateBinary(
+        BoundBinaryExpression binary,
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values,
+        out SmileValue value,
+        ICollection<Diagnostic>? diagnostics)
+    {
+        if (!TryEvaluate(binary.Left, values, out SmileValue left, diagnostics) ||
+            !TryEvaluate(binary.Right, values, out SmileValue right, diagnostics))
+        {
+            value = default;
+            return false;
+        }
+
+        try
+        {
+            if (binary.Operator.Kind is BoundBinaryOperatorKind.Division &&
+                right.IntegerValue == 0)
+            {
+                AddDiagnostic(
+                    diagnostics,
+                    "SMILE1207",
+                    "Division by zero.",
+                    binary.OperatorSpan);
+                value = default;
+                return false;
+            }
+
+            value = binary.Operator.Kind switch
+            {
+                BoundBinaryOperatorKind.Addition => SmileValue.FromInteger(checked(left.IntegerValue + right.IntegerValue)),
+                BoundBinaryOperatorKind.Subtraction => SmileValue.FromInteger(checked(left.IntegerValue - right.IntegerValue)),
+                BoundBinaryOperatorKind.Multiplication => SmileValue.FromInteger(checked(left.IntegerValue * right.IntegerValue)),
+                BoundBinaryOperatorKind.Division => SmileValue.FromInteger(checked(left.IntegerValue / right.IntegerValue)),
+                BoundBinaryOperatorKind.StringConcatenation => SmileValue.FromString(left.StringValue + right.StringValue),
+                BoundBinaryOperatorKind.Equality => SmileValue.FromBoolean(ValuesEqual(left, right)),
+                BoundBinaryOperatorKind.Inequality => SmileValue.FromBoolean(!ValuesEqual(left, right)),
+                BoundBinaryOperatorKind.Less => SmileValue.FromBoolean(left.IntegerValue < right.IntegerValue),
+                BoundBinaryOperatorKind.LessOrEquals => SmileValue.FromBoolean(left.IntegerValue <= right.IntegerValue),
+                BoundBinaryOperatorKind.Greater => SmileValue.FromBoolean(left.IntegerValue > right.IntegerValue),
+                BoundBinaryOperatorKind.GreaterOrEquals => SmileValue.FromBoolean(left.IntegerValue >= right.IntegerValue),
+                BoundBinaryOperatorKind.LogicalAnd => SmileValue.FromBoolean(left.BooleanValue && right.BooleanValue),
+                BoundBinaryOperatorKind.LogicalOr => SmileValue.FromBoolean(left.BooleanValue || right.BooleanValue),
+                _ => default
+            };
+            return value.Type is not SmileType.Error;
+        }
+        catch (OverflowException)
+        {
+            AddDiagnostic(
+                diagnostics,
+                "SMILE1206",
+                "Integer arithmetic overflow.",
+                binary.OperatorSpan);
+            value = default;
+            return false;
+        }
+    }
+
+    private static bool TryEvaluateStringConcatenation(
+        BoundExpression leftExpression,
+        BoundExpression rightExpression,
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values,
+        out SmileValue value,
+        ICollection<Diagnostic>? diagnostics)
+    {
+        if (TryEvaluate(leftExpression, values, out SmileValue left, diagnostics) &&
+            TryEvaluate(rightExpression, values, out SmileValue right, diagnostics))
+        {
+            value = SmileValue.FromString(left.StringValue + right.StringValue);
+            return true;
+        }
+
+        value = default;
+        return false;
+    }
+
+    private static bool TryEvaluateInterpolatedString(
+        BoundInterpolatedStringExpression interpolated,
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values,
+        out SmileValue value,
+        ICollection<Diagnostic>? diagnostics)
+    {
+        var builder = new StringBuilder();
+        foreach (BoundInterpolatedPart part in interpolated.Parts)
+        {
+            switch (part)
+            {
+                case BoundInterpolatedTextPart text:
+                    builder.Append(text.Text);
+                    break;
+
+                case BoundInterpolationExpressionPart interpolation:
+                    if (!TryEvaluate(interpolation.Expression, values, out SmileValue partValue, diagnostics))
+                    {
+                        value = default;
+                        return false;
+                    }
+
+                    builder.Append(partValue.ToDisplayText());
+                    break;
+            }
+        }
+
+        value = SmileValue.FromString(builder.ToString());
+        return true;
+    }
+
+    private static bool ValuesEqual(SmileValue left, SmileValue right) =>
+        left.Type switch
+        {
+            SmileType.String => string.Equals(left.StringValue, right.StringValue, StringComparison.Ordinal),
+            SmileType.Integer => left.IntegerValue == right.IntegerValue,
+            SmileType.Boolean => left.BooleanValue == right.BooleanValue,
+            _ => false
+        };
+
+    private static void AddDiagnostic(
+        ICollection<Diagnostic>? diagnostics,
+        string code,
+        string message,
+        TextSpan span)
+    {
+        diagnostics?.Add(new Diagnostic(code, DiagnosticSeverity.Error, message, span));
     }
 }
 

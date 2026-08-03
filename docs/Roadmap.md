@@ -67,16 +67,34 @@
 - Add local COBOL Build & Run through MSYS2 GnuCOBOL.
 - Add COBOL syntax highlighting and evaluator-versus-toolchain test coverage.
 
+## Implemented In v0.3.4
+
+- Keep Objective-C language switching responsive by using AvalonEdit's built-in C/C++ highlighter for SMILE's current C-compatible Objective-C console profile.
+- Add regression coverage that tokenizes generated Objective-C source through AvalonEdit's highlighting engine.
+
+## Implemented In v0.4.0
+
+- Add a real lexer for identifiers, keywords, string literals, integer literals, typed operators, parentheses, line endings, and end-of-file.
+- Add official string escapes: `\\`, `\"`, `\n`, `\r`, `\t`, `\0`, `\b`, and `\f`.
+- Add `String`, `Integer`, and `Boolean` core value types.
+- Add signed 64-bit integer literals, unary arithmetic, binary arithmetic, integer comparison, string equality, boolean equality, `NOT`, `AND`, `OR`, and parentheses.
+- Add typed `SmileValue` constants and evaluator display rules for integers and booleans.
+- Add expression diagnostics `SMILE1201` through `SMILE1209`.
+- Update high-level target generators to emit idiomatic typed expressions in C#, JavaScript, Java, and Swift.
+- Update C, COBOL, Objective-C, and MASM to lower current compile-time values through the shared evaluator.
+- Add official string literal and core expression specification documents.
+- Expand conformance tests for lexer behavior, typed binding/evaluation, target generation, and evaluator-versus-toolchain runtime output.
+
 ## Future Ideas
 
-These are not implemented in v0.3.3:
+These are not implemented in v0.4.0:
 
-1. Numeric and boolean expressions
-2. `INPUT`
-3. `IF / THEN / ELSE`
-4. Loops
-5. Functions
-6. Type checking beyond string-only expressions
-7. Debugging and source mapping
+1. `INPUT`
+2. `IF / THEN / ELSE`
+3. Loops
+4. Functions
+5. Floating-point and decimal numeric types
+6. Debugging and source mapping
+7. Semantic highlighting, autocomplete, and diagnostic squiggles
 8. Reusable web interface
 9. Evolution toward a full SMILE language

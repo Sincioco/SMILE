@@ -55,44 +55,49 @@ Console.WriteLine("Hello " + Name + "!");
 console.log("Hello " + Name + "!");
 ```
 
+Typed SMILE values must display exactly like the reference evaluator. `Integer` values display as invariant decimal text. `Boolean` values display as `TRUE` or `FALSE`, even when the destination language's native boolean text would be lowercase.
+
 ## Lower-Level Targets
 
 Lower-level targets may need target-local lowering, but the emitted code should still look natural for that target.
 
-Official `LET` v1.0 initializers are immutable string constants. C, COBOL, Objective-C, MASM, and other lower-level targets may emit the evaluated declaration value instead of building strings at runtime:
+Current SMILE `LET` initializers are compile-time constants. C, COBOL, Objective-C, MASM, and other lower-level targets may emit the evaluated declaration value instead of building strings or expression runtimes:
 
 ```c
 const char *FullName = "Sin Cioco";
+long long Age = 49LL;
+bool Adult = true;
 ```
 
 This keeps early generated programs dependency-light and avoids introducing premature buffers or a SMILE runtime library.
 
-For current C `PRINT`, SMILE should prefer one safe `printf` statement per SMILE `PRINT` where practical:
+For current C `PRINT`, SMILE should prefer one safe `printf` statement per SMILE `PRINT`:
 
 ```c
 printf("\n");
 printf("Hello World!\n");
-printf("Hello %s!\n", Name);
+printf("Hello Sin!\n");
+printf("Age=49, Adult=TRUE\n");
 ```
 
-The generated `printf` format string must always be compiler-generated. SMILE variables must be passed as arguments, never as the format string:
-
-```c
-printf("%s\n", Name);
-```
-
-Literal percent signs from SMILE source must be escaped in the generated format string:
+The generated `printf` format string must always be compiler-generated. Literal percent signs from SMILE source must be escaped in the generated format string:
 
 ```c
 printf("Progress: 100%%\n");
-printf("%s is 100%% ready.\n", Name);
+printf("Sin is 100%% ready.\n");
+```
+
+If a future target-lowering path reintroduces printf arguments, SMILE variables must be passed as arguments and never as the format string:
+
+```c
+printf("%s\n", Name);
 ```
 
 Objective-C follows the same stdout style in the Windows-local console profile:
 
 ```objc
 const char *Name = "Sin";
-printf("Hello %s!\n", Name);
+printf("Hello Sin!\n");
 ```
 
 This profile intentionally avoids Foundation/NSString until the local Windows runtime path is hardened. The file is still generated as Objective-C (`.m`) and compiled with an Objective-C compiler.
@@ -101,14 +106,15 @@ COBOL uses GnuCOBOL free-format source and stores `LET` values in `WORKING-STORA
 
 ```cobol
 01 Name PIC X(3) VALUE "Sin".
-DISPLAY "Hello " Name "!".
+01 Age PIC X(2) VALUE "49".
+DISPLAY "Hello Sin!".
 ```
 
-COBOL fixed-length data items must not leak padding into SMILE output. Empty SMILE strings may use a one-character placeholder for storage, but generated `DISPLAY` operands must skip that variable when its compile-time SMILE value is empty:
+COBOL fixed-length data items must not leak padding into SMILE output. Empty SMILE strings may use a one-character placeholder for storage, but generated `DISPLAY` output should use canonical text when the compile-time SMILE value is known:
 
 ```cobol
 01 Empty PIC X VALUE SPACE.
-DISPLAY "[" "]".
+DISPLAY "[]".
 ```
 
 Blank SMILE `PRINT` must emit an empty line, not a line containing a single space:

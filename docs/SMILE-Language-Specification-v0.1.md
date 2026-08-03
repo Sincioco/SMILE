@@ -8,19 +8,26 @@ SMILE v0.1 supported only:
 PRINT "text"
 ```
 
-SMILE v0.3.3 implements the official Friendly PRINT and LET language behavior defined in:
+SMILE v0.4.0 implements the official Friendly PRINT, LET, string literal, and typed expression behavior defined in:
 
-- [SMILE - PRINT Statement Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20PRINT%20Statement%20Official%20Specification%20v1.0.md)
 - [SMILE - LET Statement Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20LET%20Statement%20Official%20Specification%20v1.0.md)
+- [SMILE - PRINT Statement Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20PRINT%20Statement%20Official%20Specification%20v1.0.md)
+- [SMILE - String Literals Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20String%20Literals%20Official%20Specification%20v1.0.md)
+- [SMILE - Core Types and Expressions Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20Core%20Types%20and%20Expressions%20Official%20Specification%20v1.0.md)
 
-Current v0.3.3 behavior includes:
+Current v0.4.0 behavior includes:
 
 - `LET Name = "Sin"` string variable declarations.
+- `LET Age = 49` integer variable declarations.
+- `LET Adult = Age >= 18` boolean variable declarations.
 - `LET Copy = Name` variable initializers.
 - `LET FullName = FirstName + " " + LastName` concatenation initializers.
 - `LET Greeting = $"Hello {FullName}!"` interpolated string initializers.
-- Compile-time string constant evaluation for official `LET` v1.0 values.
+- Compile-time typed constant evaluation for current `LET` values.
 - Empty string `LET` values preserved exactly across the evaluator and generated targets.
+- Official string escapes for quote, backslash, control characters, and tab/newline text.
+- Signed 64-bit integer arithmetic, comparison, and grouping with parentheses.
+- Boolean literals, comparison results, and `NOT`/`AND`/`OR`.
 - Target identifier mapping for destination keywords, generator-owned names, Java/Swift `_`, COBOL data names, and C-family reserved identifier patterns.
 - Local Build & Run support for COBOL, Objective-C, and Swift when their Windows toolchains are installed.
 - Blank `PRINT`.
