@@ -262,6 +262,16 @@ internal sealed class TargetIdentifierMap
             "rcx", "rdx", "rsp", "r8d", "r9", "xor"
         };
 
+        private static readonly string[] Python =
+        {
+            "False", "None", "True", "and", "as", "assert", "async", "await", "break",
+            "case", "class", "continue", "def", "del", "elif", "else", "except", "finally",
+            "for", "from", "global", "if", "import", "in", "is", "lambda", "match",
+            "nonlocal", "not", "or", "pass", "raise", "return", "try", "while", "with",
+            "yield", "print", "str", "bool", "int", "abs", "isinstance", "main",
+            "_smile_text", "_smile_div", "__name__"
+        };
+
         public static ISet<string> For(TargetLanguage language) =>
             new HashSet<string>(
                 language switch
@@ -274,6 +284,7 @@ internal sealed class TargetIdentifierMap
                     TargetLanguage.Cobol => Cobol,
                     TargetLanguage.ObjectiveC => ObjectiveC,
                     TargetLanguage.Swift => Swift,
+                    TargetLanguage.Python => Python,
                     _ => Array.Empty<string>()
                 },
                 language is TargetLanguage.Cobol

@@ -1084,7 +1084,7 @@ Low-level targets such as C, Objective-C, COBOL, and MASM MAY emit evaluated con
 
 ```c
 const char *FullName = "Sin Cioco";
-long long Age = 49LL;
+int Age = 49;
 bool Adult = true;
 ```
 

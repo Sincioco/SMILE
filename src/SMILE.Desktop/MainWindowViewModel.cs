@@ -1,7 +1,7 @@
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Text;
-using System.Diagnostics;
 using System.Windows;
 using Microsoft.Win32;
 using SMILE.Engine;
@@ -1218,9 +1218,10 @@ PRINT {Greeting}
             assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ??
             assembly.GetName().Version?.ToString() ??
             "unknown";
+        const string mission = "A programming language inspired by BASIC that makes it easy for newcomers to learn and understand how programming languages work across the board. Updated for the modern era, SMILE takes the classic BASIC programming language and takes it to the next level by offering to teach not just concepts and ideas of what a programming language can do but show them how various programming languages look like by transpiling (translating) and compiling their SMILE code to many other programming languages. So students can learn many programming languages simultaneously and arrive at one obvious conclusion: all programming languages share the same fundamentals. What's important is learning to think logically and understand how to solve problems with code, not learning the syntax of a particular programming language. SMILE is designed to be a fun and educational programming language that teaches students how to think like a programmer and understand the fundamentals of programming languages.";
 
         MessageBox.Show(
-            $"SMILE - Simple Modern Interactive Learning Environment{Environment.NewLine}Version {version}{Environment.NewLine}Session {SessionId}{Environment.NewLine}{Environment.NewLine}Educational BASIC-inspired multi-target transpiler.",
+            $"SMILE - Simple Modern Interactive Learning Environment{Environment.NewLine}Version {version}{Environment.NewLine}Session {SessionId}{Environment.NewLine}{Environment.NewLine}{mission}",
             "About SMILE",
             MessageBoxButton.OK,
             MessageBoxImage.Information);

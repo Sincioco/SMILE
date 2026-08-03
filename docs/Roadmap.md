@@ -95,16 +95,36 @@
 - Add a deterministic fixed-seed typed-expression corpus plus all-eight-target runtime comparisons against the reference evaluator for the corpus, shipped example, and exact control-character output.
 - Synchronize the public specifications, architecture, target-code standard, README, project history, and desktop version at `0.4.1 Typed Expression Conformance Hardening`.
 
+## Implemented In v0.4.2
+
+- Add Python as the ninth first-class target with stable ID `python` and primary file `Program.py`.
+- Generate conventional dependency-free Python 3.10+ source directly from `BoundProgram`, including `main()` and the standard main guard.
+- Preserve truncation-toward-zero Integer division with an on-demand `_smile_div` helper and canonical Integer/Boolean display with an on-demand `_smile_text` helper.
+- Preserve Python f-string interpolation, literal braces, official string escapes, short-circuit `and`/`or`, case-sensitive string equality, and precedence-aware bound-tree rendering.
+- Add collision-safe Python identifier mapping for keywords, soft keywords, built-ins, and generated helper names.
+- Add local Python Run support, press-any-key launchers, Python highlighting, desktop selectors, CLI support, and nine-target evaluator conformance.
+- Keep compiler-rejected unreachable short-circuit divisions valid by lowering affected Boolean initializers to evaluated constants, and harden complex C/Objective-C String equality operands.
+- Add one shared pure bound-expression simplifier for Boolean identities, including the acceptance lowering from `Adult AND NOT FALSE` to `Adult`.
+- Keep SMILE Integer semantics signed 64-bit while profiling the complete bound program for idiomatic target storage: C/Objective-C `int` or `int64_t`, C#/Java `int` or `long`, JavaScript `Number` or `BigInt`, Swift `Int` or `Int64`, and Python `int`.
+- Add exact small, boundary, wide, intermediate-result, and evaluator-versus-toolchain Integer-profile coverage for all nine targets.
+- Publish the expanded learner-first mission statement and link the project introduction video from the README.
+- Pause destination-language expansion after Python so SMILE can deepen its runtime language model.
+
+## Deferred Destination Languages
+
+Rust, Zig, and Go are intentionally not part of the active SMILE roadmap at this stage. After Python, target-language expansion is paused while SMILE focuses on runtime variables, assignment, input, conditions, loops, functions, and scopes. These targets may be reconsidered later when the runtime language model is mature.
+
 ## Future Ideas
 
-These are not implemented in v0.4.1:
+These are not implemented in v0.4.2:
 
-1. `INPUT`
-2. `IF / THEN / ELSE`
-3. Loops
-4. Functions
-5. Floating-point and decimal numeric types
-6. Debugging and source mapping
-7. Semantic highlighting, autocomplete, and diagnostic squiggles
-8. Reusable web interface
-9. Evolution toward a full SMILE language
+1. Runtime variables and assignment
+2. `INPUT`
+3. `IF / THEN / ELSE`
+4. Loops
+5. Functions and scopes
+6. Floating-point and decimal numeric types
+7. Debugging and source mapping
+8. Semantic highlighting, autocomplete, and diagnostic squiggles
+9. Reusable web interface
+10. Evolution toward a full SMILE language

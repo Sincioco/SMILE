@@ -619,6 +619,7 @@ PRINT Progress: 100%
     [DataRow(TargetLanguage.Cobol)]
     [DataRow(TargetLanguage.ObjectiveC)]
     [DataRow(TargetLanguage.Swift)]
+    [DataRow(TargetLanguage.Python)]
     public void Empty_programs_are_complete_and_end_with_one_newline(TargetLanguage language)
     {
         GeneratedProgram program = Generate(string.Empty, language);
@@ -635,6 +636,7 @@ PRINT Progress: 100%
     [DataRow(TargetLanguage.Cobol)]
     [DataRow(TargetLanguage.ObjectiveC)]
     [DataRow(TargetLanguage.Swift)]
+    [DataRow(TargetLanguage.Python)]
     public void Generated_output_is_deterministic(TargetLanguage language)
     {
         GeneratedProgram first = Generate(SampleSource, language);
@@ -657,6 +659,7 @@ PRINT Progress: 100%
         StringAssert.Contains(Generate(source, TargetLanguage.Cobol).PrimaryFile.Content, "\"C:\\Temp\\SMILE\"");
         StringAssert.Contains(Generate(source, TargetLanguage.ObjectiveC).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\\n\"");
         StringAssert.Contains(Generate(source, TargetLanguage.Swift).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\"");
+        StringAssert.Contains(Generate(source, TargetLanguage.Python).PrimaryFile.Content, "\"C:\\\\Temp\\\\SMILE\"");
         StringAssert.Contains(Generate(source, TargetLanguage.MasmX64).PrimaryFile.Content, "\"C:\\Temp\\SMILE\"");
     }
 
@@ -688,6 +691,9 @@ PRINT "A\\B\0C\bD\fE\tF"
         StringAssert.Contains(
             Generate(source, TargetLanguage.Swift).PrimaryFile.Content,
             "\"A\\\\B\\0C\\u{8}D\\u{c}E\\tF\"");
+        StringAssert.Contains(
+            Generate(source, TargetLanguage.Python).PrimaryFile.Content,
+            "\"A\\\\B\\x00C\\x08D\\x0cE\\tF\"");
         StringAssert.Contains(
             Generate(source, TargetLanguage.MasmX64).PrimaryFile.Content,
             "\"A\\B\", 0, \"C\", 8, \"D\", 12, \"E\", 9, \"F\"");

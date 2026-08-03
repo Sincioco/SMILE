@@ -135,7 +135,7 @@ public sealed class TargetPaneViewModel : ViewModelBase
     public string BuildButtonText =>
         Language switch
         {
-            TargetLanguage.JavaScript => "Run",
+            TargetLanguage.JavaScript or TargetLanguage.Python => "Run",
             _ => "Build & Run"
         };
 

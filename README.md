@@ -2,11 +2,21 @@
 
 SMILE stands for Simple Modern Interactive Learning Environment. It is an educational, BASIC-inspired, multi-target transpiler designed to bring a smile to new developers by showing that programming languages share the same fundamental ideas even when their syntax, compiler, runtime, and platform conventions differ.
 
-Write a simple SMILE program once, then view equivalent programs in C#, C, COBOL, Windows x64 MASM Assembly, JavaScript, Java, Objective-C, and Swift.
+Write a simple SMILE program once, then view equivalent programs in C#, C, COBOL, Windows x64 MASM Assembly, JavaScript, Java, Objective-C, Swift, and Python.
 
 ## Mission
 
-SMILE v0.4.1, "Typed Expression Conformance Hardening," implements and hardens the official beginner-friendly `LET`, `PRINT`, string literal, and typed expression syntax:
+A programming language inspired by BASIC that makes it easy for newcomers to learn and understand how programming languages work across the board. Updated for the modern era, SMILE takes the classic BASIC programming language and takes it to the next level by offering to teach not just concepts and ideas of what a programming language can do but show them how various programming languages look like by transpiling (translating) and compiling their SMILE code to many other programming languages. So students can learn many programming languages simultaneously and arrive at one obvious conclusion: all programming languages share the same fundamentals. What's important is learning to think logically and understand how to solve problems with code, not learning the syntax of a particular programming language. SMILE is designed to be a fun and educational programming language that teaches students how to think like a programmer and understand the fundamentals of programming languages.
+
+## Video Introduction
+
+[![Watch the SMILE introduction on YouTube](https://img.youtube.com/vi/fgyIMCdHcug/hqdefault.jpg)](https://www.youtube.com/watch?v=fgyIMCdHcug)
+
+[Watch the SMILE introduction on YouTube](https://www.youtube.com/watch?v=fgyIMCdHcug).
+
+## Current Release
+
+SMILE v0.4.2, "Python Target," keeps the hardened official beginner-friendly `LET`, `PRINT`, string literal, and typed expression syntax while adding Python as the ninth first-class destination:
 
 ```text
 SMILE source
@@ -14,8 +24,10 @@ SMILE source
   -> parse once into syntax nodes
   -> bind variables and typed expressions once
   -> evaluate compile-time constants once
+  -> simplify pure bound expressions once
   -> map SMILE symbols to safe target identifiers once per target
-  -> generate eight target programs from the bound program
+  -> choose one idiomatic target Integer profile for the complete bound program
+  -> generate nine target programs from the bound program
   -> compare generated runtime behavior to the SMILE reference evaluator in tests
   -> show three debounced live target previews with line numbers and syntax highlighting
   -> build and run locally when the matching toolchain is installed
@@ -93,7 +105,7 @@ Implemented rules:
 - Boolean logic supports `NOT`, `AND`, and `OR`.
 - `AND` and `OR` evaluate left to right and short-circuit at runtime: `FALSE AND ...` and `TRUE OR ...` do not evaluate their right operands. Both operands are still parsed, bound, and type-checked.
 - Parentheses control expression grouping.
-- SMILE does not perform implicit conversions in v0.4.1. For example, `"Age " + 49` is a type error.
+- SMILE does not perform implicit conversions in v0.4.2. For example, `"Age " + 49` is a type error.
 - `PRINT` alone, or followed only by spaces/tabs, prints one blank line.
 - `PRINT "Hello"` prints an ordinary quoted string.
 - Ordinary quoted strings do not interpolate, so `PRINT "Hello {Name}!"` prints `{Name}` literally.
@@ -113,7 +125,7 @@ Implemented rules:
 - Java and Swift map a single `_` SMILE identifier because those languages cannot use `_` as an ordinary readable local variable.
 - C and Objective-C map implementation-reserved prefixes such as `__internal` and `_Upper`.
 
-Not implemented in v0.4.1: comments, `INPUT`, conditions, loops, functions, arrays, classes, floating-point numbers, reassignment, and user-defined types.
+Not implemented in v0.4.2: comments, `INPUT`, conditions, loops, functions, arrays, classes, floating-point numbers, reassignment, and user-defined types.
 
 ## Generated Examples
 
@@ -128,11 +140,11 @@ internal static class Program
     private static void Main()
     {
         string Name = "Sin";
-        long Age = 49L;
-        bool Adult = Age >= 18L;
+        int Age = 49;
+        bool Adult = Age >= 18;
         string Message = $"Hello {Name}! Age={Age.ToString(CultureInfo.InvariantCulture)}, Adult={(Adult ? "TRUE" : "FALSE")}";
         Console.WriteLine(Message);
-        Console.WriteLine($"2 + 3 = {(2L + 3L).ToString(CultureInfo.InvariantCulture)}");
+        Console.WriteLine($"2 + 3 = {(2 + 3).ToString(CultureInfo.InvariantCulture)}");
     }
 }
 ```
@@ -146,12 +158,12 @@ C:
 int main(void)
 {
     const char *Name = "Sin";
-    long long Age = 49LL;
-    bool Adult = Age >= 18LL;
+    int Age = 49;
+    bool Adult = Age >= 18;
     const char *Message = "Hello Sin! Age=49, Adult=TRUE";
 
     printf("%s\n", Message);
-    printf("2 + 3 = %lld\n", 2LL + 3LL);
+    printf("2 + 3 = %d\n", 2 + 3);
 
     return 0;
 }
@@ -161,11 +173,11 @@ JavaScript:
 
 ```javascript
 let Name = "Sin";
-let Age = 49n;
-let Adult = Age >= 18n;
+let Age = 49;
+let Adult = Age >= 18;
 let Message = `Hello ${Name}! Age=${(Age).toString()}, Adult=${(Adult ? "TRUE" : "FALSE")}`;
 console.log(Message);
-console.log(`2 + 3 = ${(2n + 3n).toString()}`);
+console.log(`2 + 3 = ${(2 + 3).toString()}`);
 ```
 
 Java:
@@ -176,11 +188,11 @@ public final class Program
     public static void main(String[] args)
     {
         String Name = "Sin";
-        long Age = 49L;
-        boolean Adult = Age >= 18L;
-        String Message = "Hello " + Name + "! Age=" + Long.toString(Age) + ", Adult=" + (Adult ? "TRUE" : "FALSE");
+        int Age = 49;
+        boolean Adult = Age >= 18;
+        String Message = "Hello " + Name + "! Age=" + Integer.toString(Age) + ", Adult=" + (Adult ? "TRUE" : "FALSE");
         System.out.println(Message);
-        System.out.println("2 + 3 = " + Long.toString(2L + 3L));
+        System.out.println("2 + 3 = " + Integer.toString(2 + 3));
     }
 }
 ```
@@ -216,12 +228,12 @@ Objective-C:
 int main(void)
 {
     const char *Name = "Sin";
-    long long Age = 49LL;
-    bool Adult = Age >= 18LL;
+    int Age = 49;
+    bool Adult = Age >= 18;
     const char *Message = "Hello Sin! Age=49, Adult=TRUE";
 
     printf("%s\n", Message);
-    printf("2 + 3 = %lld\n", 2LL + 3LL);
+    printf("2 + 3 = %d\n", 2 + 3);
 
     return 0;
 }
@@ -231,14 +243,37 @@ Swift:
 
 ```swift
 let Name: String = "Sin"
-let Age: Int64 = 49
+let Age: Int = 49
 let Adult: Bool = Age >= 18
 let Message: String = "Hello \(Name)! Age=\(String(Age)), Adult=\((Adult ? "TRUE" : "FALSE"))"
 print(Message)
 print("2 + 3 = \(String(2 + 3))")
 ```
 
-Generated target code is expected to be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write. C#, JavaScript, Java, and Swift preserve the closest natural expression syntax. C and Objective-C also preserve native integer and boolean declaration expressions, use ordinal `strcmp` equality for strings, and emit one safe typed `printf` call per SMILE `PRINT` with compiler-owned `%lld`, `%s`, and canonical boolean arguments. COBOL and MASM lower current compile-time values where that keeps those targets small and reliable; COBOL uses free-format `DISPLAY`, while MASM uses UTF-8 byte labels, pointer-plus-length variables, and `WriteFile`. The generated assembly and COBOL include short comments to support learning. See [SMILE Target Code Generation Standard v1.0](docs/SMILE%20Target%20Code%20Generation%20Standard%20v1.0.md).
+Python:
+
+```python
+def _smile_text(value: object) -> str:
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+
+    return str(value)
+
+
+def main() -> None:
+    Name = "Sin"
+    Age = 49
+    Adult = Age >= 18
+    Message = f"Hello {Name}! Age={_smile_text(Age)}, Adult={_smile_text(Adult)}"
+    print(Message)
+    print(f"2 + 3 = {_smile_text(2 + 3)}")
+
+
+if __name__ == "__main__":
+    main()
+```
+
+Generated target code is expected to be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write. SMILE `Integer` always means signed 64-bit semantically, but each complete bound program uses the smallest natural target representation that preserves every Integer literal, value, operand, and intermediate: C and Objective-C use `int` or `int64_t`; C# and Java use `int` or `long`; JavaScript uses `Number` or consistent `BigInt`; Swift uses `Int` or `Int64`; and Python uses normal `int`. Ordinary profiles do not carry unnecessary `L`, `LL`, or `n` suffixes. A shared pure-expression pass simplifies Boolean identities such as `NOT FALSE` and `Adult AND TRUE` before every target generator runs. Python uses f-strings for interpolation, a generated `_smile_text` helper only when canonical Integer or Boolean display is needed, and `_smile_div` only when signed Integer division must truncate toward zero. C and Objective-C preserve native integer and boolean declaration expressions, use ordinal `strcmp` equality for strings, lower complex concatenated/interpolated `strcmp` operands to evaluated String literals, and emit one safe typed `printf` call per SMILE `PRINT` with compiler-owned `%d` or `%lld`, `%s`, and canonical boolean arguments. COBOL and MASM lower current compile-time values where that keeps those targets small and reliable; COBOL uses free-format `DISPLAY`, while MASM uses UTF-8 byte labels, pointer-plus-length variables, and `WriteFile`. The generated assembly and COBOL include short comments to support learning. See [SMILE Target Code Generation Standard v1.0](docs/SMILE%20Target%20Code%20Generation%20Standard%20v1.0.md).
 
 ## Supported Targets
 
@@ -252,6 +287,7 @@ Generated target code is expected to be semantically correct, idiomatic for the 
 | `cobol` | COBOL | `Program.cob` | GnuCOBOL through MSYS2 MinGW64 |
 | `objective-c` | Objective-C | `Program.m` | MSYS2 MinGW64 Clang |
 | `swift` | Swift | `Program.swift` | Swift.Toolchain for Windows plus Visual Studio C++ linker tools |
+| `python` | Python | `Program.py` | Python 3.10 or newer |
 
 Transpilation works even when optional target toolchains are missing. Build & Run is enabled only when the matching local tools are detected. COBOL local Build & Run uses GnuCOBOL free-format source. Objective-C local Build & Run currently uses SMILE's Foundation-free console profile so generated `.m` files compile reliably with MSYS2 Clang on Windows.
 
@@ -265,8 +301,11 @@ Transpilation works even when optional target toolchains are missing. Build & Ru
 - Optional: MSYS2 with `mingw-w64-x86_64-gnucobol` for COBOL
 - Optional: MSYS2 with `mingw-w64-x86_64-clang` for Objective-C
 - Optional: Swift.Toolchain for Windows for Swift
+- Optional: Python 3.10 or newer for Python
 
 Visual Studio setup must include the x64 C++ tools and `VC\Auxiliary\Build\vcvars64.bat`. SMILE discovers Visual Studio with `vswhere.exe`; it does not hardcode an edition or install folder. Swift Build & Run also uses those Visual Studio linker tools plus Swift's Windows SDK.
+
+Microsoft OpenJDK 25 LTS is a free Java toolchain and can be installed with `winget install --id Microsoft.OpenJDK.25 --exact`. Restart the terminal or SMILE after installing so the updated user `PATH` is visible.
 
 ## Build, Test, And Run
 
@@ -297,21 +336,24 @@ cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\LetIdent
 cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\FriendlyPrint.smile --target cobol --run
 cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\FriendlyPrint.smile --target objective-c --run
 cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\FriendlyPrint.smile --target swift --run
+cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\TypedExpressionCore.smile --target python --run
 ```
 
-Valid targets are `csharp`, `c`, `masm-x64`, `javascript`, `java`, `cobol`, `objective-c`, `swift`, and `all`.
+Valid targets are `csharp`, `c`, `masm-x64`, `javascript`, `java`, `cobol`, `objective-c`, `swift`, `python`, and `all`.
 
 ## Desktop Application
 
-The desktop app title is `SMILE - Simple Modern Interactive Learning Environment`. It opens maximized with a typed LET/PRINT learning sample that covers string, integer, boolean, interpolation, concatenation, raw templates, and expression placeholders. The top-left pane is editable SMILE source. The other three panes are read-only generated targets. They default to C#, Assembly - Windows x64 MASM, and C. Each generated pane can switch between C#, C, MASM x64, JavaScript, Java, COBOL, Objective-C, and Swift.
+The desktop app title is `SMILE - Simple Modern Interactive Learning Environment`. It opens maximized with a typed LET/PRINT learning sample that covers string, integer, boolean, interpolation, concatenation, raw templates, and expression placeholders. The top-left pane is editable SMILE source. The other three panes are read-only generated targets. They default to C#, Assembly - Windows x64 MASM, and C. Each generated pane can switch between C#, C, MASM x64, JavaScript, Java, COBOL, Objective-C, Swift, and Python.
 
 ![SMILE desktop app in maximized state](Requirements/Progress/2026-08-02-day-1-2-smile-desktop.png)
 
 The four code panes use AvalonEdit. The SMILE source pane and all three generated target panes show line numbers and lexical syntax highlighting. Target panes switch highlighting when their selected language changes. Objective-C uses AvalonEdit's mature C/C++ highlighting because SMILE's current Objective-C output is a Foundation-free C-compatible console profile. Language switching reuses generated code already cached for the current source revision and only schedules live transpilation for visible targets that are actually missing. The output area remains a plain build/program log without line numbers.
 
-Typing in the SMILE source editor schedules a short debounced live transpilation for the visible target languages only. The latest source revision always wins, so stale generated code is never used for Build & Run. The Transpile All command is asynchronous and regenerates all eight targets.
+Hold Ctrl and rotate the mouse wheel over any code pane or the diagnostics/output pane to increase or decrease only that pane's font size in one-point steps from 8 through 48 points. Normal mouse-wheel scrolling is unchanged. Each pane keeps its own in-memory zoom level so presenters can enlarge the generated code or program output without changing the other panes.
 
-Each generated pane supports Copy, Save Source, and Build & Run. JavaScript runs directly with Node.js, so its button says Run. COBOL, Objective-C, and Swift use Build & Run when their local toolchains are detected; otherwise the IDE reports the normal missing-toolchain message without closing SMILE.
+Typing in the SMILE source editor schedules a short debounced live transpilation for the visible target languages only. The latest source revision always wins, so stale generated code is never used for Build & Run. The Transpile All command is asynchronous and regenerates all nine targets.
+
+Each generated pane supports Copy, Save Source, and Build & Run. JavaScript and Python run directly with their interpreters, so their buttons say Run. COBOL, Objective-C, Swift, and Python are enabled when their local toolchains are detected; otherwise the IDE reports the normal missing-toolchain message without closing SMILE.
 
 Diagnostics, build output, program output, exit code, total duration, timeout, cancellation, generated workspace paths, pause-launcher paths, and missing-tool messages appear in the output area. The output area scrolls to the newest text as build/run messages are appended. Successful automatic live transpiles do not erase build logs. Very large process streams and desktop log history are bounded so runaway output cannot consume unbounded memory.
 
@@ -319,7 +361,7 @@ When Open Generated Folder is enabled, SMILE asks Windows Explorer to open the g
 
 When Press Any Key Launcher is enabled, SMILE writes `Run Program - Press Any Key.cmd` into each successful build/run workspace. Double-clicking that launcher runs the generated program and then shows `Press any key to exit...`, which keeps the console window open long enough to inspect the output.
 
-Current desktop build version: `0.4.1 Typed Expression Conformance Hardening`.
+Current desktop build version: `0.4.2 Python Target`.
 
 ## Diagnostics
 
@@ -382,42 +424,51 @@ tests/
 ## Architecture
 
 ```text
-Source -> Lexer -> Tokens -> Parser -> Syntax Tree -> Binder -> Bound Program -> Target Generator -> Generated Files
-                                                                          |
-                                                                   Optional Toolchain
-                                                                          |
-                                                                   Build and Run Result
+Source -> Lexer -> Tokens -> Parser -> Syntax Tree -> Binder -> Bound Program
+                                                               -> Pure Simplifier
+                                                               -> Target Integer Profile
+                                                               -> Target Generator -> Generated Files
+                                                                                      |
+                                                                               Optional Toolchain
+                                                                                      |
+                                                                               Build and Run Result
 ```
 
-`SMILE.Engine` owns lexing, parsing, diagnostics, syntax nodes, binding, variable symbols, typed bound expressions, compile-time constant evaluation, the SMILE reference evaluator, target identifier mapping, and target generators. The target identifier map is symbol-based and uses exact reserved-word checks plus target-specific pattern rules, such as C implementation-reserved prefixes, COBOL reserved words and data-name spelling, and Java/Swift `_`. `SMILE.Toolchains` owns detection, temporary workspaces, async process execution, cancellation, timeouts, bounded process output, build, and run. `SMILE.Cli` and `SMILE.Desktop` reuse both projects. `SMILE.Desktop` uses AvalonEdit for the four code panes and keeps build/run work isolated from the WPF UI thread.
+`SMILE.Engine` owns lexing, parsing, diagnostics, syntax nodes, binding, variable symbols, typed bound expressions, compile-time constant evaluation, pure bound-expression simplification, per-program target Integer profiling, the SMILE reference evaluator, target identifier mapping, and target generators. The target identifier map is symbol-based and uses exact reserved-word checks plus target-specific pattern rules, such as C implementation-reserved prefixes, COBOL reserved words and data-name spelling, Java/Swift `_`, and Python keywords, soft keywords, built-ins, and generated helper names. `SMILE.Toolchains` owns detection, temporary workspaces, async process execution, cancellation, timeouts, bounded process output, build, and run, including safe discovery of Python 3.10+ without invoking Windows Store aliases. `SMILE.Cli` and `SMILE.Desktop` reuse both projects. `SMILE.Desktop` uses AvalonEdit for the four code panes and keeps build/run work isolated from the WPF UI thread.
 
 SMILE-owned build/output artifacts older than 1 day may be cleaned from known generated locations such as `bin`, `obj`, `out`, and `%TEMP%\SMILE\Runs`.
 
 ## Current Limitations
 
 - Only `String`, `Integer`, and `Boolean` core types are implemented.
-- Integer is signed 64-bit only; floating-point and decimal types are not implemented.
+- SMILE Integer semantics are signed 64-bit. Generated storage is intentionally target-idiomatic and may be narrower when the complete bound program proves that safe; floating-point and decimal types are not implemented.
 - Syntax highlighting is lexical only; semantic highlighting, autocomplete, and diagnostic squiggles are not implemented.
 - C and MASM target output is focused on Windows local toolchains.
 - COBOL local output uses GnuCOBOL free-format source and fixed-length storage for current SMILE display values.
 - Objective-C local output currently uses a Foundation-free console profile on Windows; Foundation/NSString output remains future hardening.
 - Swift local output requires Swift.Toolchain for Windows and Visual Studio C++ linker tools.
+- Python local output requires Python 3.10 or newer; generated Python has no third-party package dependencies.
 - Unicode output beyond UTF-8 source text remains an area for later hardening.
 - Full UI automation coverage is not included; manual WPF smoke testing is still required for release validation.
 
+## Deferred Destination Languages
+
+Rust, Zig, and Go are intentionally not part of the active SMILE roadmap at this stage. After Python, target-language expansion is paused while SMILE focuses on runtime variables, assignment, input, conditions, loops, functions, and scopes. These targets may be reconsidered later when the runtime language model is mature.
+
 ## Roadmap
 
-Future ideas, not implemented in v0.4.1:
+Future ideas, not implemented in v0.4.2:
 
-1. `INPUT`
-2. `IF / THEN / ELSE`
-3. Loops
-4. Functions
-5. Floating-point and decimal numeric types
-6. Debugging and source mapping
-7. Semantic highlighting, autocomplete, and diagnostic squiggles
-8. Reusable web interface
-9. Evolution toward a full SMILE language
+1. Runtime variables and assignment
+2. `INPUT`
+3. `IF / THEN / ELSE`
+4. Loops
+5. Functions and scopes
+6. Floating-point and decimal numeric types
+7. Debugging and source mapping
+8. Semantic highlighting, autocomplete, and diagnostic squiggles
+9. Reusable web interface
+10. Evolution toward a full SMILE language
 
 ## License
 

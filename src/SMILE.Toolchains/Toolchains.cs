@@ -70,7 +70,8 @@ public sealed class ToolchainRegistry
             new NodeToolchain(runner),
             new JavaToolchain(runner),
             new ObjectiveCToolchain(runner),
-            new SwiftToolchain(runner, visualStudioLocator)
+            new SwiftToolchain(runner, visualStudioLocator),
+            new PythonToolchain(runner)
         });
     }
 
@@ -973,6 +974,196 @@ public sealed class NodeToolchain : ToolchainBase
             cancellationToken).ConfigureAwait(false);
 
         return FromProcessResults(status, string.Empty, run, workspace, "Running", pauseLauncherPath: pauseLauncherPath);
+    }
+}
+
+public sealed class PythonToolchain : ToolchainBase
+{
+    private sealed record PythonCommand(
+        string Executable,
+        IReadOnlyList<string> PrefixArguments,
+        string DisplayCommand);
+
+    private sealed record PythonDetection(
+        PythonCommand Command,
+        string VersionText);
+
+    public PythonToolchain(IProcessRunner runner)
+        : base(runner)
+    {
+    }
+
+    public override TargetLanguage Language => TargetLanguage.Python;
+
+    public override async Task<ToolchainStatus> DetectAsync(CancellationToken cancellationToken)
+    {
+        PythonDetection? detection = await DetectInstallationAsync(cancellationToken).ConfigureAwait(false);
+        return detection is null
+            ? Missing("Python 3.10 or newer was not found. Install Python 3 to run Python output.")
+            : Available(
+                detection.VersionText,
+                detection.Command.Executable,
+                $"{detection.VersionText} detected via {detection.Command.DisplayCommand}.");
+    }
+
+    public override async Task<BuildRunResult> BuildAndRunAsync(
+        GeneratedProgram generatedProgram,
+        CancellationToken cancellationToken,
+        BuildRunOptions? options = null)
+    {
+        PythonDetection? detection = await DetectInstallationAsync(cancellationToken).ConfigureAwait(false);
+        if (detection is null)
+        {
+            return MissingResult(Missing(
+                "Python 3.10 or newer was not found. Install Python 3 to run Python output."));
+        }
+
+        ToolchainStatus status = Available(
+            detection.VersionText,
+            detection.Command.Executable,
+            $"{detection.VersionText} detected via {detection.Command.DisplayCommand}.");
+        string workspace = await WriteGeneratedProgramAsync(generatedProgram, cancellationToken)
+            .ConfigureAwait(false);
+        string[] arguments = detection.Command.PrefixArguments
+            .Concat(new[] { "-B", "Program.py" })
+            .ToArray();
+        string launcherCommand = string.Join(
+            " ",
+            new[] { QuoteForCmd(detection.Command.Executable) }
+                .Concat(detection.Command.PrefixArguments)
+                .Concat(new[] { "-B", "Program.py" }));
+
+        string? pauseLauncherPath = await WritePauseLauncherAsync(
+            workspace,
+            new[] { launcherCommand },
+            options,
+            cancellationToken).ConfigureAwait(false);
+
+        ProcessResult run = await Runner.RunAsync(
+            new ProcessCommand(detection.Command.Executable, arguments, workspace),
+            ProgramTimeout,
+            cancellationToken).ConfigureAwait(false);
+
+        return FromProcessResults(
+            status,
+            string.Empty,
+            run,
+            workspace,
+            "Running",
+            pauseLauncherPath: pauseLauncherPath);
+    }
+
+    private async Task<PythonDetection?> DetectInstallationAsync(CancellationToken cancellationToken)
+    {
+        foreach (PythonCommand command in EnumerateCommandCandidates())
+        {
+            string[] arguments = command.PrefixArguments.Concat(new[] { "--version" }).ToArray();
+            ProcessResult result = await Runner.RunAsync(
+                new ProcessCommand(command.Executable, arguments, Environment.CurrentDirectory),
+                DetectionTimeout,
+                cancellationToken).ConfigureAwait(false);
+            string output = JoinNonEmpty(result.StandardOutput, result.StandardError);
+
+            if (!result.Success || !TryReadSupportedVersion(output, out string versionText))
+            {
+                continue;
+            }
+
+            return new PythonDetection(command, versionText);
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<PythonCommand> EnumerateCommandCandidates()
+    {
+        string? python = FindExecutableOnPath("python.exe", skipWindowsStoreAlias: true);
+        if (python is not null)
+        {
+            yield return new PythonCommand(python, Array.Empty<string>(), "python");
+        }
+
+        string? launcher = FindExecutableOnPath("py.exe", skipWindowsStoreAlias: false);
+        if (launcher is not null)
+        {
+            yield return new PythonCommand(launcher, new[] { "-3" }, "py -3");
+            yield return new PythonCommand(launcher, Array.Empty<string>(), "py");
+        }
+    }
+
+    private static string? FindExecutableOnPath(string fileName, bool skipWindowsStoreAlias)
+    {
+        string? path = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        foreach (string entry in path.Split(Path.PathSeparator))
+        {
+            string directory = entry.Trim().Trim('"');
+            if (string.IsNullOrWhiteSpace(directory))
+            {
+                continue;
+            }
+
+            string candidate;
+            try
+            {
+                candidate = Path.GetFullPath(Path.Combine(directory, fileName));
+            }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                continue;
+            }
+
+            if (!File.Exists(candidate))
+            {
+                continue;
+            }
+
+            if (skipWindowsStoreAlias &&
+                candidate.Contains(
+                    Path.DirectorySeparatorChar + "Microsoft" + Path.DirectorySeparatorChar + "WindowsApps" + Path.DirectorySeparatorChar,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            return candidate;
+        }
+
+        return null;
+    }
+
+    private static bool TryReadSupportedVersion(string output, out string versionText)
+    {
+        versionText = string.Empty;
+        const string prefix = "Python ";
+        int marker = output.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
+        if (marker < 0)
+        {
+            return false;
+        }
+
+        string token = output[(marker + prefix.Length)..]
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault() ?? string.Empty;
+        int suffix = token.IndexOfAny(new[] { '-', '+' });
+        if (suffix >= 0)
+        {
+            token = token[..suffix];
+        }
+
+        if (!Version.TryParse(token, out Version? version) ||
+            version.Major < 3 ||
+            (version.Major == 3 && version.Minor < 10))
+        {
+            return false;
+        }
+
+        versionText = prefix + version;
+        return true;
     }
 }
 

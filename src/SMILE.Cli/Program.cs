@@ -94,7 +94,10 @@ internal static class Program
 
     private static void PrintBuildRunResult(BuildRunResult result)
     {
-        Console.WriteLine($"=== {TargetLanguageInfo.GetDisplayName(result.Language)} Build & Run ===");
+        string action = result.Language is TargetLanguage.JavaScript or TargetLanguage.Python
+            ? "Run"
+            : "Build & Run";
+        Console.WriteLine($"=== {TargetLanguageInfo.GetDisplayName(result.Language)} {action} ===");
         Console.WriteLine(result.ToolchainStatus.Message);
 
         if (!string.IsNullOrWhiteSpace(result.BuildOutput))
@@ -132,7 +135,7 @@ internal static class Program
     private static void PrintUsage()
     {
         Console.Error.WriteLine("Usage:");
-        Console.Error.WriteLine("  dotnet run --project src\\SMILE.Cli -- <file.smile> --target csharp|c|masm-x64|javascript|java|objective-c|swift|all [--run]");
+        Console.Error.WriteLine("  dotnet run --project src\\SMILE.Cli -- <file.smile> --target csharp|c|masm-x64|javascript|java|cobol|objective-c|swift|python|all [--run]");
     }
 }
 

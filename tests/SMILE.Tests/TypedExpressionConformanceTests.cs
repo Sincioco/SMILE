@@ -121,27 +121,27 @@ PRINT {Message}
 
         string csharp = Generate(source, TargetLanguage.CSharp).PrimaryFile.Content;
         StringAssert.Contains(csharp, "using System.Globalization;");
-        StringAssert.Contains(csharp, "long Age = 49L;");
-        StringAssert.Contains(csharp, "bool Adult = Age >= 18L;");
+        StringAssert.Contains(csharp, "int Age = 49;");
+        StringAssert.Contains(csharp, "bool Adult = Age >= 18;");
         StringAssert.Contains(csharp, "string Message = $\"{Name}: {Age.ToString(CultureInfo.InvariantCulture)}, {(Adult ? \"TRUE\" : \"FALSE\")}\";");
         StringAssert.Contains(csharp, "Console.WriteLine(Age.ToString(CultureInfo.InvariantCulture));");
         StringAssert.Contains(csharp, "Console.WriteLine((Adult ? \"TRUE\" : \"FALSE\"));");
         StringAssert.Contains(csharp, "Console.WriteLine(Negative.ToString(CultureInfo.InvariantCulture));");
-        StringAssert.Contains(csharp, "Console.WriteLine((-12L).ToString(CultureInfo.InvariantCulture));");
+        StringAssert.Contains(csharp, "Console.WriteLine((-12).ToString(CultureInfo.InvariantCulture));");
 
         string javascript = Generate(source, TargetLanguage.JavaScript).PrimaryFile.Content;
-        StringAssert.Contains(javascript, "let Age = 49n;");
-        StringAssert.Contains(javascript, "let Count = 2n + 3n * 4n;");
+        StringAssert.Contains(javascript, "let Age = 49;");
+        StringAssert.Contains(javascript, "let Count = 2 + 3 * 4;");
         StringAssert.Contains(javascript, "console.log((Age).toString());");
         StringAssert.Contains(javascript, "console.log((Adult ? \"TRUE\" : \"FALSE\"));");
 
         string java = Generate(source, TargetLanguage.Java).PrimaryFile.Content;
-        StringAssert.Contains(java, "long Age = 49L;");
-        StringAssert.Contains(java, "boolean Adult = Age >= 18L;");
-        StringAssert.Contains(java, "System.out.println(Long.toString(Age));");
+        StringAssert.Contains(java, "int Age = 49;");
+        StringAssert.Contains(java, "boolean Adult = Age >= 18;");
+        StringAssert.Contains(java, "System.out.println(Integer.toString(Age));");
 
         string swift = Generate(source, TargetLanguage.Swift).PrimaryFile.Content;
-        StringAssert.Contains(swift, "let Age: Int64 = 49");
+        StringAssert.Contains(swift, "let Age: Int = 49");
         StringAssert.Contains(swift, "let Adult: Bool = Age >= 18");
         StringAssert.Contains(swift, "print(String(Age))");
         StringAssert.Contains(swift, "print((Adult ? \"TRUE\" : \"FALSE\"))");
@@ -162,17 +162,17 @@ PRINT {Message}
 
         string c = Generate(source, TargetLanguage.C).PrimaryFile.Content;
         StringAssert.Contains(c, "#include <stdbool.h>");
-        StringAssert.Contains(c, "long long Age = 49LL;");
-        StringAssert.Contains(c, "bool Adult = Age >= 18LL;");
+        StringAssert.Contains(c, "int Age = 49;");
+        StringAssert.Contains(c, "bool Adult = Age >= 18;");
         StringAssert.Contains(c, "const char *Message = \"Age=49, Adult=TRUE\";");
-        StringAssert.Contains(c, "printf(\"%lld\\n\", Age);");
+        StringAssert.Contains(c, "printf(\"%d\\n\", Age);");
         StringAssert.Contains(c, "printf(\"%s\\n\", Adult ? \"TRUE\" : \"FALSE\");");
         StringAssert.Contains(c, "printf(\"%s\\n\", Message);");
 
         string objectiveC = Generate(source, TargetLanguage.ObjectiveC).PrimaryFile.Content;
         StringAssert.Contains(objectiveC, "#include <stdbool.h>");
-        StringAssert.Contains(objectiveC, "long long Age = 49LL;");
-        StringAssert.Contains(objectiveC, "bool Adult = Age >= 18LL;");
+        StringAssert.Contains(objectiveC, "int Age = 49;");
+        StringAssert.Contains(objectiveC, "bool Adult = Age >= 18;");
         StringAssert.Contains(objectiveC, "printf(\"%s\\n\", Message);");
 
         string cobol = Generate(source, TargetLanguage.Cobol).PrimaryFile.Content;

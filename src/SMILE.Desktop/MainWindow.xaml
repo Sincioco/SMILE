@@ -195,6 +195,7 @@
                          Text="{Binding OutputText}"
                          IsReadOnly="True"
                          TextWrapping="NoWrap"
+                         PreviewMouseWheel="OutputTextBox_PreviewMouseWheel"
                          TextChanged="OutputTextBox_TextChanged" />
             </Grid>
         </Border>

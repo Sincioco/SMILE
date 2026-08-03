@@ -35,6 +35,7 @@ PRINT A; B; C
     [DataRow(TargetLanguage.Cobol)]
     [DataRow(TargetLanguage.ObjectiveC)]
     [DataRow(TargetLanguage.Swift)]
+    [DataRow(TargetLanguage.Python)]
     public async Task Installed_target_builds_or_runs_and_matches_expected_output(TargetLanguage language)
     {
         IToolchain toolchain = _toolchains.Get(language);
@@ -61,6 +62,7 @@ PRINT A; B; C
     [DataRow(TargetLanguage.Cobol)]
     [DataRow(TargetLanguage.ObjectiveC)]
     [DataRow(TargetLanguage.Swift)]
+    [DataRow(TargetLanguage.Python)]
     public async Task Installed_target_writes_press_any_key_launcher_when_requested(TargetLanguage language)
     {
         IToolchain toolchain = _toolchains.Get(language);
@@ -172,7 +174,8 @@ PRINT "Literal braces: {Name}"
             TargetLanguage.Java,
             TargetLanguage.Cobol,
             TargetLanguage.ObjectiveC,
-            TargetLanguage.Swift
+            TargetLanguage.Swift,
+            TargetLanguage.Python
         };
 
         int executed = 0;
@@ -267,7 +270,8 @@ PRINT {Message}
             TargetLanguage.Java,
             TargetLanguage.Cobol,
             TargetLanguage.ObjectiveC,
-            TargetLanguage.Swift
+            TargetLanguage.Swift,
+            TargetLanguage.Python
         };
 
         int executed = 0;
@@ -315,6 +319,7 @@ PRINT {Message}
             TargetLanguage.Cobol => "\"Program.exe\"",
             TargetLanguage.ObjectiveC => "\"Program.exe\"",
             TargetLanguage.Swift => "\"Program.exe\"",
+            TargetLanguage.Python => "-B Program.py",
             _ => throw new ArgumentOutOfRangeException(nameof(language), language, null)
         };
 

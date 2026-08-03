@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using ICSharpCode.AvalonEdit;
 using SMILE.Desktop.Highlighting;
@@ -8,6 +9,11 @@ namespace SMILE.Desktop.Controls;
 
 public sealed class SmileCodeEditor : TextEditor
 {
+    private const double DefaultEditorFontSize = 14.0;
+    private const double MinimumEditorFontSize = 8.0;
+    private const double MaximumEditorFontSize = 48.0;
+    private const double EditorZoomStep = 1.0;
+
     public static readonly DependencyProperty DocumentTextProperty =
         DependencyProperty.Register(
             nameof(DocumentText),
@@ -31,7 +37,7 @@ public sealed class SmileCodeEditor : TextEditor
     public SmileCodeEditor()
     {
         FontFamily = new FontFamily("Consolas");
-        FontSize = 14;
+        FontSize = DefaultEditorFontSize;
         ShowLineNumbers = true;
         WordWrap = false;
         HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
@@ -40,6 +46,32 @@ public sealed class SmileCodeEditor : TextEditor
         Options.IndentationSize = 4;
 
         TextChanged += OnEditorTextChanged;
+    }
+
+    protected override void OnPreviewMouseWheel(MouseWheelEventArgs e)
+    {
+        bool isControlPressed =
+            (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
+
+        if (!isControlPressed || e.Delta == 0)
+        {
+            base.OnPreviewMouseWheel(e);
+            return;
+        }
+
+        double zoomAdjustment = e.Delta > 0
+            ? EditorZoomStep
+            : -EditorZoomStep;
+        double newFontSize = Math.Clamp(
+            FontSize + zoomAdjustment,
+            MinimumEditorFontSize,
+            MaximumEditorFontSize);
+
+        SetCurrentValue(FontSizeProperty, newFontSize);
+
+        // Ctrl + mouse wheel is an editor zoom gesture, so AvalonEdit's
+        // internal scroll viewer must not also move at either zoom limit.
+        e.Handled = true;
     }
 
     public string DocumentText

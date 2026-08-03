@@ -1,5 +1,6 @@
 using System.Reflection;
 using SMILE.Engine;
+using SMILE.Toolchains;
 
 namespace SMILE.Tests;
 
@@ -8,6 +9,7 @@ public sealed class TypedExpressionHardeningTests
 {
     private readonly SmileTranspiler _transpiler = new();
     private readonly SmileEvaluator _evaluator = new();
+    private readonly ToolchainRegistry _toolchains = ToolchainRegistry.CreateDefault();
 
     [TestMethod]
     [DataRow("LET Result = FALSE AND (1 / 0 = 0)\nPRINT {Result}", "FALSE\n")]
@@ -23,6 +25,125 @@ public sealed class TypedExpressionHardeningTests
         Assert.IsTrue(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         Assert.AreEqual(expectedOutput, result.Output);
         Assert.IsFalse(result.Diagnostics.Any(diagnostic => diagnostic.Code is "SMILE1206" or "SMILE1207"));
+    }
+
+    [TestMethod]
+    public void Strict_destination_compilers_lower_short_circuited_initializers_to_constants()
+    {
+        const string source = """
+LET A = FALSE AND (1 / 0 = 0)
+LET B = TRUE OR (1 / 0 = 0)
+
+PRINT {A}
+PRINT {B}
+""";
+
+        string csharp = Generate(source, TargetLanguage.CSharp).PrimaryFile.Content;
+        StringAssert.Contains(csharp, "bool A = false;");
+        StringAssert.Contains(csharp, "bool B = true;");
+
+        string java = Generate(source, TargetLanguage.Java).PrimaryFile.Content;
+        StringAssert.Contains(java, "boolean A = false;");
+        StringAssert.Contains(java, "boolean B = true;");
+
+        string swift = Generate(source, TargetLanguage.Swift).PrimaryFile.Content;
+        StringAssert.Contains(swift, "let A: Bool = false");
+        StringAssert.Contains(swift, "let B: Bool = true");
+    }
+
+    [TestMethod]
+    [DataRow(TargetLanguage.CSharp)]
+    [DataRow(TargetLanguage.C)]
+    [DataRow(TargetLanguage.MasmX64)]
+    [DataRow(TargetLanguage.JavaScript)]
+    [DataRow(TargetLanguage.Java)]
+    [DataRow(TargetLanguage.Cobol)]
+    [DataRow(TargetLanguage.ObjectiveC)]
+    [DataRow(TargetLanguage.Swift)]
+    [DataRow(TargetLanguage.Python)]
+    public async Task Installed_target_runs_short_circuit_division_program(TargetLanguage language)
+    {
+        const string source = """
+LET A = FALSE AND (1 / 0 = 0)
+LET B = TRUE OR (1 / 0 = 0)
+
+PRINT {A}
+PRINT {B}
+""";
+        IToolchain toolchain = _toolchains.Get(language);
+        ToolchainStatus status = await toolchain.DetectAsync(CancellationToken.None);
+        if (!status.IsAvailable)
+        {
+            Assert.Inconclusive(status.Message);
+        }
+
+        BuildRunResult result = await toolchain.BuildAndRunAsync(
+            Generate(source, language),
+            CancellationToken.None);
+
+        Assert.IsTrue(result.Success, result.BuildOutput + Environment.NewLine + result.StandardError);
+        Assert.AreEqual(0, result.ExitCode);
+        Assert.AreEqual("FALSE\nTRUE\n", NormalizeLineEndings(result.StandardOutput));
+    }
+
+    [TestMethod]
+    [DataRow(TargetLanguage.C)]
+    [DataRow(TargetLanguage.ObjectiveC)]
+    public void C_family_string_equality_lowers_complex_operands_only(TargetLanguage language)
+    {
+        const string source = """
+LET Suffix = "B"
+LET A = ("A" + "B") = "AB"
+LET B = $"A{Suffix}" = "AB"
+LET C = ("A" + Suffix) <> "AC"
+LET D = Suffix = "B"
+
+PRINT {A}
+PRINT {B}
+PRINT {C}
+PRINT {D}
+""";
+
+        string generated = Generate(source, language).PrimaryFile.Content;
+        StringAssert.Contains(generated, "bool A = strcmp(\"AB\", \"AB\") == 0;");
+        StringAssert.Contains(generated, "bool B = strcmp(\"AB\", \"AB\") == 0;");
+        StringAssert.Contains(generated, "bool C = strcmp(\"AB\", \"AC\") != 0;");
+        StringAssert.Contains(generated, "bool D = strcmp(Suffix, \"B\") == 0;");
+    }
+
+    [TestMethod]
+    [DataRow(TargetLanguage.C)]
+    [DataRow(TargetLanguage.ObjectiveC)]
+    public async Task Installed_C_family_target_runs_complex_string_equality(TargetLanguage language)
+    {
+        const string source = """
+LET Suffix = "B"
+LET A = ("A" + "B") = "AB"
+LET B = $"A{Suffix}" = "AB"
+LET C = ("A" + Suffix) <> "AC"
+
+PRINT {A}
+PRINT {B}
+PRINT {C}
+""";
+        IToolchain toolchain = _toolchains.Get(language);
+        ToolchainStatus status = await toolchain.DetectAsync(CancellationToken.None);
+        if (!status.IsAvailable)
+        {
+            Assert.Inconclusive(status.Message);
+        }
+
+        EvaluationResult evaluation = _evaluator.Evaluate(source);
+        Assert.IsTrue(evaluation.Success, string.Join(Environment.NewLine, evaluation.Diagnostics));
+        BuildRunResult result = await toolchain.BuildAndRunAsync(
+            Generate(source, language),
+            CancellationToken.None);
+
+        Assert.IsTrue(result.Success, result.BuildOutput + Environment.NewLine + result.StandardError);
+        Assert.AreEqual(0, result.ExitCode);
+        Assert.AreEqual(
+            NormalizeLineEndings(evaluation.Output),
+            NormalizeLineEndings(result.StandardOutput));
     }
 
     [TestMethod]
@@ -194,13 +315,13 @@ PRINT Progress: 100%, Same={SameName}
         string generated = Generate(source, language).PrimaryFile.Content;
 
         StringAssert.Contains(generated, "#include <string.h>");
-        StringAssert.Contains(generated, "long long Age = 49LL;");
-        StringAssert.Contains(generated, "bool Adult = Age >= 18LL;");
-        StringAssert.Contains(generated, "bool WorkingAge = Adult && !false;");
+        StringAssert.Contains(generated, "int Age = 49;");
+        StringAssert.Contains(generated, "bool Adult = Age >= 18;");
+        StringAssert.Contains(generated, "bool WorkingAge = Adult;");
         StringAssert.Contains(generated, "bool SameName = strcmp(Name, Copy) == 0;");
-        StringAssert.Contains(generated, "printf(\"%lld\\n\", Age);");
+        StringAssert.Contains(generated, "printf(\"%d\\n\", Age);");
         StringAssert.Contains(generated, "printf(\"%s\\n\", Adult ? \"TRUE\" : \"FALSE\");");
-        StringAssert.Contains(generated, "printf(\"Result: %lld\\n\", Age + 1LL);");
+        StringAssert.Contains(generated, "printf(\"Result: %d\\n\", Age + 1);");
         StringAssert.Contains(generated, "printf(\"Progress: 100%%, Same=%s\\n\", SameName ? \"TRUE\" : \"FALSE\");");
     }
 
@@ -296,22 +417,25 @@ LET H = 1 < (2 + 1)
             TargetLanguage.JavaScript,
             TargetLanguage.Java,
             TargetLanguage.ObjectiveC,
-            TargetLanguage.Swift
+            TargetLanguage.Swift,
+            TargetLanguage.Python
         })
         {
             string generated = Generate(validSource, language).PrimaryFile.Content;
             (string subtraction, string division, string equality) = language switch
             {
                 TargetLanguage.CSharp =>
-                    ("long C = 10L - (3L - 1L);", "long D = 100L / (10L / 2L);", "bool G = true == (false == false);"),
+                    ("int C = 10 - (3 - 1);", "int D = 100 / (10 / 2);", "bool G = true == (false == false);"),
                 TargetLanguage.JavaScript =>
-                    ("let C = 10n - (3n - 1n);", "let D = 100n / (10n / 2n);", "let G = true === (false === false);"),
+                    ("let C = 10 - (3 - 1);", "let D = Math.trunc(100 / Math.trunc(10 / 2));", "let G = true === (false === false);"),
                 TargetLanguage.Java =>
-                    ("long C = 10L - (3L - 1L);", "long D = 100L / (10L / 2L);", "boolean G = true == (false == false);"),
+                    ("int C = 10 - (3 - 1);", "int D = 100 / (10 / 2);", "boolean G = true == (false == false);"),
                 TargetLanguage.Swift =>
-                    ("let C: Int64 = 10 - (3 - 1)", "let D: Int64 = 100 / (10 / 2)", "let G: Bool = true == (false == false)"),
+                    ("let C: Int = 10 - (3 - 1)", "let D: Int = 100 / (10 / 2)", "let G: Bool = true == (false == false)"),
+                TargetLanguage.Python =>
+                    ("C = 10 - (3 - 1)", "D = _smile_div(100, _smile_div(10, 2))", "G = True == (False == False)"),
                 _ =>
-                    ("long long C = 10LL - (3LL - 1LL);", "long long D = 100LL / (10LL / 2LL);", "bool G = true == (false == false);")
+                    ("int C = 10 - (3 - 1);", "int D = 100 / (10 / 2);", "bool G = true == (false == false);")
             };
 
             StringAssert.Contains(generated, subtraction);
@@ -328,7 +452,9 @@ LET H = 1 < (2 + 1)
     [TestMethod]
     public void JavaScript_omits_unsupported_unary_plus_for_BigInt()
     {
-        string generated = Generate("LET Positive = +7\nPRINT {Positive}", TargetLanguage.JavaScript)
+        string generated = Generate(
+            "LET Wide = 9007199254740992\nLET Positive = +7\nPRINT {Positive}",
+            TargetLanguage.JavaScript)
             .PrimaryFile
             .Content;
 
@@ -353,4 +479,7 @@ LET H = 1 < (2 + 1)
             result.Diagnostics.Any(diagnostic => diagnostic.Code == expectedCode),
             string.Join(Environment.NewLine, result.Diagnostics));
     }
+
+    private static string NormalizeLineEndings(string text) =>
+        text.Replace("\r\n", "\n", StringComparison.Ordinal);
 }

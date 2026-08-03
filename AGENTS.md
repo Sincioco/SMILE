@@ -11,6 +11,7 @@
 ## Guiding Principles
 
 - SMILE stands for "Simple Modern Interactive Learning Environment." Use that expansion in public documentation and in the IDE title where the full project name is shown.
+- SMILE's mission is: "A programming language inspired by BASIC that makes it easy for newcomers to learn and understand how programming languages work across the board. Updated for the modern era, SMILE takes the classic BASIC programming language and takes it to the next level by offering to teach not just concepts and ideas of what a programming language can do but show them how various programming languages look like by transpiling (translating) and compiling their SMILE code to many other programming languages. So students can learn many programming languages simultaneously and arrive at one obvious conclusion: all programming languages share the same fundamentals. What's important is learning to think logically and understand how to solve problems with code, not learning the syntax of a particular programming language. SMILE is designed to be a fun and educational programming language that teaches students how to think like a programmer and understand the fundamentals of programming languages."
 - KISS and KISS v2, "The Sin Way," govern the entire SMILE project, including architecture, UI, runtime behavior, documentation, tests, and generated target-language code.
 - Choose the simplest complete solution. Avoid unnecessary complexity, abstractions, frameworks, dependencies, code, files, folders, classes, methods, variables, features, and bells and whistles.
 - User-experience performance is the first performance priority. Functional performance is second.
@@ -43,6 +44,10 @@
 - Every normative valid and invalid example in an official language specification should be represented in the conformance test suite.
 - Target generators must use a symbol-based target identifier map and must not emit raw SMILE identifiers when they conflict with destination-language syntax or generator-owned runtime names.
 - Every valid SMILE identifier must be mapped to valid, collision-safe destination identifiers in every target. Target restrictions include exact keywords, contextual/restricted identifiers, generator-owned names, and reserved identifier patterns.
+- SMILE `Integer` is a signed 64-bit semantic type, but generated storage must use one idiomatic per-program target profile that preserves every bound Integer literal, value, operand, and intermediate result.
+- Ordinary small programs use C/Objective-C `int`, C#/Java `int`, JavaScript `Number`, Swift `Int`, and Python `int` without unnecessary wide literal suffixes. Promote only when required: C/Objective-C `int64_t`, C#/Java `long`, JavaScript `BigInt`, and Swift `Int64`.
+- Pure bound-expression simplification is shared by every target. Keep Boolean identities target-independent and do not duplicate simplification logic in individual generators.
+- Rust, Zig, and Go are intentionally deferred destination languages. Do not add them to target metadata, generators, toolchains, active roadmap milestones, or desktop selectors unless Sin explicitly reactivates one of them.
 
 ## Educational Code Comments
 

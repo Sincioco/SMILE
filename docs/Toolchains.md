@@ -14,6 +14,7 @@ Transpilation does not require target compilers or runtimes. Build & Run require
 | COBOL | MSYS2 `mingw64\bin\cobc.exe --version` |
 | Objective-C | MSYS2 `mingw64\bin\clang.exe --version` |
 | Swift | Swift.Toolchain layout plus Visual Studio C++ linker tools |
+| Python | A real `python --version`, then `py -3 --version` or `py --version`; Python 3.10+ required |
 
 SMILE uses `vswhere.exe` from `%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe` to locate Visual Studio. It does not hardcode the Visual Studio year, edition, or installation path. Swift Build & Run uses this same Visual Studio environment because Swift for Windows links through the Microsoft toolchain.
 
@@ -56,6 +57,14 @@ javac Program.java
 java Program
 ```
 
+A free Microsoft OpenJDK 25 LTS installation can be added with:
+
+```bat
+winget install --id Microsoft.OpenJDK.25 --exact
+```
+
+Restart the terminal or desktop app after installation so its process receives the updated `PATH`. A user-local extracted JDK also works when `JAVA_HOME` points at its root and `%JAVA_HOME%\bin` is on the user `PATH`.
+
 COBOL:
 
 ```bat
@@ -85,6 +94,14 @@ set "PATH=<Swift toolchain>\usr\bin;<Swift runtime>\usr\bin;<Swift Python>\usr\b
 "<Swift toolchain>\usr\bin\swiftc.exe" -sdk "<Swift Windows.sdk>" Program.swift -o Program.exe
 Program.exe
 ```
+
+Python:
+
+```bat
+python -B Program.py
+```
+
+If the Python launcher is selected, SMILE uses `py -3 -B Program.py`. Detection resolves real executables from `PATH`, ignores the Windows Store `WindowsApps` alias so it cannot trigger an on-demand installation, rejects Python 2 and Python versions older than 3.10, and reports the selected executable and version. `-B` prevents `__pycache__` bytecode output in the temporary workspace.
 
 ## Temporary Workspaces
 
@@ -129,4 +146,5 @@ Detection, build, run, timeout, cancellation, folder opening, and process-launch
 - Missing COBOL compiler: install MSYS2 and `mingw-w64-x86_64-gnucobol`.
 - Missing Objective-C compiler: install MSYS2 and `mingw-w64-x86_64-clang`.
 - Missing Swift compiler: install Swift.Toolchain for Windows and the Visual Studio C++ linker tools.
+- Missing Python interpreter: install Python 3.10 or newer. No Python packages or virtual environment are required.
 - Desktop diagnostic logs: check `%LOCALAPPDATA%\SMILE\Logs`; if that folder is unavailable, SMILE falls back to `%TEMP%\SMILE\Logs`.

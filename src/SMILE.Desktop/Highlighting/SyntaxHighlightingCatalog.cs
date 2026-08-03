@@ -25,7 +25,8 @@ public static class SyntaxHighlightingCatalog
             // C/C++ highlighter gives learners useful colors without putting a
             // custom Objective-C regex set on the UI-thread language switch path.
             ["objective-c"] = BuiltIn("C++", "objective-c"),
-            ["swift"] = Embedded("Swift.xshd")
+            ["swift"] = Embedded("Swift.xshd"),
+            ["python"] = BuiltIn("Python", "python")
         };
 
     public static IHighlightingDefinition? GetDefinition(string? languageId)

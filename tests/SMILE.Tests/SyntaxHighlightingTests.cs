@@ -22,7 +22,8 @@ public sealed class SyntaxHighlightingTests
             "java",
             "cobol",
             "objective-c",
-            "swift"
+            "swift",
+            "python"
         };
 
         foreach (string languageId in languageIds)
@@ -50,6 +51,9 @@ public sealed class SyntaxHighlightingTests
         Assert.AreSame(
             SyntaxHighlightingCatalog.GetDefinition("objective-c"),
             SyntaxHighlightingCatalog.GetDefinition("Objective-C"));
+        Assert.AreSame(
+            SyntaxHighlightingCatalog.GetDefinition("python"),
+            SyntaxHighlightingCatalog.GetDefinition("Python"));
     }
 
     [TestMethod]
@@ -96,5 +100,32 @@ PRINT "Hello " + Name + "!"
             500L,
             stopwatch.ElapsedMilliseconds,
             $"Objective-C highlighting took {stopwatch.ElapsedMilliseconds} ms.");
+    }
+
+    [TestMethod]
+    public void Python_highlighting_tokenizes_generated_source_quickly()
+    {
+        const string source = """
+LET Name = "Sin"
+LET Age = 49
+PRINT $"Hello {Name}; age={Age}"
+""";
+        TranspileResult result = new SmileTranspiler().Transpile(source, TargetLanguage.Python);
+        Assert.IsTrue(result.Success);
+
+        var document = new TextDocument(result.GeneratedProgram!.PrimaryFile.Content);
+        IHighlightingDefinition definition = SyntaxHighlightingCatalog.GetDefinition("python")!;
+        var highlighter = new DocumentHighlighter(document, definition);
+
+        var stopwatch = Stopwatch.StartNew();
+        for (int line = 1; line <= document.LineCount; line++)
+        {
+            highlighter.HighlightLine(line);
+        }
+
+        Assert.IsLessThan(
+            500L,
+            stopwatch.ElapsedMilliseconds,
+            $"Python highlighting took {stopwatch.ElapsedMilliseconds} ms.");
     }
 }

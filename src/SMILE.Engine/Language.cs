@@ -671,7 +671,8 @@ public enum TargetLanguage
     Java,
     Cobol,
     ObjectiveC,
-    Swift
+    Swift,
+    Python
 }
 
 // Stable IDs are for CLI arguments and saved data. Display names are for users.
@@ -687,7 +688,8 @@ public static class TargetLanguageInfo
             TargetLanguage.Java,
             TargetLanguage.Cobol,
             TargetLanguage.ObjectiveC,
-            TargetLanguage.Swift
+            TargetLanguage.Swift,
+            TargetLanguage.Python
         });
 
     public static string GetStableId(TargetLanguage language) =>
@@ -701,6 +703,7 @@ public static class TargetLanguageInfo
             TargetLanguage.Cobol => "cobol",
             TargetLanguage.ObjectiveC => "objective-c",
             TargetLanguage.Swift => "swift",
+            TargetLanguage.Python => "python",
             _ => throw new ArgumentOutOfRangeException(nameof(language), language, null)
         };
 
@@ -715,6 +718,7 @@ public static class TargetLanguageInfo
             TargetLanguage.Cobol => "COBOL",
             TargetLanguage.ObjectiveC => "Objective-C",
             TargetLanguage.Swift => "Swift",
+            TargetLanguage.Python => "Python",
             _ => throw new ArgumentOutOfRangeException(nameof(language), language, null)
         };
 
@@ -729,6 +733,7 @@ public static class TargetLanguageInfo
             TargetLanguage.Cobol => "Program.cob",
             TargetLanguage.ObjectiveC => "Program.m",
             TargetLanguage.Swift => "Program.swift",
+            TargetLanguage.Python => "Program.py",
             _ => throw new ArgumentOutOfRangeException(nameof(language), language, null)
         };
 

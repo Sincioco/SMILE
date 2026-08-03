@@ -117,6 +117,11 @@ public sealed class DesktopCommandTests
         Assert.AreEqual("Pane - JavaScript", pane.Title);
         Assert.AreEqual("Run", pane.BuildButtonText);
 
+        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Python);
+
+        Assert.AreEqual("Pane - Python", pane.Title);
+        Assert.AreEqual("Run", pane.BuildButtonText);
+
         pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.ObjectiveC);
 
         Assert.AreEqual("Pane - Objective-C", pane.Title);
@@ -158,14 +163,15 @@ public sealed class DesktopCommandTests
         await viewModel.InitializeAsync();
 
         TargetPaneViewModel pane = viewModel.Pane3;
+        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Python);
         pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.C);
         pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Swift);
-        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Java);
+        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Python);
 
         Assert.AreEqual("Ready", viewModel.OperationStatus);
         Assert.AreEqual("Ready", pane.Status);
         Assert.IsTrue(pane.HasValidSource);
-        StringAssert.Contains(pane.GeneratedCode, "public final class Program");
+        StringAssert.Contains(pane.GeneratedCode, "def main() -> None:");
 
         await Task.Delay(350);
 
