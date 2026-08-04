@@ -1244,9 +1244,20 @@ internal static class CppGenerationFacts
         {
             BoundLetStatement let =>
                 let.Variable.Type is SmileType.String || ContainsStringFacility(let.Initializer),
-            BoundPrintStatement print when !print.IsBlankLine => ContainsStringFacility(print.Value),
+            BoundPrintStatement print when !print.IsBlankLine =>
+                ContainsDirectStreamStringFacility(print.Value),
             _ => false
         });
+
+    private static bool ContainsDirectStreamStringFacility(BoundExpression expression) =>
+        expression is BoundInterpolatedStringExpression interpolated
+            ? interpolated.Parts.Any(part => part switch
+            {
+                BoundInterpolatedTextPart text => text.Text.Contains('\0', StringComparison.Ordinal),
+                BoundInterpolationExpressionPart hole => ContainsStringFacility(hole.Expression),
+                _ => false
+            })
+            : ContainsStringFacility(expression);
 
     private static bool ContainsStringFacility(BoundExpression expression) =>
         expression switch

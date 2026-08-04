@@ -27,10 +27,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
-    <Version>0.4.3</Version>
-    <AssemblyVersion>0.4.3.0</AssemblyVersion>
-    <FileVersion>0.4.3.0</FileVersion>
-    <InformationalVersion>0.4.3 C++ Final Target</InformationalVersion>
+    <Version>0.4.3.1</Version>
+    <AssemblyVersion>0.4.3.1</AssemblyVersion>
+    <FileVersion>0.4.3.1</FileVersion>
+    <InformationalVersion>0.4.3.1 Final Target Identifier and Header Hygiene</InformationalVersion>
   </PropertyGroup>
 
 </Project>

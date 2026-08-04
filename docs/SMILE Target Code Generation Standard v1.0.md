@@ -173,7 +173,7 @@ std::string Text = std::string{"A\000B", 3};
 std::cout << Text << '\n';
 ```
 
-Generators emit only required headers, never `using namespace std;`, and never fall back to C-style raw `char *`, `printf`, or `strcmp` for ordinary SMILE Strings.
+Generators emit only required headers, never `using namespace std;`, and never fall back to C-style raw `char *`, `printf`, or `strcmp` for ordinary SMILE Strings. C++ header emission is facility-driven: emit `<string>` only when generated code actually uses `std::string`, `std::to_string`, or another String-library facility. A directly streamed NUL-free literal or template does not require `<string>` merely because its SMILE expression type is `String`.
 
 ## Lower-Level Targets
 
@@ -277,7 +277,8 @@ Target generators must use the compiler's symbol-based target identifier map. A 
 - destination-language contextual or restricted identifiers;
 - destination-language identifier rules;
 - generator-owned runtime names such as `Console`, `Program`, `Main`, `printf`, `System`, `String`, `main`, `args`, `console`, or `print`;
-- destination-language reserved identifier patterns, such as C, Objective-C, and C++ names beginning with `__` or with `_` followed by an uppercase ASCII letter;
+- destination preprocessor macros and standard-library macros that can be active in the generated translation unit;
+- destination-language reserved identifier patterns, such as C and Objective-C names beginning with `__` or with `_` followed by an uppercase ASCII letter;
 - another generated target name.
 
 COBOL must map reserved words and identifiers that are not valid COBOL data names. Underscores should become readable hyphenated names such as `SMILE-internal`.
@@ -286,7 +287,9 @@ Java and Swift must map a single SMILE `_` identifier because `_` is not a usabl
 
 Python must map keywords, the `match` and `case` soft keywords, relevant built-ins such as `str`, `bool`, `int`, `abs`, and `isinstance`, and generator-owned names including `main`, `__name__`, `_smile_text`, and `_smile_div`. A single `_` remains a valid Python identifier.
 
-C++ must map all C++20 keywords and alternative tokens, generator-used names such as `std`, `main`, `cout`, `string`, `to_string`, and `int64_t`, and C/C++ implementation-reserved prefix patterns.
+C, Objective-C, and C++ must protect the complete fixed-width Integer and limit macro family exposed by `<stdint.h>` or `<cstdint>`, including names such as `INT64_MAX`, `INT64_C`, `UINT64_MAX`, and `SIZE_MAX`. Protection belongs in the shared target identifier map, not in target generator source rewriting.
+
+C++ must map all C++20 keywords and alternative tokens, generator-used names such as `std`, `main`, `cout`, `string`, `to_string`, and `int64_t`, and C++ implementation-reserved patterns. Any double underscore anywhere in a C++ identifier is reserved. A mapped spelling must remove that pattern from the final emitted name rather than merely prefixing the original spelling.
 
 Mapped names should remain readable. For example:
 

@@ -177,8 +177,8 @@ PRINT {__Hidden}
         StringAssert.Contains(generated, "std::string _smile_int64_t = \"int64_t\";");
         StringAssert.Contains(generated, "std::string _smile_INT64_C = \"INT64_C\";");
         StringAssert.Contains(generated, "std::string _smile_smile_text = \"smile_text\";");
-        StringAssert.Contains(generated, "std::string _smile___Hidden = \"double\";");
-        StringAssert.Contains(generated, "std::string _smile__Upper = \"upper\";");
+        StringAssert.Contains(generated, "std::string _smile_underscore_underscore_Hidden = \"double\";");
+        StringAssert.Contains(generated, "std::string _smile_underscore_Upper = \"upper\";");
     }
 
     [TestMethod]

@@ -131,9 +131,16 @@
 - Add local MSVC C++20 Build & Run, press-any-key launchers, AvalonEdit C++ highlighting, desktop selectors, CLI support, and ten-target evaluator conformance.
 - Freeze destination-language expansion after C++ so future milestones deepen the SMILE language and its teaching tools.
 
+## Implemented In v0.4.3.1
+
+- Protect the complete fixed-width Integer and limit macro family in C, Objective-C, and C++ target identifier maps.
+- Map C++ implementation-reserved double underscores anywhere in a name and ensure the final mapped spelling contains no double underscore.
+- Drive C++ header emission from generated facilities, allowing directly streamed templates and literals to omit `<string>`.
+- Add deterministic structural coverage and evaluator-versus-toolchain runs for the new adversarial cases across all ten targets.
+
 ## Next Major Milestone: v0.5.0 - Runtime Variables And SET
 
-The next language milestone is runtime variables and `SET`. It is intentionally not implemented in v0.4.3.
+The next language milestone is runtime variables and `SET`. It is intentionally not implemented in v0.4.3.1.
 
 ## Final Destination-Language Freeze
 
@@ -141,7 +148,7 @@ C++ is SMILE's tenth and final planned destination language. Target-language exp
 
 ## Active Language-Depth Milestones
 
-These are not implemented in v0.4.3:
+These are not implemented in v0.4.3.1:
 
 1. v0.5.0 - Runtime Variables and `SET`
 2. v0.6.0 - `IF / THEN / ELSE`

@@ -16,7 +16,7 @@ A programming language inspired by BASIC that makes it easy for newcomers to lea
 
 ## Current Release
 
-SMILE v0.4.3, "C++ Final Target," adds C++ as the tenth and final planned destination. It generates idiomatic C++20 with owned `std::string` values, `std::cout`, native length-aware String equality, exact embedded-NUL preservation, and the same target-safe expression semantics as the existing nine targets:
+SMILE v0.4.3.1, "Final Target Identifier and Header Hygiene," hardens the completed ten-target compiler. C, Objective-C, and C++ now protect the complete fixed-width Integer and limit macro family from generated identifier collisions; C++ also maps implementation-reserved double underscores anywhere in a name and emits `<string>` only when generated code actually uses a String-library facility. C++ remains the tenth and final planned destination, with idiomatic C++20, owned `std::string`, `std::cout`, native length-aware String equality, and exact embedded-NUL preservation:
 
 ```text
 SMILE source
@@ -106,7 +106,7 @@ Implemented rules:
 - `AND` and `OR` evaluate left to right and short-circuit at runtime: `FALSE AND ...` and `TRUE OR ...` do not evaluate their right operands. Both operands are still parsed, bound, and type-checked.
 - After successful binding, the shared simplifier uses known Boolean constants in `LET`, direct `PRINT`, raw-template holes, interpolated String holes, and nested expressions. It decides reachability before simplifying the right operand, so unreachable division or overflow cannot leak into a strict target compiler.
 - Parentheses control expression grouping.
-- SMILE does not perform implicit conversions in v0.4.3. For example, `"Age " + 49` is a type error.
+- SMILE does not perform implicit conversions in v0.4.3.1. For example, `"Age " + 49` is a type error.
 - `PRINT` alone, or followed only by spaces/tabs, prints one blank line.
 - `PRINT "Hello"` prints an ordinary quoted string.
 - Ordinary quoted strings do not interpolate, so `PRINT "Hello {Name}!"` prints `{Name}` literally.
@@ -125,8 +125,10 @@ Implemented rules:
 - Target generators map valid SMILE identifiers when a destination language reserves the same spelling, when a spelling would shadow generator-owned runtime APIs, or when a target has reserved identifier patterns.
 - Java and Swift map a single `_` SMILE identifier because those languages cannot use `_` as an ordinary readable local variable.
 - C and Objective-C map implementation-reserved prefixes such as `__internal` and `_Upper`.
+- C, Objective-C, and C++ map fixed-width Integer and limit macro names such as `INT64_MAX`, `INT64_C`, `UINT64_MAX`, and `SIZE_MAX`, preventing wide-profile headers from rewriting learner variables.
+- C++ additionally maps `__` anywhere in a name. The readable `_smile_` result spells reserved underscore runs out so the emitted C++ identifier is itself safe.
 
-Not implemented in v0.4.3: comments, `INPUT`, conditions, loops, functions, arrays, classes, floating-point numbers, reassignment, and user-defined types.
+Not implemented in v0.4.3.1: comments, `INPUT`, conditions, loops, functions, arrays, classes, floating-point numbers, reassignment, and user-defined types.
 
 ## Generated Examples
 
@@ -295,7 +297,7 @@ int main()
 }
 ```
 
-Generated target code is expected to be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write. SMILE `Integer` always means signed 64-bit semantically, but each complete bound program uses the smallest natural target representation that preserves every Integer literal, value, operand, and intermediate: C and Objective-C use `int` or `int64_t`; C++ uses `int` or `std::int64_t`; C# and Java use `int` or `long`; JavaScript uses `Number` or consistent `BigInt`; Swift uses `Int` or `Int64`; and Python uses normal `int`. Ordinary profiles do not carry unnecessary `L`, `LL`, or `n` suffixes. A shared pure-expression pass simplifies Boolean identities and known-value short circuits before every target generator runs, without traversing an unreachable right operand. C++ uses RAII-owned `std::string`, length-aware construction for embedded NUL, native value equality, `std::to_string` during String construction, and `std::cout` with canonical `TRUE`/`FALSE`. Python uses f-strings for interpolation, a generated `_smile_text` helper only when canonical Integer or Boolean display is needed, and `_smile_div` only when signed Integer division must truncate toward zero. C and Objective-C preserve native integer and boolean declaration expressions and keep ordinary NUL-free output on readable `%s` and ordinal `strcmp`. When a complete String value contains embedded NUL, only that `PRINT` uses compiler-owned UTF-8 byte data with `fwrite` and an exact length; only that NUL-sensitive equality is lowered to its exact evaluated Boolean. COBOL and MASM lower current compile-time values where that keeps those targets small and reliable; COBOL uses free-format `DISPLAY`, while MASM uses UTF-8 byte labels, pointer-plus-length variables, and `WriteFile`. The generated assembly and COBOL include short comments to support learning. See [SMILE Target Code Generation Standard v1.0](docs/SMILE%20Target%20Code%20Generation%20Standard%20v1.0.md).
+Generated target code is expected to be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write. SMILE `Integer` always means signed 64-bit semantically, but each complete bound program uses the smallest natural target representation that preserves every Integer literal, value, operand, and intermediate: C and Objective-C use `int` or `int64_t`; C++ uses `int` or `std::int64_t`; C# and Java use `int` or `long`; JavaScript uses `Number` or consistent `BigInt`; Swift uses `Int` or `Int64`; and Python uses normal `int`. Ordinary profiles do not carry unnecessary `L`, `LL`, or `n` suffixes. A shared pure-expression pass simplifies Boolean identities and known-value short circuits before every target generator runs, without traversing an unreachable right operand. C++ uses RAII-owned `std::string`, length-aware construction for embedded NUL, native value equality, `std::to_string` during String construction, and `std::cout` with canonical `TRUE`/`FALSE`. Its headers are facility-driven: direct streaming of ordinary literals, raw templates, Integers, and Booleans needs only `<iostream>`, while `<string>` appears for `std::string`, `std::to_string`, concatenation, value equality, or length-aware construction. Python uses f-strings for interpolation, a generated `_smile_text` helper only when canonical Integer or Boolean display is needed, and `_smile_div` only when signed Integer division must truncate toward zero. C and Objective-C preserve native integer and boolean declaration expressions and keep ordinary NUL-free output on readable `%s` and ordinal `strcmp`. When a complete String value contains embedded NUL, only that `PRINT` uses compiler-owned UTF-8 byte data with `fwrite` and an exact length; only that NUL-sensitive equality is lowered to its exact evaluated Boolean. COBOL and MASM lower current compile-time values where that keeps those targets small and reliable; COBOL uses free-format `DISPLAY`, while MASM uses UTF-8 byte labels, pointer-plus-length variables, and `WriteFile`. The generated assembly and COBOL include short comments to support learning. See [SMILE Target Code Generation Standard v1.0](docs/SMILE%20Target%20Code%20Generation%20Standard%20v1.0.md).
 
 ## Supported Targets
 
@@ -385,7 +387,7 @@ When Open Generated Folder is enabled, SMILE asks Windows Explorer to open the g
 
 When Press Any Key Launcher is enabled, SMILE writes `Run Program - Press Any Key.cmd` into each successful build/run workspace. Double-clicking that launcher runs the generated program and then shows `Press any key to exit...`, which keeps the console window open long enough to inspect the output.
 
-Current desktop build version: `0.4.3 C++ Final Target`.
+Current desktop build version: `0.4.3.1 Final Target Identifier and Header Hygiene`.
 
 ## Diagnostics
 
@@ -458,7 +460,7 @@ Source -> Lexer -> Tokens -> Parser -> Syntax Tree -> Binder -> Bound Program
                                                                                Build and Run Result
 ```
 
-`SMILE.Engine` owns lexing, parsing, diagnostics, syntax nodes, binding, variable symbols, typed bound expressions, compile-time constant evaluation, constant-aware bound-expression simplification, per-program target Integer profiling, the SMILE reference evaluator, target identifier mapping, and target generators. The simplifier walks statements in order, records each bound constant, and decides short-circuit reachability before visiting the right operand. SMILE Strings remain complete length-aware values even when C-family targets normally use NUL-terminated pointers; those targets switch only NUL-sensitive output to exact UTF-8 bytes and `fwrite`. C++ is a dedicated backend rather than renamed C: it uses owned `std::string`, native length-aware equality, and `std::cout`. The target identifier map is symbol-based and uses exact reserved-word checks plus target-specific pattern rules, such as C/C++ implementation-reserved prefixes, COBOL reserved words and data-name spelling, Java/Swift `_`, and Python keywords, soft keywords, built-ins, and generated helper names. `SMILE.Toolchains` owns detection, temporary workspaces, async process execution, cancellation, timeouts, bounded process output, build, and run, including MSVC C++20 builds and safe discovery of Python 3.10+ without invoking Windows Store aliases. `SMILE.Cli` and `SMILE.Desktop` reuse both projects. `SMILE.Desktop` uses AvalonEdit for the four code panes and keeps build/run work isolated from the WPF UI thread.
+`SMILE.Engine` owns lexing, parsing, diagnostics, syntax nodes, binding, variable symbols, typed bound expressions, compile-time constant evaluation, constant-aware bound-expression simplification, per-program target Integer profiling, the SMILE reference evaluator, target identifier mapping, and target generators. The simplifier walks statements in order, records each bound constant, and decides short-circuit reachability before visiting the right operand. SMILE Strings remain complete length-aware values even when C-family targets normally use NUL-terminated pointers; those targets switch only NUL-sensitive output to exact UTF-8 bytes and `fwrite`. C++ is a dedicated backend rather than renamed C: it uses owned `std::string`, native length-aware equality, and `std::cout`. The target identifier map is symbol-based and protects destination keywords, generator names, fixed-width preprocessor macros, and implementation-reserved patterns; C++ also removes double underscores from the final mapped spelling. C++ header analysis follows the actual facilities the expression writer emits, so a directly streamed template does not imply `<string>`. `SMILE.Toolchains` owns detection, temporary workspaces, async process execution, cancellation, timeouts, bounded process output, build, and run, including MSVC C++20 builds and safe discovery of Python 3.10+ without invoking Windows Store aliases. `SMILE.Cli` and `SMILE.Desktop` reuse both projects. `SMILE.Desktop` uses AvalonEdit for the four code panes and keeps build/run work isolated from the WPF UI thread.
 
 SMILE-owned build/output artifacts older than 1 day may be cleaned from known generated locations such as `bin`, `obj`, `out`, and `%TEMP%\SMILE\Runs`.
 
@@ -482,7 +484,7 @@ C++ is SMILE's tenth and final planned destination language. After C++ is comple
 
 ## Roadmap
 
-Future ideas, not implemented in v0.4.3:
+Future ideas, not implemented in v0.4.3.1:
 
 The next major milestone is **v0.5.0 - Runtime Variables and `SET`**. This correction release does not implement reassignment.
 

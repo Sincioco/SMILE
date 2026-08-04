@@ -53,6 +53,9 @@
 - C++ is the tenth and final planned destination language. After it is implemented, do not add or recommend another target language unless Sin explicitly reopens target expansion.
 - C++ generation must use idiomatic C++ facilities such as `std::string`, `std::cout`, native value equality, and RAII ownership. Do not emit C-style `printf`, `strcmp`, or raw `char *` code merely because the C target already exists.
 - C++ String generation must preserve embedded NUL bytes through length-aware `std::string` construction.
+- C, Objective-C, and C++ target identifier maps must protect the standard fixed-width Integer and limit macro family whenever those names could be active in generated translation units.
+- C++ identifiers containing a double underscore anywhere are implementation-reserved; the mapped target spelling itself must not retain a double underscore.
+- C++ headers must be emitted according to the facilities used by generated code, not merely according to broad SMILE expression categories.
 - Rust, Zig, and Go are intentionally deferred destination languages. Do not add them to target metadata, generators, toolchains, active roadmap milestones, or desktop selectors unless Sin explicitly reactivates one of them.
 
 ## Educational Code Comments

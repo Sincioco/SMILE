@@ -33,3 +33,7 @@ Add C++ in SMILE
 2.) Add C++ as the last target platform in SMILE.  Follow the instructions in "D:\SMILE\Requirements\2026-08-04 1820 - SMILE Codex Instructions v0.4.3 Add CPP Final Target.md".  Commit all and push when all your tests are green.
 
 	Status: **Ready for testing** after completing SMILE v0.4.3 C++ Final Target with idiomatic `std::string`/`std::cout` generation, exact embedded-NUL values, native String equality, natural Integer profiles, C++20 MSVC Build & Run, AvalonEdit highlighting, all-ten-target conformance, and the permanent destination-language freeze.
+
+3.) Before we add the next language feature SET, let's tidy up some issues ChatGPT found because we added C++ in the mix.  Execute the file "D:\SMILE\Requirements\2026-08-04 1945 - SMILE Codex Instructions v0.4.3.1 Final Target Identifier and Header Hygiene.md".  Commit all and push when your tests are green.
+
+	Status: **Ready for testing** after completing SMILE v0.4.3.1 Final Target Identifier and Header Hygiene with complete C/Objective-C/C++ fixed-width macro protection, safe C++ double-underscore mapping, facility-driven minimal C++ headers, adversarial native compile/run coverage, and all-ten-target regression validation.

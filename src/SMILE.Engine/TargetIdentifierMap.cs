@@ -44,11 +44,30 @@ internal sealed class TargetIdentifierMap
             : IsPortableIdentifier(name);
 
     private static string BuildMappedName(string name, TargetLanguage language) =>
-        language is TargetLanguage.Cobol
-            ? BuildCobolMappedName(name)
+        language switch
+        {
+            TargetLanguage.Cobol => BuildCobolMappedName(name),
+            // Prefixing a C++ implementation-reserved spelling is not enough:
+            // the original double underscore would remain reserved anywhere in
+            // the final identifier. Spell reserved underscores out so the
+            // generated name itself is safe as well as deterministic.
+            TargetLanguage.Cpp when IsCppImplementationReservedIdentifier(name) =>
+                MappedPrefix + BuildCppReservedUnderscoreName(name),
             // A single underscore is valid SMILE, but Java and Swift cannot use it
             // as a normal variable. Map it to the cleanest readable prefix form.
-            : name == "_" ? MappedPrefix : MappedPrefix + name;
+            _ => name == "_" ? MappedPrefix : MappedPrefix + name
+        };
+
+    private static string BuildCppReservedUnderscoreName(string name)
+    {
+        string readable = name.Replace("_", "_underscore_", StringComparison.Ordinal);
+        while (readable.Contains("__", StringComparison.Ordinal))
+        {
+            readable = readable.Replace("__", "_", StringComparison.Ordinal);
+        }
+
+        return readable.Trim('_');
+    }
 
     private static bool IsPortableIdentifier(string name)
     {
@@ -132,12 +151,15 @@ internal sealed class TargetIdentifierMap
             return true;
         }
 
-        // C and Objective-C reserve implementation namespace identifiers that
-        // begin with "__" or with "_" followed by an uppercase ASCII letter.
-        // SMILE lets learners write those names, so targets map them rather
-        // than emitting technically reserved implementation identifiers.
-        if (language is TargetLanguage.C or TargetLanguage.ObjectiveC or TargetLanguage.Cpp &&
+        // C and Objective-C retain their implementation-reserved prefix rules.
+        if (language is TargetLanguage.C or TargetLanguage.ObjectiveC &&
             IsCImplementationReservedIdentifier(name))
+        {
+            return true;
+        }
+
+        // C++ additionally reserves a double underscore anywhere in a name.
+        if (language is TargetLanguage.Cpp && IsCppImplementationReservedIdentifier(name))
         {
             return true;
         }
@@ -148,6 +170,9 @@ internal sealed class TargetIdentifierMap
     private static bool IsCImplementationReservedIdentifier(string name) =>
         name.StartsWith("__", StringComparison.Ordinal) ||
         (name.Length >= 2 && name[0] == '_' && SyntaxFacts.IsAsciiUppercaseLetter(name[1]));
+
+    private static bool IsCppImplementationReservedIdentifier(string name) =>
+        IsCImplementationReservedIdentifier(name) || name.Contains("__", StringComparison.Ordinal);
 
     private static string MakeUnique(string preferred, ISet<string> used, TargetLanguage language)
     {
@@ -173,6 +198,31 @@ internal sealed class TargetIdentifierMap
 
     private static class TargetReservedNames
     {
+        // <stdint.h> and <cstdint> can expose these names as macros. Keeping the
+        // family in one shared list prevents C, Objective-C, and C++ from
+        // drifting when their wide Integer profiles activate those headers.
+        private static readonly string[] FixedWidthIntegerMacros =
+        {
+            "INT8_MIN", "INT8_MAX", "UINT8_MAX",
+            "INT16_MIN", "INT16_MAX", "UINT16_MAX",
+            "INT32_MIN", "INT32_MAX", "UINT32_MAX",
+            "INT64_MIN", "INT64_MAX", "UINT64_MAX",
+            "INT_LEAST8_MIN", "INT_LEAST8_MAX", "UINT_LEAST8_MAX",
+            "INT_LEAST16_MIN", "INT_LEAST16_MAX", "UINT_LEAST16_MAX",
+            "INT_LEAST32_MIN", "INT_LEAST32_MAX", "UINT_LEAST32_MAX",
+            "INT_LEAST64_MIN", "INT_LEAST64_MAX", "UINT_LEAST64_MAX",
+            "INT_FAST8_MIN", "INT_FAST8_MAX", "UINT_FAST8_MAX",
+            "INT_FAST16_MIN", "INT_FAST16_MAX", "UINT_FAST16_MAX",
+            "INT_FAST32_MIN", "INT_FAST32_MAX", "UINT_FAST32_MAX",
+            "INT_FAST64_MIN", "INT_FAST64_MAX", "UINT_FAST64_MAX",
+            "INTPTR_MIN", "INTPTR_MAX", "UINTPTR_MAX",
+            "INTMAX_MIN", "INTMAX_MAX", "UINTMAX_MAX",
+            "PTRDIFF_MIN", "PTRDIFF_MAX", "SIG_ATOMIC_MIN", "SIG_ATOMIC_MAX",
+            "SIZE_MAX", "WCHAR_MIN", "WCHAR_MAX", "WINT_MIN", "WINT_MAX",
+            "INT8_C", "UINT8_C", "INT16_C", "UINT16_C", "INT32_C", "UINT32_C",
+            "INT64_C", "UINT64_C", "INTMAX_C", "UINTMAX_C"
+        };
+
         private static readonly string[] CSharp =
         {
             "abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char", "checked",
@@ -192,7 +242,7 @@ internal sealed class TargetIdentifierMap
             "Console", "Program", "Main", "String", "System"
         };
 
-        private static readonly string[] C =
+        private static readonly string[] C = new[]
         {
             "auto", "break", "case", "char", "const", "continue", "default", "do", "double",
             "else", "enum", "extern", "float", "for", "goto", "if", "inline", "int", "long",
@@ -200,7 +250,9 @@ internal sealed class TargetIdentifierMap
             "switch", "typedef", "union", "unsigned", "void", "volatile", "while", "_Alignas",
             "_Alignof", "_Atomic", "_Bool", "_Complex", "_Generic", "_Imaginary", "_Noreturn",
             "_Static_assert", "_Thread_local", "printf", "main", "stdout"
-        };
+        }
+            .Concat(FixedWidthIntegerMacros)
+            .ToArray();
 
         private static readonly string[] JavaScript =
         {
@@ -244,7 +296,7 @@ internal sealed class TargetIdentifierMap
             })
             .ToArray();
 
-        private static readonly string[] Cpp =
+        private static readonly string[] Cpp = new[]
         {
             "alignas", "alignof", "and", "and_eq", "asm", "auto", "bitand", "bitor",
             "bool", "break", "case", "catch", "char", "char8_t", "char16_t", "char32_t",
@@ -261,8 +313,10 @@ internal sealed class TargetIdentifierMap
             "unsigned", "using", "virtual", "void", "volatile", "wchar_t", "while", "xor",
             "xor_eq", "atomic_cancel", "atomic_commit", "atomic_noexcept", "synchronized",
             "transaction_safe", "transaction_safe_dynamic", "std", "main", "cout", "string",
-            "to_string", "int64_t", "INT64_C", "INT64_MIN", "smile_text"
-        };
+            "to_string", "int64_t", "smile_text"
+        }
+            .Concat(FixedWidthIntegerMacros)
+            .ToArray();
 
         private static readonly string[] Swift =
         {
