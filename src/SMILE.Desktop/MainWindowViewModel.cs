@@ -11,25 +11,7 @@ namespace SMILE.Desktop;
 
 public sealed class MainWindowViewModel : ViewModelBase
 {
-    private const string SampleSource = """
-LET Name = ""
-LET Counter = 0
-
-SET Name ="
-S
- I
-  N
-"
-
-PRINT Hello:
-PRINT {Name}
-PRINT Counter={Counter}
-
-SET Counter = Counter + 1
-SET Name = "Louiery"
-
-PRINT Hello {Name}. Counter={Counter}
-""";
+    internal const string LanguageFileName = "language.smile";
 
     // Live transpilation is intentionally delayed a little. A compiler front
     // end usually works on complete snapshots of source text, so this debounce
@@ -43,12 +25,14 @@ PRINT Hello {Name}. Counter={Counter}
     private readonly ToolchainRegistry _toolchains;
     private readonly IAppErrorReporter _errorReporter;
     private readonly IFolderOpener _folderOpener;
+    private readonly string _languageFilePath;
+    private readonly Func<CancellationToken, Task<string>> _languageSourceReader;
     private readonly Dictionary<TargetLanguage, GeneratedSnapshot> _generatedPrograms = new();
     private readonly Dictionary<TargetLanguage, ToolchainStatus> _toolchainStatuses = new();
     private CancellationTokenSource? _operationCancellation;
     private CancellationTokenSource? _liveTranspileCancellation;
     private Task? _liveTranspileTask;
-    private string _sourceText = SampleSource;
+    private string _sourceText = string.Empty;
     private string _outputText = string.Empty;
     private string _operationStatus = "Ready";
     private string? _currentFilePath;
@@ -59,24 +43,42 @@ PRINT Hello {Name}. Counter={Counter}
     private bool _outputShowsLiveDiagnostics;
 
     public MainWindowViewModel()
-        : this(ToolchainRegistry.CreateDefault(), AppErrorReporter.Shared, new SystemFolderOpener())
+        : this(
+            ToolchainRegistry.CreateDefault(),
+            AppErrorReporter.Shared,
+            new SystemFolderOpener(),
+            languageFilePath: null)
     {
     }
 
     public MainWindowViewModel(
         ToolchainRegistry toolchains,
         IAppErrorReporter? errorReporter = null,
-        IFolderOpener? folderOpener = null)
+        IFolderOpener? folderOpener = null,
+        string? languageFilePath = null)
+        : this(toolchains, errorReporter, folderOpener, languageFilePath, languageSourceReader: null)
+    {
+    }
+
+    internal MainWindowViewModel(
+        ToolchainRegistry toolchains,
+        IAppErrorReporter? errorReporter,
+        IFolderOpener? folderOpener,
+        string? languageFilePath,
+        Func<CancellationToken, Task<string>>? languageSourceReader)
     {
         _toolchains = toolchains;
         _errorReporter = errorReporter ?? AppErrorReporter.Shared;
         _folderOpener = folderOpener ?? new SystemFolderOpener();
+        _languageFilePath = languageFilePath ?? Path.Combine(AppContext.BaseDirectory, LanguageFileName);
+        _languageSourceReader = languageSourceReader ?? (cancellationToken =>
+            File.ReadAllTextAsync(_languageFilePath, Encoding.UTF8, cancellationToken));
 
         Pane1 = CreatePane("Generated target 1", TargetLanguage.CSharp);
         Pane2 = CreatePane("Generated target 2", TargetLanguage.MasmX64);
         Pane3 = CreatePane("Generated target 3", TargetLanguage.C);
 
-        NewCommand = new RelayCommand(NewDocument, CanStartWork, HandleCommandException);
+        NewCommand = new AsyncRelayCommand(NewDocumentAsync, CanStartWork, HandleCommandException);
         OpenCommand = new AsyncRelayCommand(OpenAsync, CanStartWork, HandleCommandException);
         SaveCommand = new AsyncRelayCommand(SaveAsync, CanStartWork, HandleCommandException);
         SaveAsCommand = new AsyncRelayCommand(SaveAsAsync, CanStartWork, HandleCommandException);
@@ -97,7 +99,7 @@ PRINT Hello {Name}. Counter={Counter}
 
     public IReadOnlyList<TargetPaneViewModel> Panes => new[] { Pane1, Pane2, Pane3 };
 
-    public RelayCommand NewCommand { get; }
+    public AsyncRelayCommand NewCommand { get; }
 
     public AsyncRelayCommand OpenCommand { get; }
 
@@ -175,7 +177,16 @@ PRINT Hello {Name}. Counter={Counter}
     {
         try
         {
-            await TranspileAllCurrentSourceAsync(isManual: false, CancellationToken.None).ConfigureAwait(true);
+            long revisionBeforeLoad = _sourceRevision;
+            string? languageSource = await LoadLanguageSourceAsync(CancellationToken.None).ConfigureAwait(true);
+            if (languageSource is not null &&
+                revisionBeforeLoad == _sourceRevision &&
+                _currentFilePath is null)
+            {
+                SourceText = languageSource;
+            }
+
+            await TranspileVisibleCurrentSourceAsync(CancellationToken.None).ConfigureAwait(true);
             await DetectToolchainsAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
@@ -249,11 +260,36 @@ PRINT Hello {Name}. Counter={Counter}
         RaiseCommandStateChanged();
     }
 
-    private void NewDocument()
+    private async Task NewDocumentAsync()
     {
-        SourceText = SampleSource;
+        string? languageSource = await LoadLanguageSourceAsync(CancellationToken.None).ConfigureAwait(true);
+        if (languageSource is null)
+        {
+            OperationStatus = "Failed";
+            return;
+        }
+
+        SourceText = languageSource;
         _currentFilePath = null;
-        OperationStatus = "New file";
+        OperationStatus = "Language reference loaded";
+    }
+
+    private async Task<string?> LoadLanguageSourceAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _languageSourceReader(cancellationToken).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (!DesktopExceptionPolicy.IsFatal(ex))
+        {
+            string details = ReportException("Load language reference", ex, stage: LanguageFileName);
+            AppendConciseError("Load language reference", ex, details, stage: LanguageFileName);
+            return null;
+        }
     }
 
     private async Task OpenAsync()
@@ -326,6 +362,33 @@ PRINT Hello {Name}. Counter={Counter}
         if (revision == _sourceRevision)
         {
             ApplyTranspileResults(results, revision, isLive: false, reportSuccess: isManual);
+        }
+    }
+
+    private async Task TranspileVisibleCurrentSourceAsync(CancellationToken cancellationToken)
+    {
+        CancelLiveTranspilation();
+
+        string sourceSnapshot = SourceText;
+        long revision = _sourceRevision;
+        TargetLanguage[] languages = Panes
+            .Select(pane => pane.Language)
+            .Distinct()
+            .ToArray();
+        IReadOnlyList<TranspileResult> results = await GenerateAsync(
+            sourceSnapshot,
+            languages,
+            cancellationToken).ConfigureAwait(true);
+
+        if (revision != _sourceRevision)
+        {
+            return;
+        }
+
+        ApplyTranspileResults(results, revision, isLive: true, reportSuccess: false);
+        if (results.All(result => result.Success))
+        {
+            OperationStatus = "Ready";
         }
     }
 
@@ -480,7 +543,14 @@ PRINT Hello {Name}. Counter={Counter}
                     result.GeneratedProgram!);
             }
 
-            foreach (TargetPaneViewModel pane in Panes)
+            // A one-target generation can happen while Build & Run is moving
+            // through the visible panes. Refresh only panes whose language was
+            // just generated so a later target cannot erase an earlier pane's
+            // Completed or Failed status.
+            HashSet<TargetLanguage> generatedLanguages = results
+                .Select(result => result.Language)
+                .ToHashSet();
+            foreach (TargetPaneViewModel pane in Panes.Where(pane => generatedLanguages.Contains(pane.Language)))
             {
                 UpdatePaneForLanguage(pane);
             }

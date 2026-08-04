@@ -81,6 +81,8 @@
 ## Living Documentation
 
 - `README.md` is the living source of truth for SMILE's current mission, principles, features, supported syntax, target languages, toolchain requirements, setup steps, UI behavior, limitations, and roadmap.
+- `examples/language.smile` is the cumulative Desktop language reference and must grow with the language. Preserve earlier valid LET, PRINT, SET, and future syntax demonstrations; append new canonical forms and mixed scenarios instead of replacing or shrinking prior teaching coverage.
+- Package `language.smile` beside the Desktop executable for build and deployment. The Desktop must finish its first paint before asynchronously loading the language reference and transpiling only the visible target languages.
 - Every feature, command, target language, toolchain, UI behavior, build/run behavior, prerequisite, architecture change, renamed path, changed limitation, or changed generated output must update `README.md` in the same commit.
 - Documentation must describe the code that actually exists after the change. Never present a roadmap item as implemented.
 - When a change genuinely requires no README update, explain why in the commit or pull-request summary.

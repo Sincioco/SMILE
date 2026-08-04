@@ -145,7 +145,7 @@
 - Add shared statement-order execution analysis for mutation-aware simplification, short-circuit reachability, Integer profiling, exact String planning, and deterministic generation.
 - Add the SET Block String Literal — The SMILE Way as a complete SET-only value with exact structural indentation removal, logical `\n` normalization, official escapes, quotes, tabs, trailing whitespace, and embedded NUL preservation.
 - Emit real assignments across all ten targets, including Swift `var` analysis, C/Objective-C pointer-plus-length updates, COBOL `MOVE`, and MASM runtime pointer/length updates.
-- Update the desktop learning sample, SET/block syntax highlighting, official specifications, diagnostics, CLI example, and About version.
+- Add the committed cumulative `examples/language.smile`, package it for Desktop deployment, load it only after the first window paint, and preserve visible-target-only background transpilation. Keep SET/block syntax highlighting, official specifications, diagnostics, CLI examples, and About version synchronized.
 - Preserve asynchronous debounced live transpilation, exact-byte evaluator conformance, deterministic generation, and the ten-target destination-language freeze.
 
 ## Next Major Milestone: v0.6.0 - IF / THEN / ELSE

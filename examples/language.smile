@@ -1,0 +1,128 @@
+LET FirstName = "Sin"
+LET LastName = "Cioco"
+LET FullName = FirstName + " " + LastName
+LET Greeting = $"Hello {FullName}!"
+LET Quote = "She said \"Hello\"."
+LET Path = "C:\\SMILE"
+LET Age = 49
+LET Negative = -12
+LET Total = 2 + 3 * 4
+LET Grouped = (2 + 3) * 4
+LET Quotient = -7 / 2
+LET Enabled = TRUE
+LET Adult = Age >= 18
+LET WorkingAge = Adult AND NOT FALSE
+LET SameName = FullName = "Sin Cioco"
+LET MixedMessage = $"{FullName}: Age={Age}, Adult={Adult}"
+
+PRINT
+PRINT "Quoted literal"
+PRINT Raw template keeps C:\SMILE literally.
+PRINT Literal braces: {{Name}}
+PRINT $"Interpolated greeting: {Greeting}"
+PRINT "Concat: " + FirstName + " " + LastName
+PRINT {FullName}
+PRINT {Age}
+PRINT {Negative}
+PRINT {Total}
+PRINT {Grouped}
+PRINT {Quotient}
+PRINT {Enabled}
+PRINT {WorkingAge}
+PRINT {SameName}
+PRINT {MixedMessage}
+PRINT 2 + 3 = {2 + 3}
+PRINT Adult check: {Age >= 18}
+PRINT Quote: {Quote}
+PRINT Path: {Path}
+PRINT {Greeting}
+
+PRINT ""
+PRINT FirstName
+PRINT {FirstName}
+PRINT "FirstName remains literal here: {FirstName}"
+PRINT $"Literal braces remain literal: {{FirstName}}"
+PRINT A; B; C
+
+PRINT
+PRINT SET statement examples in language.smile:
+
+SET FirstName = "Louiery"
+set lastname="Cioco"
+SET LastName = LastName
+SET FullName    =    FirstName + " " + LastName
+SET Greeting = $"Hello {FullName}!"
+SET Quote = Greeting
+SET Path = "D:\\SMILE\\Examples"
+
+SET Age = 50
+SET Age = Age + 1
+SET Negative = -Age
+SET Total = (2 + 3) * 4
+SET Grouped = Total
+SET Quotient = Total / 3
+
+SET Enabled = FALSE
+SET Enabled = NOT Enabled
+SET Adult = Age >= 18
+SET WorkingAge = Adult
+SET WorkingAge = WorkingAge AND Enabled
+SET SameName = FullName = "Louiery Cioco"
+
+SET MixedMessage = $"{FullName}: Age={Age}, Adult={Adult}"
+
+SET MixedMessage ="
+SET Block String Literal:
+  Quotes remain text: "Hello".
+  Braces remain text: {FullName}
+  Escapes work: tab=\t and path=C:\\SMILE
+
+Blank content lines remain blank.
+"
+
+SET Quote = "
+    The closing quote removes this four-space margin.
+      These two extra spaces remain.
+    "
+
+PRINT
+PRINT Values after SET:
+PRINT {Greeting}
+PRINT Path: {Path}
+PRINT Age={Age}, Negative={Negative}
+PRINT Total={Total}, Grouped={Grouped}, Quotient={Quotient}
+PRINT Enabled={Enabled}, Adult={Adult}, WorkingAge={WorkingAge}
+PRINT SameName={SameName}
+PRINT {MixedMessage}
+PRINT {Quote}
+
+PRINT
+PRINT "SET, PRINT, and LET together:"
+
+LET Score = 10
+PRINT Score starts at {Score}.
+
+SET Score = Score + 5
+PRINT Score after SET is {Score}.
+
+LET Bonus = Score / 3
+PRINT Bonus declared from the updated score is {Bonus}.
+
+SET Score = Score + Bonus
+LET Passed = Score >= 18
+LET FinalResult = $"Final score: {Score}; bonus: {Bonus}; passed: {Passed}"
+PRINT {FinalResult}
+
+SET Passed = NOT Passed
+PRINT Toggled passed={Passed}.
+
+SET Greeting = Greeting + " Welcome to SMILE."
+LET FinalGreeting = Greeting
+LET NextAge = Age + 1
+LET EitherFlag = Enabled OR FALSE
+LET LiteralPlaceholder = $"Use {{Name}} as a placeholder."
+
+PRINT {FinalGreeting}
+PRINT Next age: {NextAge}
+PRINT Either flag: {EitherFlag}
+PRINT {LiteralPlaceholder}

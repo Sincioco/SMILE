@@ -103,3 +103,28 @@ Is this a feasible multi-line string literal that would not damage SMILE's futur
 1.) Implement the SET statement in SMILE using the instructions provided in "D:\SMILE\Requirements\2026-08-05 0456 - SMILE Codex Instructions v0.5.0 Runtime Variables SET and Block String FULL.md".  Commit all and push when your tests are green.
 
 	Status: **Complete**. SMILE v0.5.0 Runtime Variables, SET, and SET Block String Literals are implemented across the shared compiler pipeline, reference evaluator, all ten target generators, desktop sample and highlighting, official specifications, public documentation, and conformance coverage. Debug and Release each pass 462 tests with 0 failures and 9 Java integration tests skipped because a full JDK is not installed (471 total). All nine installed target toolchains also build and run the acceptance program with exact reference-evaluator output and exit code 0 from SMILE Desktop.
+
+
+2.) When the SMILE editor opened before, you had every permutation of LET and PRINT showing as a demo.  Can you keep that.  I like that.  And now, just add SET at the bottom of it.  Permutations of SET so the user can see how it works. And you can include more LET and PRINT after that.  So the file should contain:
+
+	SET (all valid permutations of it)
+	PRINT (all valid permutations of it)
+	LET  (all valid permutations of it)
+
+	SET, PRINT, LET (mix uses for different scenarios)
+
+	(future language syntax here)
+
+3.) I would like us to keep building this as we add more language syntax in SMILE.
+
+4.) In fact, can you just create a language.smile file and put #2 in there?  And just have the editor load it by default?
+
+5.) Then language.smile would be the file you will update and maintain in the future.  It would be easy to track the changes too since it will be committed in the repo.
+
+6.) It would have to be a apart of the SMILE editor's deployment since that file has to be available at run-time.
+
+7.) So, the intent is, load language.smile on the editor and have it transpile to the visible languages immediately.  Without locking up or freezing up the UI.  Load the UI completely first.  Make sure it is painted properly, before performing any action.  Commit all and push when your tests are green.
+
+8.) Let's rename that to language.smile, since it's really a language reference file.
+
+	Status: **Complete**. The committed `examples/language.smile` is now SMILE Desktop's cumulative language reference, preserving the full LET/PRINT tour and adding canonical SET, Block String, and mixed LET/SET/PRINT scenarios. Build and publish outputs carry it beside the executable as `language.smile`. WPF completes its first paint before asynchronously reading the file and transpiling only the visible targets off the dispatcher; a source-revision guard prevents the late startup load from overwriting learner work. Debug and Release each pass 467 tests with 0 failures and the expected 9 Java integration skips (476 total), the published runtime copy matches the canonical file byte-for-byte, and the real Desktop smoke test reaches Ready and remains responsive through live target switching and New reload.

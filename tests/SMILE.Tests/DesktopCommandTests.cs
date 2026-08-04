@@ -159,7 +159,197 @@ public sealed class DesktopCommandTests
     }
 
     [TestMethod]
-    public async Task Rapid_language_switching_reuses_cached_generated_code_without_update_churn()
+    public async Task Initialization_loads_the_packaged_cumulative_language_reference_and_generates_visible_targets()
+    {
+        string runtimeLanguagePath = Path.Combine(
+            AppContext.BaseDirectory,
+            MainWindowViewModel.LanguageFileName);
+        Assert.IsTrue(File.Exists(runtimeLanguagePath), runtimeLanguagePath);
+
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(),
+            new FakeErrorReporter(),
+            new FakeFolderOpener());
+
+        // Window construction must stay presentation-only. The post-render
+        // initialization step is responsible for language-reference I/O and generation.
+        Assert.AreEqual(string.Empty, viewModel.SourceText);
+
+        await viewModel.InitializeAsync();
+
+        const string legacyLetPrintReference = """
+LET FirstName = "Sin"
+LET LastName = "Cioco"
+LET FullName = FirstName + " " + LastName
+LET Greeting = $"Hello {FullName}!"
+LET Quote = "She said \"Hello\"."
+LET Path = "C:\\SMILE"
+LET Age = 49
+LET Negative = -12
+LET Total = 2 + 3 * 4
+LET Grouped = (2 + 3) * 4
+LET Quotient = -7 / 2
+LET Enabled = TRUE
+LET Adult = Age >= 18
+LET WorkingAge = Adult AND NOT FALSE
+LET SameName = FullName = "Sin Cioco"
+LET MixedMessage = $"{FullName}: Age={Age}, Adult={Adult}"
+
+PRINT
+PRINT "Quoted literal"
+PRINT Raw template keeps C:\SMILE literally.
+PRINT Literal braces: {{Name}}
+PRINT $"Interpolated greeting: {Greeting}"
+PRINT "Concat: " + FirstName + " " + LastName
+PRINT {FullName}
+PRINT {Age}
+PRINT {Negative}
+PRINT {Total}
+PRINT {Grouped}
+PRINT {Quotient}
+PRINT {Enabled}
+PRINT {WorkingAge}
+PRINT {SameName}
+PRINT {MixedMessage}
+PRINT 2 + 3 = {2 + 3}
+PRINT Adult check: {Age >= 18}
+PRINT Quote: {Quote}
+PRINT Path: {Path}
+PRINT {Greeting}
+
+PRINT ""
+PRINT FirstName
+PRINT {FirstName}
+PRINT "FirstName remains literal here: {FirstName}"
+PRINT $"Literal braces remain literal: {{FirstName}}"
+PRINT A; B; C
+""";
+        string normalizedSource = NormalizeLineEndings(viewModel.SourceText);
+        string expectedLegacyPrefix = NormalizeLineEndings(legacyLetPrintReference) +
+            "\n\nPRINT\nPRINT SET statement examples in language.smile:";
+        Assert.IsTrue(
+            normalizedSource.StartsWith(expectedLegacyPrefix, StringComparison.Ordinal),
+            "language.smile must preserve the complete cumulative LET/PRINT reference before SET.");
+
+        StringAssert.Contains(viewModel.SourceText, "SET FirstName = \"Louiery\"");
+        StringAssert.Contains(viewModel.SourceText, "set lastname=\"Cioco\"");
+        StringAssert.Contains(viewModel.SourceText, "SET MixedMessage =\"");
+        StringAssert.Contains(viewModel.SourceText, "SET Quote = \"");
+        StringAssert.Contains(viewModel.SourceText, "LET Bonus = Score / 3");
+        StringAssert.Contains(viewModel.SourceText, "PRINT Toggled passed={Passed}.");
+
+        EvaluationResult evaluation = new SmileEvaluator().Evaluate(viewModel.SourceText);
+        Assert.IsTrue(
+            evaluation.Success,
+            string.Join(Environment.NewLine, evaluation.Diagnostics));
+
+        var transpiler = new SmileTranspiler();
+        foreach (TargetLanguage language in TargetLanguageInfo.All)
+        {
+            TranspileResult result = transpiler.Transpile(viewModel.SourceText, language);
+            Assert.IsTrue(
+                result.Success,
+                $"{language}{Environment.NewLine}{string.Join(Environment.NewLine, result.Diagnostics)}");
+        }
+
+        foreach (TargetPaneViewModel pane in viewModel.Panes)
+        {
+            Assert.AreEqual("Ready", pane.Status);
+            Assert.IsTrue(pane.HasValidSource);
+            Assert.IsFalse(string.IsNullOrWhiteSpace(pane.GeneratedCode));
+        }
+    }
+
+    [TestMethod]
+    public async Task Initialization_never_overwrites_source_changed_while_the_language_reference_is_loading()
+    {
+        var delayedRead = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(),
+            new FakeErrorReporter(),
+            new FakeFolderOpener(),
+            languageFilePath: null,
+            _ => delayedRead.Task);
+
+        Task initialization = viewModel.InitializeAsync();
+        viewModel.SourceText = "PRINT Learner work wins.";
+        delayedRead.SetResult("PRINT Packaged reference");
+
+        await initialization;
+
+        Assert.AreEqual("PRINT Learner work wins.", viewModel.SourceText);
+        foreach (TargetPaneViewModel pane in viewModel.Panes)
+        {
+            Assert.AreEqual("Ready", pane.Status);
+            Assert.IsTrue(pane.HasValidSource);
+            StringAssert.Contains(pane.GeneratedCode, "Learner work wins.");
+        }
+    }
+
+    [TestMethod]
+    public async Task New_command_reloads_the_packaged_language_reference_as_an_unassociated_document()
+    {
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(),
+            new FakeErrorReporter(),
+            new FakeFolderOpener());
+        await viewModel.InitializeAsync();
+        viewModel.SourceText = "PRINT temporary edit";
+
+        viewModel.NewCommand.Execute(null);
+        await WaitUntilAsync(() => viewModel.NewCommand.CanExecute(null));
+
+        StringAssert.Contains(viewModel.SourceText, "LET FirstName = \"Sin\"");
+        StringAssert.Contains(viewModel.SourceText, "PRINT \"SET, PRINT, and LET together:\"");
+        Assert.AreEqual("Language reference loaded", viewModel.OperationStatus);
+    }
+
+    [TestMethod]
+    public async Task Missing_language_reference_is_reported_without_closing_or_blocking_the_editor()
+    {
+        string missingLanguagePath = Path.Combine(
+            Path.GetTempPath(),
+            "SMILE-Missing-" + Guid.NewGuid().ToString("N") + ".smile");
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(),
+            new FakeErrorReporter(),
+            new FakeFolderOpener(),
+            missingLanguagePath);
+
+        await viewModel.InitializeAsync();
+
+        Assert.AreEqual(string.Empty, viewModel.SourceText);
+        StringAssert.Contains(viewModel.OutputText, "Load language reference Error");
+        StringAssert.Contains(viewModel.OutputText, "SMILE remains open");
+        Assert.AreEqual("Ready", viewModel.OperationStatus);
+    }
+
+    [TestMethod]
+    public async Task New_preserves_the_current_document_when_the_language_reference_cannot_be_loaded()
+    {
+        string missingLanguagePath = Path.Combine(
+            Path.GetTempPath(),
+            "SMILE-Missing-" + Guid.NewGuid().ToString("N") + ".smile");
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(),
+            new FakeErrorReporter(),
+            new FakeFolderOpener(),
+            missingLanguagePath)
+        {
+            SourceText = "PRINT Keep this work"
+        };
+
+        viewModel.NewCommand.Execute(null);
+        await WaitUntilAsync(() => viewModel.NewCommand.CanExecute(null));
+
+        Assert.AreEqual("PRINT Keep this work", viewModel.SourceText);
+        Assert.AreEqual("Failed", viewModel.OperationStatus);
+        StringAssert.Contains(viewModel.OutputText, "Load language reference Error");
+        StringAssert.Contains(viewModel.OutputText, "SMILE remains open");
+    }
+
+    [TestMethod]
+    public async Task Rapid_language_switching_only_generates_the_latest_missing_visible_target()
     {
         var viewModel = new MainWindowViewModel(
             CreateRegistry(),
@@ -168,24 +358,25 @@ public sealed class DesktopCommandTests
         await viewModel.InitializeAsync();
 
         TargetPaneViewModel pane = viewModel.Pane3;
-        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.C);
         pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Cpp);
         pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Python);
         pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Cpp);
 
         Assert.AreEqual("cpp", pane.HighlightingId);
-        StringAssert.Contains(pane.GeneratedCode, "std::cout");
+        Assert.AreEqual("Updating", pane.Status);
+
+        await WaitUntilAsync(() =>
+            pane.Status == "Ready" &&
+            pane.GeneratedCode.Contains("std::cout", StringComparison.Ordinal));
 
         pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Swift);
         pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Python);
 
-        Assert.AreEqual("Ready", viewModel.OperationStatus);
-        Assert.AreEqual("Ready", pane.Status);
+        await WaitUntilAsync(() =>
+            pane.Status == "Ready" &&
+            pane.GeneratedCode.Contains("def main() -> None:", StringComparison.Ordinal));
+
         Assert.IsTrue(pane.HasValidSource);
-        StringAssert.Contains(pane.GeneratedCode, "def main() -> None:");
-
-        await Task.Delay(350);
-
         Assert.AreEqual("Ready", viewModel.OperationStatus);
         Assert.AreEqual("Ready", pane.Status);
     }
@@ -381,6 +572,9 @@ public sealed class DesktopCommandTests
             await Task.Delay(10);
         }
     }
+
+    private static string NormalizeLineEndings(string text) =>
+        text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
 
     private static ToolchainRegistry CreateRegistry(params FakeToolchain[] overrides)
     {

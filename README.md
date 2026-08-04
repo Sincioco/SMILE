@@ -419,7 +419,9 @@ Valid targets are `csharp`, `c`, `masm-x64`, `javascript`, `java`, `cobol`, `obj
 
 ## Desktop Application
 
-The desktop app title is `SMILE - Simple Modern Interactive Learning Environment`. It opens maximized with an uncluttered LET/SET/PRINT learning sample that assigns a multiline block String, prints current values, increments an Integer, and reassigns an ordinary String. The top-left pane is editable SMILE source. The other three panes are read-only generated targets. They default to C#, Assembly - Windows x64 MASM, and C. Each generated pane can switch between C#, C, MASM x64, JavaScript, Java, COBOL, Objective-C, Swift, Python, and C++.
+The desktop app title is `SMILE - Simple Modern Interactive Learning Environment`. It opens maximized and completes its first paint before doing language-reference I/O or compiler work. It then asynchronously loads the packaged [cumulative language reference](examples/language.smile) into the top-left editor and immediately transpiles only the three visible targets in the background. If a learner types or opens a file while that read is pending, the newer document wins and is never replaced by the late startup result. The reference preserves the full valid LET and PRINT tour, adds the valid SET forms and mixed LET/SET/PRINT scenarios beneath it, and is the committed file that future language syntax will extend instead of replacing earlier examples. The other three panes are read-only generated targets. They default to C#, Assembly - Windows x64 MASM, and C. Each generated pane can switch between C#, C, MASM x64, JavaScript, Java, COBOL, Objective-C, Swift, Python, and C++.
+
+`examples/language.smile` is copied beside the Desktop executable in normal builds and deployment publishes as `language.smile`. New editor sessions reload that runtime file asynchronously without associating Save with the packaged copy, so learners can experiment safely and use Save As for their own programs.
 
 ![SMILE desktop app in maximized state](Requirements/Progress/2026-08-02-day-1-2-smile-desktop.png)
 
@@ -427,7 +429,7 @@ The four code panes use AvalonEdit. The SMILE source pane and all three generate
 
 Hold Ctrl and rotate the mouse wheel over any code pane or the diagnostics/output pane to increase or decrease only that pane's font size in one-point steps from 8 through 48 points. Normal mouse-wheel scrolling is unchanged. Each pane keeps its own in-memory zoom level so presenters can enlarge the generated code or program output without changing the other panes.
 
-Typing in the SMILE source editor schedules a short debounced live transpilation for the visible target languages only. The latest source revision always wins, so stale generated code is never used for Build & Run. The Transpile All command is asynchronous and regenerates all ten targets.
+Typing in the SMILE source editor schedules a short debounced live transpilation for the visible target languages only. Initial language-reference generation also targets only the visible languages, starts after the first window paint, and runs off the WPF dispatcher. The latest source revision always wins, so stale generated code is never used for Build & Run. The Transpile All command is asynchronous and regenerates all ten targets.
 
 Each generated pane supports Copy, Save Source, Open Generated Folder, Build & Run, and the optional Press Any Key launcher. JavaScript and Python run directly with their interpreters, so their buttons say Run. C++, COBOL, Objective-C, Swift, and Python are enabled when their local toolchains are detected; otherwise the IDE reports the normal missing-toolchain message without closing SMILE.
 

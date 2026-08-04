@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Threading;
 
 namespace SMILE.Desktop;
 
@@ -17,17 +18,26 @@ public partial class MainWindow : Window
         InitializeComponent();
         DataContext = _viewModel;
 
-        Loaded += async (_, _) =>
+        ContentRendered += MainWindow_ContentRendered;
+    }
+
+    private async void MainWindow_ContentRendered(object? sender, EventArgs e)
+    {
+        ContentRendered -= MainWindow_ContentRendered;
+
+        // ContentRendered means WPF completed the first paint. Yield once at
+        // background priority so pending render and input work stays ahead of
+        // language-reference I/O, toolchain detection, and background transpilation.
+        await Dispatcher.Yield(DispatcherPriority.Background);
+
+        try
         {
-            try
-            {
-                await _viewModel.InitializeAsync();
-            }
-            catch (Exception ex)
-            {
-                _viewModel.HandleInitializationException(ex);
-            }
-        };
+            await _viewModel.InitializeAsync();
+        }
+        catch (Exception ex)
+        {
+            _viewModel.HandleInitializationException(ex);
+        }
     }
 
     private void OutputTextBox_TextChanged(object sender, TextChangedEventArgs e)
