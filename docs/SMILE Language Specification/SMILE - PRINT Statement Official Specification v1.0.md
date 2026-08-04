@@ -12,6 +12,8 @@
 
 `PRINT` writes text to the program's standard output and appends one newline.
 
+Evaluated variable references read the variable's current runtime value at the `PRINT` statement. An earlier `SET` therefore changes what every later direct expression, raw-template hole, and interpolated String hole prints.
+
 SMILE deliberately provides both:
 
 1. A forgiving, beginner-friendly template form.
@@ -122,7 +124,7 @@ Output:
 First step; second step; third step.
 ```
 
-All forms of `PRINT` defined by this specification must fit on one physical source line.
+All forms of `PRINT` defined by this specification must fit on one physical source line. The multiline SET Block String Literal is a SET-only source form and is not legal directly in `PRINT`.
 
 Future SMILE versions may permit visibly incomplete expressions to continue across lines, but that does not permit multiple statements on one line.
 
@@ -394,7 +396,7 @@ The compiler MUST report the location of the malformed interpolation.
 
 ## 9. Ordinary quoted strings
 
-An ordinary quoted string begins and ends with `"`.
+An ordinary quoted string begins and ends with `"` on one physical source line.
 
 Braces inside an ordinary quoted string are ordinary characters:
 
@@ -413,6 +415,8 @@ PRINT “Hello World!”
 Generated code MUST use valid target-language quotation syntax.
 
 Embedded quotation-mark escaping is outside version 1.0 of this `PRINT` specification unless separately defined by the general SMILE string specification.
+
+A quote at the end of a physical line cannot begin a SET Block String Literal here. That form is valid only as the complete value of `SET` and produces the SET placement diagnostic when used directly in `PRINT`.
 
 ---
 
@@ -566,7 +570,8 @@ After recognizing the case-insensitive `PRINT` keyword:
 4. Else if the payload begins with `"`, parse the remainder of the line as a normal expression.
 5. Else parse the remainder of the line as a raw template.
 6. Reject a second standalone `PRINT` keyword token on the same physical line outside quoted text.
-7. Require the complete statement to end at the physical newline or end-of-file.
+7. Reject a SET Block String Literal; it is not a PRINT payload form.
+8. Require the complete statement to end at the physical newline or end-of-file.
 
 The compiler MUST NOT select a form by trying one grammar and silently falling back to another.
 
@@ -698,7 +703,7 @@ The language-neutral representation MUST preserve enough expression shape for ge
 
 Generated target code SHOULD be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write. C, Objective-C, assembly, and other lower-level targets MAY lower interpolation and concatenation into target-specific output operations. However, the generator SHOULD still choose the clearest idiomatic destination-language form. For C string output, a single safe `printf` call with a compiler-generated format string is generally preferred over exposing every internal literal and variable segment as a separate output statement.
 
-When a `PRINT` expression references a variable, the target generator MUST use the same symbol-based target identifier map as the corresponding `LET` declaration. This keeps valid SMILE identifiers safe in target languages without changing bare `PRINT` text into variable references.
+When a `PRINT` expression references a variable, the target generator MUST use the same symbol-based target identifier map as the corresponding `LET` declaration and every `SET` assignment. This keeps valid SMILE identifiers safe in target languages without changing bare `PRINT` text into variable references.
 
 ---
 
@@ -743,7 +748,12 @@ PRINT Hello Name}
 PRINT $"Hello {Name"
 PRINT "Hello" + 
 PRINT "Hello"; PRINT "World"
+PRINT "
+Block text
+"
 ```
+
+The multiline example produces `SMILE1306` because a SET Block String Literal is valid only as the complete value of `SET`.
 
 Diagnostics MUST include:
 
@@ -795,7 +805,6 @@ This specification is designed to remain valid as SMILE gains:
 - Arrays and objects.
 - Formatting specifications.
 - User-defined types.
-- Additional target languages.
 - A full semantic type system.
 
 SMILE v0.4.1 defines official numeric and boolean expressions for these expression positions:
@@ -844,6 +853,8 @@ The official SMILE `PRINT` rules are:
 15. Quote-free string convenience is specific to `PRINT`.
 16. Every form lowers to a common language-neutral expression representation.
 17. Target generators preserve expression intent when the target language has an idiomatic equivalent.
+18. Evaluated variable references read the current value established by earlier `LET` and `SET` statements.
+19. SET Block String Literals are not legal directly in `PRINT`.
 
 ---
 

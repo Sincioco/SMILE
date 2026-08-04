@@ -80,6 +80,11 @@ public sealed class Lexer
             return LexIntegerLiteral();
         }
 
+        if (current == '"' && TryLexBlockStringLiteral(out SyntaxToken blockString))
+        {
+            return blockString;
+        }
+
         if (SyntaxFacts.IsDoubleQuote(current))
         {
             return LexStringLiteral();
@@ -188,7 +193,7 @@ public sealed class Lexer
                 }
 
                 char escape = _text[_position + 1];
-                if (TryAppendEscape(escape, builder))
+                if (SmileStringEscapes.TryAppend(escape, builder))
                 {
                     _position += 2;
                     continue;
@@ -213,37 +218,62 @@ public sealed class Lexer
         return Token(SyntaxKind.StringLiteralToken, start, Math.Max(0, _end - start), builder.ToString());
     }
 
-    private static bool TryAppendEscape(char escape, StringBuilder builder)
+    private bool TryLexBlockStringLiteral(out SyntaxToken token)
     {
-        switch (escape)
+        token = null!;
+
+        // LexOne is intentionally bounded to one expression line. The public
+        // full-source lexer can surface the dedicated block token, while the
+        // indexed statement parser remains responsible for SET-only placement.
+        if (_absoluteStart != 0 || _end != _text.Length)
         {
-            case '\\':
-                builder.Append('\\');
-                return true;
-            case '"':
-                builder.Append('"');
-                return true;
-            case 'n':
-                builder.Append('\n');
-                return true;
-            case 'r':
-                builder.Append('\r');
-                return true;
-            case 't':
-                builder.Append('\t');
-                return true;
-            case '0':
-                builder.Append('\0');
-                return true;
-            case 'b':
-                builder.Append('\b');
-                return true;
-            case 'f':
-                builder.Append('\f');
-                return true;
-            default:
-                return false;
+            return false;
         }
+
+        int afterQuote = _position + 1;
+        while (afterQuote < _end && SyntaxFacts.IsHorizontalWhitespace(_text[afterQuote]))
+        {
+            afterQuote++;
+        }
+
+        if (afterQuote >= _end || _text[afterQuote] is not ('\r' or '\n'))
+        {
+            return false;
+        }
+
+        IReadOnlyList<SourceLine> lines = SourceLine.Split(_text);
+        int lineIndex = -1;
+        for (int index = 0; index < lines.Count; index++)
+        {
+            SourceLine candidate = lines[index];
+            if (candidate.Start <= _position &&
+                _position <= candidate.Start + candidate.Text.Length)
+            {
+                lineIndex = index;
+                break;
+            }
+        }
+        if (lineIndex < 0)
+        {
+            return false;
+        }
+
+        SourceLine line = lines[lineIndex];
+        var blockDiagnostics = new List<Diagnostic>();
+        SetBlockStringScanResult result = SetBlockStringScanner.Scan(
+            _text,
+            lines,
+            lineIndex,
+            _position - line.Start,
+            blockDiagnostics);
+        _diagnostics.AddRange(blockDiagnostics);
+
+        SourceLine closingLine = lines[result.ClosingLineIndex];
+        _position = result.Token.Span.Start + result.Token.Span.Length;
+        _currentLineNumber = closingLine.LineNumber;
+        _lineStart = closingLine.Start;
+        token = result.Token;
+        return true;
     }
 
     private void SkipHorizontalWhitespace()
@@ -290,5 +320,243 @@ public sealed class Lexer
             DiagnosticSeverity.Error,
             message,
             span));
+    }
+}
+
+// Ordinary, interpolated, and SET block Strings all use this one escape table.
+// Keeping the mapping at the lexical boundary prevents the special block
+// source form from acquiring subtly different String semantics.
+internal static class SmileStringEscapes
+{
+    public static bool TryAppend(char escape, StringBuilder builder)
+    {
+        switch (escape)
+        {
+            case '\\':
+                builder.Append('\\');
+                return true;
+            case '"':
+                builder.Append('"');
+                return true;
+            case 'n':
+                builder.Append('\n');
+                return true;
+            case 'r':
+                builder.Append('\r');
+                return true;
+            case 't':
+                builder.Append('\t');
+                return true;
+            case '0':
+                builder.Append('\0');
+                return true;
+            case 'b':
+                builder.Append('\b');
+                return true;
+            case 'f':
+                builder.Append('\f');
+                return true;
+            default:
+                return false;
+        }
+    }
+}
+
+internal sealed record SetBlockStringScanResult(
+    SyntaxToken Token,
+    int ClosingLineIndex);
+
+// A block is scanned once, linearly, before expression binding. The resulting
+// token retains its exact source text/span but carries the same normalized
+// String value used by an ordinary String literal.
+internal static class SetBlockStringScanner
+{
+    public static SetBlockStringScanResult Scan(
+        string source,
+        IReadOnlyList<SourceLine> lines,
+        int openingLineIndex,
+        int openingQuoteColumn,
+        ICollection<Diagnostic> diagnostics)
+    {
+        SourceLine openingLine = lines[openingLineIndex];
+        int tokenStart = openingLine.Start + openingQuoteColumn;
+        int malformedClosingLineIndex = -1;
+        int malformedSuffixStart = -1;
+
+        for (int lineIndex = openingLineIndex + 1; lineIndex < lines.Count; lineIndex++)
+        {
+            SourceLine line = lines[lineIndex];
+            int first = SkipHorizontalWhitespace(line.Text, 0);
+            if (first >= line.Text.Length || line.Text[first] != '"')
+            {
+                continue;
+            }
+
+            int afterQuote = SkipHorizontalWhitespace(line.Text, first + 1);
+            if (afterQuote < line.Text.Length &&
+                first + 1 < line.Text.Length &&
+                !SyntaxFacts.IsHorizontalWhitespace(line.Text[first + 1]))
+            {
+                // A content line may naturally begin with a quote, such as
+                // "Hello". Only whitespace after the delimiter-looking quote
+                // makes the line an attempted closing delimiter with a suffix.
+                continue;
+            }
+
+            if (afterQuote < line.Text.Length)
+            {
+                // Only an exact whitespace-only quote line closes a valid
+                // block. Remember a delimiter-looking line with a suffix, but
+                // keep scanning: if a later exact delimiter exists, this line
+                // is ordinary quote-leading content. If no exact close exists,
+                // the remembered candidate gives the precise SMILE1307 that a
+                // concatenation or same-line statement suffix requires.
+                if (malformedClosingLineIndex < 0)
+                {
+                    malformedClosingLineIndex = lineIndex;
+                    malformedSuffixStart = afterQuote;
+                }
+
+                continue;
+            }
+
+            return Complete(lineIndex, first);
+        }
+
+        if (malformedClosingLineIndex >= 0)
+        {
+            SourceLine malformedLine = lines[malformedClosingLineIndex];
+            diagnostics.Add(new Diagnostic(
+                "SMILE1307",
+                DiagnosticSeverity.Error,
+                "Unexpected content follows the closing SET Block String delimiter.",
+                malformedLine.Span(
+                    malformedSuffixStart,
+                    malformedLine.Text.Length - malformedSuffixStart)));
+            return Complete(
+                malformedClosingLineIndex,
+                SkipHorizontalWhitespace(malformedLine.Text, 0));
+        }
+
+        var unterminatedSpan = new TextSpan(
+            tokenStart,
+            Math.Max(0, source.Length - tokenStart),
+            openingLine.LineNumber,
+            openingQuoteColumn + 1);
+        diagnostics.Add(new Diagnostic(
+            "SMILE1003",
+            DiagnosticSeverity.Error,
+            "Unterminated SET Block String literal.",
+            unterminatedSpan));
+        return new SetBlockStringScanResult(
+            new SyntaxToken(
+                SyntaxKind.BlockStringLiteralToken,
+                source[tokenStart..],
+                string.Empty,
+                unterminatedSpan),
+            Math.Max(openingLineIndex, lines.Count - 1));
+
+        SetBlockStringScanResult Complete(int closingLineIndex, int quoteColumn)
+        {
+            SourceLine closingLine = lines[closingLineIndex];
+            string margin = closingLine.Text[..quoteColumn];
+            string value = NormalizeContent(
+                lines,
+                openingLineIndex + 1,
+                closingLineIndex,
+                margin,
+                diagnostics);
+            int tokenEnd = closingLine.Start + closingLine.Text.Length;
+            var span = new TextSpan(
+                tokenStart,
+                tokenEnd - tokenStart,
+                openingLine.LineNumber,
+                openingQuoteColumn + 1);
+            return new SetBlockStringScanResult(
+                new SyntaxToken(
+                    SyntaxKind.BlockStringLiteralToken,
+                    source[tokenStart..tokenEnd],
+                    value,
+                    span),
+                closingLineIndex);
+        }
+    }
+
+    private static string NormalizeContent(
+        IReadOnlyList<SourceLine> lines,
+        int contentStart,
+        int contentEnd,
+        string margin,
+        ICollection<Diagnostic> diagnostics)
+    {
+        var value = new StringBuilder();
+        for (int lineIndex = contentStart; lineIndex < contentEnd; lineIndex++)
+        {
+            SourceLine line = lines[lineIndex];
+            int dataStart = line.Text.StartsWith(margin, StringComparison.Ordinal)
+                ? margin.Length
+                : 0;
+            AppendDecodedLine(value, line, dataStart, diagnostics);
+            if (lineIndex + 1 < contentEnd)
+            {
+                value.Append('\n');
+            }
+        }
+
+        return value.ToString();
+    }
+
+    private static void AppendDecodedLine(
+        StringBuilder value,
+        SourceLine line,
+        int start,
+        ICollection<Diagnostic> diagnostics)
+    {
+        int position = start;
+        while (position < line.Text.Length)
+        {
+            char current = line.Text[position];
+            if (current != '\\')
+            {
+                value.Append(current);
+                position++;
+                continue;
+            }
+
+            if (position + 1 >= line.Text.Length)
+            {
+                diagnostics.Add(new Diagnostic(
+                    "SMILE1209",
+                    DiagnosticSeverity.Error,
+                    "String literal ends with an unterminated escape sequence.",
+                    line.Span(position, 1)));
+                position++;
+                continue;
+            }
+
+            char escape = line.Text[position + 1];
+            if (SmileStringEscapes.TryAppend(escape, value))
+            {
+                position += 2;
+                continue;
+            }
+
+            diagnostics.Add(new Diagnostic(
+                "SMILE1208",
+                DiagnosticSeverity.Error,
+                $"Unknown string escape sequence '\\{escape}'.",
+                line.Span(position, 2)));
+            position += 2;
+        }
+    }
+
+    private static int SkipHorizontalWhitespace(string text, int position)
+    {
+        while (position < text.Length && SyntaxFacts.IsHorizontalWhitespace(text[position]))
+        {
+            position++;
+        }
+
+        return position;
     }
 }

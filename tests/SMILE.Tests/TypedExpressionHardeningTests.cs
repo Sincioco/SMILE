@@ -269,7 +269,7 @@ LET FormFeed = "A\fB"
         Assert.IsTrue(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         string[] values = result.Program!.Statements
             .OfType<BoundLetStatement>()
-            .Select(let => let.ConstantValue.StringValue)
+            .Select(let => ((BoundStringLiteralExpression)let.Initializer).Value)
             .ToArray();
         CollectionAssert.AreEqual(
             new[] { "\\", "\"", "A\nB", "A\rB", "A\tB", "A\0B", "A\bB", "A\fB" },

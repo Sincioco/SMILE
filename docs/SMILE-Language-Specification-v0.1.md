@@ -8,14 +8,15 @@ SMILE v0.1 supported only:
 PRINT "text"
 ```
 
-SMILE v0.4.1 implements and hardens the official Friendly PRINT, LET, string literal, and typed expression behavior defined in:
+SMILE v0.5.0 implements and hardens the official LET, SET, Friendly PRINT, String literal, and typed expression behavior defined in:
 
 - [SMILE - LET Statement Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20LET%20Statement%20Official%20Specification%20v1.0.md)
+- [SMILE - SET Statement Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20SET%20Statement%20Official%20Specification%20v1.0.md)
 - [SMILE - PRINT Statement Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20PRINT%20Statement%20Official%20Specification%20v1.0.md)
 - [SMILE - String Literals Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20String%20Literals%20Official%20Specification%20v1.0.md)
 - [SMILE - Core Types and Expressions Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20Core%20Types%20and%20Expressions%20Official%20Specification%20v1.0.md)
 
-Current v0.4.1 behavior includes:
+Current v0.5.0 behavior includes:
 
 - `LET Name = "Sin"` string variable declarations.
 - `LET Age = 49` integer variable declarations.
@@ -23,7 +24,9 @@ Current v0.4.1 behavior includes:
 - `LET Copy = Name` variable initializers.
 - `LET FullName = FirstName + " " + LastName` concatenation initializers.
 - `LET Greeting = $"Hello {FullName}!"` interpolated string initializers.
-- Compile-time typed constant evaluation for current `LET` values.
+- Mutable runtime values declared by `LET` and changed by fixed-type, case-insensitive `SET` assignment.
+- Statement-order known-value analysis for diagnostics, mutation-aware simplification, Integer profiling, and low-level target generation.
+- The SET Block String Literal — The SMILE Way, with exact logical newlines, structural indentation removal, quotes, escapes, trailing whitespace, and embedded NUL.
 - Empty string `LET` values preserved exactly across the evaluator and generated targets.
 - Official string escapes for quote, backslash, control characters, and tab/newline text.
 - Signed 64-bit integer arithmetic, comparison, and grouping with parentheses.
@@ -42,5 +45,6 @@ Current v0.4.1 behavior includes:
 - String concatenation in quoted `PRINT` expressions.
 - Case-insensitive keywords and variable lookup.
 - Stable diagnostics for malformed interpolation, duplicate variables, undefined variables, missing `PRINT` whitespace, and second `PRINT` keywords on one line.
+- Stable diagnostics for malformed SET statements, undefined targets, type mismatches, and invalid block placement or delimiters.
 
 The old v0.1 `PRINT "text"` form remains valid.

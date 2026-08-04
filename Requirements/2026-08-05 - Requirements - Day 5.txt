@@ -1,0 +1,105 @@
+AI Instructions
+--------------
+Design and Coding Methodology:
+	KISS (Keep It Simple Stupid) - The simpler the better.  Avoid over-engineering.  Avoid unnecessary complexity.  Avoid unnecessary features.  Avoid unnecessary bells and whistles.  Avoid unnecessary abstractions.  Avoid unnecessary patterns.  Avoid unnecessary frameworks.  Avoid unnecessary libraries.  Avoid unnecessary dependencies.  Avoid unnecessary code.  Avoid unnecessary files.  Avoid unnecessary folders.  Avoid unnecessary classes.  Avoid unnecessary methods.  Avoid unnecessary variables.
+
+	KISS v2 (Keep It Speedy Sin) "The Sin Way" - Follow the original KISS method but with the mindset of creating a solution that gives the best possible performance both in terms of user-experience (first priority) and functional performance (second priority).  The user-experience may take precedence over the functional performance for any task.  For example, if perform a long-running task such as recalculating the positions of objects on screen (think Diagram 1), it should not lock the thread the user is on and give the impression that the application is stuck or sluggish.  The actual work, the functional part that does the calculations and moving objects on the screen, may be done slower, in chunks, or in a background / unobtrusive way, in order to give the user the best user-experience and responsiveness.  Never sacrifice performance for simplicity.  Speed is King!  But always design solutions and write code, that respect the user's experience and the application's responsiveness, over pure performance that often results in a negative user experience in the end.  If the two directions are in conflict, I will make it simple:  pick the user-experience first and just display a gauge to perform long running tasks in the background, but never lock the user-interface or render partial re-draws of the UI.  "Perceived Speed" from the user's point of view (meaning responsiveness) is King!
+
+Testing:
+	In addition to your normal testing, be sure to inform me if I have to recompile the .Net portion of the project or just Press Ctrl + F5 on the browser to reload to see the latest changes.  If making CSS / image changes, ensure that I will encounter no caching issue when testing in the browser.  Do not test the 3D About flyby unless you made changes to it.
+
+Environment:
+	You are in a dev machine.  You can drop and re-create the database as you see fit, especially when testing migrations scripts.  You don't need to preseve data in the backend or frontend.  You can also clear preferences, local storage settings and any cache as you see fit.
+
+Database:
+	If making changes to the database, that affects existing users see database-versioning.md under the docs folder.
+
+Commits:
+	SMILE is a public repo, write a detailed commit message so people can follow its progression.  Prefix all of your commits with "Sin and Codex: ".
+
+Task Completion:
+	As you complete each task and you are ready for me to test it, highlight them in bold and echo the task and tell me when it is ready for testing.  And when all of your tasks are completed, when there is nothing left in the prompt queue, re-display all the tasks that are ready for me to test in bold.
+
+
+
+SET Statement - SET Folded Multiline String Literal - (The SMILE Way)
+---------------------------------------------------------------------
+
+I would like SMILE to support multi-line SET statements for strings different from other programming languages.
+
+---------------------
+Scenario 1:  Double quote begins the string.  New lines are ignored.  Spaces after new lines are trimmed.
+
+Example 1:
+SET Name = "S
+            I
+            N"
+
+Expected Result 1:
+SET Name = "SIN"
+
+---------------------
+Scenario 1a:  Double quote begins the string.  New lines are ignored.  Spaces after new lines are trimmed.
+
+Example 2:
+SET Name = "S
+       I
+          N"
+
+Expected Result 2:
+SET Name = "SIN"
+
+
+---------------------
+Scenario 2:  Building on Scenario 1 and 1a, if there are training space just before the new line, they are preserved.
+
+Example 3:
+SET Name = "S 
+            I 
+            N "
+
+Expected Result 3:
+SET Name = "S I N "
+
+---------------------
+Scenario 2a:  Building on Scenario 1, 1a, 2, if there are training space just before the new line, they are preserved.
+
+Example 4
+SET Name = "
+  S
+            I 
+        N
+"
+
+Expected Result 4
+SET Name = "SI N"
+
+
+In general, if a string becomes multi-line, you trim the leading spaces on the next and suceeding lines (not including the first line where the double quote is).  You preserve trailing spaces on everyline before the newline marker.
+
+Let me know if this is possible to incorporate in SMILE without sabotaging SMILE's future.  These rules are only meant for the SET statement and nowhere else in SMILE.  So, if passing strings to arguments / functions the user is expected to follow a more conventional pattern like those found in C# or JAVA for example where the string arguments are generally enclosed in a one-liner double-quoted strings.
+
+
+================================================================================================================
+
+SET Statement - Multiline String Literal - (The SMILE Way)
+---------------------------------------------------------------------
+I would like to avoid having to have special characters like triple double quotes or backticks to denote multi-line strings.  Is it possible to simply indicate to the SMILE language that a multi-line string is being used by the following example:
+
+Example:
+
+SET Name ="
+S
+ I
+  N
+"
+
+Expected Output:
+Is the string that begins with the line following the opening double quote and ending with the line prior to the ending double quote.
+
+Is this a feasible multi-line string literal that would not damage SMILE's future?  Again, this is only meant exclusively for the SET statement and nowhere else.
+
+
+1.) Implement the SET statement in SMILE using the instructions provided in "D:\SMILE\Requirements\2026-08-05 0456 - SMILE Codex Instructions v0.5.0 Runtime Variables SET and Block String FULL.md".  Commit all and push when your tests are green.
+
+	Status: **Complete**. SMILE v0.5.0 Runtime Variables, SET, and SET Block String Literals are implemented across the shared compiler pipeline, reference evaluator, all ten target generators, desktop sample and highlighting, official specifications, public documentation, and conformance coverage. Debug and Release each pass 462 tests with 0 failures and 9 Java integration tests skipped because a full JDK is not installed (471 total). All nine installed target toolchains also build and run the acceptance program with exact reference-evaluator output and exit code 0 from SMILE Desktop.

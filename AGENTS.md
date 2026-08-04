@@ -25,8 +25,12 @@
 
 - The official PRINT syntax is defined by `docs/SMILE Language Specification/SMILE - PRINT Statement Official Specification v1.0.md`.
 - The official LET syntax is defined by `docs/SMILE Language Specification/SMILE - LET Statement Official Specification v1.0.md`.
+- The official SET syntax is defined by `docs/SMILE Language Specification/SMILE - SET Statement Official Specification v1.0.md`.
 - Official string literal behavior is defined by `docs/SMILE Language Specification/SMILE - String Literals Official Specification v1.0.md`.
 - Official core type and expression behavior is defined by `docs/SMILE Language Specification/SMILE - Core Types and Expressions Official Specification v1.0.md`.
+- LET declares and initializes a variable. SET is the only assignment statement in v0.5.0 and changes an existing variable without changing its type.
+- Current runtime state belongs to the evaluator environment, not permanently to `BoundLetStatement`.
+- Compile-time propagation must be statement-order and mutation aware. Never reuse an old known value after SET.
 - Every expression feature must be defined once in the official core expression specification and implemented through the shared lexer, parser, binder, evaluator, and bound tree.
 - SMILE `AND` and `OR` use left-to-right short-circuit evaluation. Binding and type checking still examine both operands, but evaluation-time failures in an unreachable operand are not produced.
 - Each expression concept must have one canonical syntax and bound representation. Remove obsolete parallel representations rather than maintaining duplicate compiler paths.
@@ -38,10 +42,14 @@
 - Target generators should preserve expression intent when a destination language has a clear idiomatic equivalent: interpolation should remain interpolation, explicit concatenation should remain concatenation, and lower-level targets may use equivalent output forms.
 - Lower-level targets should still choose the clearest conventional form available. For NUL-free C and Objective-C `PRINT`, prefer one safe `printf` call with a compiler-generated format string; exact length-aware output may use several small statements when required.
 - Destination-language String representations must preserve the complete SMILE String value, including embedded NUL characters. C-family `%s` and `strcmp` may be used only when they are semantically valid for the complete value.
-- Shared short-circuit simplification must use known bound constant values and apply to every expression position. Binding still validates both operands before simplification, and an unreachable right operand must not be simplified or evaluated.
+- Shared short-circuit simplification must use the current known values at each statement position and apply to every expression position. Binding still validates both operands before simplification, and an unreachable right operand must not be simplified or evaluated.
 - Exact-byte conformance tests must not trim or discard NUL, backspace, form-feed, carriage-return, or tab characters.
 - A physical source line normally contains one statement, and semicolons do not separate statements.
 - A second standalone `PRINT` keyword on the same line is a compiler error.
+- Low-level targets may lower a provably known SET value, but they must emit an actual target storage update at the SET position.
+- A SET Block String Literal is a SET-only complete-value source form. Its delimiter lines are excluded, content-line boundaries become logical line feeds, and the closing delimiter's indentation margin is removed from matching content lines.
+- Source tooling must not trim trailing spaces or tabs because block String content may depend on them.
+- Block String normalization belongs entirely to the front end. Target generators receive only the normalized ordinary String value.
 - New language work must preserve asynchronous debounced WPF live transpilation.
 - Published official language specifications and compiler behavior must remain synchronized.
 - Every normative valid and invalid example in an official language specification should be represented in the conformance test suite.

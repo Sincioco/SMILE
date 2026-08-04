@@ -12,44 +12,23 @@ namespace SMILE.Desktop;
 public sealed class MainWindowViewModel : ViewModelBase
 {
     private const string SampleSource = """
-LET FirstName = "Sin"
-LET LastName = "Cioco"
-LET FullName = FirstName + " " + LastName
-LET Greeting = $"Hello {FullName}!"
-LET Quote = "She said \"Hello\"."
-LET Path = "C:\\SMILE"
-LET Age = 49
-LET Negative = -12
-LET Total = 2 + 3 * 4
-LET Grouped = (2 + 3) * 4
-LET Quotient = -7 / 2
-LET Enabled = TRUE
-LET Adult = Age >= 18
-LET WorkingAge = Adult AND NOT FALSE
-LET SameName = FullName = "Sin Cioco"
-LET MixedMessage = $"{FullName}: Age={Age}, Adult={Adult}"
+LET Name = ""
+LET Counter = 0
 
-PRINT
-PRINT "Quoted literal"
-PRINT Raw template keeps C:\SMILE literally.
-PRINT Literal braces: {{Name}}
-PRINT $"Interpolated greeting: {Greeting}"
-PRINT "Concat: " + FirstName + " " + LastName
-PRINT {FullName}
-PRINT {Age}
-PRINT {Negative}
-PRINT {Total}
-PRINT {Grouped}
-PRINT {Quotient}
-PRINT {Enabled}
-PRINT {WorkingAge}
-PRINT {SameName}
-PRINT {MixedMessage}
-PRINT 2 + 3 = {2 + 3}
-PRINT Adult check: {Age >= 18}
-PRINT Quote: {Quote}
-PRINT Path: {Path}
-PRINT {Greeting}
+SET Name ="
+S
+ I
+  N
+"
+
+PRINT Hello:
+PRINT {Name}
+PRINT Counter={Counter}
+
+SET Counter = Counter + 1
+SET Name = "Louiery"
+
+PRINT Hello {Name}. Counter={Counter}
 """;
 
     // Live transpilation is intentionally delayed a little. A compiler front

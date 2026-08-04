@@ -8,9 +8,11 @@ public enum SyntaxKind
 
     IdentifierToken,
     StringLiteralToken,
+    BlockStringLiteralToken,
     IntegerLiteralToken,
 
     LetKeyword,
+    SetKeyword,
     PrintKeyword,
     TrueKeyword,
     FalseKeyword,

@@ -162,9 +162,10 @@ LET Greeting = $"Hello {FullName}!"
         var fullName = (BoundBinaryExpression)lets[2].Initializer;
         Assert.AreEqual(BoundBinaryOperatorKind.StringConcatenation, fullName.Operator.Kind);
         Assert.IsInstanceOfType(lets[3].Initializer, typeof(BoundInterpolatedStringExpression));
+        BoundProgramExecutionTrace trace = BoundProgramExecutionTrace.Create(result.Program!);
         CollectionAssert.AreEqual(
             new[] { "Sin", "Sin", "Sin Cioco", "Hello Sin Cioco!" },
-            lets.Select(let => let.ConstantValue.ToDisplayText()).ToArray());
+            trace.Steps.Select(step => step.Value.ToDisplayText()).ToArray());
     }
 
     [TestMethod]

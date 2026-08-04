@@ -6,12 +6,17 @@
   <Color name="Operator" foreground="#1F1F1F" />
 
   <RuleSet ignoreCase="true">
+    <Span color="String"
+          multiline="true"
+          begin="(?&lt;!\$)&quot;[ \t]*$"
+          end="^[ \t]*&quot;[ \t]*$" />
     <Span color="String" begin="\$&quot;" end="&quot;" />
     <Span color="String" begin="&quot;" end="&quot;" />
 
     <Keywords color="Keyword">
       <Word>LET</Word>
       <Word>PRINT</Word>
+      <Word>SET</Word>
       <Word>TRUE</Word>
       <Word>FALSE</Word>
       <Word>NOT</Word>

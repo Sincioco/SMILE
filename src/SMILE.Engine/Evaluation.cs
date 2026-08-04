@@ -27,17 +27,21 @@ public sealed class SmileEvaluator
             switch (statement)
             {
                 case BoundLetStatement let:
-                    // The binder already evaluated immutable LET initializers
-                    // once. The evaluator stores that typed value so later
-                    // PRINT expressions read variables the same way target
-                    // programs do.
-                    values[let.Variable] = let.ConstantValue;
+                    values.Add(let.Variable, EvaluateExpression(let.Initializer, values));
+                    break;
+
+                case BoundSetStatement set:
+                    // Evaluate into a temporary first. The old target value is
+                    // visible throughout the right side, and the environment
+                    // changes only after the complete expression succeeds.
+                    SmileValue assignedValue = EvaluateExpression(set.Value, values);
+                    values[set.Variable] = assignedValue;
                     break;
 
                 case BoundPrintStatement print:
                     if (!print.IsBlankLine)
                     {
-                        output.Append(EvaluateExpression(print.Value, values));
+                        output.Append(EvaluateExpression(print.Value, values).ToDisplayText());
                     }
 
                     output.Append('\n');
@@ -48,18 +52,18 @@ public sealed class SmileEvaluator
         return new EvaluationResult(true, output.ToString(), bindResult.Diagnostics);
     }
 
-    private static string EvaluateExpression(
+    private static SmileValue EvaluateExpression(
         BoundExpression expression,
         IReadOnlyDictionary<VariableSymbol, SmileValue> values)
     {
-        if (BoundConstantEvaluator.TryEvaluate(expression, values, out SmileValue value))
+        if (BoundExpressionEvaluator.TryEvaluate(expression, values, out SmileValue value))
         {
-            return value.ToDisplayText();
+            return value;
         }
 
         // This should be unreachable for a successfully bound program.
         // Throwing here keeps accidental semantic-model corruption obvious to
         // tests instead of silently producing a misleading reference output.
-        throw new InvalidOperationException("Bound string expression could not be evaluated.");
+        throw new InvalidOperationException("Bound expression could not be evaluated.");
     }
 }

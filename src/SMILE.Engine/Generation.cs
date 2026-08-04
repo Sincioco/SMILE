@@ -104,11 +104,18 @@ internal static class BoundProgramSimplifier
             switch (statement)
             {
                 case BoundLetStatement let:
-                    statements.Add(let with
-                    {
-                        Initializer = SimplifyExpression(let.Initializer, values)
-                    });
-                    values.Add(let.Variable, let.ConstantValue);
+                    BoundExpression initializer = SimplifyExpression(let.Initializer, values);
+                    statements.Add(let with { Initializer = initializer });
+                    values.Add(let.Variable, EvaluateKnownValue(initializer, values));
+                    break;
+
+                case BoundSetStatement set:
+                    // SET sees the old value throughout its complete right side.
+                    // Only after simplification and evaluation succeeds does the
+                    // new value become visible to later statements.
+                    BoundExpression value = SimplifyExpression(set.Value, values);
+                    statements.Add(set with { Value = value });
+                    values[set.Variable] = EvaluateKnownValue(value, values);
                     break;
 
                 case BoundPrintStatement print:
@@ -125,6 +132,19 @@ internal static class BoundProgramSimplifier
         }
 
         return new BoundProgram(statements, program.Variables);
+    }
+
+    private static SmileValue EvaluateKnownValue(
+        BoundExpression expression,
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values)
+    {
+        if (BoundExpressionEvaluator.TryEvaluate(expression, values, out SmileValue value))
+        {
+            return value;
+        }
+
+        throw new InvalidOperationException(
+            "A successfully bound SMILE expression could not be evaluated during simplification.");
     }
 
     private static BoundExpression SimplifyExpression(
@@ -180,7 +200,7 @@ internal static class BoundProgramSimplifier
                 return left;
             }
 
-            if (BoundConstantEvaluator.TryEvaluate(left, values, out SmileValue leftValue) &&
+            if (BoundExpressionEvaluator.TryEvaluate(left, values, out SmileValue leftValue) &&
                 leftValue.Type is SmileType.Boolean)
             {
                 bool rightIsUnreachable =
@@ -260,10 +280,10 @@ internal sealed record TargetIntegerProfile(
 {
     private const long JavaScriptMaxSafeInteger = 9_007_199_254_740_991L;
 
-    public static TargetIntegerProfile Analyze(BoundProgram program)
+    public static TargetIntegerProfile Analyze(
+        BoundProgram program,
+        BoundProgramExecutionTrace trace)
     {
-        IReadOnlyDictionary<VariableSymbol, SmileValue> values =
-            GeneratorValueFacts.ConstantValues(program);
         bool requiresSigned64 = false;
         bool requiresBigInt = false;
 
@@ -273,14 +293,16 @@ internal sealed record TargetIntegerProfile(
             requiresBigInt |= value is < -JavaScriptMaxSafeInteger or > JavaScriptMaxSafeInteger;
         }
 
-        void Visit(BoundExpression expression)
+        void Visit(
+            BoundExpression expression,
+            IReadOnlyDictionary<VariableSymbol, SmileValue> values)
         {
             // Evaluating every Integer-typed node records literal values,
             // variable operands, and arithmetic intermediates. A failed
             // evaluation can only be an intentionally unreachable expression
             // in a successfully bound program; its children are still visited.
             if (expression.Type is SmileType.Integer &&
-                BoundConstantEvaluator.TryEvaluate(expression, values, out SmileValue value))
+                BoundExpressionEvaluator.TryEvaluate(expression, values, out SmileValue value))
             {
                 Observe(value.IntegerValue);
             }
@@ -288,40 +310,40 @@ internal sealed record TargetIntegerProfile(
             switch (expression)
             {
                 case BoundUnaryExpression unary:
-                    Visit(unary.Operand);
+                    Visit(unary.Operand, values);
                     break;
 
                 case BoundBinaryExpression binary:
-                    Visit(binary.Left);
-                    Visit(binary.Right);
+                    Visit(binary.Left, values);
+                    Visit(binary.Right, values);
                     break;
 
                 case BoundInterpolatedStringExpression interpolated:
                     foreach (BoundInterpolationExpressionPart hole in
                         interpolated.Parts.OfType<BoundInterpolationExpressionPart>())
                     {
-                        Visit(hole.Expression);
+                        Visit(hole.Expression, values);
                     }
 
                     break;
             }
         }
 
-        foreach (BoundStatement statement in program.Statements)
+        for (int index = 0; index < program.Statements.Count; index++)
         {
-            switch (statement)
+            BoundStatementExecution step = trace.Steps[index];
+            switch (step.Statement)
             {
                 case BoundLetStatement let:
-                    if (let.ConstantValue.Type is SmileType.Integer)
-                    {
-                        Observe(let.ConstantValue.IntegerValue);
-                    }
+                    Visit(let.Initializer, step.ValuesBefore);
+                    break;
 
-                    Visit(let.Initializer);
+                case BoundSetStatement set:
+                    Visit(set.Value, step.ValuesBefore);
                     break;
 
                 case BoundPrintStatement print when !print.IsBlankLine:
-                    Visit(print.Value);
+                    Visit(print.Value, step.ValuesBefore);
                     break;
             }
         }
@@ -357,7 +379,8 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
     public GeneratedProgram Generate(BoundProgram program)
     {
         TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
-        TargetIntegerProfile integers = TargetIntegerProfile.Analyze(program);
+        BoundProgramExecutionTrace trace = BoundProgramExecutionTrace.Create(program);
+        TargetIntegerProfile integers = TargetIntegerProfile.Analyze(program, trace);
         var source = new StringBuilder();
         source.AppendLine("using System;");
         if (CSharpGenerationFacts.NeedsInvariantCulture(program))
@@ -378,6 +401,10 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
                 case BoundLetStatement let:
                     string initializer = TargetExpression.CSharp(let.Initializer, identifiers, integers);
                     source.AppendLine($"        {TargetTypes.CSharp(let.Variable.Type, integers)} {identifiers.Get(let.Variable)} = {initializer};");
+                    break;
+
+                case BoundSetStatement set:
+                    source.AppendLine($"        {identifiers.Get(set.Variable)} = {TargetExpression.CSharp(set.Value, identifiers, integers)};");
                     break;
 
                 case BoundPrintStatement print:
@@ -425,8 +452,10 @@ internal sealed class CCodeGenerator : ICodeGenerator
     public GeneratedProgram Generate(BoundProgram program)
     {
         TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
-        TargetIntegerProfile integers = TargetIntegerProfile.Analyze(program);
-        IReadOnlyDictionary<VariableSymbol, SmileValue> values = GeneratorValueFacts.ConstantValues(program);
+        BoundProgramExecutionTrace trace = BoundProgramExecutionTrace.Create(program);
+        TargetIntegerProfile integers = TargetIntegerProfile.Analyze(program, trace);
+        IReadOnlyDictionary<VariableSymbol, string> exactStringLengths =
+            CreateExactStringLengthNames(program, identifiers, trace);
         var source = new StringBuilder();
         source.AppendLine("#include <stdio.h>");
         if (integers.RequiresSigned64Storage)
@@ -434,12 +463,12 @@ internal sealed class CCodeGenerator : ICodeGenerator
             source.AppendLine("#include <stdint.h>");
         }
 
-        if (CGenerationFacts.NeedsBooleanHeader(program))
+        if (CGenerationFacts.NeedsBooleanHeader(program, trace))
         {
             source.AppendLine("#include <stdbool.h>");
         }
 
-        if (CGenerationFacts.NeedsStringComparison(program, values))
+        if (CGenerationFacts.NeedsStringComparison(program, trace))
         {
             source.AppendLine("#include <string.h>");
         }
@@ -452,16 +481,43 @@ internal sealed class CCodeGenerator : ICodeGenerator
         bool emittedExecutable = false;
         bool emittedBodyStatement = false;
 
-        foreach (BoundStatement statement in program.Statements)
+        for (int index = 0; index < trace.Steps.Count; index++)
         {
-            switch (statement)
+            BoundStatementExecution step = trace.Steps[index];
+            switch (step.Statement)
             {
                 case BoundLetStatement let:
+                    SmileValue letValue = GeneratorValueFacts.Evaluate(let.Initializer, step.ValuesBefore);
                     string initializer = let.Variable.Type is SmileType.String
-                        ? TargetExpression.CConstant(let.ConstantValue, integers)
-                        : TargetExpression.C(let.Initializer, identifiers, integers, values);
+                        ? TargetExpression.CConstant(letValue, integers)
+                        : TargetExpression.C(let.Initializer, identifiers, integers, step.ValuesBefore);
                     source.AppendLine($"    {TargetTypes.CDeclaration(let.Variable.Type, identifiers.Get(let.Variable), integers)} = {initializer};");
+                    if (exactStringLengths.TryGetValue(let.Variable, out string? letLengthName))
+                    {
+                        source.AppendLine($"    size_t {letLengthName} = {Utf8ByteLength(letValue)};");
+                    }
+
                     emittedDeclaration = true;
+                    emittedBodyStatement = true;
+                    break;
+
+                case BoundSetStatement set:
+                    if (!emittedExecutable && emittedDeclaration)
+                    {
+                        source.AppendLine();
+                    }
+
+                    SmileValue setValue = GeneratorValueFacts.Evaluate(set.Value, step.ValuesBefore);
+                    string value = set.Variable.Type is SmileType.String
+                        ? TargetExpression.CConstant(setValue, integers)
+                        : TargetExpression.C(set.Value, identifiers, integers, step.ValuesBefore);
+                    source.AppendLine($"    {identifiers.Get(set.Variable)} = {value};");
+                    if (exactStringLengths.TryGetValue(set.Variable, out string? setLengthName))
+                    {
+                        source.AppendLine($"    {setLengthName} = {Utf8ByteLength(setValue)};");
+                    }
+
+                    emittedExecutable = true;
                     emittedBodyStatement = true;
                     break;
 
@@ -471,7 +527,7 @@ internal sealed class CCodeGenerator : ICodeGenerator
                         source.AppendLine();
                     }
 
-                    AppendCPrint(source, print, identifiers, integers, values);
+                    AppendCPrint(source, print, identifiers, integers, step.ValuesBefore);
                     emittedExecutable = true;
                     emittedBodyStatement = true;
                     break;
@@ -555,6 +611,43 @@ internal sealed class CCodeGenerator : ICodeGenerator
         return true;
     }
 
+    internal static IReadOnlyDictionary<VariableSymbol, string> CreateExactStringLengthNames(
+        BoundProgram program,
+        TargetIdentifierMap identifiers,
+        BoundProgramExecutionTrace trace)
+    {
+        var names = new Dictionary<VariableSymbol, string>();
+        var used = program.Variables
+            .Select(identifiers.Get)
+            .ToHashSet(StringComparer.Ordinal);
+
+        for (int index = 0; index < program.Variables.Count; index++)
+        {
+            VariableSymbol variable = program.Variables[index];
+            if (variable.Type is not SmileType.String ||
+                !GeneratorValueFacts.AssignedValuesContainNul(trace, variable))
+            {
+                continue;
+            }
+
+            string preferred = $"smileString{index}Length";
+            string name = preferred;
+            int suffix = 2;
+            while (!used.Add(name))
+            {
+                name = preferred + "_" + suffix.ToString(CultureInfo.InvariantCulture);
+                suffix++;
+            }
+
+            names.Add(variable, name);
+        }
+
+        return names;
+    }
+
+    internal static int Utf8ByteLength(SmileValue value) =>
+        Encoding.UTF8.GetByteCount(value.StringValue);
+
 }
 
 internal sealed class MasmX64CodeGenerator : ICodeGenerator
@@ -563,9 +656,12 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
 
     public GeneratedProgram Generate(BoundProgram program)
     {
+        BoundProgramExecutionTrace trace = BoundProgramExecutionTrace.Create(program);
         BoundLetStatement[] lets = program.Statements.OfType<BoundLetStatement>().ToArray();
         BoundPrintStatement[] prints = program.Statements.OfType<BoundPrintStatement>().ToArray();
-        IReadOnlyDictionary<VariableSymbol, SmileValue> values = GeneratorValueFacts.ConstantValues(program);
+        IReadOnlyDictionary<VariableSymbol, int> variableIndexes = lets
+            .Select((let, index) => (let.Variable, index))
+            .ToDictionary(item => item.Variable, item => item.index);
         var source = new StringBuilder();
 
         AppendMasmLine(source, "option casemap:none", "Keep symbol names case-sensitive.");
@@ -580,8 +676,8 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         AppendMasmLine(source, "EXTERN ExitProcess:PROC", "Windows API: terminate the process.");
         source.AppendLine();
 
-        AppendMasmData(source, lets, prints, values);
-        AppendMasmCode(source, lets, prints);
+        AppendMasmData(source, trace, variableIndexes, prints.Length);
+        AppendMasmCode(source, trace, variableIndexes, prints.Length);
 
         return new GeneratedProgram(
             Language,
@@ -590,41 +686,77 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
 
     private static void AppendMasmData(
         StringBuilder source,
-        IReadOnlyList<BoundLetStatement> lets,
-        IReadOnlyList<BoundPrintStatement> prints,
-        IReadOnlyDictionary<VariableSymbol, SmileValue> values)
+        BoundProgramExecutionTrace trace,
+        IReadOnlyDictionary<VariableSymbol, int> variableIndexes,
+        int printCount)
     {
-        if (lets.Count == 0 && prints.Count == 0)
+        if (variableIndexes.Count == 0 && printCount == 0)
         {
             return;
         }
 
         AppendMasmLine(source, ".data", "Static bytes and variables live here.");
 
-        if (prints.Count > 0)
+        if (printCount > 0)
         {
             AppendMasmLine(source, "STD_OUTPUT_HANDLE EQU -11", "Magic value for the console output handle.");
         }
 
-        for (int index = 0; index < lets.Count; index++)
+        int printIndex = 0;
+        for (int statementIndex = 0; statementIndex < trace.Steps.Count; statementIndex++)
         {
-            BoundLetStatement let = lets[index];
-            string valueLabel = VariableValueLabel(index);
-            AppendMasmStringData(source, valueLabel, let.ConstantValue.ToDisplayText(), $"LET {let.Variable.Name} initial text.", "Length of the variable's current text.");
-            AppendMasmLine(source, $"{VariablePointerLabel(index)} QWORD ?", $"Runtime pointer for {let.Variable.Name}.");
-            AppendMasmLine(source, $"{VariableLengthLabel(index)} DWORD ?", $"Runtime length for {let.Variable.Name}.");
+            BoundStatementExecution step = trace.Steps[statementIndex];
+            switch (step.Statement)
+            {
+                case BoundLetStatement let:
+                    int variableIndex = variableIndexes[let.Variable];
+                    string valueLabel = VariableValueLabel(variableIndex);
+                    string initialText = GeneratorValueFacts
+                        .Evaluate(let.Initializer, step.ValuesBefore)
+                        .ToDisplayText();
+                    AppendMasmStringData(
+                        source,
+                        valueLabel,
+                        initialText,
+                        $"LET {let.Variable.Name} initial text.",
+                        "Length of the variable's current text.");
+                    AppendMasmLine(source, $"{VariablePointerLabel(variableIndex)} QWORD ?", $"Runtime pointer for {let.Variable.Name}.");
+                    AppendMasmLine(source, $"{VariableLengthLabel(variableIndex)} DWORD ?", $"Runtime length for {let.Variable.Name}.");
+                    break;
+
+                case BoundSetStatement set:
+                    string setText = GeneratorValueFacts
+                        .Evaluate(set.Value, step.ValuesBefore)
+                        .ToDisplayText();
+                    AppendMasmStringData(
+                        source,
+                        SetValueLabel(statementIndex),
+                        setText,
+                        $"SET {set.Variable.Name} assigned text.",
+                        "Length of this assigned value.");
+                    break;
+
+                case BoundPrintStatement print:
+                    if (print.Value is not BoundVariableExpression || print.IsBlankLine)
+                    {
+                        string text = print.IsBlankLine
+                            ? string.Empty
+                            : GeneratorValueFacts.DisplayText(print.Value, step.ValuesBefore);
+                        string label = PrintLiteralLabel(printIndex, 0);
+                        AppendMasmStringData(
+                            source,
+                            label,
+                            text,
+                            $"PRINT #{printIndex + 1} canonical text.",
+                            "Length of this print text.");
+                    }
+
+                    printIndex++;
+                    break;
+            }
         }
 
-        for (int printIndex = 0; printIndex < prints.Count; printIndex++)
-        {
-            string text = prints[printIndex].IsBlankLine
-                ? string.Empty
-                : GeneratorValueFacts.DisplayText(prints[printIndex].Value, values);
-            string label = PrintLiteralLabel(printIndex, 0);
-            AppendMasmStringData(source, label, text, $"PRINT #{printIndex + 1} canonical text.", "Length of this print text.");
-        }
-
-        if (prints.Count > 0)
+        if (printCount > 0)
         {
             AppendMasmLine(source, "newline BYTE 13, 10", "SMILE PRINT appends CR/LF on Windows.");
             AppendMasmLine(source, "newlineLength EQU $ - newline", "Length of the newline bytes.");
@@ -655,14 +787,15 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
 
     private static void AppendMasmCode(
         StringBuilder source,
-        IReadOnlyList<BoundLetStatement> lets,
-        IReadOnlyList<BoundPrintStatement> prints)
+        BoundProgramExecutionTrace trace,
+        IReadOnlyDictionary<VariableSymbol, int> variableIndexes,
+        int printCount)
     {
         AppendMasmLine(source, ".code", "CPU instructions live here.");
         AppendMasmLine(source, "main PROC", "Program entry point.");
         AppendMasmLine(source, "    sub rsp, 28h", "Reserve Win64 shadow space and align the stack.");
 
-        if (prints.Count > 0)
+        if (printCount > 0)
         {
             source.AppendLine();
             AppendMasmLine(source, "    mov ecx, STD_OUTPUT_HANDLE", "Ask Windows for stdout.");
@@ -670,21 +803,47 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
             AppendMasmLine(source, "    mov QWORD PTR [stdoutHandle], rax", "Cache stdout for every PRINT segment.");
         }
 
-        for (int index = 0; index < lets.Count; index++)
+        int printIndex = 0;
+        for (int statementIndex = 0; statementIndex < trace.Steps.Count; statementIndex++)
         {
-            string valueLabel = VariableValueLabel(index);
-            source.AppendLine();
-            AppendMasmLine(source, $"    lea rax, {valueLabel}", $"Address of LET {lets[index].Variable.Name} text.");
-            AppendMasmLine(source, $"    mov QWORD PTR [{VariablePointerLabel(index)}], rax", "Store the runtime string pointer.");
-            AppendMasmLine(source, $"    mov DWORD PTR [{VariableLengthLabel(index)}], {valueLabel}Length", "Store the runtime string length.");
-        }
+            BoundStatementExecution step = trace.Steps[statementIndex];
+            switch (step.Statement)
+            {
+                case BoundLetStatement let:
+                    AppendMasmStorageUpdate(
+                        source,
+                        variableIndexes[let.Variable],
+                        VariableValueLabel(variableIndexes[let.Variable]),
+                        $"Address of LET {let.Variable.Name} text.");
+                    break;
 
-        for (int printIndex = 0; printIndex < prints.Count; printIndex++)
-        {
-            source.AppendLine();
-            AppendMasmLine(source, $"; PRINT #{printIndex + 1}", "Write each expression segment, then newline.");
-            AppendMasmWriteLiteral(source, PrintLiteralLabel(printIndex, 0));
-            AppendMasmWriteLiteral(source, "newline");
+                case BoundSetStatement set:
+                    AppendMasmStorageUpdate(
+                        source,
+                        variableIndexes[set.Variable],
+                        SetValueLabel(statementIndex),
+                        $"Address of SET {set.Variable.Name} text.");
+                    break;
+
+                case BoundPrintStatement print:
+                    source.AppendLine();
+                    AppendMasmLine(source, $"; PRINT #{printIndex + 1}", "Write each expression segment, then newline.");
+                    if (!print.IsBlankLine && print.Value is BoundVariableExpression variable)
+                    {
+                        AppendMasmWriteVariable(
+                            source,
+                            variable.Variable.Name,
+                            variableIndexes[variable.Variable]);
+                    }
+                    else
+                    {
+                        AppendMasmWriteLiteral(source, PrintLiteralLabel(printIndex, 0));
+                    }
+
+                    AppendMasmWriteLiteral(source, "newline");
+                    printIndex++;
+                    break;
+            }
         }
 
         source.AppendLine();
@@ -693,6 +852,18 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         AppendMasmLine(source, "main ENDP", "End of the main procedure.");
         source.AppendLine();
         source.AppendLine("END");
+    }
+
+    private static void AppendMasmStorageUpdate(
+        StringBuilder source,
+        int variableIndex,
+        string valueLabel,
+        string addressComment)
+    {
+        source.AppendLine();
+        AppendMasmLine(source, $"    lea rax, {valueLabel}", addressComment);
+        AppendMasmLine(source, $"    mov QWORD PTR [{VariablePointerLabel(variableIndex)}], rax", "Store the runtime string pointer.");
+        AppendMasmLine(source, $"    mov DWORD PTR [{VariableLengthLabel(variableIndex)}], {valueLabel}Length", "Store the runtime string length.");
     }
 
     private static void AppendMasmWriteLiteral(StringBuilder source, string label)
@@ -734,6 +905,8 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
 
     private static string VariableLengthLabel(int index) => $"variable{index}Length";
 
+    private static string SetValueLabel(int statementIndex) => $"set{statementIndex}Value";
+
     private static string PrintLiteralLabel(int printIndex, int segmentIndex) =>
         $"print{printIndex}Segment{segmentIndex}";
 
@@ -746,7 +919,8 @@ internal sealed class JavaScriptCodeGenerator : ICodeGenerator
     public GeneratedProgram Generate(BoundProgram program)
     {
         TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
-        TargetIntegerProfile integers = TargetIntegerProfile.Analyze(program);
+        BoundProgramExecutionTrace trace = BoundProgramExecutionTrace.Create(program);
+        TargetIntegerProfile integers = TargetIntegerProfile.Analyze(program, trace);
         var source = new StringBuilder();
 
         foreach (BoundStatement statement in program.Statements)
@@ -755,6 +929,10 @@ internal sealed class JavaScriptCodeGenerator : ICodeGenerator
             {
                 case BoundLetStatement let:
                     source.AppendLine($"let {identifiers.Get(let.Variable)} = {TargetExpression.JavaScript(let.Initializer, identifiers, integers)};");
+                    break;
+
+                case BoundSetStatement set:
+                    source.AppendLine($"{identifiers.Get(set.Variable)} = {TargetExpression.JavaScript(set.Value, identifiers, integers)};");
                     break;
 
                 case BoundPrintStatement print:
@@ -778,7 +956,8 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
     public GeneratedProgram Generate(BoundProgram program)
     {
         TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
-        TargetIntegerProfile integers = TargetIntegerProfile.Analyze(program);
+        BoundProgramExecutionTrace trace = BoundProgramExecutionTrace.Create(program);
+        TargetIntegerProfile integers = TargetIntegerProfile.Analyze(program, trace);
         var source = new StringBuilder();
         source.AppendLine("public final class Program");
         source.AppendLine("{");
@@ -792,6 +971,10 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
                 case BoundLetStatement let:
                     string initializer = TargetExpression.Java(let.Initializer, identifiers, integers);
                     source.AppendLine($"        {TargetTypes.Java(let.Variable.Type, integers)} {identifiers.Get(let.Variable)} = {initializer};");
+                    break;
+
+                case BoundSetStatement set:
+                    source.AppendLine($"        {identifiers.Get(set.Variable)} = {TargetExpression.Java(set.Value, identifiers, integers)};");
                     break;
 
                 case BoundPrintStatement print:
@@ -818,9 +1001,11 @@ internal sealed class CobolCodeGenerator : ICodeGenerator
     public GeneratedProgram Generate(BoundProgram program)
     {
         TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
+        BoundProgramExecutionTrace trace = BoundProgramExecutionTrace.Create(program);
         var source = new StringBuilder();
         BoundLetStatement[] lets = program.Statements.OfType<BoundLetStatement>().ToArray();
-        var values = lets.ToDictionary(let => let.Variable, let => let.ConstantValue);
+        IReadOnlyDictionary<VariableSymbol, string> logicalLengths =
+            CreateLogicalLengthNames(program, identifiers, trace);
 
         source.AppendLine(">>SOURCE FORMAT IS FREE");
         source.AppendLine("IDENTIFICATION DIVISION.");
@@ -833,9 +1018,12 @@ internal sealed class CobolCodeGenerator : ICodeGenerator
             source.AppendLine("WORKING-STORAGE SECTION.");
             source.AppendLine("*> SMILE LET values are stored before PROCEDURE DIVISION.");
 
-            foreach (BoundLetStatement let in lets)
+            foreach (BoundStatementExecution step in trace.Steps)
             {
-                AppendCobolLet(source, let, identifiers);
+                if (step.Statement is BoundLetStatement let)
+                {
+                    AppendCobolLet(source, let, step.ValuesBefore, identifiers, trace, logicalLengths);
+                }
             }
         }
 
@@ -843,11 +1031,17 @@ internal sealed class CobolCodeGenerator : ICodeGenerator
         source.AppendLine("PROCEDURE DIVISION.");
         source.AppendLine("*> Each SMILE PRINT becomes one DISPLAY operation.");
 
-        foreach (BoundStatement statement in program.Statements)
+        foreach (BoundStatementExecution step in trace.Steps)
         {
-            if (statement is BoundPrintStatement print)
+            switch (step.Statement)
             {
-                AppendCobolPrint(source, print, identifiers, values);
+                case BoundSetStatement set:
+                    AppendCobolSet(source, set, step.ValuesBefore, identifiers, logicalLengths);
+                    break;
+
+                case BoundPrintStatement print:
+                    AppendCobolPrint(source, print, step.ValuesBefore);
+                    break;
             }
         }
 
@@ -861,28 +1055,45 @@ internal sealed class CobolCodeGenerator : ICodeGenerator
     private static void AppendCobolLet(
         StringBuilder source,
         BoundLetStatement let,
-        TargetIdentifierMap identifiers)
+        IReadOnlyDictionary<VariableSymbol, SmileValue> valuesBefore,
+        TargetIdentifierMap identifiers,
+        BoundProgramExecutionTrace trace,
+        IReadOnlyDictionary<VariableSymbol, string> logicalLengths)
     {
         string name = identifiers.Get(let.Variable);
-        string value = let.ConstantValue.ToDisplayText();
-        if (value.Length == 0)
-        {
-            // COBOL has no zero-length PIC X storage item. The placeholder is
-            // never displayed for an empty SMILE value; the PRINT lowering skips
-            // zero-length variable operands so COBOL padding cannot leak out.
-            source.AppendLine($"01 {name} PIC X VALUE SPACE.");
-            return;
-        }
+        SmileValue initialValue = GeneratorValueFacts.Evaluate(let.Initializer, valuesBefore);
+        string text = initialValue.ToDisplayText();
+        int storageLength = Math.Max(1, GeneratorValueFacts.MaximumAssignedUtf8ByteLength(trace, let.Variable));
+        string picture = storageLength == 1 ? "PIC X" : $"PIC X({storageLength})";
+        string storageValue = text.Length == 0
+            ? storageLength == 1 ? "SPACE" : "SPACES"
+            : TargetEscapes.CobolString(text);
+        source.AppendLine($"01 {name} {picture} VALUE {storageValue}.");
 
-        int byteLength = TargetEscapes.CobolByteLength(value);
-        string picture = byteLength == 1 ? "PIC X" : $"PIC X({byteLength})";
-        source.AppendLine($"01 {name} {picture} VALUE {TargetEscapes.CobolString(value)}.");
+        if (logicalLengths.TryGetValue(let.Variable, out string? lengthName))
+        {
+            source.AppendLine(
+                $"01 {lengthName} PIC 9(9) COMP-5 VALUE {TargetEscapes.CobolByteLength(text)}.");
+        }
+    }
+
+    private static void AppendCobolSet(
+        StringBuilder source,
+        BoundSetStatement set,
+        IReadOnlyDictionary<VariableSymbol, SmileValue> valuesBefore,
+        TargetIdentifierMap identifiers,
+        IReadOnlyDictionary<VariableSymbol, string> logicalLengths)
+    {
+        string text = GeneratorValueFacts.Evaluate(set.Value, valuesBefore).ToDisplayText();
+        string storageValue = text.Length == 0 ? "SPACES" : TargetEscapes.CobolString(text);
+        source.AppendLine($"    MOVE {storageValue} TO {identifiers.Get(set.Variable)}.");
+        source.AppendLine(
+            $"    MOVE {TargetEscapes.CobolByteLength(text)} TO {logicalLengths[set.Variable]}.");
     }
 
     private static void AppendCobolPrint(
         StringBuilder source,
         BoundPrintStatement print,
-        TargetIdentifierMap identifiers,
         IReadOnlyDictionary<VariableSymbol, SmileValue> values)
     {
         string text = print.IsBlankLine
@@ -900,6 +1111,37 @@ internal sealed class CobolCodeGenerator : ICodeGenerator
         source.Append(TargetEscapes.CobolString(text));
         source.AppendLine(".");
     }
+
+    private static IReadOnlyDictionary<VariableSymbol, string> CreateLogicalLengthNames(
+        BoundProgram program,
+        TargetIdentifierMap identifiers,
+        BoundProgramExecutionTrace trace)
+    {
+        var names = new Dictionary<VariableSymbol, string>();
+        var used = program.Variables
+            .Select(identifiers.Get)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        for (int index = 0; index < program.Variables.Count; index++)
+        {
+            VariableSymbol variable = program.Variables[index];
+            if (trace.MutatedVariables.Contains(variable))
+            {
+                string preferred = $"SMILE-SET-LENGTH-{index}";
+                string name = preferred;
+                int suffix = 2;
+                while (!used.Add(name))
+                {
+                    name = preferred + "-" + suffix.ToString(CultureInfo.InvariantCulture);
+                    suffix++;
+                }
+
+                names.Add(variable, name);
+            }
+        }
+
+        return names;
+    }
 }
 
 internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
@@ -909,8 +1151,10 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
     public GeneratedProgram Generate(BoundProgram program)
     {
         TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
-        TargetIntegerProfile integers = TargetIntegerProfile.Analyze(program);
-        IReadOnlyDictionary<VariableSymbol, SmileValue> values = GeneratorValueFacts.ConstantValues(program);
+        BoundProgramExecutionTrace trace = BoundProgramExecutionTrace.Create(program);
+        TargetIntegerProfile integers = TargetIntegerProfile.Analyze(program, trace);
+        IReadOnlyDictionary<VariableSymbol, string> exactStringLengths =
+            CCodeGenerator.CreateExactStringLengthNames(program, identifiers, trace);
         var source = new StringBuilder();
         source.AppendLine("#include <stdio.h>");
         if (integers.RequiresSigned64Storage)
@@ -918,12 +1162,12 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
             source.AppendLine("#include <stdint.h>");
         }
 
-        if (CGenerationFacts.NeedsBooleanHeader(program))
+        if (CGenerationFacts.NeedsBooleanHeader(program, trace))
         {
             source.AppendLine("#include <stdbool.h>");
         }
 
-        if (CGenerationFacts.NeedsStringComparison(program, values))
+        if (CGenerationFacts.NeedsStringComparison(program, trace))
         {
             source.AppendLine("#include <string.h>");
         }
@@ -936,19 +1180,46 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
         bool emittedExecutable = false;
         bool emittedBodyStatement = false;
 
-        foreach (BoundStatement statement in program.Statements)
+        for (int index = 0; index < trace.Steps.Count; index++)
         {
-            switch (statement)
+            BoundStatementExecution step = trace.Steps[index];
+            switch (step.Statement)
             {
                 case BoundLetStatement let:
                     // The Windows-local Objective-C toolchain uses Clang/MSYS2
                     // without Foundation. C-compatible console types keep this
                     // target easy to build while still compiling as Objective-C.
+                    SmileValue letValue = GeneratorValueFacts.Evaluate(let.Initializer, step.ValuesBefore);
                     string initializer = let.Variable.Type is SmileType.String
-                        ? TargetExpression.CConstant(let.ConstantValue, integers)
-                        : TargetExpression.ObjectiveC(let.Initializer, identifiers, integers, values);
+                        ? TargetExpression.CConstant(letValue, integers)
+                        : TargetExpression.ObjectiveC(let.Initializer, identifiers, integers, step.ValuesBefore);
                     source.AppendLine($"    {TargetTypes.CDeclaration(let.Variable.Type, identifiers.Get(let.Variable), integers)} = {initializer};");
+                    if (exactStringLengths.TryGetValue(let.Variable, out string? letLengthName))
+                    {
+                        source.AppendLine($"    size_t {letLengthName} = {CCodeGenerator.Utf8ByteLength(letValue)};");
+                    }
+
                     emittedDeclaration = true;
+                    emittedBodyStatement = true;
+                    break;
+
+                case BoundSetStatement set:
+                    if (!emittedExecutable && emittedDeclaration)
+                    {
+                        source.AppendLine();
+                    }
+
+                    SmileValue setValue = GeneratorValueFacts.Evaluate(set.Value, step.ValuesBefore);
+                    string value = set.Variable.Type is SmileType.String
+                        ? TargetExpression.CConstant(setValue, integers)
+                        : TargetExpression.ObjectiveC(set.Value, identifiers, integers, step.ValuesBefore);
+                    source.AppendLine($"    {identifiers.Get(set.Variable)} = {value};");
+                    if (exactStringLengths.TryGetValue(set.Variable, out string? setLengthName))
+                    {
+                        source.AppendLine($"    {setLengthName} = {CCodeGenerator.Utf8ByteLength(setValue)};");
+                    }
+
+                    emittedExecutable = true;
                     emittedBodyStatement = true;
                     break;
 
@@ -958,7 +1229,7 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
                         source.AppendLine();
                     }
 
-                    AppendObjectiveCPrint(source, print, identifiers, integers, values);
+                    AppendObjectiveCPrint(source, print, identifiers, integers, step.ValuesBefore);
                     emittedExecutable = true;
                     emittedBodyStatement = true;
                     break;
@@ -1005,7 +1276,8 @@ internal sealed class SwiftCodeGenerator : ICodeGenerator
     public GeneratedProgram Generate(BoundProgram program)
     {
         TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
-        TargetIntegerProfile integers = TargetIntegerProfile.Analyze(program);
+        BoundProgramExecutionTrace trace = BoundProgramExecutionTrace.Create(program);
+        TargetIntegerProfile integers = TargetIntegerProfile.Analyze(program, trace);
         var source = new StringBuilder();
 
         foreach (BoundStatement statement in program.Statements)
@@ -1014,7 +1286,12 @@ internal sealed class SwiftCodeGenerator : ICodeGenerator
             {
                 case BoundLetStatement let:
                     string initializer = TargetExpression.Swift(let.Initializer, identifiers, integers);
-                    source.AppendLine($"let {identifiers.Get(let.Variable)}: {TargetTypes.Swift(let.Variable.Type, integers)} = {initializer}");
+                    string declaration = trace.MutatedVariables.Contains(let.Variable) ? "var" : "let";
+                    source.AppendLine($"{declaration} {identifiers.Get(let.Variable)}: {TargetTypes.Swift(let.Variable.Type, integers)} = {initializer}");
+                    break;
+
+                case BoundSetStatement set:
+                    source.AppendLine($"{identifiers.Get(set.Variable)} = {TargetExpression.Swift(set.Value, identifiers, integers)}");
                     break;
 
                 case BoundPrintStatement print:
@@ -1038,8 +1315,7 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
     public GeneratedProgram Generate(BoundProgram program)
     {
         TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
-        IReadOnlyDictionary<VariableSymbol, SmileValue> values = GeneratorValueFacts.ConstantValues(program);
-        var expressions = new PythonExpressionWriter(identifiers, values);
+        BoundProgramExecutionTrace trace = BoundProgramExecutionTrace.Create(program);
         var source = new StringBuilder();
         bool emittedHelper = false;
 
@@ -1080,12 +1356,18 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
         }
         else
         {
-            foreach (BoundStatement statement in program.Statements)
+            for (int index = 0; index < trace.Steps.Count; index++)
             {
-                switch (statement)
+                BoundStatementExecution step = trace.Steps[index];
+                var expressions = new PythonExpressionWriter(identifiers, step.ValuesBefore);
+                switch (step.Statement)
                 {
                     case BoundLetStatement let:
                         source.AppendLine($"    {identifiers.Get(let.Variable)} = {expressions.Write(let.Initializer)}");
+                        break;
+
+                    case BoundSetStatement set:
+                        source.AppendLine($"    {identifiers.Get(set.Variable)} = {expressions.Write(set.Value)}");
                         break;
 
                     case BoundPrintStatement print:
@@ -1106,6 +1388,7 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
             Language,
             new[] { new GeneratedFile("Program.py", TextOutput.EnsureOneTrailingNewLine(source.ToString()), IsPrimary: true) });
     }
+
 }
 
 internal sealed class CppCodeGenerator : ICodeGenerator
@@ -1115,7 +1398,8 @@ internal sealed class CppCodeGenerator : ICodeGenerator
     public GeneratedProgram Generate(BoundProgram program)
     {
         TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
-        TargetIntegerProfile integers = TargetIntegerProfile.Analyze(program);
+        BoundProgramExecutionTrace trace = BoundProgramExecutionTrace.Create(program);
+        TargetIntegerProfile integers = TargetIntegerProfile.Analyze(program, trace);
         var expressions = new CppExpressionWriter(identifiers, integers);
         var source = new StringBuilder();
 
@@ -1147,14 +1431,25 @@ internal sealed class CppCodeGenerator : ICodeGenerator
 
         bool emittedDeclaration = false;
         bool emittedExecutable = false;
-        foreach (BoundStatement statement in program.Statements)
+        for (int index = 0; index < trace.Steps.Count; index++)
         {
-            switch (statement)
+            BoundStatementExecution step = trace.Steps[index];
+            switch (step.Statement)
             {
                 case BoundLetStatement let:
                     source.AppendLine(
                         $"    {TargetTypes.Cpp(let.Variable.Type, integers)} {identifiers.Get(let.Variable)} = {expressions.Write(let.Initializer)};");
                     emittedDeclaration = true;
+                    break;
+
+                case BoundSetStatement set:
+                    if (!emittedExecutable && emittedDeclaration)
+                    {
+                        source.AppendLine();
+                    }
+
+                    source.AppendLine($"    {identifiers.Get(set.Variable)} = {expressions.Write(set.Value)};");
+                    emittedExecutable = true;
                     break;
 
                 case BoundPrintStatement print:
@@ -1244,6 +1539,7 @@ internal static class CppGenerationFacts
         {
             BoundLetStatement let =>
                 let.Variable.Type is SmileType.String || ContainsStringFacility(let.Initializer),
+            BoundSetStatement set => ContainsStringFacility(set.Value),
             BoundPrintStatement print when !print.IsBlankLine =>
                 ContainsDirectStreamStringFacility(print.Value),
             _ => false
@@ -1494,6 +1790,7 @@ internal static class PythonGenerationFacts
         program.Statements.Any(statement => statement switch
         {
             BoundLetStatement let => ContainsTextConversion(let.Initializer),
+            BoundSetStatement set => ContainsTextConversion(set.Value),
             BoundPrintStatement print when !print.IsBlankLine =>
                 print.Value.Type is not SmileType.String || ContainsTextConversion(print.Value),
             _ => false
@@ -1503,6 +1800,7 @@ internal static class PythonGenerationFacts
         program.Statements.Any(statement => statement switch
         {
             BoundLetStatement let => ContainsDivision(let.Initializer),
+            BoundSetStatement set => ContainsDivision(set.Value),
             BoundPrintStatement print when !print.IsBlankLine => ContainsDivision(print.Value),
             _ => false
         });
@@ -1915,22 +2213,54 @@ internal sealed record CPrintfPlan(
 
 internal static class CGenerationFacts
 {
-    public static bool NeedsBooleanHeader(BoundProgram program) =>
-        program.Variables.Any(variable => variable.Type is SmileType.Boolean) ||
-        program.Statements.OfType<BoundPrintStatement>().Any(print =>
-            !print.IsBlankLine && ContainsBooleanLiteral(print.Value));
+    public static bool NeedsBooleanHeader(
+        BoundProgram program,
+        BoundProgramExecutionTrace trace)
+    {
+        if (program.Variables.Any(variable => variable.Type is SmileType.Boolean))
+        {
+            return true;
+        }
+
+        for (int index = 0; index < program.Statements.Count; index++)
+        {
+            if (program.Statements[index] is BoundPrintStatement { IsBlankLine: false } print &&
+                (ContainsBooleanLiteral(print.Value) ||
+                 ContainsNulSensitiveStringComparison(print.Value, trace.Steps[index].ValuesBefore)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     public static bool NeedsStringComparison(
         BoundProgram program,
-        IReadOnlyDictionary<VariableSymbol, SmileValue> values) =>
-        program.Statements.Any(statement => statement switch
+        BoundProgramExecutionTrace trace)
+    {
+        for (int index = 0; index < program.Statements.Count; index++)
         {
-            BoundLetStatement let when let.Variable.Type is not SmileType.String =>
-                ContainsStringComparison(let.Initializer, values),
-            BoundPrintStatement print when !print.IsBlankLine =>
-                ContainsStringComparison(print.Value, values),
-            _ => false
-        });
+            BoundStatementExecution step = trace.Steps[index];
+            bool needsComparison = step.Statement switch
+            {
+                BoundLetStatement let when let.Variable.Type is not SmileType.String =>
+                    ContainsStringComparison(let.Initializer, step.ValuesBefore),
+                BoundSetStatement set when set.Variable.Type is not SmileType.String =>
+                    ContainsStringComparison(set.Value, step.ValuesBefore),
+                BoundPrintStatement print when !print.IsBlankLine =>
+                    ContainsStringComparison(print.Value, step.ValuesBefore),
+                _ => false
+            };
+
+            if (needsComparison)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static bool ContainsBooleanLiteral(BoundExpression expression) =>
         expression switch
@@ -1960,6 +2290,31 @@ internal static class CGenerationFacts
                 ContainsStringComparison(interpolation.Expression, values)),
             _ => false
         };
+
+    private static bool ContainsNulSensitiveStringComparison(
+        BoundExpression expression,
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values) =>
+        expression switch
+        {
+            BoundBinaryExpression binary =>
+                IsNulSensitiveStringComparison(binary, values) ||
+                ContainsNulSensitiveStringComparison(binary.Left, values) ||
+                ContainsNulSensitiveStringComparison(binary.Right, values),
+            BoundUnaryExpression unary =>
+                ContainsNulSensitiveStringComparison(unary.Operand, values),
+            BoundInterpolatedStringExpression interpolated => interpolated.Parts.Any(part =>
+                part is BoundInterpolationExpressionPart interpolation &&
+                ContainsNulSensitiveStringComparison(interpolation.Expression, values)),
+            _ => false
+        };
+
+    private static bool IsNulSensitiveStringComparison(
+        BoundBinaryExpression expression,
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values) =>
+        expression.Left.Type is SmileType.String &&
+        (expression.Operator.Kind is BoundBinaryOperatorKind.Equality or BoundBinaryOperatorKind.Inequality) &&
+        (GeneratorValueFacts.TryGetNulContainingString(expression.Left, values, out _) ||
+         GeneratorValueFacts.TryGetNulContainingString(expression.Right, values, out _));
 
     private static bool NeedsStrcmp(
         BoundBinaryExpression expression,
@@ -2032,6 +2387,7 @@ internal static class CSharpGenerationFacts
         program.Statements.Any(statement => statement switch
         {
             BoundLetStatement let => NeedsInvariantCulture(let.Initializer, displayContext: false),
+            BoundSetStatement set => NeedsInvariantCulture(set.Value, displayContext: false),
             BoundPrintStatement print => !print.IsBlankLine && NeedsInvariantCulture(print.Value, displayContext: true),
             _ => false
         });
@@ -2060,17 +2416,39 @@ internal static class CSharpGenerationFacts
 
 internal static class GeneratorValueFacts
 {
-    public static IReadOnlyDictionary<VariableSymbol, SmileValue> ConstantValues(BoundProgram program) =>
-        program.Statements
-            .OfType<BoundLetStatement>()
-            .ToDictionary(let => let.Variable, let => let.ConstantValue);
+    public static SmileValue Evaluate(
+        BoundExpression expression,
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values)
+    {
+        if (BoundExpressionEvaluator.TryEvaluate(expression, values, out SmileValue value))
+        {
+            return value;
+        }
+
+        throw new InvalidOperationException("Bound expression could not be evaluated for target lowering.");
+    }
+
+    public static bool AssignedValuesContainNul(
+        BoundProgramExecutionTrace trace,
+        VariableSymbol variable) =>
+        trace.AssignedValues.TryGetValue(variable, out var values) &&
+        values.Any(value =>
+            value.Type is SmileType.String &&
+            value.StringValue.Contains('\0', StringComparison.Ordinal));
+
+    public static int MaximumAssignedUtf8ByteLength(
+        BoundProgramExecutionTrace trace,
+        VariableSymbol variable) =>
+        trace.AssignedValues.TryGetValue(variable, out var values)
+            ? values.Max(value => Encoding.UTF8.GetByteCount(value.ToDisplayText()))
+            : 0;
 
     public static bool TryGetNulContainingString(
         BoundExpression expression,
         IReadOnlyDictionary<VariableSymbol, SmileValue> values,
         out string value)
     {
-        if (BoundConstantEvaluator.TryEvaluate(expression, values, out SmileValue evaluated) &&
+        if (BoundExpressionEvaluator.TryEvaluate(expression, values, out SmileValue evaluated) &&
             evaluated.Type is SmileType.String &&
             evaluated.StringValue.Contains('\0', StringComparison.Ordinal))
         {
@@ -2086,12 +2464,7 @@ internal static class GeneratorValueFacts
         BoundExpression expression,
         IReadOnlyDictionary<VariableSymbol, SmileValue> values)
     {
-        if (BoundConstantEvaluator.TryEvaluate(expression, values, out SmileValue value))
-        {
-            return value.ToDisplayText();
-        }
-
-        throw new InvalidOperationException("Bound expression could not be evaluated for target lowering.");
+        return Evaluate(expression, values).ToDisplayText();
     }
 }
 
@@ -2363,7 +2736,7 @@ internal static class TargetExpression
             if (_values is not null &&
                 (GeneratorValueFacts.TryGetNulContainingString(expression.Left, _values, out _) ||
                  GeneratorValueFacts.TryGetNulContainingString(expression.Right, _values, out _)) &&
-                BoundConstantEvaluator.TryEvaluate(expression, _values, out SmileValue evaluated) &&
+                BoundExpressionEvaluator.TryEvaluate(expression, _values, out SmileValue evaluated) &&
                 evaluated.Type is SmileType.Boolean)
             {
                 // strcmp stops at the first NUL and would treat values such as
@@ -2397,7 +2770,7 @@ internal static class TargetExpression
             }
 
             if (_values is not null &&
-                BoundConstantEvaluator.TryEvaluate(expression, _values, out SmileValue value) &&
+                BoundExpressionEvaluator.TryEvaluate(expression, _values, out SmileValue value) &&
                 value.Type is SmileType.String)
             {
                 // C has no native String concatenation or interpolation value.

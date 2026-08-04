@@ -6,20 +6,22 @@ namespace SMILE.Engine;
 internal sealed class Parser
 {
     private readonly string _source;
+    private readonly IReadOnlyList<SourceLine> _lines;
     private readonly List<Diagnostic> _diagnostics = new();
 
     public Parser(string source)
     {
         _source = NormalizeLegacySmartQuotes(source);
+        _lines = SourceLine.Split(_source);
     }
 
     public ParseResult Parse()
     {
         var statements = new List<StatementSyntax>();
 
-        foreach (SourceLine line in SourceLine.Split(_source))
+        for (int lineIndex = 0; lineIndex < _lines.Count; lineIndex++)
         {
-            StatementSyntax? statement = ParseLine(line);
+            StatementSyntax? statement = ParseLine(ref lineIndex);
             if (statement is not null)
             {
                 statements.Add(statement);
@@ -37,8 +39,9 @@ internal sealed class Parser
         return new ParseResult(new SmileProgramSyntax(statements, span), _diagnostics);
     }
 
-    private StatementSyntax? ParseLine(SourceLine line)
+    private StatementSyntax? ParseLine(ref int lineIndex)
     {
+        SourceLine line = _lines[lineIndex];
         int first = SkipHorizontalWhitespace(line.Text, 0);
         if (first >= line.Text.Length)
         {
@@ -57,12 +60,17 @@ internal sealed class Parser
         IdentifierRead keyword = ReadIdentifier(line, first);
         if (keyword.Text.Equals("PRINT", StringComparison.OrdinalIgnoreCase))
         {
-            return ParsePrintStatement(line, keyword);
+            return ParsePrintStatement(line, keyword, ref lineIndex);
         }
 
         if (keyword.Text.Equals("LET", StringComparison.OrdinalIgnoreCase))
         {
-            return ParseLetStatement(line, keyword);
+            return ParseLetStatement(line, keyword, ref lineIndex);
+        }
+
+        if (keyword.Text.Equals("SET", StringComparison.OrdinalIgnoreCase))
+        {
+            return ParseSetStatement(line, keyword, ref lineIndex);
         }
 
         AddDiagnostic(
@@ -72,7 +80,10 @@ internal sealed class Parser
         return null;
     }
 
-    private StatementSyntax? ParsePrintStatement(SourceLine line, IdentifierRead printKeyword)
+    private StatementSyntax? ParsePrintStatement(
+        SourceLine line,
+        IdentifierRead printKeyword,
+        ref int lineIndex)
     {
         int afterKeyword = printKeyword.End;
         int payloadStart = SkipHorizontalWhitespace(line.Text, afterKeyword);
@@ -92,6 +103,29 @@ internal sealed class Parser
                 "SMILE1101",
                 "PRINT requires a space or tab before its payload.",
                 line.Span(afterKeyword, 0));
+            return null;
+        }
+
+        if (IsBlockOpening(line, payloadStart))
+        {
+            SetBlockStringScanResult block = ConsumeBlock(lineIndex, payloadStart);
+            lineIndex = block.ClosingLineIndex;
+            AddDiagnostic(
+                "SMILE1306",
+                "A SET Block String Literal is valid only as the complete value of SET.",
+                block.Token.Span);
+            return null;
+        }
+
+        int misplacedPrintBlock = FindMisplacedBlockOpening(line.Text, payloadStart);
+        if (misplacedPrintBlock >= 0 && IsBlockOpening(line, misplacedPrintBlock))
+        {
+            SetBlockStringScanResult block = ConsumeBlock(lineIndex, misplacedPrintBlock);
+            lineIndex = block.ClosingLineIndex;
+            AddDiagnostic(
+                "SMILE1306",
+                "A SET Block String Literal is valid only as the complete value of SET.",
+                block.Token.Span);
             return null;
         }
 
@@ -121,7 +155,10 @@ internal sealed class Parser
         return value is null ? null : new PrintStatementSyntax(value, fullSpan);
     }
 
-    private StatementSyntax? ParseLetStatement(SourceLine line, IdentifierRead letKeyword)
+    private StatementSyntax? ParseLetStatement(
+        SourceLine line,
+        IdentifierRead letKeyword,
+        ref int lineIndex)
     {
         int position = SkipHorizontalWhitespace(line.Text, letKeyword.End);
         if (position >= line.Text.Length || !SyntaxFacts.IsIdentifierStart(line.Text[position]))
@@ -173,6 +210,29 @@ internal sealed class Parser
             return null;
         }
 
+        if (IsBlockOpening(line, position))
+        {
+            SetBlockStringScanResult block = ConsumeBlock(lineIndex, position);
+            lineIndex = block.ClosingLineIndex;
+            AddDiagnostic(
+                "SMILE1306",
+                "A SET Block String Literal is valid only as the complete value of SET.",
+                block.Token.Span);
+            return null;
+        }
+
+        int misplacedLetBlock = FindMisplacedBlockOpening(line.Text, position);
+        if (misplacedLetBlock >= 0 && IsBlockOpening(line, misplacedLetBlock))
+        {
+            SetBlockStringScanResult block = ConsumeBlock(lineIndex, misplacedLetBlock);
+            lineIndex = block.ClosingLineIndex;
+            AddDiagnostic(
+                "SMILE1306",
+                "A SET Block String Literal is valid only as the complete value of SET.",
+                block.Token.Span);
+            return null;
+        }
+
         var parser = new ExpressionParser(this, line, position, line.Text.Length);
         ExpressionSyntax initializer = parser.ParseExpression();
         RequireOnlyTrailingWhitespace(line, parser.Position, "SMILE1111", "Unexpected text after LET initializer.");
@@ -182,6 +242,199 @@ internal sealed class Parser
             name.Span,
             initializer,
             line.Span(letKeyword.Start, line.Text.Length - letKeyword.Start));
+    }
+
+    private StatementSyntax? ParseSetStatement(
+        SourceLine line,
+        IdentifierRead setKeyword,
+        ref int lineIndex)
+    {
+        int position = SkipHorizontalWhitespace(line.Text, setKeyword.End);
+        if (position >= line.Text.Length ||
+            !SyntaxFacts.IsHorizontalWhitespace(line.Text[setKeyword.End]) ||
+            !SyntaxFacts.IsIdentifierStart(line.Text[position]))
+        {
+            int invalidEnd = FindPotentialIdentifierEnd(line.Text, position);
+            AddDiagnostic(
+                "SMILE1301",
+                "A variable name is required after SET.",
+                line.Span(position, Math.Max(0, invalidEnd - position)));
+            return null;
+        }
+
+        IdentifierRead name = ReadIdentifier(line, position);
+        if (name.End < line.Text.Length &&
+            !SyntaxFacts.IsHorizontalWhitespace(line.Text[name.End]) &&
+            line.Text[name.End] != '=')
+        {
+            int invalidEnd = FindPotentialIdentifierEnd(line.Text, position);
+            AddDiagnostic(
+                "SMILE1301",
+                "A variable name is required after SET.",
+                line.Span(position, Math.Max(0, invalidEnd - position)));
+            return null;
+        }
+
+        position = SkipHorizontalWhitespace(line.Text, name.End);
+        if (position >= line.Text.Length || line.Text[position] != '=')
+        {
+            AddDiagnostic(
+                "SMILE1302",
+                "SET requires '=' after its target variable.",
+                line.Span(position, 0));
+            return null;
+        }
+
+        position = SkipHorizontalWhitespace(line.Text, position + 1);
+        if (position >= line.Text.Length)
+        {
+            AddDiagnostic(
+                "SMILE1303",
+                "SET requires a value.",
+                line.Span(position, 0));
+            return null;
+        }
+
+        if (IsBlockOpening(line, position))
+        {
+            SetBlockStringScanResult block = ConsumeBlock(lineIndex, position);
+            lineIndex = block.ClosingLineIndex;
+            var value = new BlockStringLiteralExpressionSyntax(
+                (string?)block.Token.Value ?? string.Empty,
+                block.Token.Span);
+            int statementEnd = block.Token.Span.Start + block.Token.Span.Length;
+            return new SetStatementSyntax(
+                name.Text,
+                name.Span,
+                value,
+                new TextSpan(
+                    line.Start + setKeyword.Start,
+                    statementEnd - (line.Start + setKeyword.Start),
+                    line.LineNumber,
+                    setKeyword.Start + 1));
+        }
+
+        if (line.Text[position] == '"' &&
+            !HasClosingQuoteOnLine(line.Text, position + 1))
+        {
+            AddDiagnostic(
+                "SMILE1308",
+                "The opening quote of a SET Block String Literal must end the physical SET line.",
+                line.Span(position, 1));
+            return null;
+        }
+
+        int misplacedBlockOpening = FindMisplacedBlockOpening(line.Text, position);
+        if (misplacedBlockOpening >= 0 && IsBlockOpening(line, misplacedBlockOpening))
+        {
+            SetBlockStringScanResult block = ConsumeBlock(lineIndex, misplacedBlockOpening);
+            lineIndex = block.ClosingLineIndex;
+            AddDiagnostic(
+                "SMILE1306",
+                "A SET Block String Literal is valid only as the complete value of SET.",
+                block.Token.Span);
+            return null;
+        }
+
+        var parser = new ExpressionParser(this, line, position, line.Text.Length);
+        ExpressionSyntax valueExpression = parser.ParseExpression();
+        RequireOnlyTrailingWhitespace(
+            line,
+            parser.Position,
+            "SMILE1111",
+            "Unexpected text after SET value.");
+
+        return new SetStatementSyntax(
+            name.Text,
+            name.Span,
+            valueExpression,
+            line.Span(setKeyword.Start, line.Text.Length - setKeyword.Start));
+    }
+
+    private SetBlockStringScanResult ConsumeBlock(int openingLineIndex, int openingQuoteColumn) =>
+        SetBlockStringScanner.Scan(
+            _source,
+            _lines,
+            openingLineIndex,
+            openingQuoteColumn,
+            _diagnostics);
+
+    private bool IsBlockOpening(SourceLine line, int quoteColumn)
+    {
+        if (quoteColumn < 0 ||
+            quoteColumn >= line.Text.Length ||
+            line.Text[quoteColumn] != '"' ||
+            line.Start + line.Text.Length >= _source.Length)
+        {
+            return false;
+        }
+
+        return IsOnlyHorizontalWhitespace(line.Text, quoteColumn + 1, line.Text.Length);
+    }
+
+    private static int FindMisplacedBlockOpening(string text, int start)
+    {
+        int end = TrimTrailingHorizontalWhitespace(text);
+        if (end <= start || text[end - 1] != '"')
+        {
+            return -1;
+        }
+
+        bool insideString = false;
+        bool escaped = false;
+        int unmatchedQuote = -1;
+        for (int position = start; position < end; position++)
+        {
+            char current = text[position];
+            if (escaped)
+            {
+                escaped = false;
+                continue;
+            }
+
+            if (insideString && current == '\\')
+            {
+                escaped = true;
+                continue;
+            }
+
+            if (current != '"')
+            {
+                continue;
+            }
+
+            insideString = !insideString;
+            unmatchedQuote = insideString ? position : -1;
+        }
+
+        return insideString && unmatchedQuote == end - 1
+            ? unmatchedQuote
+            : -1;
+    }
+
+    private static bool HasClosingQuoteOnLine(string text, int position)
+    {
+        bool escaped = false;
+        while (position < text.Length)
+        {
+            char current = text[position];
+            if (escaped)
+            {
+                escaped = false;
+            }
+            else if (current == '\\')
+            {
+                escaped = true;
+            }
+            else if (current == '"')
+            {
+                return true;
+            }
+
+            position++;
+        }
+
+        return false;
     }
 
     private ExpressionSyntax? ParseRawTemplate(SourceLine line, int start, int end)
@@ -683,7 +936,7 @@ internal sealed class Parser
                     }
 
                     char escape = _line.Text[Position + 1];
-                    if (TryAppendEscape(escape, currentText))
+                    if (SmileStringEscapes.TryAppend(escape, currentText))
                     {
                         Position += 2;
                         continue;
@@ -769,38 +1022,6 @@ internal sealed class Parser
         }
     }
 
-    private static bool TryAppendEscape(char escape, StringBuilder builder)
-    {
-        switch (escape)
-        {
-            case '\\':
-                builder.Append('\\');
-                return true;
-            case '"':
-                builder.Append('"');
-                return true;
-            case 'n':
-                builder.Append('\n');
-                return true;
-            case 'r':
-                builder.Append('\r');
-                return true;
-            case 't':
-                builder.Append('\t');
-                return true;
-            case '0':
-                builder.Append('\0');
-                return true;
-            case 'b':
-                builder.Append('\b');
-                return true;
-            case 'f':
-                builder.Append('\f');
-                return true;
-            default:
-                return false;
-        }
-    }
 }
 
 internal sealed class Binder
@@ -808,8 +1029,8 @@ internal sealed class Binder
     private static readonly ulong MinIntegerMagnitude = (ulong)long.MaxValue + 1UL;
     private readonly List<Diagnostic> _diagnostics = new();
     private readonly Dictionary<string, VariableSymbol> _variables = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<VariableSymbol, SmileValue> _constantValues = new();
     private readonly List<VariableSymbol> _declaredVariables = new();
+    private readonly BoundProgramExecutionTraceBuilder _execution = new();
 
     public BindResult Bind(SmileProgramSyntax program)
     {
@@ -833,7 +1054,8 @@ internal sealed class Binder
         statement switch
         {
             LetStatementSyntax let => BindLetStatement(let),
-            PrintStatementSyntax print => new BoundPrintStatement(BindExpression(print.Value), print.IsBlankLine),
+            SetStatementSyntax set => BindSetStatement(set),
+            PrintStatementSyntax print => BindPrintStatement(print),
             _ => null
         };
 
@@ -860,16 +1082,68 @@ internal sealed class Binder
             return null;
         }
 
-        if (!BoundConstantEvaluator.TryEvaluate(initializer, _constantValues, out SmileValue constantValue, _diagnostics))
+        var symbol = new VariableSymbol(syntax.Name, syntax.NameSpan, initializer.Type);
+        var statement = new BoundLetStatement(symbol, initializer);
+        if (!_execution.TryAppend(statement, _diagnostics))
         {
             return null;
         }
 
-        var symbol = new VariableSymbol(syntax.Name, syntax.NameSpan, initializer.Type);
         _variables.Add(syntax.Name, symbol);
-        _constantValues.Add(symbol, constantValue);
         _declaredVariables.Add(symbol);
-        return new BoundLetStatement(symbol, initializer, constantValue);
+        return statement;
+    }
+
+    private BoundStatement? BindSetStatement(SetStatementSyntax syntax)
+    {
+        if (!_variables.TryGetValue(syntax.Name, out VariableSymbol? variable))
+        {
+            _diagnostics.Add(new Diagnostic(
+                "SMILE1304",
+                DiagnosticSeverity.Error,
+                $"SET target variable '{syntax.Name}' is undefined.",
+                syntax.NameSpan));
+            return null;
+        }
+
+        int diagnosticCountBeforeValue = _diagnostics.Count;
+        BoundExpression value = BindExpression(syntax.Value);
+        if (value.Type is SmileType.Error ||
+            _diagnostics.Count != diagnosticCountBeforeValue)
+        {
+            return null;
+        }
+
+        if (value.Type != variable.Type)
+        {
+            _diagnostics.Add(new Diagnostic(
+                "SMILE1305",
+                DiagnosticSeverity.Error,
+                $"SET value type '{value.Type}' does not match variable '{syntax.Name}' of type '{variable.Type}'.",
+                syntax.Value.Span));
+            return null;
+        }
+
+        var statement = new BoundSetStatement(variable, value);
+        return _execution.TryAppend(statement, _diagnostics)
+            ? statement
+            : null;
+    }
+
+    private BoundStatement? BindPrintStatement(PrintStatementSyntax syntax)
+    {
+        int diagnosticCountBeforeValue = _diagnostics.Count;
+        BoundExpression value = BindExpression(syntax.Value);
+        if (value.Type is SmileType.Error ||
+            _diagnostics.Count != diagnosticCountBeforeValue)
+        {
+            return null;
+        }
+
+        var statement = new BoundPrintStatement(value, syntax.IsBlankLine);
+        return _execution.TryAppend(statement, _diagnostics)
+            ? statement
+            : null;
     }
 
     private BoundExpression BindExpression(ExpressionSyntax expression) =>
@@ -877,6 +1151,7 @@ internal sealed class Binder
         {
             ErrorExpressionSyntax => new BoundErrorExpression(),
             StringLiteralExpressionSyntax literal => new BoundStringLiteralExpression(literal.Value),
+            BlockStringLiteralExpressionSyntax literal => new BoundStringLiteralExpression(literal.Value),
             IntegerLiteralExpressionSyntax literal => BindIntegerLiteral(literal),
             BooleanLiteralExpressionSyntax literal => new BoundBooleanLiteralExpression(literal.Value),
             NameExpressionSyntax name => BindNameExpression(name),
@@ -1014,6 +1289,7 @@ internal static class SyntaxFacts
         text.ToUpperInvariant() switch
         {
             "LET" => SyntaxKind.LetKeyword,
+            "SET" => SyntaxKind.SetKeyword,
             "PRINT" => SyntaxKind.PrintKeyword,
             "TRUE" => SyntaxKind.TrueKeyword,
             "FALSE" => SyntaxKind.FalseKeyword,

@@ -46,7 +46,8 @@ PRINT Calculation: {A}, {B}, {C}
 
         Assert.AreEqual(BoundBinaryOperatorKind.Addition, addition.Operator.Kind);
         Assert.AreEqual(BoundBinaryOperatorKind.Multiplication, multiplication.Operator.Kind);
-        Assert.AreEqual(14L, let.ConstantValue.IntegerValue);
+        BoundProgramExecutionTrace trace = BoundProgramExecutionTrace.Create(result.Program!);
+        Assert.AreEqual(14L, trace.Steps.Single().Value.IntegerValue);
     }
 
     [TestMethod]
@@ -184,7 +185,8 @@ PRINT {Message}
         string masm = Generate(source, TargetLanguage.MasmX64).PrimaryFile.Content;
         StringAssert.Contains(masm, "variable0Value BYTE \"49\"");
         StringAssert.Contains(masm, "variable1Value BYTE \"TRUE\"");
-        StringAssert.Contains(masm, "print2Segment0 BYTE \"Age=49, Adult=TRUE\"");
+        StringAssert.Contains(masm, "mov rdx, QWORD PTR [variable2Ptr]");
+        StringAssert.Contains(masm, "mov r8d, DWORD PTR [variable2Length]");
     }
 
     private GeneratedProgram Generate(string source, TargetLanguage language)

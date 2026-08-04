@@ -1,14 +1,16 @@
 # SMILE - String Literals Official Specification v1.0
 
-This specification was introduced in SMILE v0.4.1 and remains normative for v0.4.2.1 and later unless superseded by a newer official specification.
+This specification was introduced in SMILE v0.4.1 and remains normative for SMILE v0.5.0 and later unless superseded by a newer official specification.
 
 ## Purpose
 
-String literals are the source form for fixed text values. They are used by `LET`, `PRINT`, and interpolation text.
+Ordinary String literals are the one-line source form for fixed text values. They are used by `LET`, ordinary `SET` expressions, `PRINT`, and interpolation text.
+
+SMILE v0.5.0 also defines one deliberately separate multiline source form: the [SET Block String Literal — The SMILE Way](SMILE%20-%20SET%20Statement%20Official%20Specification%20v1.0.md). It is valid only as the complete value of `SET`. It does not make ordinary String expressions multiline-capable.
 
 ## Source Form
 
-A string literal begins with `"` and ends with the next unescaped `"`.
+An ordinary String literal begins with `"` and ends with the next unescaped `"` on the same physical source line.
 
 ```basic
 "Hello"
@@ -17,6 +19,8 @@ A string literal begins with `"` and ends with the next unescaped `"`.
 ```
 
 SMILE also accepts legacy left and right smart quote characters as double quotes for beginner-friendly recovery, but generated examples should use ordinary ASCII quotes.
+
+A quote that ends a physical SET line may instead begin a SET Block String Literal. The SET specification exclusively defines its opening and closing delimiters, structural indentation removal, logical `\n` normalization, complete-value placement, and diagnostics. The front end normalizes that form to one ordinary String value before binding.
 
 ## Official Escape Sequences
 
@@ -33,6 +37,8 @@ SMILE also accepts legacy left and right smart quote characters as double quotes
 
 No other escape sequence is valid in v1.0. For example, `\q`, `\a`, and `\v` are errors in SMILE source even if some destination language has such escapes.
 
+SET Block String content decodes this same escape table. Quotes embedded in ordinary block content lines remain literal; the closing delimiter is recognized structurally as defined by the SET specification.
+
 Raw `PRINT` template text does not process backslash escapes. For example:
 
 ```basic
@@ -45,14 +51,16 @@ prints the backslash and `n` literally, followed by the normal `PRINT` line endi
 
 | Code | Meaning |
 |---|---|
-| `SMILE1003` | Unterminated string literal |
+| `SMILE1003` | Unterminated ordinary String literal or SET Block String Literal |
 | `SMILE1208` | Unknown or invalid string escape sequence |
 | `SMILE1209` | Unterminated string escape sequence |
 
+SET-only placement and delimiter diagnostics `SMILE1306` through `SMILE1308` are defined by the official SET specification.
+
 ## Target Generation
 
-Target generators must emit destination-language string syntax that preserves the complete SMILE String value. Generators may choose each target language's normal escape spelling as long as the runtime text is identical to the reference evaluator. Destination representations that normally terminate at NUL must carry an exact length whenever the value contains `\0`.
+Target generators must emit destination-language string syntax that preserves the complete SMILE String value. Generators may choose each target language's normal escape spelling as long as the runtime text is identical to the reference evaluator. Destination representations that normally terminate at NUL must carry an exact length whenever the value contains `\0`. Generators receive only the normalized value and must never inspect block delimiters, source indentation, or physical line endings.
 
 Conformance tests must compare exact values or captured bytes for NUL, backspace, form feed, tab, carriage return, and line feed. Tests must not trim control characters. Line-ending normalization is allowed only when a test is specifically comparing platform line endings.
 
-C and Objective-C may use ordinary `%s` output and `strcmp` equality only for values proven to contain no embedded NUL. A NUL-containing value is emitted through compiler-owned UTF-8 byte data plus an exact byte length, and a NUL-sensitive equality is lowered to its already evaluated Boolean result while all expressions remain pure compile-time constants. This keeps bytes after NUL observable without introducing a general String runtime.
+C and Objective-C may use ordinary `%s` output and `strcmp` equality only for values proven to contain no embedded NUL. A NUL-containing value is emitted through compiler-owned UTF-8 byte data plus an exact byte length, and a provably known NUL-sensitive equality may be lowered to its statement-local Boolean result. This keeps bytes after NUL observable without introducing a general String runtime while remaining correct after `SET` changes the current value.

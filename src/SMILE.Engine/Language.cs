@@ -52,6 +52,13 @@ public sealed record LetStatementSyntax(
     TextSpan Span)
     : StatementSyntax(Span);
 
+public sealed record SetStatementSyntax(
+    string Name,
+    TextSpan NameSpan,
+    ExpressionSyntax Value,
+    TextSpan Span)
+    : StatementSyntax(Span);
+
 public abstract record ExpressionSyntax(TextSpan Span)
     : SyntaxNode(Span);
 
@@ -59,6 +66,14 @@ public sealed record ErrorExpressionSyntax(TextSpan Span)
     : ExpressionSyntax(Span);
 
 public sealed record StringLiteralExpressionSyntax(
+    string Value,
+    TextSpan Span)
+    : ExpressionSyntax(Span);
+
+// The dedicated syntax form lets the parser enforce SET-only placement while
+// the binder still lowers the already-normalized value to the one canonical
+// bound String literal used by every target.
+public sealed record BlockStringLiteralExpressionSyntax(
     string Value,
     TextSpan Span)
     : ExpressionSyntax(Span);
@@ -192,8 +207,12 @@ public abstract record BoundStatement;
 
 public sealed record BoundLetStatement(
     VariableSymbol Variable,
-    BoundExpression Initializer,
-    SmileValue ConstantValue)
+    BoundExpression Initializer)
+    : BoundStatement;
+
+public sealed record BoundSetStatement(
+    VariableSymbol Variable,
+    BoundExpression Value)
     : BoundStatement;
 
 public sealed record BoundPrintStatement(
@@ -459,7 +478,7 @@ public static class BoundStringExpression
     }
 }
 
-public static class BoundConstantEvaluator
+public static class BoundExpressionEvaluator
 {
     public static bool TryEvaluate(
         BoundExpression expression,

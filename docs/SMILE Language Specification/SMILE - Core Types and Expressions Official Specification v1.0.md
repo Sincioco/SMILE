@@ -1,6 +1,6 @@
 # SMILE - Core Types and Expressions Official Specification v1.0
 
-This specification was introduced in SMILE v0.4.1 and remains normative for v0.4.2.1 and later unless superseded by a newer official specification.
+This specification was introduced in SMILE v0.4.1 and remains normative for SMILE v0.5.0 and later unless superseded by a newer official specification.
 
 ## Core Types
 
@@ -12,9 +12,9 @@ The SMILE v1.0 expression core has three value types:
 | `Integer` | Signed 64-bit integer | Decimal digits using invariant culture |
 | `Boolean` | Truth value | `TRUE` or `FALSE` |
 
-`Integer` is a signed 64-bit SMILE semantic type regardless of target-language storage. A target generator MAY use a narrower natural destination type for a complete program only when every bound Integer literal, value, operand, and intermediate result is proven to fit that type. This target-local storage choice MUST NOT change the valid SMILE range, checked overflow behavior, division semantics, or evaluator output.
+`Integer` is a signed 64-bit SMILE semantic type regardless of target-language storage. A target generator MAY use a narrower natural destination type for a complete program only when every bound Integer literal, statement-local value, operand, and intermediate result is proven to fit that type. This target-local storage choice MUST NOT change the valid SMILE range, checked overflow behavior, division semantics, or evaluator output.
 
-All current `LET` initializers are compile-time evaluable because SMILE v0.4.3 has no runtime input, reassignment, or side effects.
+SMILE v0.5.0 has mutable variables through `SET`, but it still has no input, branch, loop, function, or external runtime data. Every current statement value therefore remains determinable in source order. Known-value analysis MUST be statement-order and mutation aware; an earlier value MUST NOT be propagated past a later `SET`.
 
 ## Lexical Tokens
 
@@ -23,7 +23,8 @@ The lexer recognizes:
 - identifiers;
 - string literals;
 - integer literals;
-- `LET`, `PRINT`, `TRUE`, `FALSE`, `NOT`, `AND`, and `OR`;
+- `LET`, `SET`, `PRINT`, `TRUE`, `FALSE`, `NOT`, `AND`, and `OR`;
+- the dedicated lexical representation for a SET Block String Literal;
 - `+`, `-`, `*`, `/`;
 - `=`, `<>`, `<`, `<=`, `>`, `>=`;
 - `(` and `)`;
@@ -59,6 +60,8 @@ Operator precedence, from strongest to weakest:
 
 Binary operators are left-associative.
 
+The grammar above defines ordinary expressions. `SET` is an assignment statement, not an expression, and does not add an assignment operator. A SET Block String Literal is normalized before binding and is valid only as the complete value of `SET`; it is not a general expression primary.
+
 ## Canonical Expression Representation
 
 Each expression concept has one syntax representation and one bound representation. Every binary operator, including String `+`, is represented by:
@@ -69,6 +72,8 @@ BoundBinaryExpression
 ```
 
 The bound operator distinguishes Integer addition from `StringConcatenation`. Implementations must not maintain a second concatenation syntax or bound node in parallel with the typed binary-expression path.
+
+A variable-reference expression reads the current value associated with its `VariableSymbol` in the evaluator environment at that statement position. `LET` establishes the initial value and `SET` replaces the current value only after its complete right side has evaluated successfully. Current runtime state MUST NOT be stored permanently on `BoundLetStatement`.
 
 ## Operator Types
 
@@ -117,7 +122,7 @@ Output:
 FALSE
 ```
 
-After binding succeeds, the shared simplifier may use previously declared constant Boolean values to make the same reachability decision in every expression position. It must decide whether the right operand is reachable before simplifying that operand. Binding still resolves and type-checks both sides first. This constant-aware rule is valid while SMILE has no input, reassignment, functions, or side effects; future runtime features must preserve left-to-right evaluation and may fold only expressions proven safe.
+After binding succeeds, the shared simplifier may use the current known Boolean values at each statement position to make the same reachability decision in every expression position. It must decide whether the right operand is reachable before simplifying that operand. Binding still resolves and type-checks both sides first. For `SET`, the right side is simplified and evaluated using the old environment, and the known value changes only after the complete assignment succeeds. Future runtime features must preserve left-to-right evaluation and may fold only expressions proven safe.
 
 The same failure remains an error when the right operand is reachable:
 
@@ -132,6 +137,8 @@ These rules remain normative when future SMILE versions add runtime expressions,
 ## Interpolation
 
 `$"..."` strings and raw `PRINT` templates may contain `{expression}` holes. The expression inside a hole is parsed and type-checked with the normal expression grammar. The inserted text is the expression value's display text.
+
+SET Block String Literals do not interpolate. Their normalized value is one ordinary bound String literal.
 
 ```basic
 LET Age = 49
@@ -188,8 +195,8 @@ LET DifferentCase = "Sin" = "sin"
 
 ## Target Generation Rule
 
-Every target generator must consume the shared bound tree produced by the lexer, parser, binder, and evaluator. A target generator must not invent its own expression semantics or reparse SMILE source text.
+Every target generator must consume the shared bound tree and statement-order execution analysis produced by the lexer, parser, binder, and evaluator. A target generator must not invent its own expression semantics, reparse SMILE source text, or interpret SET Block String delimiters.
 
-C and Objective-C preserve native Integer and Boolean expression intent where the destination language has a direct equivalent. String-producing declarations may continue to use evaluated constants while SMILE has no runtime string library. C-family NUL-free String equality uses value comparison such as `strcmp`, not pointer equality; NUL-sensitive equality must account for the complete length and bytes or use the exact evaluated Boolean. Compiler-owned `printf` format strings use `%d`, `%lld`, `%s`, and safe literal-percent escaping as appropriate. A NUL-containing String uses length-aware byte output so `%s` cannot truncate the value.
+C and Objective-C preserve native Integer and Boolean expression intent where the destination language has a direct equivalent. Low-level targets may use statement-local evaluated values where a native expression runtime would add unnecessary complexity, but every `SET` must still emit an actual storage update at its source position. C-family NUL-free String equality uses value comparison such as `strcmp`, not pointer equality; NUL-sensitive equality must account for the complete length and bytes or use the exact value known at that statement position. Compiler-owned `printf` format strings use `%d`, `%lld`, `%s`, and safe literal-percent escaping as appropriate. A NUL-containing String uses length-aware byte output so `%s` cannot truncate the value.
 
 Deterministic generated-expression conformance tests use a fixed seed, evaluate one larger valid SMILE program with `SmileEvaluator`, build every locally available target, normalize line endings only where explicitly allowed, and compare all remaining stdout bytes exactly without trimming control characters.

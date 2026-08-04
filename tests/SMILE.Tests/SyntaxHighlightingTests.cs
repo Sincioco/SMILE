@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Highlighting;
 using SMILE.Desktop.Highlighting;
@@ -158,5 +159,141 @@ PRINT $"Hello {Name}; age={Age}"
             500L,
             stopwatch.ElapsedMilliseconds,
             $"C++ highlighting took {stopwatch.ElapsedMilliseconds} ms.");
+    }
+
+    [TestMethod]
+    public void Smile_highlighting_colors_SET_and_a_complete_multiline_block_then_resumes()
+    {
+        const string source = """
+LET Name = ""
+SET Name ="
+He said "Hello".
+"
+PRINT {Name}
+""";
+        var document = new TextDocument(source);
+        IHighlightingDefinition definition = SyntaxHighlightingCatalog.GetDefinition("smile")!;
+        var highlighter = new DocumentHighlighter(document, definition);
+        HighlightingColor keyword = definition.GetNamedColor("Keyword")!;
+        HighlightingColor stringColor = definition.GetNamedColor("String")!;
+
+        HighlightedLine[] lines = Enumerable.Range(1, document.LineCount)
+            .Select(highlighter.HighlightLine)
+            .ToArray();
+
+        DocumentLine setLine = document.GetLineByNumber(2);
+        AssertRangeHasColor(lines[1], setLine.Offset, 3, keyword, "SET keyword");
+
+        DocumentLine contentLine = document.GetLineByNumber(3);
+        AssertRangeHasColor(
+            lines[2],
+            contentLine.Offset,
+            contentLine.Length,
+            stringColor,
+            "block content containing ordinary quotes");
+
+        DocumentLine closingLine = document.GetLineByNumber(4);
+        AssertRangeHasColor(
+            lines[3],
+            closingLine.Offset,
+            closingLine.Length,
+            stringColor,
+            "closing delimiter");
+
+        DocumentLine printLine = document.GetLineByNumber(5);
+        AssertRangeHasColor(lines[4], printLine.Offset, 5, keyword, "PRINT after block");
+        AssertRangeDoesNotHaveColor(
+            lines[4],
+            printLine.Offset,
+            5,
+            stringColor,
+            "highlighting must leave block state after its closing delimiter");
+    }
+
+    [TestMethod]
+    public void Smile_highlighting_keeps_an_unterminated_block_safe_and_multiline()
+    {
+        const string source = """
+LET Name = ""
+SET Name ="
+He said "Hello".
+Still inside the block
+""";
+        var document = new TextDocument(source);
+        IHighlightingDefinition definition = SyntaxHighlightingCatalog.GetDefinition("smile")!;
+        var highlighter = new DocumentHighlighter(document, definition);
+        HighlightingColor stringColor = definition.GetNamedColor("String")!;
+
+        HighlightedLine[] lines = Enumerable.Range(1, document.LineCount)
+            .Select(highlighter.HighlightLine)
+            .ToArray();
+
+        DocumentLine finalLine = document.GetLineByNumber(document.LineCount);
+        AssertRangeHasColor(
+            lines[^1],
+            finalLine.Offset,
+            finalLine.Length,
+            stringColor,
+            "unterminated block content");
+    }
+
+    [TestMethod]
+    public void Smile_multiline_block_highlighting_remains_fast_for_a_large_edit_buffer()
+    {
+        var source = new StringBuilder();
+        for (int index = 0; index < 250; index++)
+        {
+            source.AppendLine($"LET Value{index} = \"\"");
+            source.AppendLine($"SET Value{index} =\"");
+            source.AppendLine("He said \"Hello\".");
+            source.AppendLine("  Indented content");
+            source.AppendLine("\"");
+        }
+
+        var document = new TextDocument(source.ToString());
+        IHighlightingDefinition definition = SyntaxHighlightingCatalog.GetDefinition("smile")!;
+        var highlighter = new DocumentHighlighter(document, definition);
+
+        var stopwatch = Stopwatch.StartNew();
+        for (int line = 1; line <= document.LineCount; line++)
+        {
+            highlighter.HighlightLine(line);
+        }
+
+        stopwatch.Stop();
+        Assert.IsLessThan(
+            1_000L,
+            stopwatch.ElapsedMilliseconds,
+            $"SMILE block highlighting took {stopwatch.ElapsedMilliseconds} ms for {document.LineCount} lines.");
+    }
+
+    private static void AssertRangeHasColor(
+        HighlightedLine line,
+        int offset,
+        int length,
+        HighlightingColor color,
+        string description)
+    {
+        HighlightedSection? section = line.Sections.FirstOrDefault(candidate =>
+            ReferenceEquals(candidate.Color, color) &&
+            candidate.Offset <= offset &&
+            candidate.Offset + candidate.Length >= offset + length);
+
+        Assert.IsNotNull(section, $"Expected {description} to use the '{color.Name}' color.");
+    }
+
+    private static void AssertRangeDoesNotHaveColor(
+        HighlightedLine line,
+        int offset,
+        int length,
+        HighlightingColor color,
+        string description)
+    {
+        HighlightedSection? section = line.Sections.FirstOrDefault(candidate =>
+            ReferenceEquals(candidate.Color, color) &&
+            candidate.Offset < offset + length &&
+            candidate.Offset + candidate.Length > offset);
+
+        Assert.IsNull(section, description);
     }
 }
