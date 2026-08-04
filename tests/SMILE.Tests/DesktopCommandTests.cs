@@ -132,6 +132,11 @@ public sealed class DesktopCommandTests
 
         Assert.IsTrue(pane.CanBuild);
 
+        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Cpp);
+
+        Assert.AreEqual("Pane - C++", pane.Title);
+        Assert.AreEqual("Build & Run", pane.BuildButtonText);
+
         pane.IsBusy = true;
 
         Assert.IsFalse(pane.CanBuild);
@@ -163,8 +168,14 @@ public sealed class DesktopCommandTests
         await viewModel.InitializeAsync();
 
         TargetPaneViewModel pane = viewModel.Pane3;
-        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Python);
         pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.C);
+        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Cpp);
+        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Python);
+        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Cpp);
+
+        Assert.AreEqual("cpp", pane.HighlightingId);
+        StringAssert.Contains(pane.GeneratedCode, "std::cout");
+
         pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Swift);
         pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Python);
 
@@ -191,12 +202,13 @@ public sealed class DesktopCommandTests
     }
 
     [TestMethod]
-    public async Task Visible_build_run_executes_objective_c_and_swift_when_available()
+    public async Task Visible_build_run_executes_objective_c_swift_and_cpp_when_available()
     {
         var objectiveC = new FakeToolchain(TargetLanguage.ObjectiveC);
         var swift = new FakeToolchain(TargetLanguage.Swift);
+        var cpp = new FakeToolchain(TargetLanguage.Cpp);
         var viewModel = new MainWindowViewModel(
-            CreateRegistry(objectiveC, swift),
+            CreateRegistry(objectiveC, swift, cpp),
             new FakeErrorReporter(),
             new FakeFolderOpener())
         {
@@ -206,7 +218,7 @@ public sealed class DesktopCommandTests
 
         viewModel.Pane1.SelectedLanguageOption = viewModel.Pane1.LanguageOptions.Single(option => option.Language == TargetLanguage.ObjectiveC);
         viewModel.Pane2.SelectedLanguageOption = viewModel.Pane2.LanguageOptions.Single(option => option.Language == TargetLanguage.Swift);
-        viewModel.Pane3.SelectedLanguageOption = viewModel.Pane3.LanguageOptions.Single(option => option.Language == TargetLanguage.ObjectiveC);
+        viewModel.Pane3.SelectedLanguageOption = viewModel.Pane3.LanguageOptions.Single(option => option.Language == TargetLanguage.Cpp);
 
         viewModel.BuildRunVisibleCommand.Execute(null);
 
@@ -214,10 +226,12 @@ public sealed class DesktopCommandTests
 
         Assert.AreEqual(1, objectiveC.BuildRuns);
         Assert.AreEqual(1, swift.BuildRuns);
+        Assert.AreEqual(1, cpp.BuildRuns);
         Assert.AreEqual("Completed", viewModel.Pane1.Status);
         Assert.AreEqual("Completed", viewModel.Pane2.Status);
         StringAssert.Contains(viewModel.OutputText, "Objective-C detected.");
         StringAssert.Contains(viewModel.OutputText, "Swift detected.");
+        StringAssert.Contains(viewModel.OutputText, "C++ detected.");
     }
 
     [TestMethod]

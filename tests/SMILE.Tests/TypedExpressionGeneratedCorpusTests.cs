@@ -50,6 +50,7 @@ public sealed class TypedExpressionGeneratedCorpusTests
     [DataRow(TargetLanguage.ObjectiveC)]
     [DataRow(TargetLanguage.Swift)]
     [DataRow(TargetLanguage.Python)]
+    [DataRow(TargetLanguage.Cpp)]
     public async Task Installed_target_matches_reference_evaluator_for_fixed_seed_corpus(
         TargetLanguage language)
     {
@@ -83,6 +84,7 @@ public sealed class TypedExpressionGeneratedCorpusTests
     [DataRow(TargetLanguage.ObjectiveC)]
     [DataRow(TargetLanguage.Swift)]
     [DataRow(TargetLanguage.Python)]
+    [DataRow(TargetLanguage.Cpp)]
     public async Task Installed_target_matches_reference_evaluator_for_shipped_typed_expression_example(
         TargetLanguage language)
     {
@@ -117,6 +119,7 @@ public sealed class TypedExpressionGeneratedCorpusTests
     [DataRow(TargetLanguage.ObjectiveC)]
     [DataRow(TargetLanguage.Swift)]
     [DataRow(TargetLanguage.Python)]
+    [DataRow(TargetLanguage.Cpp)]
     public async Task Installed_target_preserves_official_escape_bytes(TargetLanguage language)
     {
         IToolchain toolchain = _toolchains.Get(language);

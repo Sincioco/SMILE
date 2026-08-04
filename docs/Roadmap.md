@@ -108,7 +108,7 @@
 - Keep SMILE Integer semantics signed 64-bit while profiling the complete bound program for idiomatic target storage: C/Objective-C `int` or `int64_t`, C#/Java `int` or `long`, JavaScript `Number` or `BigInt`, Swift `Int` or `Int64`, and Python `int`.
 - Add exact small, boundary, wide, intermediate-result, and evaluator-versus-toolchain Integer-profile coverage for all nine targets.
 - Publish the expanded learner-first mission statement and link the project introduction video from the README.
-- Pause destination-language expansion after Python so SMILE can deepen its runtime language model.
+- Record the then-current pause after Python; v0.4.3 supersedes that pause with one final C++ target and a permanent destination-language freeze.
 
 ## Implemented In v0.4.2.1
 
@@ -120,25 +120,33 @@
 - Compare exact output bytes across all nine installed targets without trimming NUL or other official control characters.
 - Clarify which v1.0 language specifications remain normative for v0.4.2.1 and later.
 
+## Implemented In v0.4.3
+
+- Add C++ as the tenth and final planned destination with stable ID `cpp` and primary file `Program.cpp`.
+- Generate modern C++20 directly from `BoundProgram` with owned `std::string`, `std::cout`, native length-aware String equality, RAII ownership, precedence-aware expressions, and canonical Boolean text.
+- Keep literal-plus-literal concatenation valid by beginning the generated chain with `std::string` when needed.
+- Preserve embedded NUL through UTF-8 byte-counted `std::string` construction and stream complete String values through `std::cout`.
+- Use the shared per-program Integer profile with ordinary `int` and exact `std::int64_t`/`INT64_C(...)` wide storage.
+- Add complete C++20 keyword, runtime-name, collision, and implementation-reserved identifier mapping.
+- Add local MSVC C++20 Build & Run, press-any-key launchers, AvalonEdit C++ highlighting, desktop selectors, CLI support, and ten-target evaluator conformance.
+- Freeze destination-language expansion after C++ so future milestones deepen the SMILE language and its teaching tools.
+
 ## Next Major Milestone: v0.5.0 - Runtime Variables And SET
 
-The next language milestone is runtime variables and `SET`. It is intentionally not implemented in v0.4.2.1.
+The next language milestone is runtime variables and `SET`. It is intentionally not implemented in v0.4.3.
 
-## Deferred Destination Languages
+## Final Destination-Language Freeze
 
-Rust, Zig, and Go are intentionally not part of the active SMILE roadmap at this stage. After Python, target-language expansion is paused while SMILE focuses on runtime variables, assignment, input, conditions, loops, functions, and scopes. These targets may be reconsidered later when the runtime language model is mature.
+C++ is SMILE's tenth and final planned destination language. Target-language expansion is frozen so development can focus on runtime variables, assignment, conditions, input, loops, functions, scopes, debugging, and teaching tools. Do not add another destination language unless Sin explicitly reopens target expansion. Rust, Zig, and Go remain intentionally deferred and are not active targets.
 
-## Future Ideas
+## Active Language-Depth Milestones
 
-These are not implemented in v0.4.2.1:
+These are not implemented in v0.4.3:
 
-1. Runtime variables and assignment
-2. `INPUT`
-3. `IF / THEN / ELSE`
-4. Loops
-5. Functions and scopes
-6. Floating-point and decimal numeric types
-7. Debugging and source mapping
-8. Semantic highlighting, autocomplete, and diagnostic squiggles
-9. Reusable web interface
-10. Evolution toward a full SMILE language
+1. v0.5.0 - Runtime Variables and `SET`
+2. v0.6.0 - `IF / THEN / ELSE`
+3. v0.7.0 - `INPUT`
+4. v0.8.0 - Loops
+5. v0.9.0 - Functions and scopes
+
+Later teaching-depth ideas include floating-point and decimal numeric types, debugging and source mapping, semantic highlighting, autocomplete, diagnostic squiggles, and a reusable web interface.

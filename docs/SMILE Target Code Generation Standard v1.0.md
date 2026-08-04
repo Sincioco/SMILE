@@ -60,6 +60,10 @@ print("Hello \(Name)!")
 print(f"Hello {Name}!")
 ```
 
+```cpp
+std::cout << "Hello " << Name << "!" << '\n';
+```
+
 Explicit SMILE concatenation should remain explicit concatenation where that is natural:
 
 ```smile
@@ -89,6 +93,7 @@ SMILE `Integer` is always a signed 64-bit semantic type. The parser, binder, che
 Generated storage must use the most idiomatic natural Integer representation that preserves the complete simplified bound program. One per-program profile examines every remaining Integer literal, declaration value, operand, and evaluated intermediate:
 
 - C and Objective-C use `int` when all observed values fit signed 32-bit; otherwise they use `int64_t`, `<stdint.h>`, `INT64_C(...)`, and `INT64_MIN` as needed.
+- C++ uses `int` when all observed values fit signed 32-bit; otherwise it uses `std::int64_t`, `<cstdint>`, `INT64_C(...)`, and `INT64_MIN` as needed.
 - C# uses `int` when signed 32-bit is sufficient; otherwise it uses `long` consistently.
 - Java uses `int` when signed 32-bit is sufficient; otherwise it uses `long` consistently.
 - JavaScript uses `Number` while every observed value is within `-9007199254740991` through `9007199254740991`; otherwise every Integer literal and operation uses `BigInt` consistently.
@@ -113,6 +118,12 @@ int Age = 49;
 
 ```javascript
 let Age = 49;
+```
+
+```cpp
+int Age = 49;
+bool Adult = Age >= 18;
+bool WorkingAge = Adult;
 ```
 
 Wide profiles must be exact and consistent. For example, a C program that requires a value above signed 32-bit uses `int64_t Age = INT64_C(2147483648);`, while a JavaScript program that exceeds the safe Integer range uses `2147483648n` for otherwise small literals in that same program as well. JavaScript `Number` division must use `Math.trunc(left / right)` to preserve SMILE's truncation-toward-zero quotient; `BigInt` division already has the required behavior.
@@ -142,6 +153,27 @@ def _smile_div(left: int, right: int) -> int:
 ```
 
 The Python expression writer renders the bound tree with Python-aware precedence. `NOT`, `AND`, and `OR` become `not`, `and`, and `or`; nested comparisons are parenthesized so a SMILE equality tree never turns into Python chained-comparison semantics.
+
+## C++
+
+C++ generation produces one dependency-free `Program.cpp` compiled as C++20. It is a dedicated bound-tree backend, not C output with another filename. SMILE `String`, `Integer`, and `Boolean` map to `std::string`, the selected `int`/`std::int64_t` profile, and `bool`.
+
+Strings are RAII-owned values. Concatenation preserves the bound expression, but when a chain would begin with two literals the first operand becomes an owned value:
+
+```cpp
+std::string Text = std::string{"A"} + "B";
+```
+
+Interpolation builds `std::string` with `std::to_string` for Integers and a conditional expression for canonical Boolean text. Direct `PRINT` uses `std::cout` and `'\n'`; it does not use `printf`, `std::endl`, or globally enable `std::boolalpha`.
+
+`std::string` equality and inequality are native value comparisons and therefore remain ordinal, case-sensitive, and length-aware. A literal containing embedded NUL must use its exact UTF-8 byte length:
+
+```cpp
+std::string Text = std::string{"A\000B", 3};
+std::cout << Text << '\n';
+```
+
+Generators emit only required headers, never `using namespace std;`, and never fall back to C-style raw `char *`, `printf`, or `strcmp` for ordinary SMILE Strings.
 
 ## Lower-Level Targets
 
@@ -245,7 +277,7 @@ Target generators must use the compiler's symbol-based target identifier map. A 
 - destination-language contextual or restricted identifiers;
 - destination-language identifier rules;
 - generator-owned runtime names such as `Console`, `Program`, `Main`, `printf`, `System`, `String`, `main`, `args`, `console`, or `print`;
-- destination-language reserved identifier patterns, such as C and Objective-C names beginning with `__` or with `_` followed by an uppercase ASCII letter;
+- destination-language reserved identifier patterns, such as C, Objective-C, and C++ names beginning with `__` or with `_` followed by an uppercase ASCII letter;
 - another generated target name.
 
 COBOL must map reserved words and identifiers that are not valid COBOL data names. Underscores should become readable hyphenated names such as `SMILE-internal`.
@@ -253,6 +285,8 @@ COBOL must map reserved words and identifiers that are not valid COBOL data name
 Java and Swift must map a single SMILE `_` identifier because `_` is not a usable ordinary local variable spelling in those targets.
 
 Python must map keywords, the `match` and `case` soft keywords, relevant built-ins such as `str`, `bool`, `int`, `abs`, and `isinstance`, and generator-owned names including `main`, `__name__`, `_smile_text`, and `_smile_div`. A single `_` remains a valid Python identifier.
+
+C++ must map all C++20 keywords and alternative tokens, generator-used names such as `std`, `main`, `cout`, `string`, `to_string`, and `int64_t`, and C/C++ implementation-reserved prefix patterns.
 
 Mapped names should remain readable. For example:
 
@@ -272,4 +306,8 @@ Every reference to a SMILE symbol must use the same mapped target name as its de
 
 ## Conformance Validation
 
-Every expression feature is validated against the `SmileEvaluator` reference oracle. The generated-target suite includes a fixed seed (`20260401`) and fixed corpus hash, small and wide Integer profile programs, signed 32-bit and signed 64-bit boundaries, intermediate-result promotion, NUL copies/concatenation/interpolation/equality, and known-variable short circuits in every expression position. It runs all locally installed toolchains for the nine targets and compares exact UTF-8 stdout bytes after normalizing only CRLF to LF in tests that explicitly permit platform line-ending normalization. Tests never trim or discard NUL, backspace, form feed, carriage return, or tab. This makes generated output deterministic while keeping semantic drift visible.
+Every expression feature is validated against the `SmileEvaluator` reference oracle. The generated-target suite includes a fixed seed (`20260401`) and fixed corpus hash, small and wide Integer profile programs, signed 32-bit and signed 64-bit boundaries, intermediate-result promotion, NUL copies/concatenation/interpolation/equality, and known-variable short circuits in every expression position. It runs all locally installed toolchains for all ten targets and compares exact UTF-8 stdout bytes after normalizing only CRLF to LF in tests that explicitly permit platform line-ending normalization. Tests never trim or discard NUL, backspace, form feed, carriage return, or tab. This makes generated output deterministic while keeping semantic drift visible.
+
+## Destination-Language Freeze
+
+C++ is SMILE's tenth and final planned destination language. After C++ is complete, target-language expansion is frozen unless Sin explicitly reopens it. New compiler work should deepen SMILE's runtime variables, assignment, conditions, input, loops, functions, scopes, debugging, and teaching tools rather than adding another backend. Rust, Zig, and Go remain deferred.

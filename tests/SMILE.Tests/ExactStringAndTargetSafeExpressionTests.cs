@@ -63,6 +63,7 @@ LET Ordinary = Left = Right
     [DataRow(TargetLanguage.ObjectiveC)]
     [DataRow(TargetLanguage.Swift)]
     [DataRow(TargetLanguage.Python)]
+    [DataRow(TargetLanguage.Cpp)]
     public async Task Installed_target_preserves_complete_NUL_values_and_equality(
         TargetLanguage language)
     {
@@ -105,6 +106,7 @@ PRINT {A = C}
     [DataRow(TargetLanguage.ObjectiveC)]
     [DataRow(TargetLanguage.Swift)]
     [DataRow(TargetLanguage.Python)]
+    [DataRow(TargetLanguage.Cpp)]
     public async Task Installed_target_short_circuits_known_values_in_every_expression_position(
         TargetLanguage language)
     {

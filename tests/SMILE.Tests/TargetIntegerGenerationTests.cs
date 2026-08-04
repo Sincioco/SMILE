@@ -77,6 +77,11 @@ PRINT {Quotient}
         StringAssert.Contains(python, "Age = 49");
         StringAssert.Contains(python, "Count = 2 + 3 * 4");
         Assert.IsFalse(python.Contains("Int64", StringComparison.Ordinal));
+
+        string cpp = Generate(source, TargetLanguage.Cpp).PrimaryFile.Content;
+        StringAssert.Contains(cpp, "int Age = 49;");
+        StringAssert.Contains(cpp, "int Count = 2 + 3 * 4;");
+        Assert.IsFalse(cpp.Contains("std::int64_t", StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -116,6 +121,11 @@ LET Product = 50000 * 50000
         StringAssert.Contains(javascript, "let Product = 50000 * 50000;");
         Assert.AreEqual(-1, javascript.IndexOf("2147483648n", StringComparison.Ordinal));
         Assert.AreEqual(-1, javascript.IndexOf("50000n", StringComparison.Ordinal));
+
+        string cpp = Generate(source, TargetLanguage.Cpp).PrimaryFile.Content;
+        StringAssert.Contains(cpp, "#include <cstdint>");
+        StringAssert.Contains(cpp, "std::int64_t Boundary = INT64_C(2147483648);");
+        StringAssert.Contains(cpp, "std::int64_t Product = INT64_C(50000) * INT64_C(50000);");
     }
 
     [TestMethod]
@@ -164,6 +174,10 @@ LET Max = 9223372036854775807
         string python = Generate(source, TargetLanguage.Python).PrimaryFile.Content;
         StringAssert.Contains(python, "Min = -9223372036854775808");
         StringAssert.Contains(python, "Max = 9223372036854775807");
+
+        string cpp = Generate(source, TargetLanguage.Cpp).PrimaryFile.Content;
+        StringAssert.Contains(cpp, "std::int64_t Min = INT64_MIN;");
+        StringAssert.Contains(cpp, "std::int64_t Max = INT64_C(9223372036854775807);");
     }
 
     [TestMethod]
@@ -213,6 +227,7 @@ LET TrueOrX = TRUE OR X
     [DataRow(TargetLanguage.ObjectiveC)]
     [DataRow(TargetLanguage.Swift)]
     [DataRow(TargetLanguage.Python)]
+    [DataRow(TargetLanguage.Cpp)]
     public async Task Installed_target_matches_evaluator_for_wide_integer_profile(
         TargetLanguage language)
     {

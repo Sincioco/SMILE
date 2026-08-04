@@ -23,7 +23,8 @@ public sealed class SyntaxHighlightingTests
             "cobol",
             "objective-c",
             "swift",
-            "python"
+            "python",
+            "cpp"
         };
 
         foreach (string languageId in languageIds)
@@ -54,6 +55,9 @@ public sealed class SyntaxHighlightingTests
         Assert.AreSame(
             SyntaxHighlightingCatalog.GetDefinition("python"),
             SyntaxHighlightingCatalog.GetDefinition("Python"));
+        Assert.AreSame(
+            SyntaxHighlightingCatalog.GetDefinition("cpp"),
+            SyntaxHighlightingCatalog.GetDefinition("CPP"));
     }
 
     [TestMethod]
@@ -127,5 +131,32 @@ PRINT $"Hello {Name}; age={Age}"
             500L,
             stopwatch.ElapsedMilliseconds,
             $"Python highlighting took {stopwatch.ElapsedMilliseconds} ms.");
+    }
+
+    [TestMethod]
+    public void Cpp_highlighting_tokenizes_generated_source_quickly()
+    {
+        const string source = """
+LET Name = "Sin"
+LET Age = 49
+PRINT $"Hello {Name}; age={Age}"
+""";
+        TranspileResult result = new SmileTranspiler().Transpile(source, TargetLanguage.Cpp);
+        Assert.IsTrue(result.Success);
+
+        var document = new TextDocument(result.GeneratedProgram!.PrimaryFile.Content);
+        IHighlightingDefinition definition = SyntaxHighlightingCatalog.GetDefinition("cpp")!;
+        var highlighter = new DocumentHighlighter(document, definition);
+
+        var stopwatch = Stopwatch.StartNew();
+        for (int line = 1; line <= document.LineCount; line++)
+        {
+            highlighter.HighlightLine(line);
+        }
+
+        Assert.IsLessThan(
+            500L,
+            stopwatch.ElapsedMilliseconds,
+            $"C++ highlighting took {stopwatch.ElapsedMilliseconds} ms.");
     }
 }

@@ -242,6 +242,8 @@ PRINT {Name}
     [DataRow("cobol", TargetLanguage.Cobol, "COBOL", "Program.cob")]
     [DataRow("objective-c", TargetLanguage.ObjectiveC, "Objective-C", "Program.m")]
     [DataRow("swift", TargetLanguage.Swift, "Swift", "Program.swift")]
+    [DataRow("python", TargetLanguage.Python, "Python", "Program.py")]
+    [DataRow("cpp", TargetLanguage.Cpp, "C++", "Program.cpp")]
     public void Target_language_metadata_is_stable(
         string stableId,
         TargetLanguage language,

@@ -620,6 +620,7 @@ PRINT Progress: 100%
     [DataRow(TargetLanguage.ObjectiveC)]
     [DataRow(TargetLanguage.Swift)]
     [DataRow(TargetLanguage.Python)]
+    [DataRow(TargetLanguage.Cpp)]
     public void Empty_programs_are_complete_and_end_with_one_newline(TargetLanguage language)
     {
         GeneratedProgram program = Generate(string.Empty, language);
@@ -637,6 +638,7 @@ PRINT Progress: 100%
     [DataRow(TargetLanguage.ObjectiveC)]
     [DataRow(TargetLanguage.Swift)]
     [DataRow(TargetLanguage.Python)]
+    [DataRow(TargetLanguage.Cpp)]
     public void Generated_output_is_deterministic(TargetLanguage language)
     {
         GeneratedProgram first = Generate(SampleSource, language);

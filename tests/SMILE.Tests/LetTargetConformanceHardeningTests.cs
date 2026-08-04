@@ -114,7 +114,8 @@ PRINT {_smile_class_2}
         TargetLanguage.Cobol,
         TargetLanguage.ObjectiveC,
         TargetLanguage.Swift,
-        TargetLanguage.Python
+        TargetLanguage.Python,
+        TargetLanguage.Cpp
     };
 
     private readonly SmileTranspiler _transpiler = new();
@@ -190,6 +191,7 @@ PRINT {Middle}
     [DataRow(TargetLanguage.ObjectiveC)]
     [DataRow(TargetLanguage.Swift)]
     [DataRow(TargetLanguage.Python)]
+    [DataRow(TargetLanguage.Cpp)]
     public void Hardening_corpora_generate_deterministically_for_all_targets(TargetLanguage language)
     {
         foreach (string source in new[] { EmptyStringMatrixSource, AdversarialIdentifierSource, CollisionSource })

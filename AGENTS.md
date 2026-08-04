@@ -50,6 +50,9 @@
 - SMILE `Integer` is a signed 64-bit semantic type, but generated storage must use one idiomatic per-program target profile that preserves every bound Integer literal, value, operand, and intermediate result.
 - Ordinary small programs use C/Objective-C `int`, C#/Java `int`, JavaScript `Number`, Swift `Int`, and Python `int` without unnecessary wide literal suffixes. Promote only when required: C/Objective-C `int64_t`, C#/Java `long`, JavaScript `BigInt`, and Swift `Int64`.
 - Pure bound-expression simplification is shared by every target. Keep Boolean identities target-independent and do not duplicate simplification logic in individual generators.
+- C++ is the tenth and final planned destination language. After it is implemented, do not add or recommend another target language unless Sin explicitly reopens target expansion.
+- C++ generation must use idiomatic C++ facilities such as `std::string`, `std::cout`, native value equality, and RAII ownership. Do not emit C-style `printf`, `strcmp`, or raw `char *` code merely because the C target already exists.
+- C++ String generation must preserve embedded NUL bytes through length-aware `std::string` construction.
 - Rust, Zig, and Go are intentionally deferred destination languages. Do not add them to target metadata, generators, toolchains, active roadmap milestones, or desktop selectors unless Sin explicitly reactivates one of them.
 
 ## Educational Code Comments

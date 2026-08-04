@@ -24,7 +24,8 @@ public sealed class PythonTargetTests
                 TargetLanguage.Cobol,
                 TargetLanguage.ObjectiveC,
                 TargetLanguage.Swift,
-                TargetLanguage.Python
+                TargetLanguage.Python,
+                TargetLanguage.Cpp
             },
             TargetLanguageInfo.All.ToArray());
 

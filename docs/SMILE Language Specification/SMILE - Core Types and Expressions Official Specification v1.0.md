@@ -14,7 +14,7 @@ The SMILE v1.0 expression core has three value types:
 
 `Integer` is a signed 64-bit SMILE semantic type regardless of target-language storage. A target generator MAY use a narrower natural destination type for a complete program only when every bound Integer literal, value, operand, and intermediate result is proven to fit that type. This target-local storage choice MUST NOT change the valid SMILE range, checked overflow behavior, division semantics, or evaluator output.
 
-All current `LET` initializers are compile-time evaluable because SMILE v0.4.2.1 has no runtime input, reassignment, or side effects.
+All current `LET` initializers are compile-time evaluable because SMILE v0.4.3 has no runtime input, reassignment, or side effects.
 
 ## Lexical Tokens
 

@@ -15,6 +15,7 @@ Transpilation does not require target compilers or runtimes. Build & Run require
 | Objective-C | MSYS2 `mingw64\bin\clang.exe --version` |
 | Swift | Swift.Toolchain layout plus Visual Studio C++ linker tools |
 | Python | A real `python --version`, then `py -3 --version` or `py --version`; Python 3.10+ required |
+| C++ | Visual Studio `vswhere.exe`, then `VC\Auxiliary\Build\vcvars64.bat` |
 
 SMILE uses `vswhere.exe` from `%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe` to locate Visual Studio. It does not hardcode the Visual Studio year, edition, or installation path. Swift Build & Run uses this same Visual Studio environment because Swift for Windows links through the Microsoft toolchain.
 
@@ -103,6 +104,16 @@ python -B Program.py
 
 If the Python launcher is selected, SMILE uses `py -3 -B Program.py`. Detection resolves real executables from `PATH`, ignores the Windows Store `WindowsApps` alias so it cannot trigger an on-demand installation, rejects Python 2 and Python versions older than 3.10, and reports the selected executable and version. `-B` prevents `__pycache__` bytecode output in the temporary workspace.
 
+C++:
+
+```bat
+call "<vcvars64.bat>" >nul
+cl.exe /nologo /EHsc /std:c++20 /utf-8 Program.cpp /Fe:Program.exe
+Program.exe
+```
+
+SMILE uses the same `VisualStudioLocator` as C and MASM, but C++ has its own toolchain and is compiled as C++20 rather than through C's `/TC` mode. No package manager, third-party C++ library, or SMILE runtime library is required.
+
 ## Temporary Workspaces
 
 Each build/run writes generated files to:
@@ -140,7 +151,7 @@ Detection, build, run, timeout, cancellation, folder opening, and process-launch
 ## Troubleshooting
 
 - Missing .NET SDK: install .NET SDK 10 or newer.
-- Missing C or MASM: install Visual Studio 2026 Enterprise or Build Tools with Desktop development with C++.
+- Missing C, C++, or MASM: install Visual Studio 2026 Enterprise or Build Tools with Desktop development with C++.
 - Missing JavaScript runtime: install Node.js.
 - Missing Java compiler: install a full JDK such as Microsoft OpenJDK 25 LTS, not only a JRE.
 - Missing COBOL compiler: install MSYS2 and `mingw-w64-x86_64-gnucobol`.

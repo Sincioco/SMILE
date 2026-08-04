@@ -61,6 +61,7 @@ PRINT {B}
     [DataRow(TargetLanguage.ObjectiveC)]
     [DataRow(TargetLanguage.Swift)]
     [DataRow(TargetLanguage.Python)]
+    [DataRow(TargetLanguage.Cpp)]
     public async Task Installed_target_runs_short_circuit_division_program(TargetLanguage language)
     {
         const string source = """
@@ -418,7 +419,8 @@ LET H = 1 < (2 + 1)
             TargetLanguage.Java,
             TargetLanguage.ObjectiveC,
             TargetLanguage.Swift,
-            TargetLanguage.Python
+            TargetLanguage.Python,
+            TargetLanguage.Cpp
         })
         {
             string generated = Generate(validSource, language).PrimaryFile.Content;

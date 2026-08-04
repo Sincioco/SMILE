@@ -71,7 +71,8 @@ public sealed class ToolchainRegistry
             new JavaToolchain(runner),
             new ObjectiveCToolchain(runner),
             new SwiftToolchain(runner, visualStudioLocator),
-            new PythonToolchain(runner)
+            new PythonToolchain(runner),
+            new MsvcCppToolchain(runner, visualStudioLocator)
         });
     }
 
@@ -573,6 +574,87 @@ public sealed class MsvcCToolchain : ToolchainBase
 
         ProcessResult build = await Runner.RunAsync(
             ProcessCommand.ForCmd("build-c.cmd", workspace),
+            BuildTimeout,
+            cancellationToken).ConfigureAwait(false);
+
+        string buildOutput = Combine(build);
+        if (!build.Success)
+        {
+            return FromProcessResults(status, buildOutput, build, workspace, "Building", buildSucceeded: false);
+        }
+
+        string? pauseLauncherPath = await WritePauseLauncherAsync(
+            workspace,
+            new[] { "\"Program.exe\"" },
+            options,
+            cancellationToken).ConfigureAwait(false);
+
+        ProcessResult run = await Runner.RunAsync(
+            ProcessCommand.ForCmd("Program.exe", workspace),
+            ProgramTimeout,
+            cancellationToken).ConfigureAwait(false);
+
+        return FromProcessResults(
+            status,
+            buildOutput,
+            run,
+            workspace,
+            "Running",
+            pauseLauncherPath: pauseLauncherPath,
+            totalDuration: TotalDuration(build, run));
+    }
+}
+
+public sealed class MsvcCppToolchain : ToolchainBase
+{
+    private readonly VisualStudioLocator _visualStudioLocator;
+
+    public MsvcCppToolchain(IProcessRunner runner, VisualStudioLocator visualStudioLocator)
+        : base(runner)
+    {
+        _visualStudioLocator = visualStudioLocator;
+    }
+
+    public override TargetLanguage Language => TargetLanguage.Cpp;
+
+    public override async Task<ToolchainStatus> DetectAsync(CancellationToken cancellationToken)
+    {
+        VisualStudioTools? tools = await _visualStudioLocator.FindAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return tools is null
+            ? Missing("MSVC x64 C++ tools were not found. Install Visual Studio 2026 with Desktop development with C++.")
+            : Available(tools.Version, tools.VcVars64Path, "MSVC x64 C++ tools detected.");
+    }
+
+    public override async Task<BuildRunResult> BuildAndRunAsync(
+        GeneratedProgram generatedProgram,
+        CancellationToken cancellationToken,
+        BuildRunOptions? options = null)
+    {
+        ToolchainStatus status = await DetectAsync(cancellationToken).ConfigureAwait(false);
+        if (!status.IsAvailable || status.Location is null)
+        {
+            return MissingResult(status);
+        }
+
+        string workspace = await WriteGeneratedProgramAsync(generatedProgram, cancellationToken)
+            .ConfigureAwait(false);
+
+        await WriteCommandScriptAsync(
+            workspace,
+            "build-cpp.cmd",
+            new[]
+            {
+                "@echo off",
+                $"call {QuoteForCmd(status.Location)} >nul",
+                "if errorlevel 1 exit /b %errorlevel%",
+                "cl.exe /nologo /EHsc /std:c++20 /utf-8 Program.cpp /Fe:Program.exe"
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        ProcessResult build = await Runner.RunAsync(
+            ProcessCommand.ForCmd("build-cpp.cmd", workspace),
             BuildTimeout,
             cancellationToken).ConfigureAwait(false);
 

@@ -136,7 +136,7 @@ internal sealed class TargetIdentifierMap
         // begin with "__" or with "_" followed by an uppercase ASCII letter.
         // SMILE lets learners write those names, so targets map them rather
         // than emitting technically reserved implementation identifiers.
-        if (language is TargetLanguage.C or TargetLanguage.ObjectiveC &&
+        if (language is TargetLanguage.C or TargetLanguage.ObjectiveC or TargetLanguage.Cpp &&
             IsCImplementationReservedIdentifier(name))
         {
             return true;
@@ -244,6 +244,26 @@ internal sealed class TargetIdentifierMap
             })
             .ToArray();
 
+        private static readonly string[] Cpp =
+        {
+            "alignas", "alignof", "and", "and_eq", "asm", "auto", "bitand", "bitor",
+            "bool", "break", "case", "catch", "char", "char8_t", "char16_t", "char32_t",
+            "class", "compl", "concept", "const", "consteval", "constexpr", "constinit",
+            "const_cast", "continue", "co_await", "co_return", "co_yield", "decltype",
+            "default", "delete", "do", "double", "dynamic_cast", "else", "enum", "explicit",
+            "export", "extern", "false", "final", "float", "for", "friend", "goto", "if",
+            "import", "inline", "int", "long", "module", "mutable", "namespace", "new",
+            "noexcept", "not", "not_eq", "nullptr", "operator", "or", "or_eq", "override",
+            "private", "protected", "public",
+            "register", "reinterpret_cast", "requires", "return", "short", "signed", "sizeof",
+            "static", "static_assert", "static_cast", "struct", "switch", "template", "this",
+            "thread_local", "throw", "true", "try", "typedef", "typeid", "typename", "union",
+            "unsigned", "using", "virtual", "void", "volatile", "wchar_t", "while", "xor",
+            "xor_eq", "atomic_cancel", "atomic_commit", "atomic_noexcept", "synchronized",
+            "transaction_safe", "transaction_safe_dynamic", "std", "main", "cout", "string",
+            "to_string", "int64_t", "INT64_C", "INT64_MIN", "smile_text"
+        };
+
         private static readonly string[] Swift =
         {
             "Any", "Self", "Type", "as", "associatedtype", "break", "case", "catch", "class",
@@ -285,6 +305,7 @@ internal sealed class TargetIdentifierMap
                     TargetLanguage.ObjectiveC => ObjectiveC,
                     TargetLanguage.Swift => Swift,
                     TargetLanguage.Python => Python,
+                    TargetLanguage.Cpp => Cpp,
                     _ => Array.Empty<string>()
                 },
                 language is TargetLanguage.Cobol

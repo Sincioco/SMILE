@@ -271,6 +271,7 @@ LET Greeting = $"Hello {FullName}!"
     [DataRow(TargetLanguage.ObjectiveC)]
     [DataRow(TargetLanguage.Swift)]
     [DataRow(TargetLanguage.Python)]
+    [DataRow(TargetLanguage.Cpp)]
     public void Generators_are_deterministic_for_complete_let_program(TargetLanguage language)
     {
         GeneratedProgram first = Generate(CombinedAcceptanceSource, language);

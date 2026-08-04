@@ -26,7 +26,8 @@ public static class SyntaxHighlightingCatalog
             // custom Objective-C regex set on the UI-thread language switch path.
             ["objective-c"] = BuiltIn("C++", "objective-c"),
             ["swift"] = Embedded("Swift.xshd"),
-            ["python"] = BuiltIn("Python", "python")
+            ["python"] = BuiltIn("Python", "python"),
+            ["cpp"] = BuiltIn("C++", "cpp")
         };
 
     public static IHighlightingDefinition? GetDefinition(string? languageId)
