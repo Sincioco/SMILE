@@ -36,7 +36,10 @@
 - Bare PRINT text is literal template text; expressions require braces.
 - Ordinary quoted strings do not interpolate; `$"..."` and raw templates do.
 - Target generators should preserve expression intent when a destination language has a clear idiomatic equivalent: interpolation should remain interpolation, explicit concatenation should remain concatenation, and lower-level targets may use equivalent output forms.
-- Lower-level targets should still choose the clearest conventional form available. For current C and Objective-C `PRINT`, prefer one safe `printf` call with a compiler-generated format string.
+- Lower-level targets should still choose the clearest conventional form available. For NUL-free C and Objective-C `PRINT`, prefer one safe `printf` call with a compiler-generated format string; exact length-aware output may use several small statements when required.
+- Destination-language String representations must preserve the complete SMILE String value, including embedded NUL characters. C-family `%s` and `strcmp` may be used only when they are semantically valid for the complete value.
+- Shared short-circuit simplification must use known bound constant values and apply to every expression position. Binding still validates both operands before simplification, and an unreachable right operand must not be simplified or evaluated.
+- Exact-byte conformance tests must not trim or discard NUL, backspace, form-feed, carriage-return, or tab characters.
 - A physical source line normally contains one statement, and semicolons do not separate statements.
 - A second standalone `PRINT` keyword on the same line is a compiler error.
 - New language work must preserve asynchronous debounced WPF live transpilation.

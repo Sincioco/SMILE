@@ -110,13 +110,27 @@
 - Publish the expanded learner-first mission statement and link the project introduction video from the README.
 - Pause destination-language expansion after Python so SMILE can deepen its runtime language model.
 
+## Implemented In v0.4.2.1
+
+- Preserve bytes after embedded NUL in C and Objective-C `PRINT` with compiler-owned UTF-8 byte arrays, exact byte lengths, and `fwrite`.
+- Preserve complete ordinal String equality when either C-family operand contains NUL by lowering the pure comparison to its exact evaluated Boolean.
+- Keep ordinary NUL-free C and Objective-C output on readable `%s` and ordinary equality on `strcmp`.
+- Make shared Boolean simplification use previously declared bound constants in `LET`, direct `PRINT`, raw-template holes, interpolated String holes, and nested expressions.
+- Decide short-circuit reachability before simplifying the right operand so unreachable target-invalid arithmetic is never emitted.
+- Compare exact output bytes across all nine installed targets without trimming NUL or other official control characters.
+- Clarify which v1.0 language specifications remain normative for v0.4.2.1 and later.
+
+## Next Major Milestone: v0.5.0 - Runtime Variables And SET
+
+The next language milestone is runtime variables and `SET`. It is intentionally not implemented in v0.4.2.1.
+
 ## Deferred Destination Languages
 
 Rust, Zig, and Go are intentionally not part of the active SMILE roadmap at this stage. After Python, target-language expansion is paused while SMILE focuses on runtime variables, assignment, input, conditions, loops, functions, and scopes. These targets may be reconsidered later when the runtime language model is mature.
 
 ## Future Ideas
 
-These are not implemented in v0.4.2:
+These are not implemented in v0.4.2.1:
 
 1. Runtime variables and assignment
 2. `INPUT`

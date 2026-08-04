@@ -78,7 +78,9 @@ console.log("Hello " + Name + "!");
 
 Typed SMILE values must display exactly like the reference evaluator. `Integer` values display as invariant decimal text. `Boolean` values display as `TRUE` or `FALSE`, even when the destination language's native boolean text would be lowercase.
 
-Native expression intent must not make a valid SMILE program invalid in the destination compiler. Literal short-circuit branches are normally removed by the shared simplifier. If a remaining short-circuit result is known through a previously declared constant and a compiler rejects its unreachable branch, the target may emit the already evaluated Boolean constant for that initializer.
+Native expression intent must not make a valid SMILE program invalid in the destination compiler. After binding validates both operands, the shared simplifier uses previously declared bound constants in every expression position. It simplifies and evaluates the left operand first, decides whether the right operand is reachable, and never simplifies or evaluates an unreachable right subtree. Target generators must consume that shared result rather than duplicate short-circuit policy.
+
+The v0.4.2.1 simplifier may use known constant values because current SMILE has no input, reassignment, functions, or side effects. When runtime values or side effects are added, optimization must preserve left-to-right evaluation and may fold only expressions proven safe.
 
 ## Semantic Integer And Target Storage
 
@@ -155,7 +157,7 @@ bool Adult = Age >= 18;
 
 This keeps early generated programs dependency-light and avoids introducing premature buffers or a SMILE runtime library.
 
-For current C `PRINT`, SMILE emits one safe typed `printf` statement per SMILE `PRINT`:
+For current NUL-free C `PRINT`, SMILE emits one safe typed `printf` statement per SMILE `PRINT`:
 
 ```c
 printf("\n");
@@ -177,7 +179,9 @@ String variables and expressions must be passed as arguments and never as the fo
 printf("%s\n", Name);
 ```
 
-Ordinary `int` expressions use `%d`. Wide `int64_t` expressions use `%lld` with an explicit value-preserving cast to `long long`, because the exact underlying typedef of `int64_t` is platform-specific. Boolean expressions use `%s` with an argument that selects canonical `TRUE` or `FALSE`. Literal percent signs are doubled in the compiler-generated format, and embedded NUL literal text uses a `%c` argument with value `0` so the NUL cannot terminate the format string early. String equality and inequality use ordinal, case-sensitive `strcmp(...) == 0` and `strcmp(...) != 0`; `<string.h>` is included only when generated expressions need it. Simple String variables and literals remain natural `strcmp` operands. Because C has no native value for the current concatenation/interpolation model, a complex String operand may be lowered to its already evaluated String literal before `strcmp`.
+Ordinary `int` expressions use `%d`. Wide `int64_t` expressions use `%lld` with an explicit value-preserving cast to `long long`, because the exact underlying typedef of `int64_t` is platform-specific. Boolean expressions use `%s` with an argument that selects canonical `TRUE` or `FALSE`. Literal percent signs are doubled in the compiler-generated format.
+
+SMILE Strings are complete values with an exact length. C-family `%s` and `strcmp` may be used only when semantically valid for the complete value. For a NUL-containing `PRINT`, generated C and Objective-C use a small nested scope with compiler-owned UTF-8 byte data, an exact byte length, `fwrite`, and `fputc` for the newline. NUL-free output remains on readable `printf` calls. String equality and inequality use ordinal, case-sensitive `strcmp(...) == 0` and `strcmp(...) != 0` only when both operands contain no NUL; `<string.h>` is included only when such a generated expression needs it. Simple NUL-free variables and literals remain natural `strcmp` operands, and a complex NUL-free concatenation or interpolation may use its already evaluated String literal. If either operand contains NUL, the current pure comparison is lowered to its exact evaluated Boolean so bytes after the NUL remain significant. This is intentional target-local lowering, not a general String runtime.
 
 Objective-C follows the same stdout style in the Windows-local console profile:
 
@@ -268,4 +272,4 @@ Every reference to a SMILE symbol must use the same mapped target name as its de
 
 ## Conformance Validation
 
-Every expression feature is validated against the `SmileEvaluator` reference oracle. The generated-target suite includes a fixed seed (`20260401`) and fixed corpus hash, small and wide Integer profile programs, signed 32-bit and signed 64-bit boundaries, and intermediate-result promotion. It runs all locally installed toolchains for the nine targets, compares exact runtime output after normalizing only CRLF to LF, and separately preserves official control characters including NUL, backspace, and form feed. This makes generated output deterministic while keeping semantic drift visible.
+Every expression feature is validated against the `SmileEvaluator` reference oracle. The generated-target suite includes a fixed seed (`20260401`) and fixed corpus hash, small and wide Integer profile programs, signed 32-bit and signed 64-bit boundaries, intermediate-result promotion, NUL copies/concatenation/interpolation/equality, and known-variable short circuits in every expression position. It runs all locally installed toolchains for the nine targets and compares exact UTF-8 stdout bytes after normalizing only CRLF to LF in tests that explicitly permit platform line-ending normalization. Tests never trim or discard NUL, backspace, form feed, carriage return, or tab. This makes generated output deterministic while keeping semantic drift visible.

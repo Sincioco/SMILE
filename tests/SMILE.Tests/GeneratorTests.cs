@@ -675,10 +675,10 @@ PRINT "A\\B\0C\bD\fE\tF"
             "\"A\\\\B\\0C\\bD\\fE\\tF\"");
         StringAssert.Contains(
             Generate(source, TargetLanguage.C).PrimaryFile.Content,
-            "printf(\"A\\\\B%cC\\bD\\fE\\tF\\n\", 0);");
+            "static const unsigned char smilePrintBytes[] = { 65, 92, 66, 0, 67, 8, 68, 12, 69, 9, 70 };");
         StringAssert.Contains(
             Generate(source, TargetLanguage.ObjectiveC).PrimaryFile.Content,
-            "printf(\"A\\\\B%cC\\bD\\fE\\tF\\n\", 0);");
+            "static const unsigned char smilePrintBytes[] = { 65, 92, 66, 0, 67, 8, 68, 12, 69, 9, 70 };");
         StringAssert.Contains(
             Generate(source, TargetLanguage.JavaScript).PrimaryFile.Content,
             "\"A\\\\B\\u0000C\\bD\\fE\\tF\"");

@@ -94,39 +94,63 @@ public sealed class SmileTranspiler
 
 internal static class BoundProgramSimplifier
 {
-    public static BoundProgram Simplify(BoundProgram program) =>
-        new(
-            program.Statements.Select(SimplifyStatement).ToArray(),
-            program.Variables);
+    public static BoundProgram Simplify(BoundProgram program)
+    {
+        var values = new Dictionary<VariableSymbol, SmileValue>();
+        var statements = new List<BoundStatement>(program.Statements.Count);
 
-    private static BoundStatement SimplifyStatement(BoundStatement statement) =>
-        statement switch
+        foreach (BoundStatement statement in program.Statements)
         {
-            BoundLetStatement let => let with { Initializer = SimplifyExpression(let.Initializer) },
-            BoundPrintStatement print => print with { Value = SimplifyExpression(print.Value) },
-            _ => statement
-        };
+            switch (statement)
+            {
+                case BoundLetStatement let:
+                    statements.Add(let with
+                    {
+                        Initializer = SimplifyExpression(let.Initializer, values)
+                    });
+                    values.Add(let.Variable, let.ConstantValue);
+                    break;
 
-    private static BoundExpression SimplifyExpression(BoundExpression expression) =>
+                case BoundPrintStatement print:
+                    statements.Add(print with
+                    {
+                        Value = SimplifyExpression(print.Value, values)
+                    });
+                    break;
+
+                default:
+                    statements.Add(statement);
+                    break;
+            }
+        }
+
+        return new BoundProgram(statements, program.Variables);
+    }
+
+    private static BoundExpression SimplifyExpression(
+        BoundExpression expression,
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values) =>
         expression switch
         {
-            BoundUnaryExpression unary => SimplifyUnary(unary),
-            BoundBinaryExpression binary => SimplifyBinary(binary),
+            BoundUnaryExpression unary => SimplifyUnary(unary, values),
+            BoundBinaryExpression binary => SimplifyBinary(binary, values),
             BoundInterpolatedStringExpression interpolated => interpolated with
             {
                 Parts = interpolated.Parts.Select(part => part switch
                 {
                     BoundInterpolationExpressionPart hole =>
-                        hole with { Expression = SimplifyExpression(hole.Expression) },
+                        hole with { Expression = SimplifyExpression(hole.Expression, values) },
                     _ => part
                 }).ToArray()
             },
             _ => expression
         };
 
-    private static BoundExpression SimplifyUnary(BoundUnaryExpression expression)
+    private static BoundExpression SimplifyUnary(
+        BoundUnaryExpression expression,
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values)
     {
-        BoundExpression operand = SimplifyExpression(expression.Operand);
+        BoundExpression operand = SimplifyExpression(expression.Operand, values);
         if (expression.Operator.Kind is BoundUnaryOperatorKind.LogicalNegation &&
             operand is BoundBooleanLiteralExpression literal)
         {
@@ -136,10 +160,54 @@ internal static class BoundProgramSimplifier
         return expression with { Operand = operand };
     }
 
-    private static BoundExpression SimplifyBinary(BoundBinaryExpression expression)
+    private static BoundExpression SimplifyBinary(
+        BoundBinaryExpression expression,
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values)
     {
-        BoundExpression left = SimplifyExpression(expression.Left);
-        BoundExpression right = SimplifyExpression(expression.Right);
+        BoundExpression left = SimplifyExpression(expression.Left, values);
+
+        if (expression.Operator.Kind is BoundBinaryOperatorKind.LogicalAnd or
+            BoundBinaryOperatorKind.LogicalOr)
+        {
+            // Preserve the two readable right-side identity forms without
+            // traversing the right subtree. This keeps examples such as
+            // Adult AND TRUE as Adult and still respects evaluation order.
+            if ((expression.Operator.Kind is BoundBinaryOperatorKind.LogicalAnd &&
+                 expression.Right is BoundBooleanLiteralExpression { Value: true }) ||
+                (expression.Operator.Kind is BoundBinaryOperatorKind.LogicalOr &&
+                 expression.Right is BoundBooleanLiteralExpression { Value: false }))
+            {
+                return left;
+            }
+
+            if (BoundConstantEvaluator.TryEvaluate(left, values, out SmileValue leftValue) &&
+                leftValue.Type is SmileType.Boolean)
+            {
+                bool rightIsUnreachable =
+                    expression.Operator.Kind is BoundBinaryOperatorKind.LogicalAnd && !leftValue.BooleanValue ||
+                    expression.Operator.Kind is BoundBinaryOperatorKind.LogicalOr && leftValue.BooleanValue;
+                if (rightIsUnreachable)
+                {
+                    // Binding has already validated both operands. Skipping
+                    // simplification here prevents an unreachable division or
+                    // overflow from leaking into a strict target compiler.
+                    return new BoundBooleanLiteralExpression(leftValue.BooleanValue);
+                }
+
+                BoundExpression reachableRight = SimplifyExpression(expression.Right, values);
+                if ((expression.Operator.Kind is BoundBinaryOperatorKind.LogicalAnd &&
+                     reachableRight is BoundBooleanLiteralExpression { Value: true }) ||
+                    (expression.Operator.Kind is BoundBinaryOperatorKind.LogicalOr &&
+                     reachableRight is BoundBooleanLiteralExpression { Value: false }))
+                {
+                    return left;
+                }
+
+                return reachableRight;
+            }
+        }
+
+        BoundExpression right = SimplifyExpression(expression.Right, values);
 
         // All current SMILE expressions are pure. These Boolean identities
         // can therefore remove redundant work without changing observable
@@ -289,7 +357,6 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
     {
         TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
         TargetIntegerProfile integers = TargetIntegerProfile.Analyze(program);
-        IReadOnlyDictionary<VariableSymbol, SmileValue> values = GeneratorValueFacts.ConstantValues(program);
         var source = new StringBuilder();
         source.AppendLine("using System;");
         if (CSharpGenerationFacts.NeedsInvariantCulture(program))
@@ -308,11 +375,7 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
             switch (statement)
             {
                 case BoundLetStatement let:
-                    string initializer =
-                        let.Variable.Type is SmileType.Boolean &&
-                        GeneratorValueFacts.ContainsShortCircuitedBranch(let.Initializer, values)
-                            ? let.ConstantValue.BooleanValue ? "true" : "false"
-                            : TargetExpression.CSharp(let.Initializer, identifiers, integers);
+                    string initializer = TargetExpression.CSharp(let.Initializer, identifiers, integers);
                     source.AppendLine($"        {TargetTypes.CSharp(let.Variable.Type, integers)} {identifiers.Get(let.Variable)} = {initializer};");
                     break;
 
@@ -375,7 +438,7 @@ internal sealed class CCodeGenerator : ICodeGenerator
             source.AppendLine("#include <stdbool.h>");
         }
 
-        if (CGenerationFacts.NeedsStringComparison(program))
+        if (CGenerationFacts.NeedsStringComparison(program, values))
         {
             source.AppendLine("#include <string.h>");
         }
@@ -434,6 +497,11 @@ internal sealed class CCodeGenerator : ICodeGenerator
         TargetIntegerProfile integers,
         IReadOnlyDictionary<VariableSymbol, SmileValue> values)
     {
+        if (TryAppendExactNulStringPrint(source, "    ", print, values))
+        {
+            return;
+        }
+
         CPrintfPlan plan = CPrintfPlan.FromPrint(
             print,
             expression => TargetExpression.C(expression, identifiers, integers, values),
@@ -454,6 +522,36 @@ internal sealed class CCodeGenerator : ICodeGenerator
         }
 
         source.AppendLine(");");
+    }
+
+    internal static bool TryAppendExactNulStringPrint(
+        StringBuilder source,
+        string indent,
+        BoundPrintStatement print,
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values)
+    {
+        if (print.IsBlankLine ||
+            !GeneratorValueFacts.TryGetNulContainingString(print.Value, values, out string value))
+        {
+            return false;
+        }
+
+        byte[] bytes = Encoding.UTF8.GetBytes(value);
+
+        // A tiny nested scope lets every exact PRINT reuse the same readable
+        // compiler-owned name without colliding with a SMILE variable in the
+        // surrounding main function. The byte array avoids C's NUL-terminated
+        // String convention and makes the UTF-8 length explicit to fwrite.
+        source.Append(indent).AppendLine("{");
+        source.Append(indent).Append("    static const unsigned char smilePrintBytes[] = { ");
+        source.Append(string.Join(", ", bytes.Select(value => value.ToString(CultureInfo.InvariantCulture))));
+        source.AppendLine(" };");
+        source.Append(indent).Append("    fwrite(smilePrintBytes, 1, ");
+        source.Append(bytes.Length.ToString(CultureInfo.InvariantCulture));
+        source.AppendLine(", stdout);");
+        source.Append(indent).AppendLine("    fputc('\\n', stdout);");
+        source.Append(indent).AppendLine("}");
+        return true;
     }
 
 }
@@ -680,7 +778,6 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
     {
         TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
         TargetIntegerProfile integers = TargetIntegerProfile.Analyze(program);
-        IReadOnlyDictionary<VariableSymbol, SmileValue> values = GeneratorValueFacts.ConstantValues(program);
         var source = new StringBuilder();
         source.AppendLine("public final class Program");
         source.AppendLine("{");
@@ -692,11 +789,7 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
             switch (statement)
             {
                 case BoundLetStatement let:
-                    string initializer =
-                        let.Variable.Type is SmileType.Boolean &&
-                        GeneratorValueFacts.ContainsShortCircuitedBranch(let.Initializer, values)
-                            ? let.ConstantValue.BooleanValue ? "true" : "false"
-                            : TargetExpression.Java(let.Initializer, identifiers, integers);
+                    string initializer = TargetExpression.Java(let.Initializer, identifiers, integers);
                     source.AppendLine($"        {TargetTypes.Java(let.Variable.Type, integers)} {identifiers.Get(let.Variable)} = {initializer};");
                     break;
 
@@ -829,7 +922,7 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
             source.AppendLine("#include <stdbool.h>");
         }
 
-        if (CGenerationFacts.NeedsStringComparison(program))
+        if (CGenerationFacts.NeedsStringComparison(program, values))
         {
             source.AppendLine("#include <string.h>");
         }
@@ -891,6 +984,11 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
         TargetIntegerProfile integers,
         IReadOnlyDictionary<VariableSymbol, SmileValue> values)
     {
+        if (CCodeGenerator.TryAppendExactNulStringPrint(source, "    ", print, values))
+        {
+            return;
+        }
+
         CPrintfPlan plan = CPrintfPlan.FromPrint(
             print,
             expression => TargetExpression.ObjectiveC(expression, identifiers, integers, values),
@@ -907,7 +1005,6 @@ internal sealed class SwiftCodeGenerator : ICodeGenerator
     {
         TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
         TargetIntegerProfile integers = TargetIntegerProfile.Analyze(program);
-        IReadOnlyDictionary<VariableSymbol, SmileValue> values = GeneratorValueFacts.ConstantValues(program);
         var source = new StringBuilder();
 
         foreach (BoundStatement statement in program.Statements)
@@ -915,11 +1012,7 @@ internal sealed class SwiftCodeGenerator : ICodeGenerator
             switch (statement)
             {
                 case BoundLetStatement let:
-                    string initializer =
-                        let.Variable.Type is SmileType.Boolean &&
-                        GeneratorValueFacts.ContainsShortCircuitedBranch(let.Initializer, values)
-                            ? let.ConstantValue.BooleanValue ? "true" : "false"
-                            : TargetExpression.Swift(let.Initializer, identifiers, integers);
+                    string initializer = TargetExpression.Swift(let.Initializer, identifiers, integers);
                     source.AppendLine($"let {identifiers.Get(let.Variable)}: {TargetTypes.Swift(let.Variable.Type, integers)} = {initializer}");
                     break;
 
@@ -1338,7 +1431,7 @@ internal sealed record CPrintfPlan(
         switch (expression)
         {
             case BoundStringLiteralExpression literal:
-                AppendLiteralToFormat(format, arguments, literal.Value);
+                AppendLiteralToFormat(format, literal.Value);
                 break;
 
             case BoundVariableExpression:
@@ -1357,7 +1450,7 @@ internal sealed record CPrintfPlan(
                     switch (part)
                     {
                         case BoundInterpolatedTextPart text:
-                            AppendLiteralToFormat(format, arguments, text.Text);
+                            AppendLiteralToFormat(format, text.Text);
                             break;
 
                         case BoundInterpolationExpressionPart interpolation:
@@ -1421,10 +1514,7 @@ internal sealed record CPrintfPlan(
         }
     }
 
-    private static void AppendLiteralToFormat(
-        StringBuilder format,
-        List<string> arguments,
-        string text)
+    private static void AppendLiteralToFormat(StringBuilder format, string text)
     {
         foreach (char value in text)
         {
@@ -1433,14 +1523,6 @@ internal sealed record CPrintfPlan(
             if (value == '%')
             {
                 format.Append("%%");
-            }
-            else if (value == '\0')
-            {
-                // A NUL cannot live inside a printf format string because it
-                // would terminate the C string. %c preserves the exact byte
-                // while keeping the entire call compiler-owned and safe.
-                format.Append("%c");
-                arguments.Add("0");
             }
             else
             {
@@ -1457,13 +1539,15 @@ internal static class CGenerationFacts
         program.Statements.OfType<BoundPrintStatement>().Any(print =>
             !print.IsBlankLine && ContainsBooleanLiteral(print.Value));
 
-    public static bool NeedsStringComparison(BoundProgram program) =>
+    public static bool NeedsStringComparison(
+        BoundProgram program,
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values) =>
         program.Statements.Any(statement => statement switch
         {
             BoundLetStatement let when let.Variable.Type is not SmileType.String =>
-                ContainsStringComparison(let.Initializer),
+                ContainsStringComparison(let.Initializer, values),
             BoundPrintStatement print when !print.IsBlankLine =>
-                ContainsStringComparison(print.Value),
+                ContainsStringComparison(print.Value, values),
             _ => false
         });
 
@@ -1480,20 +1564,29 @@ internal static class CGenerationFacts
             _ => false
         };
 
-    private static bool ContainsStringComparison(BoundExpression expression) =>
+    private static bool ContainsStringComparison(
+        BoundExpression expression,
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values) =>
         expression switch
         {
             BoundBinaryExpression binary =>
-                binary.Left.Type is SmileType.String &&
-                binary.Operator.Kind is BoundBinaryOperatorKind.Equality or BoundBinaryOperatorKind.Inequality ||
-                ContainsStringComparison(binary.Left) ||
-                ContainsStringComparison(binary.Right),
-            BoundUnaryExpression unary => ContainsStringComparison(unary.Operand),
+                NeedsStrcmp(binary, values) ||
+                ContainsStringComparison(binary.Left, values) ||
+                ContainsStringComparison(binary.Right, values),
+            BoundUnaryExpression unary => ContainsStringComparison(unary.Operand, values),
             BoundInterpolatedStringExpression interpolated => interpolated.Parts.Any(part =>
                 part is BoundInterpolationExpressionPart interpolation &&
-                ContainsStringComparison(interpolation.Expression)),
+                ContainsStringComparison(interpolation.Expression, values)),
             _ => false
         };
+
+    private static bool NeedsStrcmp(
+        BoundBinaryExpression expression,
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values) =>
+        expression.Left.Type is SmileType.String &&
+        (expression.Operator.Kind is BoundBinaryOperatorKind.Equality or BoundBinaryOperatorKind.Inequality) &&
+        !GeneratorValueFacts.TryGetNulContainingString(expression.Left, values, out _) &&
+        !GeneratorValueFacts.TryGetNulContainingString(expression.Right, values, out _);
 }
 
 internal static class TargetTypes
@@ -1582,33 +1675,21 @@ internal static class GeneratorValueFacts
             .OfType<BoundLetStatement>()
             .ToDictionary(let => let.Variable, let => let.ConstantValue);
 
-    public static bool ContainsShortCircuitedBranch(
+    public static bool TryGetNulContainingString(
         BoundExpression expression,
-        IReadOnlyDictionary<VariableSymbol, SmileValue> values)
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values,
+        out string value)
     {
-        if (expression is BoundBinaryExpression binary)
+        if (BoundConstantEvaluator.TryEvaluate(expression, values, out SmileValue evaluated) &&
+            evaluated.Type is SmileType.String &&
+            evaluated.StringValue.Contains('\0', StringComparison.Ordinal))
         {
-            if (binary.Operator.Kind is BoundBinaryOperatorKind.LogicalAnd or BoundBinaryOperatorKind.LogicalOr &&
-                BoundConstantEvaluator.TryEvaluate(binary.Left, values, out SmileValue leftValue) &&
-                leftValue.Type is SmileType.Boolean &&
-                (binary.Operator.Kind is BoundBinaryOperatorKind.LogicalAnd && !leftValue.BooleanValue ||
-                 binary.Operator.Kind is BoundBinaryOperatorKind.LogicalOr && leftValue.BooleanValue))
-            {
-                return true;
-            }
-
-            return ContainsShortCircuitedBranch(binary.Left, values) ||
-                ContainsShortCircuitedBranch(binary.Right, values);
+            value = evaluated.StringValue;
+            return true;
         }
 
-        return expression switch
-        {
-            BoundUnaryExpression unary => ContainsShortCircuitedBranch(unary.Operand, values),
-            BoundInterpolatedStringExpression interpolated => interpolated.Parts.Any(part =>
-                part is BoundInterpolationExpressionPart hole &&
-                ContainsShortCircuitedBranch(hole.Expression, values)),
-            _ => false
-        };
+        value = string.Empty;
+        return false;
     }
 
     public static string DisplayText(
@@ -1889,6 +1970,19 @@ internal static class TargetExpression
             bool isRightChild,
             BoundBinaryOperatorKind? parentOperator)
         {
+            if (_values is not null &&
+                (GeneratorValueFacts.TryGetNulContainingString(expression.Left, _values, out _) ||
+                 GeneratorValueFacts.TryGetNulContainingString(expression.Right, _values, out _)) &&
+                BoundConstantEvaluator.TryEvaluate(expression, _values, out SmileValue evaluated) &&
+                evaluated.Type is SmileType.Boolean)
+            {
+                // strcmp stops at the first NUL and would treat values such as
+                // "A\0B" and "A\0C" as equal. Current SMILE expressions are
+                // pure constants, so lowering only this NUL-sensitive case to
+                // its exact evaluated result is the smallest correct C form.
+                return BooleanLiteral(evaluated.BooleanValue);
+            }
+
             int precedence = Precedence(expression.Operator.Kind);
             string comparison = expression.Operator.Kind is BoundBinaryOperatorKind.Equality
                 ? " == 0"

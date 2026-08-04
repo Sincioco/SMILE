@@ -229,10 +229,10 @@ internal sealed class TargetIdentifierMap
             "copy", "count",
             "data", "display", "divide", "division", "else", "end", "entry", "environment", "evaluate",
             "exit", "fd", "file", "from", "function", "global", "goback", "identification", "if", "in", "initialize",
-            "input-output", "inspect", "into", "is", "linkage", "merge", "message", "move", "multiply", "not", "object",
-            "negative", "of", "open", "or", "perform", "pic", "picture", "procedure", "program", "program-id", "quote", "read",
+            "input-output", "inspect", "into", "is", "left", "linkage", "merge", "message", "move", "multiply", "nested", "not", "object",
+            "negative", "of", "open", "or", "perform", "pic", "picture", "procedure", "program", "program-id", "quote", "read", "right",
             "record", "return", "rewrite", "run", "section", "select", "self", "set", "sort", "stop",
-            "string", "subtract", "super", "then", "to", "type", "until", "using", "value", "when",
+            "same", "string", "subtract", "super", "then", "to", "type", "until", "using", "value", "when",
             "working-storage", "write",
             "Program", "SMILE-NEWLINE", "SPACE", "SPACES", "ZERO", "ZEROS", "ZEROES"
         };

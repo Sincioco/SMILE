@@ -16,7 +16,7 @@ A programming language inspired by BASIC that makes it easy for newcomers to lea
 
 ## Current Release
 
-SMILE v0.4.2, "Python Target," keeps the hardened official beginner-friendly `LET`, `PRINT`, string literal, and typed expression syntax while adding Python as the ninth first-class destination:
+SMILE v0.4.2.1, "Exact String and Target-Safe Expression Hardening," preserves Python as the ninth first-class destination while making embedded-NUL Strings exact in C and Objective-C and applying known-Boolean short-circuit simplification in every expression position:
 
 ```text
 SMILE source
@@ -24,7 +24,7 @@ SMILE source
   -> parse once into syntax nodes
   -> bind variables and typed expressions once
   -> evaluate compile-time constants once
-  -> simplify pure bound expressions once
+  -> simplify pure bound expressions once with known constant values and reachability
   -> map SMILE symbols to safe target identifiers once per target
   -> choose one idiomatic target Integer profile for the complete bound program
   -> generate nine target programs from the bound program
@@ -104,8 +104,9 @@ Implemented rules:
 - Comparison supports `=`, `<>`, `<`, `<=`, `>`, and `>=` where the type rules allow it.
 - Boolean logic supports `NOT`, `AND`, and `OR`.
 - `AND` and `OR` evaluate left to right and short-circuit at runtime: `FALSE AND ...` and `TRUE OR ...` do not evaluate their right operands. Both operands are still parsed, bound, and type-checked.
+- After successful binding, the shared simplifier uses known Boolean constants in `LET`, direct `PRINT`, raw-template holes, interpolated String holes, and nested expressions. It decides reachability before simplifying the right operand, so unreachable division or overflow cannot leak into a strict target compiler.
 - Parentheses control expression grouping.
-- SMILE does not perform implicit conversions in v0.4.2. For example, `"Age " + 49` is a type error.
+- SMILE does not perform implicit conversions in v0.4.2.1. For example, `"Age " + 49` is a type error.
 - `PRINT` alone, or followed only by spaces/tabs, prints one blank line.
 - `PRINT "Hello"` prints an ordinary quoted string.
 - Ordinary quoted strings do not interpolate, so `PRINT "Hello {Name}!"` prints `{Name}` literally.
@@ -125,7 +126,7 @@ Implemented rules:
 - Java and Swift map a single `_` SMILE identifier because those languages cannot use `_` as an ordinary readable local variable.
 - C and Objective-C map implementation-reserved prefixes such as `__internal` and `_Upper`.
 
-Not implemented in v0.4.2: comments, `INPUT`, conditions, loops, functions, arrays, classes, floating-point numbers, reassignment, and user-defined types.
+Not implemented in v0.4.2.1: comments, `INPUT`, conditions, loops, functions, arrays, classes, floating-point numbers, reassignment, and user-defined types.
 
 ## Generated Examples
 
@@ -273,7 +274,7 @@ if __name__ == "__main__":
     main()
 ```
 
-Generated target code is expected to be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write. SMILE `Integer` always means signed 64-bit semantically, but each complete bound program uses the smallest natural target representation that preserves every Integer literal, value, operand, and intermediate: C and Objective-C use `int` or `int64_t`; C# and Java use `int` or `long`; JavaScript uses `Number` or consistent `BigInt`; Swift uses `Int` or `Int64`; and Python uses normal `int`. Ordinary profiles do not carry unnecessary `L`, `LL`, or `n` suffixes. A shared pure-expression pass simplifies Boolean identities such as `NOT FALSE` and `Adult AND TRUE` before every target generator runs. Python uses f-strings for interpolation, a generated `_smile_text` helper only when canonical Integer or Boolean display is needed, and `_smile_div` only when signed Integer division must truncate toward zero. C and Objective-C preserve native integer and boolean declaration expressions, use ordinal `strcmp` equality for strings, lower complex concatenated/interpolated `strcmp` operands to evaluated String literals, and emit one safe typed `printf` call per SMILE `PRINT` with compiler-owned `%d` or `%lld`, `%s`, and canonical boolean arguments. COBOL and MASM lower current compile-time values where that keeps those targets small and reliable; COBOL uses free-format `DISPLAY`, while MASM uses UTF-8 byte labels, pointer-plus-length variables, and `WriteFile`. The generated assembly and COBOL include short comments to support learning. See [SMILE Target Code Generation Standard v1.0](docs/SMILE%20Target%20Code%20Generation%20Standard%20v1.0.md).
+Generated target code is expected to be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write. SMILE `Integer` always means signed 64-bit semantically, but each complete bound program uses the smallest natural target representation that preserves every Integer literal, value, operand, and intermediate: C and Objective-C use `int` or `int64_t`; C# and Java use `int` or `long`; JavaScript uses `Number` or consistent `BigInt`; Swift uses `Int` or `Int64`; and Python uses normal `int`. Ordinary profiles do not carry unnecessary `L`, `LL`, or `n` suffixes. A shared pure-expression pass simplifies Boolean identities and known-value short circuits before every target generator runs, without traversing an unreachable right operand. Python uses f-strings for interpolation, a generated `_smile_text` helper only when canonical Integer or Boolean display is needed, and `_smile_div` only when signed Integer division must truncate toward zero. C and Objective-C preserve native integer and boolean declaration expressions and keep ordinary NUL-free output on readable `%s` and ordinal `strcmp`. When a complete String value contains embedded NUL, only that `PRINT` uses compiler-owned UTF-8 byte data with `fwrite` and an exact length; only that NUL-sensitive equality is lowered to its exact evaluated Boolean. COBOL and MASM lower current compile-time values where that keeps those targets small and reliable; COBOL uses free-format `DISPLAY`, while MASM uses UTF-8 byte labels, pointer-plus-length variables, and `WriteFile`. The generated assembly and COBOL include short comments to support learning. See [SMILE Target Code Generation Standard v1.0](docs/SMILE%20Target%20Code%20Generation%20Standard%20v1.0.md).
 
 ## Supported Targets
 
@@ -361,7 +362,7 @@ When Open Generated Folder is enabled, SMILE asks Windows Explorer to open the g
 
 When Press Any Key Launcher is enabled, SMILE writes `Run Program - Press Any Key.cmd` into each successful build/run workspace. Double-clicking that launcher runs the generated program and then shows `Press any key to exit...`, which keeps the console window open long enough to inspect the output.
 
-Current desktop build version: `0.4.2 Python Target`.
+Current desktop build version: `0.4.2.1 Exact String and Target-Safe Expression Hardening`.
 
 ## Diagnostics
 
@@ -425,7 +426,7 @@ tests/
 
 ```text
 Source -> Lexer -> Tokens -> Parser -> Syntax Tree -> Binder -> Bound Program
-                                                               -> Pure Simplifier
+                                                               -> Constant-Aware Pure Simplifier
                                                                -> Target Integer Profile
                                                                -> Target Generator -> Generated Files
                                                                                       |
@@ -434,7 +435,7 @@ Source -> Lexer -> Tokens -> Parser -> Syntax Tree -> Binder -> Bound Program
                                                                                Build and Run Result
 ```
 
-`SMILE.Engine` owns lexing, parsing, diagnostics, syntax nodes, binding, variable symbols, typed bound expressions, compile-time constant evaluation, pure bound-expression simplification, per-program target Integer profiling, the SMILE reference evaluator, target identifier mapping, and target generators. The target identifier map is symbol-based and uses exact reserved-word checks plus target-specific pattern rules, such as C implementation-reserved prefixes, COBOL reserved words and data-name spelling, Java/Swift `_`, and Python keywords, soft keywords, built-ins, and generated helper names. `SMILE.Toolchains` owns detection, temporary workspaces, async process execution, cancellation, timeouts, bounded process output, build, and run, including safe discovery of Python 3.10+ without invoking Windows Store aliases. `SMILE.Cli` and `SMILE.Desktop` reuse both projects. `SMILE.Desktop` uses AvalonEdit for the four code panes and keeps build/run work isolated from the WPF UI thread.
+`SMILE.Engine` owns lexing, parsing, diagnostics, syntax nodes, binding, variable symbols, typed bound expressions, compile-time constant evaluation, constant-aware bound-expression simplification, per-program target Integer profiling, the SMILE reference evaluator, target identifier mapping, and target generators. The simplifier walks statements in order, records each bound constant, and decides short-circuit reachability before visiting the right operand. SMILE Strings remain complete length-aware values even when C-family targets normally use NUL-terminated pointers; those targets switch only NUL-sensitive output to exact UTF-8 bytes and `fwrite`. The target identifier map is symbol-based and uses exact reserved-word checks plus target-specific pattern rules, such as C implementation-reserved prefixes, COBOL reserved words and data-name spelling, Java/Swift `_`, and Python keywords, soft keywords, built-ins, and generated helper names. `SMILE.Toolchains` owns detection, temporary workspaces, async process execution, cancellation, timeouts, bounded process output, build, and run, including safe discovery of Python 3.10+ without invoking Windows Store aliases. `SMILE.Cli` and `SMILE.Desktop` reuse both projects. `SMILE.Desktop` uses AvalonEdit for the four code panes and keeps build/run work isolated from the WPF UI thread.
 
 SMILE-owned build/output artifacts older than 1 day may be cleaned from known generated locations such as `bin`, `obj`, `out`, and `%TEMP%\SMILE\Runs`.
 
@@ -457,7 +458,9 @@ Rust, Zig, and Go are intentionally not part of the active SMILE roadmap at this
 
 ## Roadmap
 
-Future ideas, not implemented in v0.4.2:
+Future ideas, not implemented in v0.4.2.1:
+
+The next major milestone is **v0.5.0 - Runtime Variables and `SET`**. This correction release does not implement reassignment.
 
 1. Runtime variables and assignment
 2. `INPUT`

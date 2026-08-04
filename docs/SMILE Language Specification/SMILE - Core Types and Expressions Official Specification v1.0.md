@@ -1,10 +1,10 @@
 # SMILE - Core Types and Expressions Official Specification v1.0
 
-This document defines the SMILE lexical and typed expression core, including the v0.4.1 conformance rules.
+This specification was introduced in SMILE v0.4.1 and remains normative for v0.4.2.1 and later unless superseded by a newer official specification.
 
 ## Core Types
 
-SMILE v0.4.1 has three value types:
+The SMILE v1.0 expression core has three value types:
 
 | Type | Meaning | Display Text |
 |---|---|---|
@@ -14,7 +14,7 @@ SMILE v0.4.1 has three value types:
 
 `Integer` is a signed 64-bit SMILE semantic type regardless of target-language storage. A target generator MAY use a narrower natural destination type for a complete program only when every bound Integer literal, value, operand, and intermediate result is proven to fit that type. This target-local storage choice MUST NOT change the valid SMILE range, checked overflow behavior, division semantics, or evaluator output.
 
-All current `LET` initializers are compile-time evaluable because SMILE v0.4.1 has no runtime input, reassignment, or side effects.
+All current `LET` initializers are compile-time evaluable because SMILE v0.4.2.1 has no runtime input, reassignment, or side effects.
 
 ## Lexical Tokens
 
@@ -117,6 +117,8 @@ Output:
 FALSE
 ```
 
+After binding succeeds, the shared simplifier may use previously declared constant Boolean values to make the same reachability decision in every expression position. It must decide whether the right operand is reachable before simplifying that operand. Binding still resolves and type-checks both sides first. This constant-aware rule is valid while SMILE has no input, reassignment, functions, or side effects; future runtime features must preserve left-to-right evaluation and may fold only expressions proven safe.
+
 The same failure remains an error when the right operand is reachable:
 
 ```basic
@@ -188,6 +190,6 @@ LET DifferentCase = "Sin" = "sin"
 
 Every target generator must consume the shared bound tree produced by the lexer, parser, binder, and evaluator. A target generator must not invent its own expression semantics or reparse SMILE source text.
 
-C and Objective-C preserve native Integer and Boolean expression intent where the destination language has a direct equivalent. String-producing declarations may continue to use evaluated constants while SMILE has no runtime string library. C-family String equality uses value comparison such as `strcmp`, not pointer equality. Compiler-owned `printf` format strings use `%lld`, `%s`, and safe literal-percent escaping as appropriate.
+C and Objective-C preserve native Integer and Boolean expression intent where the destination language has a direct equivalent. String-producing declarations may continue to use evaluated constants while SMILE has no runtime string library. C-family NUL-free String equality uses value comparison such as `strcmp`, not pointer equality; NUL-sensitive equality must account for the complete length and bytes or use the exact evaluated Boolean. Compiler-owned `printf` format strings use `%d`, `%lld`, `%s`, and safe literal-percent escaping as appropriate. A NUL-containing String uses length-aware byte output so `%s` cannot truncate the value.
 
-Deterministic generated-expression conformance tests use a fixed seed, evaluate one larger valid SMILE program with `SmileEvaluator`, build every locally available target, normalize line endings only, and compare stdout exactly.
+Deterministic generated-expression conformance tests use a fixed seed, evaluate one larger valid SMILE program with `SmileEvaluator`, build every locally available target, normalize line endings only where explicitly allowed, and compare all remaining stdout bytes exactly without trimming control characters.
