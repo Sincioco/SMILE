@@ -165,21 +165,27 @@
 - Run direct self-assignment through all ten targets, preserve Swift identity lowering, and compare each installed target's runtime output with `SmileEvaluator`.
 - Add no SMILE syntax. Preserve the cumulative deployable `examples/language.smile`, first-paint Desktop startup, asynchronous visible-target transpilation, deterministic generation, and the destination-language freeze.
 
-## Next Major Milestone: v0.6.0 - IF / THEN / ELSE
+## Implemented In v0.6.0
 
-The next language milestone is conditional execution with `IF / THEN / ELSE`.
+- Add block `IF / ELSE IF / ELSE / END IF` with case-insensitive `IF`, `THEN`, `ELSE`, and `END` keywords.
+- Require every atomic condition to be an explicit comparison and keep IF conditions free of function or procedure invocation.
+- Treat same-line `ELSE IF` as one clause while preserving an IF after a standalone ELSE line as a nested statement with its own END IF.
+- Permit PRINT, SET, nested IF, blank lines, and SET Block String Literals in branches; reject LET until scopes are formally introduced.
+- Add canonical recursive syntax and bound IF representations, first-successful-clause evaluator behavior, and branch-aware Known/Unknown path merging.
+- Preserve every source branch across all ten generators with idiomatic high-level control flow, Python `elif`, COBOL `END-IF`, and deterministic MASM compare/jump labels.
+- Extend the cumulative deployable `examples/language.smile`, lexical highlighting, official documentation, exact evaluator conformance, deterministic generation, and strict generated-warning validation.
+- Preserve first-paint Desktop startup, asynchronous visible-target transpilation, cancellation, failure containment, and the destination-language freeze.
 
 ## Final Destination-Language Freeze
 
-C++ is SMILE's tenth and final planned destination language. Target-language expansion is frozen so development can focus on conditions, input, loops, functions, scopes, debugging, and teaching tools. Do not add another destination language unless Sin explicitly reopens target expansion. Rust, Zig, and Go remain intentionally deferred and are not active targets.
+C++ is SMILE's tenth and final planned destination language. Target-language expansion is frozen so development can focus on input, loops, functions, scopes, debugging, and teaching tools. Do not add another destination language unless Sin explicitly reopens target expansion. Rust, Zig, and Go remain intentionally deferred and are not active targets.
 
 ## Active Language-Depth Milestones
 
-These are not implemented in v0.5.1.1:
+These are not implemented in v0.6.0:
 
-1. v0.6.0 - `IF / THEN / ELSE`
-2. v0.7.0 - `INPUT`
-3. v0.8.0 - Loops
-4. v0.9.0 - Functions and scopes
+1. v0.7.0 - `INPUT`
+2. v0.8.0 - Loops
+3. v0.9.0 - Functions and scopes
 
 Later teaching-depth ideas include floating-point and decimal numeric types, debugging and source mapping, semantic highlighting, autocomplete, diagnostic squiggles, and a reusable web interface.

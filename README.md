@@ -16,21 +16,21 @@ A programming language inspired by BASIC that makes it easy for newcomers to lea
 
 ## Current Release
 
-SMILE v0.5.1.1, "Generated Warning Hygiene," is a syntax-free maintenance release for the mutable language introduced in v0.5.0. `LET` still declares and initializes, case-insensitive `SET` still changes an existing fixed-type variable, and the SET Block String Literal — The SMILE Way still preserves multiline content, structural indentation, official escapes, trailing whitespace, and embedded NUL. A valid direct self-assignment remains a real no-op assignment in every target. C# now uses the smallest type-preserving identity expression instead of warning-producing `target = target`, while Swift retains its equivalent identity lowering. Strict release validation separately verifies a zero-warning generated C# build, runs the self-assignment acceptance program through all ten targets, and keeps the cumulative `language.smile` reference intact.
+SMILE v0.6.0 — IF / ELSE IF / ELSE — adds genuine block conditional execution to the mutable language. Conditions are call-free and every Boolean leaf must be an explicit comparison, so `IF Ready = TRUE THEN` is valid while `IF Ready THEN` is not. `ELSE IF` is two keywords on the same logical header line; an `IF` after a standalone `ELSE` line is a nested statement with its own `END IF`. IF v1.0 permits `PRINT`, `SET`, nested `IF`, blank lines, and SET Block String Literals in branches, while `LET` remains top-level until scopes are formally introduced. All ten generators preserve every source branch, and branch-aware Known/Unknown analysis propagates a value after IF only when every possible outgoing path agrees.
 
 ```text
 SMILE source
   -> lex source into tokens
   -> normalize SET Block String content entirely in the front end
-  -> parse once into syntax nodes
-  -> bind declarations, assignments, and typed expressions once
-  -> execute one statement-order known-state trace
-  -> simplify pure bound expressions with mutation-aware values and reachability
+  -> parse logical lines into recursive statement lists and canonical syntax nodes
+  -> bind declarations, assignments, IF clauses, and typed expressions once
+  -> analyze statement lists with branch-aware Known/Unknown environments
+  -> simplify pure bound expressions with mutation-aware, branch-safe values and reachability
   -> identify variables mutated by SET
   -> map SMILE symbols to safe target identifiers once per target
-  -> choose one idiomatic target Integer profile from every LET, SET, operand, and intermediate
-  -> generate ten target programs with a real storage update for every SET
-  -> read current generated storage for direct variable output and applicable exact equality
+  -> choose one idiomatic target Integer and String plan from every branch
+  -> generate ten target programs with genuine control flow and a real storage update for every SET
+  -> read and compute from current generated storage for every branch-aware Unknown expression
   -> compare generated runtime behavior to the SMILE reference evaluator in tests
   -> show three debounced live target previews with line numbers and syntax highlighting
   -> build and run locally when the matching toolchain is installed
@@ -41,6 +41,7 @@ The official language specifications are published in [docs/SMILE Language Speci
 
 - [SMILE - LET Statement Official Specification v1.0](docs/SMILE%20Language%20Specification/SMILE%20-%20LET%20Statement%20Official%20Specification%20v1.0.md)
 - [SMILE - SET Statement Official Specification v1.0](docs/SMILE%20Language%20Specification/SMILE%20-%20SET%20Statement%20Official%20Specification%20v1.0.md)
+- [SMILE - IF Statement Official Specification v1.0](docs/SMILE%20Language%20Specification/SMILE%20-%20IF%20Statement%20Official%20Specification%20v1.0.md)
 - [SMILE - PRINT Statement Official Specification v1.0](docs/SMILE%20Language%20Specification/SMILE%20-%20PRINT%20Statement%20Official%20Specification%20v1.0.md)
 - [SMILE - String Literals Official Specification v1.0](docs/SMILE%20Language%20Specification/SMILE%20-%20String%20Literals%20Official%20Specification%20v1.0.md)
 - [SMILE - Core Types and Expressions Official Specification v1.0](docs/SMILE%20Language%20Specification/SMILE%20-%20Core%20Types%20and%20Expressions%20Official%20Specification%20v1.0.md)
@@ -72,7 +73,11 @@ PRINT Counter={Counter}
 SET Counter = Counter + 1
 SET Name = "Louiery"
 
-PRINT Hello {Name}. Counter={Counter}
+IF Counter = 1 THEN
+    PRINT Hello {Name}. Counter={Counter}
+ELSE
+    PRINT Counter was not updated.
+END IF
 ```
 
 Output:
@@ -86,14 +91,14 @@ Counter=0
 Hello Louiery. Counter=1
 ```
 
-## LET, SET, And PRINT Syntax
+## LET, SET, PRINT, And IF Syntax
 
 Implemented grammar:
 
 ```text
-program          -> logical-line* end-of-file
-logical-line     -> whitespace* statement? whitespace* newline
-statement        -> let-statement | set-statement | print-statement
+program          -> statement-list end-of-file
+statement-list   -> (blank-line | statement)*
+statement        -> let-statement | set-statement | print-statement | if-statement
 let-statement    -> LET hspace+ identifier hspace* '=' hspace* expression
 set-statement    -> SET hspace+ identifier hspace* '=' hspace* set-value
 set-value        -> expression | set-block-string-literal
@@ -101,6 +106,17 @@ print-statement  -> PRINT
                   | PRINT hspace+ interpolated-string
                   | PRINT hspace+ quoted-expression
                   | PRINT hspace+ raw-template
+if-statement     -> IF hspace+ if-condition hspace+ THEN hspace* line-end
+                    branch-statement-list
+                    else-if-clause*
+                    else-clause?
+                    END hspace+ IF hspace* statement-end
+else-if-clause   -> ELSE hspace+ IF hspace+ if-condition hspace+ THEN hspace* line-end
+                    branch-statement-list
+else-clause      -> ELSE hspace* line-end branch-statement-list
+branch-statement-list -> (blank-line | branch-statement)*
+branch-statement -> print-statement | set-statement | if-statement
+if-condition     -> expression subject to the explicit-comparison and call-free IF rules
 expression       -> typed expression with precedence
 ```
 
@@ -108,16 +124,23 @@ A SET Block String Literal begins when the opening `"` is the final non-whitespa
 
 Implemented rules:
 
-- `PRINT`, `LET`, and `SET` are case-insensitive.
+- `PRINT`, `LET`, `SET`, `IF`, `THEN`, `ELSE`, and `END` are case-insensitive.
 - Variable lookup is ordinal case-insensitive.
 - SMILE v1.0 identifiers use portable ASCII letters, digits, and `_`; identifiers must start with an ASCII letter or `_`.
-- `LET`, `SET`, `PRINT`, `TRUE`, `FALSE`, `NOT`, `AND`, and `OR` are reserved SMILE keywords and cannot be variable names in any casing.
+- `LET`, `SET`, `PRINT`, `IF`, `THEN`, `ELSE`, `END`, `TRUE`, `FALSE`, `NOT`, `AND`, and `OR` are reserved SMILE keywords and cannot be variable names in any casing. `ELSEIF` and `ENDIF` are not combined keywords.
 - `LET` declares a variable, fixes its type as `String`, `Integer`, or `Boolean`, evaluates its initializer, and stores the initial current value.
 - A `LET` variable becomes visible only after its initializer binds and evaluates successfully, so forward references and self-references fail as undefined variables.
 - `SET` changes an existing variable and never declares one. The target must have an earlier successful LET declaration.
 - A SET right side must have exactly the variable's fixed type. SMILE performs no implicit assignment conversion.
 - The complete SET right side evaluates before the current value changes, so `SET Counter = Counter + 1` reads the old value and updates atomically.
 - `PRINT`, later LET initializers, interpolation holes, and later SET expressions read the current value established by earlier statements.
+- `IF condition THEN` begins a block conditional and one `END IF` closes its complete IF / ELSE IF / ELSE chain.
+- `ELSE IF` is a clause only when ELSE and IF occur on the same logical header line. An IF after a standalone ELSE line is nested and needs its own END IF.
+- Every complete IF condition has type Boolean, invokes no function or procedure, and contains an explicit comparison at every Boolean leaf. Standalone Boolean variables and literals are not conditions.
+- Conditions retain normal left-to-right `AND`/`OR` short-circuit evaluation, but parsing, binding, structural validation, and type checking still inspect both operands and every source branch.
+- IF v1.0 branches permit `PRINT`, `SET`, nested `IF`, blank lines, and SET Block String Literals. `LET` is rejected inside every IF-related body because v0.6.0 introduces no block scope.
+- Clauses are tested in order; only the first successful clause executes, otherwise ELSE executes when present. Only the selected branch mutates evaluator state.
+- Every generator preserves all source branches even when current values make one branch predictable. Known-value analysis merges outgoing paths and propagates a post-IF value only when every possible path proves the same value.
 - A SET Block String Literal is valid only as the complete SET value. It is not legal in LET, PRINT, interpolation, concatenation, or parentheses.
 - Block delimiter lines are excluded. Each boundary between content lines becomes one logical `\n`, with no automatic leading or trailing newline.
 - The exact spaces/tabs before the closing quote form the structural indentation margin. That exact margin is removed only from content lines that begin with it; all additional or nonmatching whitespace is preserved.
@@ -131,9 +154,9 @@ Implemented rules:
 - Comparison supports `=`, `<>`, `<`, `<=`, `>`, and `>=` where the type rules allow it.
 - Boolean logic supports `NOT`, `AND`, and `OR`.
 - `AND` and `OR` evaluate left to right and short-circuit at runtime: `FALSE AND ...` and `TRUE OR ...` do not evaluate their right operands. Both operands are still parsed, bound, and type-checked.
-- After successful binding, one shared statement-order trace records current values for `LET`, `SET`, and `PRINT`. The simplifier decides short-circuit reachability before visiting the right operand and never propagates an old value past SET.
+- After successful binding, one shared recursive statement-list analysis records current values, mutations, and branch outcomes for `LET`, `SET`, `PRINT`, and `IF`. The simplifier decides short-circuit reachability before visiting the right operand, never propagates an old value past SET, and never deletes IF clauses or bodies.
 - Parentheses control expression grouping.
-- SMILE does not perform implicit conversions in v0.5.1.1. For example, `"Age " + 49` is a type error.
+- SMILE does not perform implicit conversions in v0.6.0. For example, `"Age " + 49` is a type error.
 - `PRINT` alone, or followed only by spaces/tabs, prints one blank line.
 - `PRINT "Hello"` prints an ordinary quoted string.
 - Ordinary quoted strings do not interpolate, so `PRINT "Hello {Name}!"` prints `{Name}` literally.
@@ -154,11 +177,11 @@ Implemented rules:
 - Target generators map valid SMILE identifiers when a destination language reserves the same spelling, when a spelling would shadow generator-owned runtime APIs, or when a target has reserved identifier patterns.
 - Java and Swift map a single `_` SMILE identifier because those languages cannot use `_` as an ordinary readable local variable.
 - C and Objective-C map implementation-reserved prefixes such as `__internal` and `_Upper`.
-- C and Objective-C also map emitted runtime facility and type names such as `bool`, `int64_t`, `size_t`, `fwrite`, `fputc`, `strcmp`, `memcmp`, and `strlen`, so learner variables cannot shadow generated storage operations.
+- C and Objective-C also map emitted runtime facility and type names such as `bool`, `int64_t`, `size_t`, `fwrite`, `fputc`, `fputs`, `strcmp`, `memcmp`, `memcpy`, `strlen`, and `snprintf`, so learner variables cannot shadow generated storage operations.
 - C, Objective-C, and C++ map fixed-width Integer and limit macro names such as `INT64_MAX`, `INT64_C`, `UINT64_MAX`, and `SIZE_MAX`, preventing wide-profile headers from rewriting learner variables.
 - C++ additionally maps `__` anywhere in a name. The readable `_smile_` result spells reserved underscore runs out so the emitted C++ identifier is itself safe.
 
-Not implemented in v0.5.1.1: comments, `INPUT`, conditions, loops, functions, arrays, classes, floating-point numbers, assignment expressions, compound assignment, and user-defined types.
+Not implemented in v0.6.0: comments, `INPUT`, loops, functions, procedures, scopes, arrays, classes, floating-point numbers, one-line IF, assignment expressions, compound assignment, and user-defined types.
 
 ## Generated Examples
 
@@ -343,13 +366,15 @@ each destination emits a real update at the SET position:
 | Python | `Counter = Counter + 1` |
 | Swift | `var Counter: Int = 0`, then `Counter = Counter + 1` |
 | COBOL | `MOVE` into sized `PIC X` storage plus a logical-length update |
-| MASM x64 | Update `variable{n}Ptr` and `variable{n}Length` to deterministic SET data |
+| MASM x64 | Update pointer/length text storage plus signed Integer storage; materialize runtime expressions when needed |
 
 C# warns about a plain direct self-assignment such as `Name = Name`, while Swift rejects it. For that valid SMILE SET form, both generators emit the smallest type-preserving identity expression (`Name = Name + ""`, `Count = Count + 0`, or `Ready = Ready || false`) so the destination still contains a real assignment and compiles cleanly. This target-local rule is based on bound symbol identity, so case-insensitive and mapped-name self-assignment use the same generated target name; assigning a different variable remains a natural assignment.
 
+For a SMILE IF / ELSE IF / ELSE chain, C#, C, C++, Java, JavaScript, Objective-C, and Swift emit natural `if / else if / else` blocks; Python emits `if / elif / else`; COBOL emits matching `IF / ELSE / END-IF`; and MASM x64 emits deterministic compare-and-jump labels. Empty Python branches use `pass`. Every destination retains every source branch. A value is embedded statically only when branch-aware analysis proves it on every incoming path; after an Unknown merge, later LET, SET, PRINT, interpolation, and IF expressions read and compute from generated runtime storage instead of copying the branch selected by the reference trace.
+
 A SET Block String generates only as its normalized ordinary String value. No backend scans delimiters, removes indentation, or normalizes source newlines.
 
-Generated target code is expected to be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write. SMILE `Integer` always means signed 64-bit semantically, but each complete bound program uses the smallest natural target representation that preserves every LET value, SET value, operand, and reachable intermediate. A shared statement-order pass simplifies Boolean identities and known-value short circuits without traversing an unreachable right operand or carrying stale state past SET. C++ uses RAII-owned `std::string`, exact assignment, length-aware embedded-NUL construction, native equality, and `std::cout`. Python preserves natural assignment and emits `_smile_text` or `_smile_div` only when needed. C and Objective-C keep mutable `const char *` pointers and add collision-safe `smileString{variableIndex}Length` metadata only for variables that can contain NUL; direct String PRINT reads that current pointer and length, and direct exact equality uses `strcmp` or length plus `memcmp` as appropriate. COBOL sizes `PIC X` across all assigned values, emits real value/length `MOVE` operations, gives every directly printed String a logical length, and prints direct variables from current storage with the current logical length. MASM uses deterministic UTF-8 labels and runtime pointer-plus-length updates and reads those fields for direct variable PRINT. See [SMILE Target Code Generation Standard v1.0](docs/SMILE%20Target%20Code%20Generation%20Standard%20v1.0.md).
+Generated target code is expected to be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write. SMILE `Integer` always means signed 64-bit semantically, but each complete bound program uses the smallest natural target representation that preserves every LET value, SET value, IF condition, branch value, operand, and intermediate. A shared branch-aware pass simplifies Boolean identities and known-value short circuits without traversing an unreachable right operand, carrying stale state past SET, leaking one branch into another, or removing genuine control flow. C++ uses RAII-owned `std::string`, exact assignment, length-aware embedded-NUL construction, native equality, and `std::cout`. Python preserves natural assignment and emits `_smile_text` or `_smile_div` only when needed; interpolation folding is limited to branch-aware Known holes. C and Objective-C keep mutable `const char *` pointers, add collision-safe logical lengths when NUL is possible, stream composite output by current segment length, and use bounded runtime buffers for Unknown composite assignments or comparisons. COBOL sizes `PIC X` across every branch and lowers Unknown values through current `WORKING-STORAGE`, logical lengths, numeric display storage, and runtime `STRING` plans. MASM uses deterministic UTF-8 labels, compare/jump control flow, pointer-plus-length text storage, signed Integer storage, bounded runtime buffers, and one small signed Integer formatter. See [SMILE Target Code Generation Standard v1.0](docs/SMILE%20Target%20Code%20Generation%20Standard%20v1.0.md).
 
 ## Supported Targets
 
@@ -384,7 +409,7 @@ Visual Studio setup must include the x64 C++ tools and `VC\Auxiliary\Build\vcvar
 
 Microsoft OpenJDK 25 LTS is a free Java toolchain and can be installed with `winget install --id Microsoft.OpenJDK.25 --exact`. Restart the terminal or SMILE after installing so the updated user `PATH` is visible.
 
-The v0.5.1.1 Java acceptance suite invokes both `javac` and `java` and compares ordinary SET, String reassignment, Block String, embedded-NUL, SET-introduced wide Integer, runtime-authenticity, and complete `examples/language.smile` output to `SmileEvaluator`.
+The v0.6.0 Java acceptance suite invokes both `javac` and `java` and compares IF clause selection, nested branches, SET mutation across branches, Block Strings, embedded NUL, wide Integer planning, runtime-authenticity, and complete `examples/language.smile` output to `SmileEvaluator`.
 
 ## Build, Test, And Run
 
@@ -397,19 +422,20 @@ cmd /c cd /d C:\SMILE && dotnet build SMILE.sln -c Release
 cmd /c cd /d C:\SMILE && dotnet test SMILE.sln -c Release --no-build
 ```
 
-Official release validation makes Java and all ten local toolchains mandatory instead of contributor-optional and separately requires generated C# compiler-warning validation:
+Official release validation makes Java and all ten local toolchains mandatory instead of contributor-optional and separately requires generated compiler-warning validation:
 
 ```powershell
 $env:SMILE_REQUIRE_JAVA = '1'
 $env:SMILE_REQUIRE_ALL_TARGETS = '1'
 $env:SMILE_REQUIRE_ZERO_TARGET_WARNINGS = '1'
+dotnet test SMILE.sln -c Debug --no-build -nologo
 dotnet test SMILE.sln -c Release --no-build -nologo
 Remove-Item Env:SMILE_REQUIRE_JAVA
 Remove-Item Env:SMILE_REQUIRE_ALL_TARGETS
 Remove-Item Env:SMILE_REQUIRE_ZERO_TARGET_WARNINGS
 ```
 
-A warning-free `dotnet build SMILE.sln` proves the SMILE solution itself is clean; it does not prove generated target programs are warning-free. `SMILE_REQUIRE_ZERO_TARGET_WARNINGS=1` activates the supported generated-target warning gate, which compiles generated C# through the existing toolchain and fails on C# compiler diagnostics such as `warning CS1717`. Runtime conformance remains a separate all-ten-target evaluator comparison.
+A warning-free `dotnet build SMILE.sln` proves the SMILE solution itself is clean; it does not prove generated target programs are warning-free. `SMILE_REQUIRE_ZERO_TARGET_WARNINGS=1` activates destination-specific warning detection for the compiler-backed targets. JavaScript and Python have no compile stage in their normal SMILE toolchains. Runtime conformance remains a separate all-ten-target evaluator comparison, and the official IF program must retain every branch, exit with code zero, emit zero detected compiler warnings, and match `SmileEvaluator` exactly.
 
 Run the desktop app:
 
@@ -428,6 +454,7 @@ cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\LetEmpty
 cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\LetIdentifierHardening.smile --target all
 cmd /c cd /d D:\SMILE && dotnet run --project src\SMILE.Cli -- examples\RuntimeVariablesSet.smile --target all
 cmd /c cd /d D:\SMILE && dotnet run --project src\SMILE.Cli -- examples\RuntimeVariablesSet.smile --target csharp --run
+cmd /c cd /d D:\SMILE && dotnet run --project src\SMILE.Cli -- examples\language.smile --target all
 cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\FriendlyPrint.smile --target cobol --run
 cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\FriendlyPrint.smile --target objective-c --run
 cmd /c cd /d C:\SMILE && dotnet run --project src\SMILE.Cli -- examples\FriendlyPrint.smile --target swift --run
@@ -439,13 +466,13 @@ Valid targets are `csharp`, `c`, `masm-x64`, `javascript`, `java`, `cobol`, `obj
 
 ## Desktop Application
 
-The desktop app title is `SMILE - Simple Modern Interactive Learning Environment`. It opens maximized and completes its first paint before doing language-reference I/O or compiler work. It then asynchronously loads the packaged [cumulative language reference](examples/language.smile) into the top-left editor and immediately transpiles only the three visible targets in the background. If a learner types or opens a file while that read is pending, the newer document wins and is never replaced by the late startup result. The reference preserves the full valid LET and PRINT tour, adds the valid SET forms and mixed LET/SET/PRINT scenarios beneath it, and is the committed file that future language syntax will extend instead of replacing earlier examples. The other three panes are read-only generated targets. They default to C#, Assembly - Windows x64 MASM, and C. Each generated pane can switch between C#, C, MASM x64, JavaScript, Java, COBOL, Objective-C, Swift, Python, and C++.
+The desktop app title is `SMILE - Simple Modern Interactive Learning Environment`. It opens maximized and completes its first paint before doing language-reference I/O or compiler work. It then asynchronously loads the packaged [cumulative language reference](examples/language.smile) into the top-left editor and immediately transpiles only the three visible targets in the background. If a learner types or opens a file while that read is pending, the newer document wins and is never replaced by the late startup result. The reference preserves the full valid LET, PRINT, and SET tour and appends canonical IF, ELSE IF, ELSE, nested IF, branch mutation, and branch Block String scenarios. It is the committed file that future language syntax will extend instead of replacing earlier examples. The other three panes are read-only generated targets. They default to C#, Assembly - Windows x64 MASM, and C. Each generated pane can switch between C#, C, MASM x64, JavaScript, Java, COBOL, Objective-C, Swift, Python, and C++.
 
 `examples/language.smile` is copied beside the Desktop executable in normal builds and deployment publishes as `language.smile`. New editor sessions reload that runtime file asynchronously without associating Save with the packaged copy, so learners can experiment safely and use Save As for their own programs.
 
 ![SMILE desktop app in maximized state](Requirements/Progress/2026-08-02-day-1-2-smile-desktop.png)
 
-The four code panes use AvalonEdit. The SMILE source pane and all three generated target panes show line numbers and lexical syntax highlighting. `SET` is highlighted as a keyword, and a SET Block String remains one String-colored span across physical lines until its whitespace-only closing delimiter; quotes in ordinary content do not end the span. Unterminated blocks remain safe while typing. Target panes switch highlighting when their selected language changes. C++ uses AvalonEdit's built-in C++ definition. Objective-C uses the same mature C/C++ highlighting because SMILE's current Objective-C output is a Foundation-free C-compatible console profile. Language switching reuses generated code already cached for the current source revision and only schedules live transpilation for visible targets that are actually missing. The output area remains a plain build/program log without line numbers.
+The four code panes use AvalonEdit. The SMILE source pane and all three generated target panes show line numbers and lexical syntax highlighting. `IF`, `THEN`, `ELSE`, and `END` are highlighted individually, so ELSE IF and END IF visibly remain two keywords. A SET Block String remains one String-colored span across physical lines inside or outside a branch until its whitespace-only closing delimiter; quotes in ordinary content do not end the span. Unterminated blocks and malformed IF text remain safe while typing. Target panes switch highlighting when their selected language changes. C++ uses AvalonEdit's built-in C++ definition. Objective-C uses the same mature C/C++ highlighting because SMILE's current Objective-C output is a Foundation-free C-compatible console profile. Language switching reuses generated code already cached for the current source revision and only schedules live transpilation for visible targets that are actually missing. The output area remains a plain build/program log without line numbers.
 
 Hold Ctrl and rotate the mouse wheel over any code pane or the diagnostics/output pane to increase or decrease only that pane's font size in one-point steps from 8 through 48 points. Normal mouse-wheel scrolling is unchanged. Each pane keeps its own in-memory zoom level so presenters can enlarge the generated code or program output without changing the other panes.
 
@@ -459,7 +486,7 @@ When Open Generated Folder is enabled, SMILE asks Windows Explorer to open the g
 
 When Press Any Key Launcher is enabled, SMILE writes `Run Program - Press Any Key.cmd` into each successful build/run workspace. Double-clicking that launcher runs the generated program and then shows `Press any key to exit...`, which keeps the console window open long enough to inspect the output.
 
-Current desktop build version: `0.5.1.1 Generated Warning Hygiene`.
+Current desktop build version: `0.6.0 IF / ELSE IF / ELSE`.
 
 ## Diagnostics
 
@@ -501,6 +528,21 @@ SMILE reports source errors as diagnostics instead of ordinary crashes. Current 
 | `SMILE1306` | SET Block String Literal is valid only as the complete value of SET |
 | `SMILE1307` | Unexpected content follows the closing block delimiter |
 | `SMILE1308` | Block opening quote must end the physical SET line |
+| `SMILE1401` | IF requires a condition |
+| `SMILE1402` | Every atomic IF condition must be an explicit comparison |
+| `SMILE1403` | The complete IF condition must have type Boolean |
+| `SMILE1404` | An IF condition cannot invoke a function or procedure |
+| `SMILE1405` | IF or ELSE IF requires THEN |
+| `SMILE1406` | Unexpected content follows THEN |
+| `SMILE1407` | ELSE must stand alone or be followed by IF on the same logical line |
+| `SMILE1408` | ELSE IF requires a condition |
+| `SMILE1409` | An IF may contain only one final ELSE |
+| `SMILE1410` | ELSE IF cannot appear after ELSE |
+| `SMILE1411` | ELSE, ELSE IF, or END IF has no matching IF |
+| `SMILE1412` | IF is missing END IF |
+| `SMILE1413` | END IF is malformed or has trailing content |
+| `SMILE1414` | LET is not permitted inside IF v1.0 |
+| `SMILE1415` | Statement is not permitted inside IF v1.0 |
 
 Desktop crash containment is intentionally defensive. Recoverable Build & Run, toolchain detection, process execution, command refresh, and folder-opening failures are reported in the output area without closing the IDE. Detailed desktop diagnostics are written to `%LOCALAPPDATA%\SMILE\Logs\SMILE-yyyy-MM-dd.log`, with `%TEMP%\SMILE\Logs` used as a fallback if the normal log folder is unavailable.
 
@@ -530,11 +572,11 @@ tests/
 ## Architecture
 
 ```text
-Source -> Lexer -> Tokens -> Parser -> Syntax Tree -> Binder -> Bound Program
-                                                               -> Sequential Execution Trace
-                                                               -> Mutation-Aware Pure Simplifier
-                                                               -> Variable Mutation Analysis
-                                                               -> Target Integer Profile
+Source -> Lexer -> Tokens -> Recursive Block Parser -> Syntax Tree -> Binder -> Bound Program
+                                                                         -> Branch-Aware Statement Analysis
+                                                                         -> Mutation-Aware Pure Simplifier
+                                                                         -> Variable Mutation Analysis
+                                                                         -> Target Integer/String Planning
                                                                -> Target Generator -> Generated Files
                                                                                       |
                                                                                Optional Toolchain
@@ -542,7 +584,7 @@ Source -> Lexer -> Tokens -> Parser -> Syntax Tree -> Binder -> Bound Program
                                                                                Build and Run Result
 ```
 
-`SMILE.Engine` owns lexing, block String normalization, parsing, diagnostics, syntax nodes, binding, variable symbols, typed bound statements and expressions, the mutable reference evaluator, `BoundProgramExecutionTrace`, mutation-aware simplification, variable mutation analysis, per-program target Integer profiling, target identifier mapping, and all ten generators. `BoundLetStatement` owns an initializer, not permanent current state; the evaluator environment owns current values. The execution trace records values before and after LET, SET, and PRINT so simplification, NUL handling, String equality, Integer promotion, COBOL sizing, and MASM pointer/length planning use the correct statement-local state. Every SET emits a real storage update. The reference evaluator state and generated target runtime storage must agree not only in final output but also when a direct variable read has a clear target representation; such a read must not be replaced with an unrelated compiler-time literal. Block delimiter recognition, indentation removal, newline normalization, and escape decoding remain entirely in the front end; targets receive one ordinary bound String value. `SMILE.Toolchains` owns detection, temporary workspaces, async process execution, cancellation, timeouts, bounded process output, build, and run. `SMILE.Cli` and `SMILE.Desktop` reuse both projects, and the desktop keeps live transpilation and build/run work off the WPF UI thread.
+`SMILE.Engine` owns lexing, block String normalization, recursive statement-list parsing, diagnostics, syntax nodes, binding, variable symbols, typed bound statements and expressions, the mutable reference evaluator, branch-aware Known/Unknown analysis, mutation-aware simplification, variable mutation analysis, bounded per-expression display facts, per-program Integer/String planning, target identifier mapping, and all ten generators. `BoundLetStatement` owns an initializer, not permanent current state; the evaluator environment owns current values. Every IF branch is analyzed from the same incoming environment and outgoing paths are merged before later statements. Simplification, NUL handling, String equality, Integer promotion, COBOL sizing, and MASM runtime-storage planning inspect the entire IF tree without deleting unselected branches. Every SET emits a real storage update, and only the selected evaluator branch mutates runtime state. The reference evaluator state and generated target runtime storage must agree at every observable expression, not only in final output; the selected concrete trace cannot replace a runtime value where branch-aware analysis reports Unknown. Block delimiter recognition, indentation removal, newline normalization, and escape decoding remain entirely in the front end; targets receive one ordinary bound String value. `SMILE.Toolchains` owns detection, temporary workspaces, async process execution, cancellation, timeouts, bounded process output, build, and run. `SMILE.Cli` and `SMILE.Desktop` reuse both projects, and the desktop keeps live transpilation and build/run work off the WPF UI thread.
 
 SMILE-owned build/output artifacts older than 1 day may be cleaned from known generated locations such as `bin`, `obj`, `out`, and `%TEMP%\SMILE\Runs`.
 
@@ -551,6 +593,7 @@ SMILE-owned build/output artifacts older than 1 day may be cleaned from known ge
 - Only `String`, `Integer`, and `Boolean` core types are implemented.
 - `SET` is the only assignment statement. Assignment expressions, compound assignment, increment/decrement syntax, and multiple assignment are not implemented.
 - Multiline String source syntax is limited to one complete SET Block String value; general block Strings and block interpolation are not implemented.
+- IF v1.0 is block-only. One-line IF, branch-local LET, and scopes are not implemented. Function/procedure calls in conditions are permanently prohibited, and standalone Boolean conditions are invalid because every atomic condition requires an explicit comparison.
 - SMILE Integer semantics are signed 64-bit. Generated storage is intentionally target-idiomatic and may be narrower when the complete bound program proves that safe; floating-point and decimal types are not implemented.
 - Syntax highlighting is lexical only; semantic highlighting, autocomplete, and diagnostic squiggles are not implemented.
 - C and MASM target output is focused on Windows local toolchains.
@@ -564,23 +607,20 @@ SMILE-owned build/output artifacts older than 1 day may be cleaned from known ge
 
 ## Final Destination-Language Freeze
 
-C++ is SMILE's tenth and final planned destination language. Target-language expansion is frozen so development can focus on conditions, input, loops, functions, scopes, debugging, and teaching tools. Do not add another destination language unless Sin explicitly reopens target expansion. Rust, Zig, and Go remain intentionally deferred and are not active targets.
+C++ is SMILE's tenth and final planned destination language. Target-language expansion is frozen so development can focus on input, loops, functions, scopes, debugging, and teaching tools. Do not add another destination language unless Sin explicitly reopens target expansion. Rust, Zig, and Go remain intentionally deferred and are not active targets.
 
 ## Roadmap
 
-Future ideas, not implemented in v0.5.1.1:
+Future ideas, not implemented in v0.6.0:
 
-The next major milestone is **v0.6.0 - `IF / THEN / ELSE`**.
-
-1. v0.6.0 - `IF / THEN / ELSE`
-2. v0.7.0 - `INPUT`
-3. v0.8.0 - Loops
-4. v0.9.0 - Functions and scopes
-5. Floating-point and decimal numeric types
-6. Debugging and source mapping
-7. Semantic highlighting, autocomplete, and diagnostic squiggles
-8. Reusable web interface
-9. Evolution toward a full SMILE language
+1. v0.7.0 - `INPUT`
+2. v0.8.0 - Loops
+3. v0.9.0 - Functions and scopes
+4. Floating-point and decimal numeric types
+5. Debugging and source mapping
+6. Semantic highlighting, autocomplete, and diagnostic squiggles
+7. Reusable web interface
+8. Evolution toward a full SMILE language
 
 ## License
 

@@ -59,6 +59,18 @@ public sealed record SetStatementSyntax(
     TextSpan Span)
     : StatementSyntax(Span);
 
+public sealed record ConditionalClauseSyntax(
+    ExpressionSyntax Condition,
+    IReadOnlyList<StatementSyntax> Statements,
+    TextSpan Span);
+
+public sealed record IfStatementSyntax(
+    IReadOnlyList<ConditionalClauseSyntax> Clauses,
+    IReadOnlyList<StatementSyntax> ElseStatements,
+    bool HasElseClause,
+    TextSpan Span)
+    : StatementSyntax(Span);
+
 public abstract record ExpressionSyntax(TextSpan Span)
     : SyntaxNode(Span);
 
@@ -218,6 +230,16 @@ public sealed record BoundSetStatement(
 public sealed record BoundPrintStatement(
     BoundExpression Value,
     bool IsBlankLine = false)
+    : BoundStatement;
+
+public sealed record BoundConditionalClause(
+    BoundExpression Condition,
+    IReadOnlyList<BoundStatement> Statements);
+
+public sealed record BoundIfStatement(
+    IReadOnlyList<BoundConditionalClause> Clauses,
+    IReadOnlyList<BoundStatement> ElseStatements,
+    bool HasElseClause)
     : BoundStatement;
 
 public abstract record BoundExpression(SmileType Type);

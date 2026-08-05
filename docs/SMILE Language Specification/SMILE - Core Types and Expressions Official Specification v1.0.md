@@ -1,6 +1,6 @@
 # SMILE - Core Types and Expressions Official Specification v1.0
 
-This specification was introduced in SMILE v0.4.1 and remains normative for SMILE v0.5.0 and later unless superseded by a newer official specification.
+This specification was introduced in SMILE v0.4.1 and remains normative for SMILE v0.6.0 and later unless superseded by a newer official specification. IF-specific condition structure is additionally defined by the official IF statement specification.
 
 ## Core Types
 
@@ -12,9 +12,9 @@ The SMILE v1.0 expression core has three value types:
 | `Integer` | Signed 64-bit integer | Decimal digits using invariant culture |
 | `Boolean` | Truth value | `TRUE` or `FALSE` |
 
-`Integer` is a signed 64-bit SMILE semantic type regardless of target-language storage. A target generator MAY use a narrower natural destination type for a complete program only when every bound Integer literal, statement-local value, operand, and intermediate result is proven to fit that type. This target-local storage choice MUST NOT change the valid SMILE range, checked overflow behavior, division semantics, or evaluator output.
+`Integer` is a signed 64-bit SMILE semantic type regardless of target-language storage. A target generator MAY use a narrower natural destination type for a complete program only when every possible branch value and range, bound Integer literal, operand, and intermediate result, including merged later uses, is proven to fit that type. This target-local storage choice MUST NOT change the valid SMILE range, checked overflow behavior, division semantics, or evaluator output.
 
-SMILE v0.5.0 has mutable variables through `SET`, but it still has no input, branch, loop, function, or external runtime data. Every current statement value therefore remains determinable in source order. Known-value analysis MUST be statement-order and mutation aware; an earlier value MUST NOT be propagated past a later `SET`.
+SMILE v0.6.0 has mutable variables through `SET` and conditional branches through `IF`, but it still has no input, loop, function, or external runtime data. Known-value analysis MUST be statement-order, mutation aware, and branch aware. An earlier value MUST NOT be propagated past a later SET, and a branch-specific value MUST NOT be propagated after IF unless every possible outgoing path proves the same value.
 
 ## Lexical Tokens
 
@@ -23,7 +23,7 @@ The lexer recognizes:
 - identifiers;
 - string literals;
 - integer literals;
-- `LET`, `SET`, `PRINT`, `TRUE`, `FALSE`, `NOT`, `AND`, and `OR`;
+- `LET`, `SET`, `PRINT`, `IF`, `THEN`, `ELSE`, `END`, `TRUE`, `FALSE`, `NOT`, `AND`, and `OR`;
 - the dedicated lexical representation for a SET Block String Literal;
 - `+`, `-`, `*`, `/`;
 - `=`, `<>`, `<`, `<=`, `>`, `>=`;
@@ -122,7 +122,7 @@ Output:
 FALSE
 ```
 
-After binding succeeds, the shared simplifier may use the current known Boolean values at each statement position to make the same reachability decision in every expression position. It must decide whether the right operand is reachable before simplifying that operand. Binding still resolves and type-checks both sides first. For `SET`, the right side is simplified and evaluated using the old environment, and the known value changes only after the complete assignment succeeds. Future runtime features must preserve left-to-right evaluation and may fold only expressions proven safe.
+After binding succeeds, the shared simplifier may use the current known Boolean values at each statement position to make the same reachability decision in every expression position. It must decide whether the right operand is reachable before simplifying that operand. Binding still resolves and type-checks both sides first. For `SET`, the right side is simplified and evaluated using the old environment, and the known value changes only after the complete assignment succeeds. For `IF`, each branch begins from the same incoming environment and outgoing paths merge before a later statement can use a known value. Simplification MUST NOT delete IF clauses or bodies.
 
 The same failure remains an error when the right operand is reachable:
 
@@ -133,6 +133,18 @@ LET Result = TRUE AND (1 / 0 = 0)
 This produces `SMILE1207`. Likewise, reachable signed 64-bit overflow produces `SMILE1206`.
 
 These rules remain normative when future SMILE versions add runtime expressions, functions, or other operations with observable evaluation behavior.
+
+## IF Condition Context
+
+The official ordinary expression grammar is reused inside IF and ELSE IF headers, but IF adds permanent structural restrictions:
+
+- the complete condition result MUST have type Boolean;
+- every atomic Boolean leaf MUST be an explicit comparison using `=`, `<>`, `<`, `<=`, `>`, or `>=` and a right-hand operand;
+- a standalone Boolean variable or literal, including one wrapped in parentheses or NOT, is not an IF condition;
+- a compound AND/OR/NOT condition is valid only when every leaf is an explicit comparison;
+- an IF condition MUST NOT invoke a function or procedure.
+
+These restrictions are validated on the unsimplified bound expression so simplification cannot erase an explicit `= TRUE` comparison. Binding and type checking still examine both sides of a short-circuit operator and every source branch. The complete syntax, diagnostics, and future call-prohibition contract are defined by [SMILE - IF Statement Official Specification v1.0](SMILE%20-%20IF%20Statement%20Official%20Specification%20v1.0.md).
 
 ## Interpolation
 
@@ -195,8 +207,8 @@ LET DifferentCase = "Sin" = "sin"
 
 ## Target Generation Rule
 
-Every target generator must consume the shared bound tree and statement-order execution analysis produced by the lexer, parser, binder, and evaluator. A target generator must not invent its own expression semantics, reparse SMILE source text, or interpret SET Block String delimiters.
+Every target generator must consume the shared bound tree and recursive branch-aware analysis produced by the lexer, parser, binder, and evaluator. A target generator must not invent its own expression semantics, reparse SMILE source text, interpret SET Block String delimiters, or delete an IF clause because current values make another branch predictable.
 
-C and Objective-C preserve native Integer and Boolean expression intent where the destination language has a direct equivalent. Low-level targets may use statement-local evaluated values where a native expression runtime would add unnecessary complexity, but every `SET` must still emit an actual storage update at its source position. C-family NUL-free String equality uses value comparison such as `strcmp`, not pointer equality; NUL-sensitive equality must account for the complete length and bytes or use the exact value known at that statement position. Compiler-owned `printf` format strings use `%d`, `%lld`, `%s`, and safe literal-percent escaping as appropriate. A NUL-containing String uses length-aware byte output so `%s` cannot truncate the value.
+C and Objective-C preserve native Integer and Boolean expression intent where the destination language has a direct equivalent. Low-level targets may use an evaluated value only when the corresponding branch-aware fact is `Known` on every possible incoming path; an `Unknown` expression must be lowered from current runtime storage. Every `SET` must still emit an actual storage update at its source position. C-family NUL-free String equality uses value comparison such as `strcmp`, not pointer equality; NUL-sensitive equality must account for the complete current length and bytes unless branch-aware analysis proves the exact Boolean result. Compiler-owned `printf` format strings use `%d`, `%lld`, `%s`, and safe literal-percent escaping as appropriate. A NUL-containing String uses length-aware byte output so `%s` cannot truncate the value.
 
 Deterministic generated-expression conformance tests use a fixed seed, evaluate one larger valid SMILE program with `SmileEvaluator`, build every locally available target, normalize line endings only where explicitly allowed, and compare all remaining stdout bytes exactly without trimming control characters.

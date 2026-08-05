@@ -141,8 +141,25 @@ internal sealed class TargetIdentifierMap
         string readablePart = characters.Count == 0
             ? "VAR"
             : new string(characters.ToArray());
-        return "SMILE-" + readablePart;
+        string candidate = "SMILE-" + readablePart;
+
+        // COBOL is case-insensitive, and several compiler-owned IF/runtime
+        // fields live in predictable SMILE-* namespaces. An underscore in the
+        // source becomes a hyphen here, so names such as IF_CONDITION_0 would
+        // otherwise become the exact scratch field emitted by the generator.
+        // Keep those namespaces exclusively compiler-owned while preserving a
+        // readable, deterministic spelling for the student's variable.
+        return IsCobolCompilerOwnedIdentifier(candidate)
+            ? "SMILE-VAR-" + readablePart
+            : candidate;
     }
+
+    private static bool IsCobolCompilerOwnedIdentifier(string name) =>
+        name.StartsWith("SMILE-IF-", StringComparison.OrdinalIgnoreCase) ||
+        name.StartsWith("SMILE-RUNTIME-", StringComparison.OrdinalIgnoreCase) ||
+        name.StartsWith("SMILE-STATEMENT-", StringComparison.OrdinalIgnoreCase) ||
+        name.StartsWith("SMILE-EXPRESSION-", StringComparison.OrdinalIgnoreCase) ||
+        name.StartsWith("SMILE-SET-LENGTH-", StringComparison.OrdinalIgnoreCase);
 
     private static bool RequiresMapping(TargetLanguage language, string name, ISet<string> reserved)
     {
@@ -239,7 +256,7 @@ internal sealed class TargetIdentifierMap
             "managed", "nameof", "nint", "not", "notnull", "nuint", "on", "or", "orderby",
             "partial", "record", "remove", "required", "scoped", "select", "set", "unmanaged",
             "value", "var", "when", "where", "with", "yield",
-            "Console", "Program", "Main", "String", "System"
+            "Console", "Program", "Main", "String", "System", "_smile_condition"
         };
 
         private static readonly string[] C = new[]
@@ -250,8 +267,8 @@ internal sealed class TargetIdentifierMap
             "switch", "typedef", "union", "unsigned", "void", "volatile", "while", "_Alignas",
             "_Alignof", "_Atomic", "_Bool", "_Complex", "_Generic", "_Imaginary", "_Noreturn",
             "_Static_assert", "_Thread_local",
-            "bool", "fputc", "fwrite", "int64_t", "main", "memcmp", "printf", "size_t",
-            "stdout", "strcmp", "strlen"
+            "bool", "fputc", "fputs", "fwrite", "int64_t", "main", "memcmp", "memcpy",
+            "printf", "size_t", "snprintf", "stdout", "strcmp", "strlen"
         }
             .Concat(FixedWidthIntegerMacros)
             .ToArray();
@@ -285,10 +302,11 @@ internal sealed class TargetIdentifierMap
             "exit", "fd", "file", "from", "function", "global", "goback", "identification", "if", "in", "initialize",
             "input-output", "inspect", "into", "is", "left", "linkage", "merge", "message", "move", "multiply", "nested", "not", "number", "object",
             "negative", "of", "open", "or", "perform", "pic", "picture", "procedure", "program", "program-id", "quote", "read", "right",
-            "record", "return", "rewrite", "run", "section", "select", "self", "set", "sort", "stop",
+            "record", "return", "rewrite", "run", "section", "select", "self", "set", "sort", "source", "stop",
             "same", "string", "subtract", "super", "text", "then", "to", "type", "until", "using", "value", "when",
             "working-storage", "write",
-            "Program", "SMILE-NEWLINE", "SPACE", "SPACES", "ZERO", "ZEROS", "ZEROES"
+            "Program", "SMILE-NEWLINE", "SMILE-RUNTIME-POINTER", "SMILE-RUNTIME-INTEGER",
+            "SMILE-RUNTIME-INTEGER-TEXT", "SPACE", "SPACES", "ZERO", "ZEROS", "ZEROES"
         };
 
         private static readonly string[] ObjectiveC = C
@@ -328,7 +346,7 @@ internal sealed class TargetIdentifierMap
             "internal", "is", "let", "nil", "open", "operator", "private", "protocol", "public",
             "repeat", "return", "self", "static", "struct", "subscript", "super", "switch", "throw",
             "throws", "true", "try", "typealias", "var", "where", "while",
-            "_", "async", "await", "print", "yield", "String"
+            "_", "async", "await", "print", "yield", "String", "_smile_condition"
         };
 
         private static readonly string[] Masm =

@@ -79,31 +79,39 @@ winget install --id Microsoft.OpenJDK.25 --exact
 
 Restart the terminal or desktop app after installation so its process receives the updated `PATH`. A user-local extracted JDK also works when `JAVA_HOME` points at its root and `%JAVA_HOME%\bin` is on the user `PATH`.
 
-The v0.5.1.1 Java and generated-target acceptance tests remain
-environment-aware for contributors who do not have every local toolchain.
-Official release validation makes Java and all ten targets mandatory and
-separately enables generated compiler-warning validation. This ensures the
-ordinary SET, String reassignment, SET Block String, embedded-NUL, wide-Integer
-SET, direct self-assignment, and cumulative `language.smile` programs execute
-instead of skipping:
+The v0.6.0 Java and generated-target acceptance tests remain environment-aware
+for contributors who do not have every local toolchain. Official release
+validation makes Java and all ten targets mandatory and separately enables
+generated compiler-warning validation. This ensures the official IF program,
+the cumulative `language.smile` reference, and the established all-target
+runtime conformance programs execute through every destination instead of
+skipping. The clause-selection matrix remains an evaluator-side semantic test,
+while structural generation tests cover nested branches, branch preservation,
+branch SET and Block String cases, and wide/NUL planning without requiring a
+local toolchain:
 
 ```powershell
 $env:SMILE_REQUIRE_JAVA = '1'
 $env:SMILE_REQUIRE_ALL_TARGETS = '1'
 $env:SMILE_REQUIRE_ZERO_TARGET_WARNINGS = '1'
+dotnet build SMILE.sln -c Debug -nologo
+dotnet test SMILE.sln -c Debug --no-build -nologo
+dotnet build SMILE.sln -c Release -nologo
 dotnet test SMILE.sln -c Release --no-build -nologo
 Remove-Item Env:SMILE_REQUIRE_JAVA
 Remove-Item Env:SMILE_REQUIRE_ALL_TARGETS
 Remove-Item Env:SMILE_REQUIRE_ZERO_TARGET_WARNINGS
 ```
 
-Each acceptance test records the selected `javac` and `java` paths, detected
-versions, compiler success, program exit code, and exact logical UTF-8 stdout
-comparison with `SmileEvaluator`. Machine-specific paths are validation output
-only and are never stored in the repository. The warning-hygiene suite inspects
-the retained generated compiler output with destination-specific diagnostic
-patterns; JavaScript and Python are identified explicitly as interpreted
-targets with no compile stage in their normal SMILE toolchains.
+Each acceptance test records the selected tools, compiler success, program exit
+code, and exact logical UTF-8 stdout comparison with `SmileEvaluator`.
+Machine-specific paths are validation output only and are never stored in the
+repository. The warning suite inspects retained compiler output with
+destination-specific diagnostic patterns. C#, C, MASM x64, Java, COBOL,
+Objective-C, Swift, and C++ are compiler-backed; JavaScript and Python are
+interpreted targets with no compile stage in their normal SMILE toolchains.
+Every compiler-backed IF run must report zero detected warnings, and every
+generated source must retain all IF, ELSE IF, and ELSE bodies.
 
 COBOL:
 

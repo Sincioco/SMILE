@@ -35,7 +35,7 @@ x OR TRUE    -> TRUE
 TRUE OR x    -> TRUE
 ```
 
-The pass is target-independent and safe because expressions remain pure. For SET, it simplifies and evaluates the right side using the old environment and changes the known value only after the complete assignment succeeds. Target generators consume the same statement-order result.
+The pass is target-independent and safe because expressions remain pure. For SET, it simplifies and evaluates the right side using the old environment and changes the known value only after the complete assignment succeeds. For IF, every branch starts from the same incoming environment and outgoing facts merge to Known only when every possible path proves the same value. A known condition may guide analysis but must never delete a source clause or body. Target generators consume the same branch-aware result.
 
 Interpolation-oriented SMILE expressions should remain interpolation in languages where that is natural:
 
@@ -86,13 +86,13 @@ Typed SMILE values must display exactly like the reference evaluator. `Integer` 
 
 Native expression intent must not make a valid SMILE program invalid in the destination compiler. After binding validates both operands, the shared simplifier uses the current known values in every expression position. It simplifies and evaluates the left operand first, decides whether the right operand is reachable, and never simplifies or evaluates an unreachable right subtree. Target generators must consume that shared result rather than duplicate short-circuit policy.
 
-SMILE v0.5.1.1 remains fully traceable in source order because it has no input, branch, loop, function, or external runtime data. Optimization must nevertheless respect SET mutation, atomic right-side evaluation, left-to-right short-circuiting, and direct runtime-storage reads. Never reuse an old known value after SET. v0.5.1.1 adds no syntax; compiler-owned target control flow used to preserve exact output does not introduce a SMILE statement.
+SMILE v0.6.0 has conditional branches but still has no input, loop, function, or external runtime data. Optimization must respect SET mutation, branch boundaries, atomic right-side evaluation, left-to-right short-circuiting, and direct runtime-storage reads. Never reuse an old known value after SET, carry a value from one branch into another, propagate a post-IF value without a proven merge, or replace genuine IF control flow with a currently selected branch.
 
 ## Semantic Integer And Target Storage
 
 SMILE `Integer` is always a signed 64-bit semantic type. The parser, binder, checked constant evaluator, diagnostics, and reference evaluator enforce that definition regardless of how a destination stores a particular program.
 
-Generated storage must use the most idiomatic natural Integer representation that preserves the complete bound program. One per-program profile examines every reachable Integer literal, LET value, SET value, operand, evaluated intermediate, PRINT expression, and interpolation hole at its correct statement position:
+Generated storage must use the most idiomatic natural Integer representation that preserves the complete bound program. One per-program profile examines every Integer literal, LET value, SET value, IF and ELSE IF condition, operand, intermediate, PRINT expression, interpolation hole, and nested branch, including branches not selected by current values:
 
 - C and Objective-C use `int` when all observed values fit signed 32-bit; otherwise they use `int64_t`, `<stdint.h>`, `INT64_C(...)`, and `INT64_MIN` as needed.
 - C++ uses `int` when all observed values fit signed 32-bit; otherwise it uses `std::int64_t`, `<cstdint>`, `INT64_C(...)`, and `INT64_MIN` as needed.
@@ -132,7 +132,7 @@ Wide profiles must be exact and consistent. For example, a C program that requir
 
 ## Runtime Variables, SET, And Block Strings
 
-`LET` declares a variable and stores its initial value. `SET` changes the current value of an earlier declaration without changing its SMILE type. Every target generator handles `BoundLetStatement`, `BoundSetStatement`, and `BoundPrintStatement` in source order. High-level targets preserve natural assignment:
+`LET` declares a variable and stores its initial value. `SET` changes the current value of an earlier declaration without changing its SMILE type. Every target generator handles `BoundLetStatement`, `BoundSetStatement`, `BoundPrintStatement`, and recursive `BoundIfStatement` nodes in source order. High-level targets preserve natural assignment:
 
 ```csharp
 int Counter = 0;
@@ -149,13 +149,23 @@ Ready = False
 Ready = True
 ```
 
-Low-level targets may lower a right side to the exact value proven by `BoundProgramExecutionTrace`, but they must emit a real storage update at the SET statement. A generator must not omit SET merely because a later or final value is already known.
+Low-level targets may lower a right side to the exact value proven by the shared branch-aware program analysis, but they must emit a real storage update at the SET statement. A generator must not omit SET merely because a later or final value is already known.
 
 The front end completely normalizes a SET Block String Literal to an ordinary bound String value. Target generators never inspect delimiters, remove indentation, normalize physical newlines, decode block syntax, or choose behavior based on the original source form. They emit the normalized value using the clearest exact ordinary destination String syntax.
 
-One shared mutation analysis records every symbol targeted by SET. Swift declares those symbols with `var` and may retain `let` for symbols that never change.
+One shared recursive mutation analysis records every symbol targeted by SET anywhere in the program, including currently unselected IF branches. Swift declares those symbols with `var` and may retain `let` only for symbols never changed on any path.
 
 A valid direct SMILE self-assignment must remain an explicit assignment in generated code. When a destination rejects or warns about `target = target`, its generator must emit the smallest type-preserving identity expression while retaining a real target assignment: append an empty String, add Integer zero, or OR Boolean false. C# uses this lowering to avoid `CS1717`, and Swift uses it because plain self-assignment is rejected. Detection is based only on a direct bound variable expression whose `VariableSymbol` is the same symbol as the SET target; equal current values, differently cased source spellings, or mapped target names must not substitute source-text comparison for symbol identity. Other targets use their natural mutable assignment forms unless their compiler proves that focused lowering is necessary.
+
+## IF Control Flow
+
+Every generator consumes the shared ordered `BoundConditionalClause` and `BoundIfStatement` tree. It must emit every source clause and body, even when current known values make one clause predictably selected. Generators must not inspect IF source text, flatten a nested IF with ad hoc searches, or substitute one compiler-time branch for genuine destination control flow.
+
+C#, C, C++, Java, JavaScript, Objective-C, and Swift use natural `if / else if / else` blocks. Python uses `if / elif / else` and emits `pass` for an empty body. COBOL emits warning-free free-format `IF / ELSE / END-IF`; a nested ELSE/IF shape is acceptable for multiple clauses when order and matching terminators remain clear. MASM x64 emits deterministic compare/jump control flow with stable labels for each clause and the shared end.
+
+An IF condition reads current target storage whenever the destination can represent the bound expression clearly. Branch SET operations update real storage only when that branch executes. An IF without ELSE includes the unchanged incoming path for analysis. After IF, a target-local known value may be used only when every possible outgoing path proves the same value; branch-specific facts never leak into later code.
+
+Integer profiling, String sizing, embedded-NUL planning, mutation analysis, required headers/helpers, and compiler-owned names inspect the complete recursive IF tree. A branch-assigned String contributes its maximum UTF-8 byte length and NUL possibility even when another branch is selected by current values. Deterministic output requires stable indentation, COBOL names, and MASM labels for nested and multi-clause programs.
 
 ## Python
 
@@ -208,7 +218,7 @@ Generators emit only required headers, never `using namespace std;`, and never f
 
 Lower-level targets may need target-local lowering, but the emitted code should still look natural for that target.
 
-The shared sequential trace makes each current SMILE value known at its statement position. COBOL, MASM, and other lower-level targets may emit evaluated declaration and assignment values instead of building unnecessary expression runtimes. C and Objective-C preserve native Integer and Boolean expression intent while String declarations and complex assignments may use their exact statement-local values:
+The reference execution trace records the one branch selected by the current source program, while branch-aware analysis decides whether a value is safe to embed in generated code. COBOL, MASM, and other lower-level targets may emit an evaluated declaration, assignment, condition, or output value only when the corresponding branch-aware fact is `Known`. After an `Unknown` merge they must read runtime storage and lower the expression, even though the reference trace also contains today's selected concrete value. C and Objective-C preserve native Integer and Boolean expression intent; branch-aware Known String declarations and assignments may use exact values:
 
 ```c
 const char *FullName = "Sin Cioco";
@@ -216,7 +226,7 @@ int Age = 49;
 bool Adult = Age >= 18;
 ```
 
-This keeps generated programs dependency-light without treating an initial LET value as permanent. Every later SET still emits an actual destination storage update. A statement-local known value may guide storage size, literal construction, and complex-expression lowering, but it must not replace a required direct variable read when the destination can read that storage naturally.
+This keeps generated programs dependency-light without treating an initial LET value as permanent. Every later SET still emits an actual destination storage update. A branch-aware Known value may guide storage size, literal construction, and complex-expression lowering. A selected concrete trace value must never replace a runtime read or expression after analysis reports `Unknown`, including a later LET, SET, PRINT, interpolation hole, or IF condition.
 
 For current NUL-free C `PRINT`, SMILE emits one safe typed `printf` statement per SMILE `PRINT`:
 
@@ -242,11 +252,11 @@ printf("%s\n", Name);
 
 Ordinary `int` expressions use `%d`. Wide `int64_t` expressions use `%lld` with an explicit value-preserving cast to `long long`, because the exact underlying typedef of `int64_t` is platform-specific. Boolean expressions use `%s` with an argument that selects canonical `TRUE` or `FALSE`. Literal percent signs are doubled in the compiler-generated format.
 
-SMILE Strings are complete values with an exact length. C-family `%s` and `strcmp` may be used only when semantically valid for the complete value. C and Objective-C keep mutable `const char *` pointers, and every String SET right side lowers to one exact ordinary C literal followed by pointer assignment. If a variable can contain NUL at any LET or SET position, a deterministic collision-safe `size_t smileString{variableIndex}Length` support variable is initialized at LET and updated immediately after every SET pointer update. The pointer and logical length must always describe the same current String value.
+SMILE Strings are complete values with an exact length. C-family `%s` and `strcmp` may be used only when semantically valid for the complete value. C and Objective-C keep mutable `const char *` pointers. A branch-aware Known String assignment may lower to one exact ordinary C literal followed by pointer assignment; a runtime-unknown direct assignment or later LET copies current source storage, while an Unknown composite expression materializes its current segments into a bounded deterministic buffer. Direct runtime copies preserve value semantics without later mutable-buffer aliasing. If a variable can contain NUL at any LET or SET position, a deterministic collision-safe `size_t smileString{variableIndex}Length` support variable accompanies it. Runtime copies and materialization synchronize the logical length, using `strlen` only when the complete source value is proved NUL-free. The pointer and logical length must always describe the same current String value.
 
-A direct C or Objective-C String variable PRINT reads current target storage. When the variable has a logical-length companion, output uses the current pointer and current length, normally with `fwrite(variable, 1, variableLength, stdout)` followed by `fputc('\n', stdout)`. An ordinary NUL-free variable may continue to use `printf("%s\n", variable)`. The PRINT operation must not use a second independent static copy of the variable's statement-local value. Raw templates, interpolation, concatenation, and other complex expressions may retain their existing exact lowering.
+A direct C or Objective-C String variable PRINT reads current target storage. When the variable has a logical-length companion, output uses the current pointer and current length, normally with `fwrite(variable, 1, variableLength, stdout)` followed by `fputc('\n', stdout)`. An ordinary NUL-free variable may continue to use `printf("%s\n", variable)`. Composite output writes runtime String segments with their current logical lengths when NUL is possible and may combine those writes with static literal segments. The PRINT operation must not use a second independent static copy of a variable whose branch-aware value is Unknown. Raw templates, interpolation, concatenation, and other complex expressions may use exact static lowering only when their complete value is branch-aware Known.
 
-Applicable direct C-family String equality also reads current storage. NUL-free variable operands use ordinary ordinal `strcmp`. Exact byte-aware operands compare logical lengths before `memcmp`, so unequal lengths and prefix collisions cannot read past the shorter value or ignore bytes after NUL. Variable-versus-variable, variable-versus-literal, and literal-versus-variable equality and inequality follow this rule. A highly complex expression may still lower to its statement-local known Boolean when constructing a storage comparison would make the generated program substantially less clear.
+Applicable C-family String equality also reads current storage. NUL-free variable operands use ordinary ordinal `strcmp`. Exact byte-aware operands compare logical lengths before `memcmp`, so unequal lengths and prefix collisions cannot read past the shorter value or ignore bytes after NUL. Variable-versus-variable, variable-versus-literal, literal-versus-variable, and supported composite operands follow this rule. A complex expression may lower to a static Boolean only when branch-aware analysis proves that Boolean on every possible incoming path; the selected concrete trace is never authority after an Unknown merge.
 
 Objective-C follows the same stdout style in the Windows-local console profile:
 
@@ -265,7 +275,7 @@ COBOL uses GnuCOBOL free-format source and stores variables in `WORKING-STORAGE`
 DISPLAY "Hello Sin!".
 ```
 
-COBOL storage sizing must inspect every LET and SET value so each `PIC X` item fits the maximum assigned UTF-8 byte length. Every SET emits `MOVE <exact literal> TO <variable>`. A mutated variable also has a COMP-5 `SMILE-SET-LENGTH-{variableIndex}` field; its compiler-owned name is compared with mapped user names case-insensitively and receives a deterministic numeric suffix on collision. SET moves the exact byte length into that field immediately after moving the value. Fixed-length data items must not leak padding into SMILE output.
+COBOL storage sizing must inspect every LET and SET value so each `PIC X` item fits the maximum assigned UTF-8 display-byte length. A branch-aware Known assignment emits `MOVE <exact literal> TO <variable>`. A runtime-unknown direct SET or later LET moves the current source item and copies its logical length; an Unknown composite LET or SET uses a runtime `STRING` plan plus numeric/Boolean display storage and writes the resulting length. Unknown output and conditions use the same current storage rather than selected concrete values. A mutated variable also has a COMP-5 `SMILE-SET-LENGTH-{variableIndex}` field; its compiler-owned name is compared with mapped user names case-insensitively and receives a deterministic numeric suffix on collision. Fixed-length data items must not leak padding into SMILE output.
 
 A direct COBOL variable PRINT reads the mapped `WORKING-STORAGE` item rather than displaying a compiler-time copy of its known value. Every directly printed String has a logical-length field; mutated values also maintain one across SET. Output reads that current length and uses reference modification for nonempty storage. A runtime zero-length condition emits exactly one line feed and no padding space. This applies equally to ordinary Strings, normalized Block Strings, embedded NUL, UTF-8, control bytes, and intentional trailing whitespace. Integer and Boolean storage continues to display canonical SMILE text.
 
@@ -293,7 +303,7 @@ Blank SMILE `PRINT` must emit an empty line, not a line containing a single spac
 DISPLAY X"0A" WITH NO ADVANCING.
 ```
 
-MASM stays dependency-light and uses explicit output operations, but the generated assembly should keep explanatory right-side comments so learners can follow the code. Runtime variables retain `variable{n}Ptr` and `variable{n}Length`; LET data uses `variable{n}Value`, SET data uses deterministic `set{statementIndex}Value` labels, and source-order SET code updates both runtime fields. Direct variable PRINT reads the current pointer and length, while complex PRINT may use exact statement-local static bytes.
+MASM stays dependency-light and uses explicit output operations, but the generated assembly should keep explanatory right-side comments so learners can follow the code. Runtime variables retain `variable{n}Ptr` and `variable{n}Length`, and Integer variables also retain signed runtime numeric storage for arithmetic and relational conditions. LET data uses deterministic `variable{n}Value` labels. A branch-aware Known SET may use a deterministic `set{statementIndex}Value` label; runtime-unknown direct LET or SET copies current source value storage without later mutable-buffer aliasing, and Unknown composite expressions use bounded deterministic buffers plus one signed Integer text formatter. Direct and composite PRINT or condition plans read current storage. Exact static bytes may be used only when the complete value is branch-aware Known; the selected concrete trace is never a lowering authority after Unknown.
 
 For MASM empty strings, storage may use one placeholder byte so a label has an address:
 
@@ -329,7 +339,7 @@ Target generators must use the compiler's symbol-based target identifier map. A 
 - destination-language reserved identifier patterns, such as C and Objective-C names beginning with `__` or with `_` followed by an uppercase ASCII letter;
 - another generated target name.
 
-C and Objective-C must map every standard-library facility or type name emitted by the generator, including `bool`, `int64_t`, `size_t`, `printf`, `fwrite`, `fputc`, `strcmp`, `memcmp`, `strlen`, `main`, and `stdout`. Learner variables must never shadow a generated storage read, comparison, output call, or declaration type.
+C and Objective-C must map every standard-library facility or type name emitted by the generator, including `bool`, `int64_t`, `size_t`, `printf`, `fwrite`, `fputc`, `fputs`, `strcmp`, `memcmp`, `memcpy`, `strlen`, `snprintf`, `main`, and `stdout`. Learner variables must never shadow a generated storage read, comparison, output call, or declaration type.
 
 COBOL must map reserved words and identifiers that are not valid COBOL data names. Underscores should become readable hyphenated names such as `SMILE-internal`.
 
@@ -359,10 +369,10 @@ Every reference to a SMILE symbol must use the same mapped target name as its de
 
 ## Conformance Validation
 
-Every expression and statement feature is validated against the `SmileEvaluator` reference oracle. The generated-target suite includes sequential Integer, String, and Boolean mutation; old-value right sides; direct self-assignment; mutation-aware short circuits; SET-introduced wide profiles; ordinary and block String reassignment; structural indentation; blank, leading, and intentional trailing logical newlines; quotes; trailing spaces; tabs; embedded NUL; and direct current-storage reads. It runs all locally installed toolchains for all ten targets and compares exact UTF-8 stdout bytes after normalizing only CRLF to LF in tests that explicitly permit platform line-ending normalization. Tests never trim or discard NUL, backspace, form feed, carriage return, tab, or meaningful trailing whitespace. Repeated generation of the same program must remain byte-for-byte deterministic. C, Objective-C, COBOL, and MASM additionally require structural assertions proving that direct PRINT operations reference target storage. Java release validation requires both `javac` and `java` and executes the SET acceptance programs plus the cumulative `examples/language.smile` without SET-related skips.
+Every expression and statement feature is validated against the `SmileEvaluator` reference oracle. The generated-target suite includes IF-only, IF/ELSE, multiple ELSE IF, final ELSE, no-selected-branch, nested IF, empty bodies, selected SET mutation, branch Block Strings, merged and unknown post-IF values, wide Integers and embedded NUL introduced on unselected branches, and all earlier SET/expression cases. Every generated source must retain every body. It runs all locally installed toolchains for all ten targets and compares exact UTF-8 stdout bytes after normalizing only CRLF to LF where explicitly permitted. Tests never trim or discard NUL, backspace, form feed, carriage return, tab, or meaningful trailing whitespace. Repeated generation of nested and multi-clause programs must remain byte-for-byte deterministic. Java release validation requires both `javac` and `java` and executes the official IF program plus cumulative `examples/language.smile` without skips.
 
-Release validation must distinguish warnings from the SMILE solution build and warnings from generated target programs. `SMILE_REQUIRE_ZERO_TARGET_WARNINGS=1` activates supported generated-target warning checks; v0.5.1.1 requires generated C# compilation to succeed without a C# compiler diagnostic matching `warning CS####`, including the direct self-assignment acceptance program and cumulative `examples/language.smile`. This generated warning gate is separate from the all-ten-target runtime conformance gate and does not justify claiming warning-free compilation for a destination whose compiler warning model was not inspected.
+Release validation must distinguish warnings from the SMILE solution build and warnings from generated target programs. `SMILE_REQUIRE_ZERO_TARGET_WARNINGS=1` activates destination-specific warning checks for compiler-backed targets; JavaScript and Python have no compile stage in their normal SMILE toolchains. The official IF program must build/run through all ten targets, return exit code zero, emit zero detected compiler warnings, preserve every source branch, and match `SmileEvaluator`. This generated warning gate remains separate from the solution-build warning count.
 
 ## Destination-Language Freeze
 
-C++ is SMILE's tenth and final planned destination language. Target-language expansion is frozen unless Sin explicitly reopens it. After the syntax-free v0.5.1.1 warning-hygiene release, the next language milestone is v0.6.0 `IF / THEN / ELSE`; later work should deepen input, loops, functions, scopes, debugging, and teaching tools rather than adding another backend. Rust, Zig, and Go remain deferred.
+C++ is SMILE's tenth and final planned destination language. Target-language expansion is frozen unless Sin explicitly reopens it. After v0.6.0 IF / ELSE IF / ELSE, later work should deepen input, loops, functions, scopes, debugging, and teaching tools rather than adding another backend. Rust, Zig, and Go remain deferred.

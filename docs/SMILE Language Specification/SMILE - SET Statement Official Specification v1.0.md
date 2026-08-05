@@ -16,6 +16,7 @@ This specification works together with:
 
 - `SMILE - LET Statement Official Specification v1.0.md`
 - `SMILE - PRINT Statement Official Specification v1.0.md`
+- `SMILE - IF Statement Official Specification v1.0.md`
 - `SMILE - String Literals Official Specification v1.0.md`
 - `SMILE - Core Types and Expressions Official Specification v1.0.md`
 
@@ -329,13 +330,13 @@ The target variable is not changed while its new value is still being evaluated.
 
 If evaluation fails, the previous value remains unchanged.
 
-In SMILE v0.5.0 there is still no runtime input, branching, looping, function call, or external runtime data, so current arithmetic errors remain detectable before destination generation.
+SMILE v0.6.0 adds branching through IF but still has no runtime input, looping, function call, or external runtime data. A SET right side is evaluated only when its containing branch executes. Binding and whole-program target planning still inspect SET expressions in every source branch.
 
 ---
 
 # 11. Sequential execution
 
-Statements execute from top to bottom.
+Statements execute in source order. Within IF, only the first successful clause or final ELSE body executes; a SET in the selected branch updates the current value seen after END IF.
 
 ```smile
 LET Counter = 0
@@ -709,7 +710,7 @@ S
   N
 ```
 
-This rule allows the SET statement to be indented naturally inside future control-flow, loop, function, or scope syntax without forcing structural code indentation into the String value.
+This rule allows the SET statement to be indented naturally inside current IF branches and future loop, function, or scope syntax without forcing structural code indentation into the String value.
 
 ---
 
@@ -1333,6 +1334,8 @@ A dedicated token or syntax node may exist in the front end to enforce source pl
 
 `SET` is case-insensitive and reserved in every casing.
 
+SMILE v0.6.0 also reserves `IF`, `THEN`, `ELSE`, and `END`. `ELSEIF` and `ENDIF` are not combined keywords.
+
 Invalid:
 
 ```smile
@@ -1680,6 +1683,14 @@ A SET Block String Literal is a SET-only source form, not a general expression f
 
 All existing precedence, typing, equality, arithmetic, interpolation, escape, and short-circuit rules remain normative.
 
+## Compatibility with IF in SMILE v0.6.0
+
+SET is permitted in IF, ELSE IF, ELSE, and nested IF bodies. The complete right side evaluates against the current environment only when its branch executes, then updates the existing fixed-type variable atomically. Later conditions and statements observe the selected branch's update.
+
+All branches are nevertheless parsed, bound, type-checked, and inspected for Integer width, maximum String byte length, embedded NUL, mutation, and target facilities. A target must retain every branch and emit a real storage update at each SET position. Branch-aware analysis may propagate a value after IF only when every possible outgoing path proves the same value.
+
+A SET Block String Literal remains one normalized SET value inside a branch. Its internal physical lines are content and MUST NOT be interpreted as ELSE, ELSE IF, or END IF terminators.
+
 ---
 
 # 55. Normative ordinary SET acceptance program
@@ -1753,7 +1764,6 @@ The `{Name}` text is literal because block Strings do not interpolate.
 
 It prepares SMILE for:
 
-- `IF / THEN / ELSE`;
 - `INPUT`;
 - loops;
 - functions;
@@ -1764,3 +1774,5 @@ The SET Block String Literal remains deliberately SET-only.
 A future general-purpose multiline String feature may use another explicitly specified source form. That future feature must not silently change the SET Block String behavior defined here.
 
 Optimizations may use known values only when they preserve statement order, mutation, and left-to-right evaluation.
+
+SMILE v0.6.0 realizes the IF milestone. Optimizations must additionally preserve every IF clause and body and must not propagate branch-specific state after END IF.

@@ -4,8 +4,8 @@
 **Status:** Official
 **Applies to:** SMILE language
 **Primary statement:** `LET`
-**Companion statement:** `PRINT`
-**Companion specification:** `docs/SMILE Language Specification/SMILE - PRINT Statement Official Specification v1.0.md`
+**Companion statements:** `PRINT`, `SET`, `IF`
+**Companion specifications:** the official PRINT, SET, IF, String literal, and core expression specifications in this directory
 **Repository destination:** `docs/SMILE Language Specification/SMILE - LET Statement Official Specification v1.0.md`
 
 ---
@@ -14,13 +14,14 @@
 
 `LET` declares a named SMILE variable and assigns its initial value.
 
-The official SMILE statement keywords through v0.5.0 are:
+The official SMILE statements through v0.6.0 are:
 
 | Keyword | Purpose |
 |---|---|
 | `LET` | Declares and initializes a variable |
 | `PRINT` | Writes text or an evaluated value to standard output |
 | `SET` | Changes the current value of an existing variable without changing its type |
+| `IF` | Selects one block from an IF / ELSE IF / ELSE chain |
 
 Together, these statements support the first useful SMILE programs:
 
@@ -161,7 +162,7 @@ The two values are different strings.
 
 ## 5. Reserved keywords
 
-`LET`, `PRINT`, and `SET` are official reserved SMILE statement keywords.
+`LET`, `PRINT`, `SET`, `IF`, `THEN`, `ELSE`, and `END` are official reserved SMILE keywords.
 
 They cannot be used as variable names in any case combination.
 
@@ -171,6 +172,10 @@ Invalid:
 LET LET = "Value"
 LET Print = "Value"
 LET set = "Value"
+LET if = "Value"
+LET Then = "Value"
+LET ELSE = "Value"
+LET end = "Value"
 ```
 
 A longer identifier that merely contains the character sequence is not the keyword.
@@ -183,6 +188,8 @@ LET Reprint = "Again"
 LET Printable = "Yes"
 LET LetValue = "Value"
 ```
+
+`ELSEIF` and `ENDIF` are not combined keywords. Longer identifiers that merely contain keyword text remain valid under the normal identifier rules.
 
 Future SMILE specifications may add additional reserved keywords.
 
@@ -988,7 +995,7 @@ A semantic binding phase SHOULD:
 
 Target-language generators MUST consume the language-neutral semantic representation rather than reparsing SMILE source.
 
-`BoundLetStatement` carries the variable symbol and its bound initializer. It MUST NOT permanently own the variable's current value. The evaluator environment is the source of truth for current runtime state, while a separate statement-order execution analysis may record known values for diagnostics, simplification, Integer profiling, and low-level target planning. `AND` and `OR` evaluation follows the normative left-to-right short-circuit rules in the core expression specification even though binding and type checking still examine both operands.
+`BoundLetStatement` carries the variable symbol and its bound initializer. It MUST NOT permanently own the variable's current value. The evaluator environment is the source of truth for current runtime state, while a separate recursive statement-list analysis records statement-order, mutation-aware, and branch-aware known values for diagnostics, simplification, Integer profiling, and low-level target planning. Every IF branch begins with the same incoming environment, and later statements receive a known value only when outgoing-path merge proves it. `AND` and `OR` evaluation follows the normative left-to-right short-circuit rules in the core expression specification even though binding and type checking still examine both operands.
 
 ---
 
@@ -1086,7 +1093,7 @@ For C and Objective-C, generators SHOULD map implementation-reserved identifier 
 
 For Java and Swift, a single SMILE identifier `_` MUST be mapped to a usable destination-language local variable name.
 
-Low-level targets such as C, Objective-C, COBOL, and MASM MAY use the initializer value known at the LET statement when creating declaration storage:
+Low-level targets such as C, Objective-C, COBOL, and MASM MAY use an initializer value when branch-aware analysis proves it `Known` at the LET statement on every possible incoming path:
 
 ```c
 const char *FullName = "Sin Cioco";
@@ -1094,7 +1101,7 @@ int Age = 49;
 bool Adult = true;
 ```
 
-This remains a valid declaration strategy when it preserves the complete value. If the variable is later targeted by `SET`, the destination storage must be mutable enough for the required update, and every SET statement must emit an actual storage update at its source position.
+This remains a valid declaration strategy when it preserves the complete value. A top-level LET after an IF whose initializer is branch-aware `Unknown` MUST instead evaluate or copy from current generated runtime storage at the LET position; String pointer, byte storage, and logical-length metadata MUST remain synchronized. The selected concrete reference trace is not authority for that static initializer. If the variable is later targeted by `SET`, the destination storage must be mutable enough for the required update, and every SET statement must emit an actual storage update at its source position.
 
 When MASM emits an empty string constant, it MAY use placeholder storage:
 
@@ -1112,11 +1119,11 @@ This ensures `PRINT {Empty}` writes only the normal `PRINT` newline and does not
 
 ---
 
-## 28. Compatibility contract with PRINT and SET version 1.0
+## 28. Compatibility contract with PRINT, SET, and IF version 1.0
 
-The official `LET`, `PRINT`, and `SET` specifications are jointly consistent under these rules:
+The official `LET`, `PRINT`, `SET`, and `IF` specifications are jointly consistent under these rules:
 
-1. `LET`, `PRINT`, and `SET` are case-insensitive keywords.
+1. `LET`, `PRINT`, `SET`, `IF`, `THEN`, `ELSE`, and `END` are case-insensitive keywords.
 2. Identifiers referenced by any of these statements are case-insensitive.
 3. All ordinary expression positions use the same ordinary string-literal rules.
 4. All ordinary expression positions use the same `$"..."` interpolation rules.
@@ -1134,8 +1141,10 @@ The official `LET`, `PRINT`, and `SET` specifications are jointly consistent und
 16. `SET` changes the current value without changing the type established by `LET`.
 17. A SET Block String Literal is a complete SET value only; it is not legal in LET or PRINT.
 18. Adding or removing a `LET` declaration does not change how bare `PRINT` text is parsed.
-19. All three statements use the same language-neutral expression model where expressions are allowed.
-20. Target generators do not independently reinterpret statement source text or block delimiters.
+19. All four statements use the same language-neutral expression model where expressions are allowed.
+20. IF v1.0 permits PRINT, SET, nested IF, blank lines, and SET Block String Literals in branches, but rejects LET until scopes are introduced.
+21. Every atomic IF condition is an explicit comparison, and IF conditions cannot invoke functions or procedures.
+22. Target generators do not independently reinterpret statement source text, IF structure, or block delimiters.
 
 An implementation that violates any of these rules does not conform to the combined specifications.
 
@@ -1403,6 +1412,7 @@ Future specifications MUST preserve these version 1.0 rules:
 - The initializer uses the normal expression grammar.
 - A declaration does not change the meaning of bare `PRINT` text.
 - One statement normally occupies one line.
+- LET remains a declaration. SMILE v0.6.0 does not permit LET inside IF bodies because it has no block scopes; a future scope specification may deliberately expand that placement rule.
 
 ---
 
@@ -1410,7 +1420,7 @@ Future specifications MUST preserve these version 1.0 rules:
 
 The official SMILE `LET` rules are:
 
-1. `LET`, `PRINT`, and `SET` are official SMILE statement keywords.
+1. `LET`, `PRINT`, `SET`, `IF`, `THEN`, `ELSE`, and `END` are official SMILE keywords.
 2. SMILE keywords and identifiers are case-insensitive.
 3. `LET` declares and initializes a new variable.
 4. Version 1.0 originally introduced string variables; SMILE v0.4.1 supports official `LET` initializers for `String`, `Integer`, and `Boolean` through the core expression specification.
@@ -1418,7 +1428,7 @@ The official SMILE `LET` rules are:
 6. A variable becomes visible only after its declaration succeeds.
 7. A variable must be declared before use.
 8. Duplicate declarations are errors, including case-only duplicates.
-9. `SET` is the only assignment statement in v0.5.0; it changes the current value without changing the type established by `LET`.
+9. `SET` is the only assignment statement in v0.6.0; it changes the current value without changing the type established by `LET`.
 10. Ordinary quoted strings do not interpolate.
 11. `$"..."` strings interpolate using the same rules as `PRINT`.
 12. `+` concatenates strings and adds integers according to the core expression type rules.
@@ -1429,8 +1439,9 @@ The official SMILE `LET` rules are:
 17. `PRINT {Name}` evaluates the variable's current value.
 18. A newline normally terminates one statement; a SET Block String Literal is one explicit logical multiline exception.
 19. Semicolons do not separate statements.
-20. Target generators consume the shared lexer/parser/binder/evaluator semantic representation and statement-order analysis.
-21. `LET`, `SET`, and `PRINT` MUST preserve identical expression and identifier behavior when used together.
+20. Target generators consume the shared lexer/parser/binder/evaluator semantic representation and recursive statement-order, mutation-aware, branch-aware analysis.
+21. `LET`, `SET`, `PRINT`, and `IF` MUST preserve identical expression and identifier behavior when used together.
+22. LET is not permitted inside an IF v1.0 body until scopes are formally introduced.
 
 ---
 

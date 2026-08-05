@@ -22,6 +22,10 @@
       <Word>NOT</Word>
       <Word>AND</Word>
       <Word>OR</Word>
+      <Word>IF</Word>
+      <Word>THEN</Word>
+      <Word>ELSE</Word>
+      <Word>END</Word>
     </Keywords>
 
     <Rule color="Number">\b\d+(\.\d+)?\b</Rule>

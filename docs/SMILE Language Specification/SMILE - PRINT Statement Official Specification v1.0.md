@@ -14,6 +14,8 @@
 
 Evaluated variable references read the variable's current runtime value at the `PRINT` statement. An earlier `SET` therefore changes what every later direct expression, raw-template hole, and interpolated String hole prints.
 
+SMILE v0.6.0 permits PRINT in IF, ELSE IF, ELSE, and nested IF bodies. A PRINT executes only when its containing branch is selected. All PRINT source text in unselected branches is still parsed and bound, and every target retains the complete branch structure.
+
 SMILE deliberately provides both:
 
 1. A forgiving, beginner-friendly template form.
@@ -125,6 +127,8 @@ First step; second step; third step.
 ```
 
 All forms of `PRINT` defined by this specification must fit on one physical source line. The multiline SET Block String Literal is a SET-only source form and is not legal directly in `PRINT`.
+
+IF headers and terminators have their own one-logical-line rules. PRINT text inside a branch does not change how ELSE, ELSE IF, or END IF is recognized on later lines.
 
 Future SMILE versions may permit visibly incomplete expressions to continue across lines, but that does not permit multiple statements on one line.
 
@@ -795,6 +799,8 @@ It is invalid or follows the separately defined expression grammar.
 
 Restricting quote omission to `PRINT` prevents ambiguity as SMILE grows.
 
+In particular, bare IF condition text never gains PRINT's raw-template behavior. IF conditions use the ordinary expression grammar plus the explicit-comparison and call-free rules in [SMILE - IF Statement Official Specification v1.0](SMILE%20-%20IF%20Statement%20Official%20Specification%20v1.0.md).
+
 ---
 
 ## 21. Future compatibility
@@ -820,6 +826,8 @@ The official v0.4.1 expression grammar and short-circuit evaluation rules are de
 - [SMILE - Core Types and Expressions Official Specification v1.0](SMILE%20-%20Core%20Types%20and%20Expressions%20Official%20Specification%20v1.0.md)
 
 Future versions may expand the expression grammar further without changing the raw-template rules.
+
+SMILE v0.6.0 reuses these same expression, interpolation, display, and current-value rules for PRINT statements inside conditional branches. Only the selected branch produces output.
 
 Future versions MUST preserve the deterministic distinction:
 
@@ -855,6 +863,8 @@ The official SMILE `PRINT` rules are:
 17. Target generators preserve expression intent when the target language has an idiomatic equivalent.
 18. Evaluated variable references read the current value established by earlier `LET` and `SET` statements.
 19. SET Block String Literals are not legal directly in `PRINT`.
+20. PRINT is permitted in every IF v1.0 body and executes only when that branch is selected.
+21. Bare PRINT templates do not change IF condition parsing or ELSE/END IF terminator recognition.
 
 ---
 

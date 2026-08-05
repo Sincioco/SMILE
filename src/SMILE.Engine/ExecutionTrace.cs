@@ -12,10 +12,10 @@ public sealed record BoundStatementExecution(
     SmileValue Value,
     IReadOnlyDictionary<VariableSymbol, SmileValue> ValuesAfter);
 
-// SMILE v0.5.1.1 has mutable runtime variables but still no input, branches,
-// loops, functions, or other unknown runtime data. This small source-order
-// analysis therefore gives every optimization and target the same current
-// values without pretending a LET initializer remains the variable's value.
+// The exact execution trace follows the branch selected by today's source-only
+// program. BoundProgramAnalysis separately merges every syntactic path so
+// optimizers cannot confuse this concrete reference run with a value proved
+// across all possible future runtime inputs.
 public sealed class BoundProgramExecutionTrace
 {
     private BoundProgramExecutionTrace(
@@ -99,6 +99,11 @@ internal sealed class BoundProgramExecutionTraceBuilder
         BoundStatement statement,
         ICollection<Diagnostic>? diagnostics = null)
     {
+        if (statement is BoundIfStatement conditional)
+        {
+            return TryAppendIf(conditional, diagnostics);
+        }
+
         BoundExpression expression = statement switch
         {
             BoundLetStatement let => let.Initializer,
@@ -139,6 +144,155 @@ internal sealed class BoundProgramExecutionTraceBuilder
         return true;
     }
 
+    private bool TryAppendIf(
+        BoundIfStatement conditional,
+        ICollection<Diagnostic>? diagnostics)
+    {
+        IReadOnlyDictionary<VariableSymbol, SmileValue> before =
+            BoundProgramExecutionTrace.Snapshot(_values);
+        var values = new Dictionary<VariableSymbol, SmileValue>(_values);
+        var assignedValues = _assignedValues.ToDictionary(
+            pair => pair.Key,
+            pair => new List<SmileValue>(pair.Value));
+        var mutatedVariables = new HashSet<VariableSymbol>(_mutatedVariables);
+
+        if (!TryExecuteIf(
+                conditional,
+                values,
+                assignedValues,
+                mutatedVariables,
+                diagnostics,
+                out bool matchedConditionalClause))
+        {
+            return false;
+        }
+
+        _values.Clear();
+        foreach ((VariableSymbol variable, SmileValue value) in values)
+        {
+            _values.Add(variable, value);
+        }
+
+        _assignedValues.Clear();
+        foreach ((VariableSymbol variable, List<SmileValue> assigned) in assignedValues)
+        {
+            _assignedValues.Add(variable, assigned);
+        }
+
+        _mutatedVariables.Clear();
+        _mutatedVariables.UnionWith(mutatedVariables);
+
+        _steps.Add(new BoundStatementExecution(
+            conditional,
+            before,
+            SmileValue.FromBoolean(matchedConditionalClause),
+            BoundProgramExecutionTrace.Snapshot(_values)));
+        return true;
+    }
+
+    private static bool TryExecuteIf(
+        BoundIfStatement conditional,
+        Dictionary<VariableSymbol, SmileValue> values,
+        Dictionary<VariableSymbol, List<SmileValue>> assignedValues,
+        HashSet<VariableSymbol> mutatedVariables,
+        ICollection<Diagnostic>? diagnostics,
+        out bool matchedConditionalClause)
+    {
+        foreach (BoundConditionalClause clause in conditional.Clauses)
+        {
+            if (!BoundExpressionEvaluator.TryEvaluate(
+                    clause.Condition,
+                    values,
+                    out SmileValue condition,
+                    diagnostics))
+            {
+                matchedConditionalClause = false;
+                return false;
+            }
+
+            if (!condition.BooleanValue)
+            {
+                continue;
+            }
+
+            matchedConditionalClause = true;
+            return TryExecuteStatements(
+                clause.Statements,
+                values,
+                assignedValues,
+                mutatedVariables,
+                diagnostics);
+        }
+
+        matchedConditionalClause = false;
+        return !conditional.HasElseClause || TryExecuteStatements(
+            conditional.ElseStatements,
+            values,
+            assignedValues,
+            mutatedVariables,
+            diagnostics);
+    }
+
+    private static bool TryExecuteStatements(
+        IReadOnlyList<BoundStatement> statements,
+        Dictionary<VariableSymbol, SmileValue> values,
+        Dictionary<VariableSymbol, List<SmileValue>> assignedValues,
+        HashSet<VariableSymbol> mutatedVariables,
+        ICollection<Diagnostic>? diagnostics)
+    {
+        foreach (BoundStatement statement in statements)
+        {
+            switch (statement)
+            {
+                case BoundSetStatement set:
+                    if (!BoundExpressionEvaluator.TryEvaluate(
+                            set.Value,
+                            values,
+                            out SmileValue assigned,
+                            diagnostics))
+                    {
+                        return false;
+                    }
+
+                    values[set.Variable] = assigned;
+                    mutatedVariables.Add(set.Variable);
+                    RecordAssignedValue(assignedValues, set.Variable, assigned);
+                    break;
+
+                case BoundPrintStatement print:
+                    if (!BoundExpressionEvaluator.TryEvaluate(
+                            print.Value,
+                            values,
+                            out _,
+                            diagnostics))
+                    {
+                        return false;
+                    }
+
+                    break;
+
+                case BoundIfStatement nested:
+                    if (!TryExecuteIf(
+                            nested,
+                            values,
+                            assignedValues,
+                            mutatedVariables,
+                            diagnostics,
+                            out _))
+                    {
+                        return false;
+                    }
+
+                    break;
+
+                default:
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
     public BoundProgramExecutionTrace Build() =>
         BoundProgramExecutionTrace.From(
             _steps,
@@ -148,10 +302,18 @@ internal sealed class BoundProgramExecutionTraceBuilder
 
     private void RecordAssignedValue(VariableSymbol variable, SmileValue value)
     {
-        if (!_assignedValues.TryGetValue(variable, out List<SmileValue>? values))
+        RecordAssignedValue(_assignedValues, variable, value);
+    }
+
+    private static void RecordAssignedValue(
+        Dictionary<VariableSymbol, List<SmileValue>> assignedValues,
+        VariableSymbol variable,
+        SmileValue value)
+    {
+        if (!assignedValues.TryGetValue(variable, out List<SmileValue>? values))
         {
             values = new List<SmileValue>();
-            _assignedValues.Add(variable, values);
+            assignedValues.Add(variable, values);
         }
 
         values.Add(value);

@@ -126,3 +126,57 @@ PRINT {FinalGreeting}
 PRINT Next age: {NextAge}
 PRINT Either flag: {EitherFlag}
 PRINT {LiteralPlaceholder}
+
+PRINT
+PRINT "IF, ELSE IF, and ELSE statement examples:"
+
+LET IfScore = 85
+LET IfReady = TRUE
+LET IfGrade = ""
+LET IfMessage = ""
+LET IfNestedResult = ""
+
+IF IfScore >= 80 THEN
+    PRINT Simple IF selected because the score is at least 80.
+END IF
+
+IF IfReady = TRUE THEN
+    PRINT IF and ELSE selected the ready branch.
+ELSE
+    PRINT IF and ELSE selected the not-ready branch.
+END IF
+
+IF IfScore >= 90 AND IfReady = TRUE THEN
+    SET IfGrade = "A"
+ELSE IF IfScore >= 80 AND IfReady = TRUE THEN
+    SET IfGrade = "B"
+ELSE IF IfScore >= 70 AND IfReady = TRUE THEN
+    SET IfGrade = "C"
+ELSE
+    SET IfGrade = "Below C"
+END IF
+
+IF (IfScore >= 80 AND IfReady = TRUE) OR IfGrade = "A" THEN
+    PRINT Compound IF conditions require a comparison in every leaf.
+END IF
+
+IF NOT (IfReady = FALSE) THEN
+    IF IfGrade = "B" THEN
+        SET IfNestedResult = "Nested IF selected Grade B."
+    ELSE
+        SET IfNestedResult = "Nested IF selected another grade."
+    END IF
+END IF
+
+IF IfGrade = "B" THEN
+    SET IfMessage ="
+    Grade B
+    Ready for the next lesson.
+    "
+ELSE
+    SET IfMessage = "Unexpected grade"
+END IF
+
+PRINT Grade={IfGrade}
+PRINT {IfNestedResult}
+PRINT {IfMessage}

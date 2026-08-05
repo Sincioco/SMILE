@@ -1,4 +1,5 @@
 using System.IO;
+using System.Reflection;
 using SMILE.Desktop;
 using SMILE.Engine;
 using SMILE.Toolchains;
@@ -8,6 +9,17 @@ namespace SMILE.Tests;
 [TestClass]
 public sealed class DesktopCommandTests
 {
+    [TestMethod]
+    public void Desktop_assembly_reports_the_v060_IF_milestone()
+    {
+        string? version = typeof(MainWindowViewModel).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+            .InformationalVersion;
+
+        Assert.IsNotNull(version);
+        StringAssert.StartsWith(version, "0.6.0 IF / ELSE IF / ELSE");
+    }
+
     [TestMethod]
     public async Task Async_command_reports_exceptions_and_reenables_itself()
     {
@@ -237,6 +249,11 @@ PRINT A; B; C
         StringAssert.Contains(viewModel.SourceText, "SET Quote = \"");
         StringAssert.Contains(viewModel.SourceText, "LET Bonus = Score / 3");
         StringAssert.Contains(viewModel.SourceText, "PRINT Toggled passed={Passed}.");
+        StringAssert.Contains(viewModel.SourceText, "IF IfScore >= 80 THEN");
+        StringAssert.Contains(viewModel.SourceText, "ELSE IF IfScore >= 80 AND IfReady = TRUE THEN");
+        StringAssert.Contains(viewModel.SourceText, "IF NOT (IfReady = FALSE) THEN");
+        StringAssert.Contains(viewModel.SourceText, "SET IfMessage =\"");
+        StringAssert.Contains(viewModel.SourceText, "PRINT Grade={IfGrade}");
 
         EvaluationResult evaluation = new SmileEvaluator().Evaluate(viewModel.SourceText);
         Assert.IsTrue(
@@ -301,6 +318,7 @@ PRINT A; B; C
 
         StringAssert.Contains(viewModel.SourceText, "LET FirstName = \"Sin\"");
         StringAssert.Contains(viewModel.SourceText, "PRINT \"SET, PRINT, and LET together:\"");
+        StringAssert.Contains(viewModel.SourceText, "PRINT \"IF, ELSE IF, and ELSE statement examples:\"");
         Assert.AreEqual("Language reference loaded", viewModel.OperationStatus);
     }
 

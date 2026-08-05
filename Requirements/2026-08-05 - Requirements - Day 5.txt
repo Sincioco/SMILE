@@ -15,7 +15,7 @@ Database:
 	If making changes to the database, that affects existing users see database-versioning.md under the docs folder.
 
 Commits:
-	SMILE is a public repo, write a detailed commit message so people can follow its progression.  Prefix all of your commits with "Sin and Codex: ".
+	SMILE is a public repo, write a detailed commit message so people can follow its progression.  Prefix all of your commits with "Sin and Codex: ".  "commit all", "commit everything", or just "commit" means all unstaged and staged changes in the repo.  "commit all and push" means commit all and push to the public repo but make sure your tests are green first before pushing to the public repo.
 
 Task Completion:
 	As you complete each task and you are ready for me to test it, highlight them in bold and echo the task and tell me when it is ready for testing.  And when all of your tasks are completed, when there is nothing left in the prompt queue, re-display all the tasks that are ready for me to test in bold.
@@ -150,3 +150,20 @@ END IF
 INVALID
 IF FUNC(A) > 10 THEN
 END IF
+
+SMILE's IF statement - Designed by Sin
+--------------------------------------
+11.) 3 Changes I would like to make in SMILE's implementation to the classic BASIC IF statement (see blow). Analyze it and let me know if this will be a problem or an issue long-term as SMILE becomes a full-pledge programming language and compatibility with the 10 target platforms. If you see no real issues, then go ahead and provide me with the markdown file instructions so I can have Codex implement the IF statement with my 3 changes below for SMILE.
+
+a.) Condition evaluation rule: Every value used by an IF condition must already be available without invoking a function or procedure during condition evaluation.
+
+b.) Explicit comparison rule: Every atomic condition must contain an explicit comparison operator and a right-hand operand. Standalone Boolean variables and Boolean literals are not permitted as conditions.
+
+c.) When ELSE is immediately followed by IF on the same logical statement line, the two keywords form an ELSE IF clause belonging to the current IF statement.
+
+SMILE's IF statement - Formal Specification and Implementation
+--------------------------------------------------------------
+12.) I've worked out the detail for SMILE's formal IF statement with ChatGPT and it is located in "D:\SMILE\docs\SMILE Language Specification\SMILE - IF Statement Official Specification v1.0.md".
+13.) Read, follow and execute the instructions and implement the IF statement in SMILE as instructed in "D:\SMILE\Requirements\2026-08-05 2024 - SMILE Codex Instructions v0.6.0 IF ELSE IF ELSE.md".  Commit all and push when your tests are green.
+
+	Status: **Complete**. SMILE v0.6.0 implements the official call-free, explicit-comparison IF / ELSE IF / ELSE block statement through the shared lexer, recursive parser, binder, evaluator, execution trace, branch-aware Known/Unknown analysis, simplifier, and all ten target generators. Same-line `ELSE IF`, newline-separated nested `ELSE` plus `IF`, nested blocks, branch mutation, Block Strings, exact NUL-bearing Strings, wide Integers, short-circuit evaluation, warning-free target identifiers, and every formal diagnostic are covered. Debug and Release solution builds each complete with 0 warnings and 0 errors; both strict suites pass 674 tests with 0 failures and 0 skips under mandatory Java, all-target, and zero-generated-warning gates. The official acceptance program generates and builds/runs through all ten CLI targets with evaluator-matching output and exit code 0, and cumulative `examples/language.smile` generates for every target. The real Desktop completes first paint before background work, loads the cumulative reference, highlights IF/THEN/ELSE/END, stays responsive through nested editing and rapid target switching, reports `SMILE1402` and `SMILE1412`, preserves cancellation/failure containment, builds/runs representative Swift, MASM, and COBOL IF programs with exact output, and displays `0.6.0 IF / ELSE IF / ELSE` in About.

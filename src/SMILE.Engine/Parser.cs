@@ -17,16 +17,10 @@ internal sealed class Parser
 
     public ParseResult Parse()
     {
-        var statements = new List<StatementSyntax>();
-
-        for (int lineIndex = 0; lineIndex < _lines.Count; lineIndex++)
-        {
-            StatementSyntax? statement = ParseLine(ref lineIndex);
-            if (statement is not null)
-            {
-                statements.Add(statement);
-            }
-        }
+        int lineIndex = 0;
+        IReadOnlyList<StatementSyntax> statements = ParseStatementList(
+            ref lineIndex,
+            isIfBody: false);
 
         TextSpan span = statements.Count == 0
             ? new TextSpan(0, 0, 1, 1)
@@ -39,7 +33,66 @@ internal sealed class Parser
         return new ParseResult(new SmileProgramSyntax(statements, span), _diagnostics);
     }
 
-    private StatementSyntax? ParseLine(ref int lineIndex)
+    private IReadOnlyList<StatementSyntax> ParseStatementList(
+        ref int lineIndex,
+        bool isIfBody)
+    {
+        var statements = new List<StatementSyntax>();
+        while (lineIndex < _lines.Count)
+        {
+            SourceLine line = _lines[lineIndex];
+            int first = SkipHorizontalWhitespace(line.Text, 0);
+            if (first >= line.Text.Length)
+            {
+                lineIndex++;
+                continue;
+            }
+
+            IfTerminatorKind terminator = ClassifyIfTerminator(line, first);
+            if (terminator is IfTerminatorKind.ElseIf or
+                IfTerminatorKind.Else or
+                IfTerminatorKind.EndIf or
+                IfTerminatorKind.MalformedEnd)
+            {
+                if (isIfBody)
+                {
+                    return statements;
+                }
+
+                string code = terminator is IfTerminatorKind.MalformedEnd
+                    ? "SMILE1413"
+                    : "SMILE1411";
+                string message = terminator is IfTerminatorKind.MalformedEnd
+                    ? "END IF is malformed or has trailing content."
+                    : "ELSE, ELSE IF, or END IF has no matching IF.";
+                AddDiagnostic(code, message, line.Span(first, line.Text.Length - first));
+                lineIndex++;
+                continue;
+            }
+
+            if (terminator is IfTerminatorKind.MalformedElse)
+            {
+                AddDiagnostic(
+                    "SMILE1407",
+                    "ELSE must stand alone or be followed by IF on the same logical line.",
+                    line.Span(first, line.Text.Length - first));
+                lineIndex++;
+                continue;
+            }
+
+            StatementSyntax? statement = ParseLine(ref lineIndex, isIfBody);
+            if (statement is not null)
+            {
+                statements.Add(statement);
+            }
+
+            lineIndex++;
+        }
+
+        return statements;
+    }
+
+    private StatementSyntax? ParseLine(ref int lineIndex, bool isIfBody)
     {
         SourceLine line = _lines[lineIndex];
         int first = SkipHorizontalWhitespace(line.Text, 0);
@@ -73,11 +126,402 @@ internal sealed class Parser
             return ParseSetStatement(line, keyword, ref lineIndex);
         }
 
+        if (keyword.Text.Equals("IF", StringComparison.OrdinalIgnoreCase))
+        {
+            return ParseIfStatement(ref lineIndex, line, keyword);
+        }
+
         AddDiagnostic(
-            "SMILE1001",
-            "Unknown statement or keyword.",
+            isIfBody ? "SMILE1415" : "SMILE1001",
+            isIfBody
+                ? "Statement is not permitted inside IF v1.0."
+                : "Unknown statement or keyword.",
             keyword.Span);
         return null;
+    }
+
+    private IfStatementSyntax ParseIfStatement(
+        ref int lineIndex,
+        SourceLine ifLine,
+        IdentifierRead ifKeyword)
+    {
+        int statementStart = ifLine.Start + ifKeyword.Start;
+        var clauses = new List<ConditionalClauseSyntax>();
+
+        ExpressionSyntax firstCondition = ParseIfHeader(
+            ifLine,
+            ifKeyword,
+            missingConditionCode: "SMILE1401");
+        TextSpan firstHeaderSpan = ifLine.Span(
+            ifKeyword.Start,
+            ifLine.Text.Length - ifKeyword.Start);
+
+        lineIndex++;
+        IReadOnlyList<StatementSyntax> firstStatements = ParseStatementList(
+            ref lineIndex,
+            isIfBody: true);
+        clauses.Add(new ConditionalClauseSyntax(
+            firstCondition,
+            firstStatements,
+            ExtendHeaderSpan(firstHeaderSpan, firstStatements)));
+
+        while (lineIndex < _lines.Count)
+        {
+            SourceLine line = _lines[lineIndex];
+            int first = SkipHorizontalWhitespace(line.Text, 0);
+            if (first >= line.Text.Length ||
+                ClassifyIfTerminator(line, first) is not IfTerminatorKind.ElseIf)
+            {
+                break;
+            }
+
+            IdentifierRead elseKeyword = ReadIdentifier(line, first);
+            int ifStart = SkipHorizontalWhitespace(line.Text, elseKeyword.End);
+            IdentifierRead nestedIfKeyword = ReadIdentifier(line, ifStart);
+            ExpressionSyntax condition = ParseIfHeader(
+                line,
+                nestedIfKeyword,
+                missingConditionCode: "SMILE1408");
+            TextSpan headerSpan = line.Span(first, line.Text.Length - first);
+
+            lineIndex++;
+            IReadOnlyList<StatementSyntax> statements = ParseStatementList(
+                ref lineIndex,
+                isIfBody: true);
+            clauses.Add(new ConditionalClauseSyntax(
+                condition,
+                statements,
+                ExtendHeaderSpan(headerSpan, statements)));
+        }
+
+        bool hasElseClause = false;
+        var elseStatements = new List<StatementSyntax>();
+        if (lineIndex < _lines.Count)
+        {
+            SourceLine line = _lines[lineIndex];
+            int first = SkipHorizontalWhitespace(line.Text, 0);
+            if (first < line.Text.Length &&
+                ClassifyIfTerminator(line, first) is IfTerminatorKind.Else)
+            {
+                hasElseClause = true;
+                lineIndex++;
+                elseStatements.AddRange(ParseStatementList(ref lineIndex, isIfBody: true));
+
+                // Recover through extra clause headers so the nearest IF still
+                // owns its END IF and later top-level statements remain usable.
+                while (lineIndex < _lines.Count)
+                {
+                    SourceLine duplicateLine = _lines[lineIndex];
+                    int duplicateFirst = SkipHorizontalWhitespace(duplicateLine.Text, 0);
+                    if (duplicateFirst >= duplicateLine.Text.Length)
+                    {
+                        lineIndex++;
+                        continue;
+                    }
+
+                    IfTerminatorKind duplicate = ClassifyIfTerminator(
+                        duplicateLine,
+                        duplicateFirst);
+                    if (duplicate is IfTerminatorKind.Else)
+                    {
+                        AddDiagnostic(
+                            "SMILE1409",
+                            "An IF may contain only one final ELSE.",
+                            duplicateLine.Span(
+                                duplicateFirst,
+                                duplicateLine.Text.Length - duplicateFirst));
+                    }
+                    else if (duplicate is IfTerminatorKind.ElseIf)
+                    {
+                        AddDiagnostic(
+                            "SMILE1410",
+                            "ELSE IF cannot appear after ELSE.",
+                            duplicateLine.Span(
+                                duplicateFirst,
+                                duplicateLine.Text.Length - duplicateFirst));
+                    }
+                    else
+                    {
+                        break;
+                    }
+
+                    lineIndex++;
+                    elseStatements.AddRange(ParseStatementList(ref lineIndex, isIfBody: true));
+                }
+            }
+        }
+
+        int statementEnd;
+        if (lineIndex >= _lines.Count)
+        {
+            SourceLine diagnosticLine = _lines.Count > 0 ? _lines[^1] : ifLine;
+            AddDiagnostic(
+                "SMILE1412",
+                "IF is missing END IF.",
+                diagnosticLine.Span(diagnosticLine.Text.Length, 0));
+            statementEnd = _source.Length;
+        }
+        else
+        {
+            SourceLine endLine = _lines[lineIndex];
+            int first = SkipHorizontalWhitespace(endLine.Text, 0);
+            IfTerminatorKind terminator = ClassifyIfTerminator(endLine, first);
+            if (terminator is IfTerminatorKind.MalformedEnd)
+            {
+                AddDiagnostic(
+                    "SMILE1413",
+                    "END IF is malformed or has trailing content.",
+                    endLine.Span(first, endLine.Text.Length - first));
+                statementEnd = endLine.Start + endLine.Text.Length;
+            }
+            else if (terminator is IfTerminatorKind.EndIf)
+            {
+                statementEnd = endLine.Start + endLine.Text.Length;
+            }
+            else
+            {
+                AddDiagnostic(
+                    "SMILE1412",
+                    "IF is missing END IF.",
+                    endLine.Span(first, Math.Max(0, endLine.Text.Length - first)));
+                statementEnd = endLine.Start;
+                lineIndex--;
+            }
+        }
+
+        return new IfStatementSyntax(
+            clauses,
+            elseStatements,
+            hasElseClause,
+            new TextSpan(
+                statementStart,
+                Math.Max(0, statementEnd - statementStart),
+                ifLine.LineNumber,
+                ifKeyword.Start + 1));
+    }
+
+    private ExpressionSyntax ParseIfHeader(
+        SourceLine line,
+        IdentifierRead ifKeyword,
+        string missingConditionCode)
+    {
+        int conditionStart = SkipHorizontalWhitespace(line.Text, ifKeyword.End);
+        int thenStart = FindHeaderThen(line, conditionStart);
+
+        if (conditionStart >= line.Text.Length ||
+            !IsOnlyHorizontalWhitespace(line.Text, ifKeyword.End, conditionStart) ||
+            conditionStart == ifKeyword.End)
+        {
+            AddDiagnostic(
+                missingConditionCode,
+                missingConditionCode == "SMILE1408"
+                    ? "ELSE IF requires a condition."
+                    : "IF requires a condition.",
+                line.Span(conditionStart, 0));
+        }
+
+        if (thenStart < 0)
+        {
+            AddDiagnostic(
+                "SMILE1405",
+                "IF or ELSE IF requires THEN.",
+                line.Span(line.Text.Length, 0));
+            if (conditionStart >= line.Text.Length)
+            {
+                return new ErrorExpressionSyntax(line.Span(conditionStart, 0));
+            }
+
+            var missingThenParser = new ExpressionParser(
+                this,
+                line,
+                conditionStart,
+                line.Text.Length);
+            ExpressionSyntax missingThenCondition = missingThenParser.ParseExpression();
+            RequireOnlyTrailingWhitespace(
+                line,
+                missingThenParser.Position,
+                "SMILE1201",
+                "Invalid or unexpected token in IF condition.");
+            return missingThenCondition;
+        }
+
+        int conditionEnd = thenStart;
+        while (conditionEnd > conditionStart &&
+               SyntaxFacts.IsHorizontalWhitespace(line.Text[conditionEnd - 1]))
+        {
+            conditionEnd--;
+        }
+
+        ExpressionSyntax condition;
+        if (conditionEnd <= conditionStart)
+        {
+            if (!_diagnostics.Any(diagnostic =>
+                    diagnostic.Code == missingConditionCode &&
+                    diagnostic.Span.Line == line.LineNumber))
+            {
+                AddDiagnostic(
+                    missingConditionCode,
+                    missingConditionCode == "SMILE1408"
+                        ? "ELSE IF requires a condition."
+                        : "IF requires a condition.",
+                    line.Span(conditionStart, 0));
+            }
+
+            condition = new ErrorExpressionSyntax(line.Span(conditionStart, 0));
+        }
+        else
+        {
+            var expressionParser = new ExpressionParser(
+                this,
+                line,
+                conditionStart,
+                conditionEnd);
+            condition = expressionParser.ParseExpression();
+            if (!expressionParser.IsAtEndAfterWhitespace())
+            {
+                AddDiagnostic(
+                    "SMILE1201",
+                    "Invalid or unexpected token in IF condition.",
+                    line.Span(
+                        expressionParser.Position,
+                        Math.Max(0, conditionEnd - expressionParser.Position)));
+            }
+        }
+
+        IdentifierRead thenKeyword = ReadIdentifier(line, thenStart);
+        int trailing = SkipHorizontalWhitespace(line.Text, thenKeyword.End);
+        if (trailing < line.Text.Length)
+        {
+            AddDiagnostic(
+                "SMILE1406",
+                "Unexpected content follows THEN.",
+                line.Span(trailing, line.Text.Length - trailing));
+        }
+
+        return condition;
+    }
+
+    private int FindHeaderThen(SourceLine line, int start)
+    {
+        int position = start;
+        while (position < line.Text.Length)
+        {
+            if (StartsInterpolatedString(line.Text, position))
+            {
+                position = SkipInterpolatedString(line.Text, position, line.Text.Length);
+                continue;
+            }
+
+            if (SyntaxFacts.IsDoubleQuote(line.Text[position]))
+            {
+                position = SkipQuotedText(line.Text, position + 1, line.Text.Length);
+                continue;
+            }
+
+            if (SyntaxFacts.IsIdentifierStart(line.Text[position]))
+            {
+                IdentifierRead identifier = ReadIdentifier(line, position);
+                if (identifier.Text.Equals("THEN", StringComparison.OrdinalIgnoreCase) &&
+                    position > 0 &&
+                    SyntaxFacts.IsHorizontalWhitespace(line.Text[position - 1]))
+                {
+                    return position;
+                }
+
+                position = identifier.End;
+                continue;
+            }
+
+            position++;
+        }
+
+        return -1;
+    }
+
+    private IfTerminatorKind ClassifyIfTerminator(SourceLine line, int first)
+    {
+        if (first >= line.Text.Length || !SyntaxFacts.IsIdentifierStart(line.Text[first]))
+        {
+            return IfTerminatorKind.None;
+        }
+
+        IdentifierRead keyword = ReadIdentifier(line, first);
+        if (keyword.Text.Equals("ELSE", StringComparison.OrdinalIgnoreCase))
+        {
+            if (keyword.End >= line.Text.Length)
+            {
+                return IfTerminatorKind.Else;
+            }
+
+            if (!SyntaxFacts.IsHorizontalWhitespace(line.Text[keyword.End]))
+            {
+                return IfTerminatorKind.MalformedElse;
+            }
+
+            int next = SkipHorizontalWhitespace(line.Text, keyword.End);
+            if (next >= line.Text.Length)
+            {
+                return IfTerminatorKind.Else;
+            }
+
+            if (SyntaxFacts.IsIdentifierStart(line.Text[next]))
+            {
+                IdentifierRead following = ReadIdentifier(line, next);
+                if (following.Text.Equals("IF", StringComparison.OrdinalIgnoreCase))
+                {
+                    return IfTerminatorKind.ElseIf;
+                }
+            }
+
+            return IfTerminatorKind.MalformedElse;
+        }
+
+        if (keyword.Text.Equals("ENDIF", StringComparison.OrdinalIgnoreCase))
+        {
+            return IfTerminatorKind.MalformedEnd;
+        }
+
+        if (!keyword.Text.Equals("END", StringComparison.OrdinalIgnoreCase))
+        {
+            return IfTerminatorKind.None;
+        }
+
+        if (keyword.End >= line.Text.Length ||
+            !SyntaxFacts.IsHorizontalWhitespace(line.Text[keyword.End]))
+        {
+            return IfTerminatorKind.MalformedEnd;
+        }
+
+        int ifStart = SkipHorizontalWhitespace(line.Text, keyword.End);
+        if (ifStart >= line.Text.Length || !SyntaxFacts.IsIdentifierStart(line.Text[ifStart]))
+        {
+            return IfTerminatorKind.MalformedEnd;
+        }
+
+        IdentifierRead ifKeyword = ReadIdentifier(line, ifStart);
+        if (!ifKeyword.Text.Equals("IF", StringComparison.OrdinalIgnoreCase) ||
+            SkipHorizontalWhitespace(line.Text, ifKeyword.End) < line.Text.Length)
+        {
+            return IfTerminatorKind.MalformedEnd;
+        }
+
+        return IfTerminatorKind.EndIf;
+    }
+
+    private static TextSpan ExtendHeaderSpan(
+        TextSpan headerSpan,
+        IReadOnlyList<StatementSyntax> statements)
+    {
+        if (statements.Count == 0)
+        {
+            return headerSpan;
+        }
+
+        StatementSyntax last = statements[^1];
+        return headerSpan with
+        {
+            Length = last.Span.Start + last.Span.Length - headerSpan.Start
+        };
     }
 
     private StatementSyntax? ParsePrintStatement(
@@ -609,8 +1053,23 @@ internal sealed class Parser
 
             if (text[position] == '{')
             {
+                // Doubled braces are literal template text.  The header scanner must
+                // mirror the real interpolation parser or a literal "{{" can make it
+                // consume the rest of the line while searching for a nonexistent "}".
+                if (position + 1 < end && text[position + 1] == '{')
+                {
+                    position += 2;
+                    continue;
+                }
+
                 int close = FindInterpolationClose(text, position + 1, end);
                 position = close < 0 ? end : close + 1;
+                continue;
+            }
+
+            if (text[position] == '}' && position + 1 < end && text[position + 1] == '}')
+            {
+                position += 2;
                 continue;
             }
 
@@ -762,6 +1221,16 @@ internal sealed class Parser
         string Text,
         TextSpan Span);
 
+    private enum IfTerminatorKind
+    {
+        None,
+        ElseIf,
+        Else,
+        EndIf,
+        MalformedElse,
+        MalformedEnd
+    }
+
     private sealed class ExpressionParser
     {
         private readonly Parser _owner;
@@ -900,14 +1369,17 @@ internal sealed class Parser
 
         private ExpressionSyntax ParseInterpolatedString()
         {
-            if (!StartsInterpolatedString(_line.Text, Position))
+            SyntaxToken startToken = Current;
+            int tokenStart = startToken.Span.Start - _line.Start;
+            if (startToken.Kind is not SyntaxKind.InterpolatedStringStartToken ||
+                !StartsInterpolatedString(_line.Text, tokenStart))
             {
                 _owner.AddDiagnostic("SMILE1201", "Invalid or unexpected token in expression.", _line.Span(Position, 0));
                 return new ErrorExpressionSyntax(_line.Span(Position, 0));
             }
 
-            int start = Position;
-            Position += 2;
+            int start = tokenStart;
+            Position = tokenStart + 2;
             _current = null;
             var parts = new List<InterpolatedPartSyntax>();
             var currentText = new StringBuilder();
@@ -1038,7 +1510,10 @@ internal sealed class Binder
 
         foreach (StatementSyntax statement in program.Statements)
         {
-            BoundStatement? bound = BindStatement(statement);
+            BoundStatement? bound = BindStatement(
+                statement,
+                appendExecution: true,
+                isIfBody: false);
             if (bound is not null)
             {
                 statements.Add(bound);
@@ -1050,16 +1525,33 @@ internal sealed class Binder
             _diagnostics);
     }
 
-    private BoundStatement? BindStatement(StatementSyntax statement) =>
+    private BoundStatement? BindStatement(
+        StatementSyntax statement,
+        bool appendExecution,
+        bool isIfBody) =>
         statement switch
         {
-            LetStatementSyntax let => BindLetStatement(let),
-            SetStatementSyntax set => BindSetStatement(set),
-            PrintStatementSyntax print => BindPrintStatement(print),
+            LetStatementSyntax let when isIfBody => RejectBranchLet(let),
+            LetStatementSyntax let => BindLetStatement(let, appendExecution),
+            SetStatementSyntax set => BindSetStatement(set, appendExecution),
+            PrintStatementSyntax print => BindPrintStatement(print, appendExecution),
+            IfStatementSyntax conditional => BindIfStatement(conditional, appendExecution),
             _ => null
         };
 
-    private BoundStatement? BindLetStatement(LetStatementSyntax syntax)
+    private BoundStatement? RejectBranchLet(LetStatementSyntax syntax)
+    {
+        _diagnostics.Add(new Diagnostic(
+            "SMILE1414",
+            DiagnosticSeverity.Error,
+            "LET is not permitted inside IF v1.0.",
+            syntax.Span));
+        return null;
+    }
+
+    private BoundStatement? BindLetStatement(
+        LetStatementSyntax syntax,
+        bool appendExecution)
     {
         if (_variables.ContainsKey(syntax.Name))
         {
@@ -1084,7 +1576,7 @@ internal sealed class Binder
 
         var symbol = new VariableSymbol(syntax.Name, syntax.NameSpan, initializer.Type);
         var statement = new BoundLetStatement(symbol, initializer);
-        if (!_execution.TryAppend(statement, _diagnostics))
+        if (appendExecution && !_execution.TryAppend(statement, _diagnostics))
         {
             return null;
         }
@@ -1094,7 +1586,9 @@ internal sealed class Binder
         return statement;
     }
 
-    private BoundStatement? BindSetStatement(SetStatementSyntax syntax)
+    private BoundStatement? BindSetStatement(
+        SetStatementSyntax syntax,
+        bool appendExecution)
     {
         if (!_variables.TryGetValue(syntax.Name, out VariableSymbol? variable))
         {
@@ -1125,12 +1619,14 @@ internal sealed class Binder
         }
 
         var statement = new BoundSetStatement(variable, value);
-        return _execution.TryAppend(statement, _diagnostics)
+        return !appendExecution || _execution.TryAppend(statement, _diagnostics)
             ? statement
             : null;
     }
 
-    private BoundStatement? BindPrintStatement(PrintStatementSyntax syntax)
+    private BoundStatement? BindPrintStatement(
+        PrintStatementSyntax syntax,
+        bool appendExecution)
     {
         int diagnosticCountBeforeValue = _diagnostics.Count;
         BoundExpression value = BindExpression(syntax.Value);
@@ -1141,10 +1637,156 @@ internal sealed class Binder
         }
 
         var statement = new BoundPrintStatement(value, syntax.IsBlankLine);
-        return _execution.TryAppend(statement, _diagnostics)
+        return !appendExecution || _execution.TryAppend(statement, _diagnostics)
             ? statement
             : null;
     }
+
+    private BoundStatement? BindIfStatement(
+        IfStatementSyntax syntax,
+        bool appendExecution)
+    {
+        int diagnosticsBefore = _diagnostics.Count;
+        var clauses = new List<BoundConditionalClause>(syntax.Clauses.Count);
+
+        foreach (ConditionalClauseSyntax clause in syntax.Clauses)
+        {
+            ValidateIfCondition(clause.Condition);
+            BoundExpression condition = BindExpression(clause.Condition);
+            if (condition.Type is not (SmileType.Boolean or SmileType.Error))
+            {
+                _diagnostics.Add(new Diagnostic(
+                    "SMILE1403",
+                    DiagnosticSeverity.Error,
+                    "The complete IF condition must have type Boolean.",
+                    clause.Condition.Span));
+            }
+
+            clauses.Add(new BoundConditionalClause(
+                condition,
+                BindIfBody(clause.Statements)));
+        }
+
+        IReadOnlyList<BoundStatement> elseStatements = BindIfBody(syntax.ElseStatements);
+        if (_diagnostics.Count != diagnosticsBefore ||
+            clauses.Any(clause => clause.Condition.Type is SmileType.Error))
+        {
+            return null;
+        }
+
+        var statement = new BoundIfStatement(
+            clauses,
+            elseStatements,
+            syntax.HasElseClause);
+        return !appendExecution || _execution.TryAppend(statement, _diagnostics)
+            ? statement
+            : null;
+    }
+
+    private IReadOnlyList<BoundStatement> BindIfBody(
+        IReadOnlyList<StatementSyntax> statements)
+    {
+        var boundStatements = new List<BoundStatement>(statements.Count);
+        foreach (StatementSyntax statement in statements)
+        {
+            BoundStatement? bound = BindStatement(
+                statement,
+                appendExecution: false,
+                isIfBody: true);
+            if (bound is not null)
+            {
+                boundStatements.Add(bound);
+            }
+        }
+
+        return boundStatements;
+    }
+
+    private void ValidateIfCondition(ExpressionSyntax expression)
+    {
+        switch (expression)
+        {
+            case ErrorExpressionSyntax:
+                return;
+
+            case ParenthesizedExpressionSyntax parenthesized:
+                ValidateIfCondition(parenthesized.Expression);
+                return;
+
+            case UnaryExpressionSyntax { OperatorToken.Kind: SyntaxKind.NotKeyword } unary:
+                ValidateIfCondition(unary.Operand);
+                return;
+
+            case BinaryExpressionSyntax binary
+                when binary.OperatorToken.Kind is SyntaxKind.AndKeyword or SyntaxKind.OrKeyword:
+                ValidateIfCondition(binary.Left);
+                ValidateIfCondition(binary.Right);
+                return;
+
+            case BinaryExpressionSyntax binary when IsComparison(binary.OperatorToken.Kind):
+                if (ContainsInvocation(binary.Left) || ContainsInvocation(binary.Right))
+                {
+                    _diagnostics.Add(new Diagnostic(
+                        "SMILE1404",
+                        DiagnosticSeverity.Error,
+                        "An IF condition cannot invoke a function or procedure.",
+                        binary.Span));
+                }
+
+                return;
+
+            default:
+                if (ContainsInvocation(expression))
+                {
+                    _diagnostics.Add(new Diagnostic(
+                        "SMILE1404",
+                        DiagnosticSeverity.Error,
+                        "An IF condition cannot invoke a function or procedure.",
+                        expression.Span));
+                }
+
+                _diagnostics.Add(new Diagnostic(
+                    "SMILE1402",
+                    DiagnosticSeverity.Error,
+                    "Every atomic IF condition must be an explicit comparison.",
+                    expression.Span));
+                return;
+        }
+    }
+
+    private static bool IsComparison(SyntaxKind kind) =>
+        kind is SyntaxKind.EqualsToken or
+            SyntaxKind.NotEqualsToken or
+            SyntaxKind.LessToken or
+            SyntaxKind.LessOrEqualsToken or
+            SyntaxKind.GreaterToken or
+            SyntaxKind.GreaterOrEqualsToken;
+
+    private static bool ContainsInvocation(ExpressionSyntax expression) =>
+        expression switch
+        {
+            ErrorExpressionSyntax => false,
+            StringLiteralExpressionSyntax => false,
+            BlockStringLiteralExpressionSyntax => false,
+            IntegerLiteralExpressionSyntax => false,
+            BooleanLiteralExpressionSyntax => false,
+            NameExpressionSyntax => false,
+            UnaryExpressionSyntax unary => ContainsInvocation(unary.Operand),
+            BinaryExpressionSyntax binary =>
+                ContainsInvocation(binary.Left) || ContainsInvocation(binary.Right),
+            ParenthesizedExpressionSyntax parenthesized =>
+                ContainsInvocation(parenthesized.Expression),
+            InterpolatedStringExpressionSyntax interpolated =>
+                interpolated.Parts
+                    .OfType<InterpolationExpressionPartSyntax>()
+                    .Any(part => ContainsInvocation(part.Expression)),
+
+            // IF conditions permanently fail closed for future callable or
+            // otherwise unknown value-expression nodes. A future function
+            // feature must deliberately prove that condition evaluation is
+            // call-free instead of inheriting accidental acceptance here.
+            _ => true
+        };
 
     private BoundExpression BindExpression(ExpressionSyntax expression) =>
         expression switch
@@ -1291,6 +1933,10 @@ internal static class SyntaxFacts
             "LET" => SyntaxKind.LetKeyword,
             "SET" => SyntaxKind.SetKeyword,
             "PRINT" => SyntaxKind.PrintKeyword,
+            "IF" => SyntaxKind.IfKeyword,
+            "THEN" => SyntaxKind.ThenKeyword,
+            "ELSE" => SyntaxKind.ElseKeyword,
+            "END" => SyntaxKind.EndKeyword,
             "TRUE" => SyntaxKind.TrueKeyword,
             "FALSE" => SyntaxKind.FalseKeyword,
             "NOT" => SyntaxKind.NotKeyword,

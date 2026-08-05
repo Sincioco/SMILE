@@ -21,8 +21,17 @@ public sealed class SmileEvaluator
 
         var output = new StringBuilder();
         var values = new Dictionary<VariableSymbol, SmileValue>();
+        ExecuteStatements(bindResult.Program.Statements, values, output);
 
-        foreach (BoundStatement statement in bindResult.Program.Statements)
+        return new EvaluationResult(true, output.ToString(), bindResult.Diagnostics);
+    }
+
+    private static void ExecuteStatements(
+        IReadOnlyList<BoundStatement> statements,
+        Dictionary<VariableSymbol, SmileValue> values,
+        StringBuilder output)
+    {
+        foreach (BoundStatement statement in statements)
         {
             switch (statement)
             {
@@ -46,10 +55,34 @@ public sealed class SmileEvaluator
 
                     output.Append('\n');
                     break;
+
+                case BoundIfStatement conditional:
+                    ExecuteIf(conditional, values, output);
+                    break;
             }
         }
+    }
 
-        return new EvaluationResult(true, output.ToString(), bindResult.Diagnostics);
+    private static void ExecuteIf(
+        BoundIfStatement conditional,
+        Dictionary<VariableSymbol, SmileValue> values,
+        StringBuilder output)
+    {
+        foreach (BoundConditionalClause clause in conditional.Clauses)
+        {
+            if (!EvaluateExpression(clause.Condition, values).BooleanValue)
+            {
+                continue;
+            }
+
+            ExecuteStatements(clause.Statements, values, output);
+            return;
+        }
+
+        if (conditional.HasElseClause)
+        {
+            ExecuteStatements(conditional.ElseStatements, values, output);
+        }
     }
 
     private static SmileValue EvaluateExpression(

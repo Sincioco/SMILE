@@ -211,6 +211,93 @@ PRINT {Name}
     }
 
     [TestMethod]
+    public void Smile_highlighting_colors_IF_clause_and_terminator_keywords_individually()
+    {
+        const string source = """
+LET Score = 85
+LET Message = ""
+IF Score >= 90 THEN
+    SET Message ="
+    Grade A
+    "
+ELSE IF Score >= 80 THEN
+    SET Message = "Grade B"
+ELSE
+    IF Score >= 70 THEN
+        SET Message = "Grade C"
+    END IF
+END IF
+PRINT {Message}
+""";
+        var document = new TextDocument(source);
+        IHighlightingDefinition definition = SyntaxHighlightingCatalog.GetDefinition("smile")!;
+        var highlighter = new DocumentHighlighter(document, definition);
+        HighlightingColor keyword = definition.GetNamedColor("Keyword")!;
+        HighlightingColor stringColor = definition.GetNamedColor("String")!;
+
+        HighlightedLine[] lines = Enumerable.Range(1, document.LineCount)
+            .Select(highlighter.HighlightLine)
+            .ToArray();
+
+        AssertKeyword(document, lines[2], document.GetLineByNumber(3), "IF", keyword);
+        AssertKeyword(document, lines[2], document.GetLineByNumber(3), "THEN", keyword);
+        AssertKeyword(document, lines[6], document.GetLineByNumber(7), "ELSE", keyword);
+        AssertKeyword(document, lines[6], document.GetLineByNumber(7), "IF", keyword);
+        AssertKeyword(document, lines[6], document.GetLineByNumber(7), "THEN", keyword);
+        AssertKeyword(document, lines[8], document.GetLineByNumber(9), "ELSE", keyword);
+        AssertKeyword(document, lines[9], document.GetLineByNumber(10), "IF", keyword);
+        AssertKeyword(document, lines[9], document.GetLineByNumber(10), "THEN", keyword);
+        AssertKeyword(document, lines[11], document.GetLineByNumber(12), "END", keyword);
+        AssertKeyword(document, lines[11], document.GetLineByNumber(12), "IF", keyword);
+        AssertKeyword(document, lines[12], document.GetLineByNumber(13), "END", keyword);
+        AssertKeyword(document, lines[12], document.GetLineByNumber(13), "IF", keyword);
+
+        DocumentLine blockContent = document.GetLineByNumber(5);
+        AssertRangeHasColor(
+            lines[4],
+            blockContent.Offset,
+            blockContent.Length,
+            stringColor,
+            "Block String content inside IF");
+
+        DocumentLine printLine = document.GetLineByNumber(14);
+        AssertKeyword(document, lines[13], printLine, "PRINT", keyword);
+        AssertRangeDoesNotHaveColor(
+            lines[13],
+            printLine.Offset,
+            5,
+            stringColor,
+            "highlighting must leave nested IF and Block String state");
+    }
+
+    [TestMethod]
+    public void Smile_highlighting_keeps_malformed_IF_text_safe()
+    {
+        const string source = """
+IF TRUE = TRUE THEN extra
+    PRINT Initial branch
+ELSE IF TRUE = FALSE
+    PRINT Incomplete ELSE IF header
+END IF trailing
+""";
+        var document = new TextDocument(source);
+        IHighlightingDefinition definition = SyntaxHighlightingCatalog.GetDefinition("smile")!;
+        var highlighter = new DocumentHighlighter(document, definition);
+        HighlightingColor keyword = definition.GetNamedColor("Keyword")!;
+
+        HighlightedLine[] lines = Enumerable.Range(1, document.LineCount)
+            .Select(highlighter.HighlightLine)
+            .ToArray();
+
+        AssertKeyword(document, lines[0], document.GetLineByNumber(1), "IF", keyword);
+        AssertKeyword(document, lines[0], document.GetLineByNumber(1), "THEN", keyword);
+        AssertKeyword(document, lines[2], document.GetLineByNumber(3), "ELSE", keyword);
+        AssertKeyword(document, lines[2], document.GetLineByNumber(3), "IF", keyword);
+        AssertKeyword(document, lines[4], document.GetLineByNumber(5), "END", keyword);
+        AssertKeyword(document, lines[4], document.GetLineByNumber(5), "IF", keyword);
+    }
+
+    [TestMethod]
     public void Smile_highlighting_keeps_an_unterminated_block_safe_and_multiline()
     {
         const string source = """
@@ -280,6 +367,24 @@ Still inside the block
             candidate.Offset + candidate.Length >= offset + length);
 
         Assert.IsNotNull(section, $"Expected {description} to use the '{color.Name}' color.");
+    }
+
+    private static void AssertKeyword(
+        TextDocument document,
+        HighlightedLine line,
+        DocumentLine documentLine,
+        string keyword,
+        HighlightingColor color)
+    {
+        string lineText = document.GetText(documentLine);
+        int relativeOffset = lineText.IndexOf(keyword, StringComparison.Ordinal);
+        Assert.IsGreaterThanOrEqualTo(0, relativeOffset, lineText);
+        AssertRangeHasColor(
+            line,
+            documentLine.Offset + relativeOffset,
+            keyword.Length,
+            color,
+            $"{keyword} keyword");
     }
 
     private static void AssertRangeDoesNotHaveColor(

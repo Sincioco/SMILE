@@ -26,11 +26,12 @@
 - The official PRINT syntax is defined by `docs/SMILE Language Specification/SMILE - PRINT Statement Official Specification v1.0.md`.
 - The official LET syntax is defined by `docs/SMILE Language Specification/SMILE - LET Statement Official Specification v1.0.md`.
 - The official SET syntax is defined by `docs/SMILE Language Specification/SMILE - SET Statement Official Specification v1.0.md`.
+- The official IF syntax is defined by `docs/SMILE Language Specification/SMILE - IF Statement Official Specification v1.0.md`.
 - Official string literal behavior is defined by `docs/SMILE Language Specification/SMILE - String Literals Official Specification v1.0.md`.
 - Official core type and expression behavior is defined by `docs/SMILE Language Specification/SMILE - Core Types and Expressions Official Specification v1.0.md`.
-- LET declares and initializes a variable. SET remains the only assignment statement in v0.5.1.1 and changes an existing variable without changing its type.
+- LET declares and initializes a variable. SET remains the only assignment statement in v0.6.0 and changes an existing variable without changing its type.
 - Current runtime state belongs to the evaluator environment, not permanently to `BoundLetStatement`.
-- Compile-time propagation must be statement-order and mutation aware. Never reuse an old known value after SET.
+- Compile-time propagation must be statement-order, mutation aware, and branch aware. Never reuse an old known value after SET or propagate a branch-specific value unless every outgoing path merges to the same known value.
 - Every expression feature must be defined once in the official core expression specification and implemented through the shared lexer, parser, binder, evaluator, and bound tree.
 - SMILE `AND` and `OR` use left-to-right short-circuit evaluation. Binding and type checking still examine both operands, but evaluation-time failures in an unreachable operand are not produced.
 - Each expression concept must have one canonical syntax and bound representation. Remove obsolete parallel representations rather than maintaining duplicate compiler paths.
@@ -52,7 +53,12 @@
 - C and Objective-C mutable Strings that require exact byte semantics must keep their pointer and logical length synchronized across LET and every SET.
 - COBOL direct mutable String output must read current storage and current logical length, including the exact empty-String path.
 - Generated-target compiler warnings are separate from SMILE solution warnings. Strict release validation must inspect generated compiler output where supported.
-- v0.5.1.1 is a syntax-free warning-hygiene release. Do not add `IF`, `INPUT`, or any other SMILE syntax while implementing it.
+- IF conditions are call-free. Every value used by a condition must already exist without invoking a function or procedure during condition evaluation.
+- Every atomic IF condition must contain an explicit comparison and right-hand operand. Standalone Boolean variables and literals are invalid.
+- ELSE IF consists of ELSE and IF on the same logical header line. An IF after a standalone ELSE line is nested and requires its own END IF.
+- IF v1.0 permits PRINT, SET, nested IF, blank lines, and SET Block String Literals in branches. LET is not permitted until scopes are formally introduced.
+- Every target must preserve genuine branch structure. Do not delete unselected source branches merely because current values are known.
+- Branch-aware known-value analysis may propagate a value after IF only when outgoing-path merge proves it known.
 - A SET Block String Literal is a SET-only complete-value source form. Its delimiter lines are excluded, content-line boundaries become logical line feeds, and the closing delimiter's indentation margin is removed from matching content lines.
 - Source tooling must not trim trailing spaces or tabs because block String content may depend on them.
 - Block String normalization belongs entirely to the front end. Target generators receive only the normalized ordinary String value.
@@ -61,9 +67,9 @@
 - Every normative valid and invalid example in an official language specification should be represented in the conformance test suite.
 - Target generators must use a symbol-based target identifier map and must not emit raw SMILE identifiers when they conflict with destination-language syntax or generator-owned runtime names.
 - Every valid SMILE identifier must be mapped to valid, collision-safe destination identifiers in every target. Target restrictions include exact keywords, contextual/restricted identifiers, generator-owned names, and reserved identifier patterns.
-- SMILE `Integer` is a signed 64-bit semantic type, but generated storage must use one idiomatic per-program target profile that preserves every bound Integer literal, value, operand, and intermediate result.
+- SMILE `Integer` is a signed 64-bit semantic type, but generated storage must use one idiomatic per-program target profile that preserves every bound Integer literal, value, operand, and intermediate result across every IF branch.
 - Ordinary small programs use C/Objective-C `int`, C#/Java `int`, JavaScript `Number`, Swift `Int`, and Python `int` without unnecessary wide literal suffixes. Promote only when required: C/Objective-C `int64_t`, C#/Java `long`, JavaScript `BigInt`, and Swift `Int64`.
-- Pure bound-expression simplification is shared by every target. Keep Boolean identities target-independent and do not duplicate simplification logic in individual generators.
+- Pure bound-expression simplification is shared by every target. Keep Boolean identities target-independent, do not duplicate simplification logic in individual generators, and never simplify away an IF clause or body.
 - C++ is the tenth and final planned destination language. After it is implemented, do not add or recommend another target language unless Sin explicitly reopens target expansion.
 - C++ generation must use idiomatic C++ facilities such as `std::string`, `std::cout`, native value equality, and RAII ownership. Do not emit C-style `printf`, `strcmp`, or raw `char *` code merely because the C target already exists.
 - C++ String generation must preserve embedded NUL bytes through length-aware `std::string` construction.
