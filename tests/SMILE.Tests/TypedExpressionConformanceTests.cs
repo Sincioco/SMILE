@@ -180,7 +180,10 @@ PRINT {Message}
         StringAssert.Contains(cobol, "01 Age PIC X(2) VALUE \"49\".");
         StringAssert.Contains(cobol, "01 Adult PIC X(4) VALUE \"TRUE\".");
         StringAssert.Contains(cobol, "01 SMILE-Message PIC X(18) VALUE \"Age=49, Adult=TRUE\".");
-        StringAssert.Contains(cobol, "DISPLAY \"Age=49, Adult=TRUE\".");
+        StringAssert.Contains(cobol, "01 SMILE-SET-LENGTH-2 PIC 9(9) COMP-5 VALUE 18.");
+        StringAssert.Contains(
+            cobol,
+            "DISPLAY SMILE-Message(1:SMILE-SET-LENGTH-2) WITH NO ADVANCING");
 
         string masm = Generate(source, TargetLanguage.MasmX64).PrimaryFile.Content;
         StringAssert.Contains(masm, "variable0Value BYTE \"49\"");

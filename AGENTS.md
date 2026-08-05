@@ -28,7 +28,7 @@
 - The official SET syntax is defined by `docs/SMILE Language Specification/SMILE - SET Statement Official Specification v1.0.md`.
 - Official string literal behavior is defined by `docs/SMILE Language Specification/SMILE - String Literals Official Specification v1.0.md`.
 - Official core type and expression behavior is defined by `docs/SMILE Language Specification/SMILE - Core Types and Expressions Official Specification v1.0.md`.
-- LET declares and initializes a variable. SET is the only assignment statement in v0.5.0 and changes an existing variable without changing its type.
+- LET declares and initializes a variable. SET remains the only assignment statement in v0.5.1 and changes an existing variable without changing its type.
 - Current runtime state belongs to the evaluator environment, not permanently to `BoundLetStatement`.
 - Compile-time propagation must be statement-order and mutation aware. Never reuse an old known value after SET.
 - Every expression feature must be defined once in the official core expression specification and implemented through the shared lexer, parser, binder, evaluator, and bound tree.
@@ -47,6 +47,10 @@
 - A physical source line normally contains one statement, and semicolons do not separate statements.
 - A second standalone `PRINT` keyword on the same line is a compiler error.
 - Low-level targets may lower a provably known SET value, but they must emit an actual target storage update at the SET position.
+- Direct variable PRINT should read the generated target variable's current storage. Do not replace a direct variable read with an unrelated compiler-time literal when the target can represent the read clearly.
+- C and Objective-C mutable Strings that require exact byte semantics must keep their pointer and logical length synchronized across LET and every SET.
+- COBOL direct mutable String output must read current storage and current logical length, including the exact empty-String path.
+- v0.5.1 is a syntax-free runtime-readiness release. Do not add `IF`, `INPUT`, or any other SMILE syntax while implementing it.
 - A SET Block String Literal is a SET-only complete-value source form. Its delimiter lines are excluded, content-line boundaries become logical line feeds, and the closing delimiter's indentation margin is removed from matching content lines.
 - Source tooling must not trim trailing spaces or tabs because block String content may depend on them.
 - Block String normalization belongs entirely to the front end. Target generators receive only the normalized ordinary String value.

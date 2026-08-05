@@ -8,7 +8,7 @@ SMILE v0.1 supported only:
 PRINT "text"
 ```
 
-SMILE v0.5.0 implements and hardens the official LET, SET, Friendly PRINT, String literal, and typed expression behavior defined in:
+SMILE v0.5.1 implements and hardens the official LET, SET, Friendly PRINT, String literal, and typed expression behavior defined in:
 
 - [SMILE - LET Statement Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20LET%20Statement%20Official%20Specification%20v1.0.md)
 - [SMILE - SET Statement Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20SET%20Statement%20Official%20Specification%20v1.0.md)
@@ -16,7 +16,7 @@ SMILE v0.5.0 implements and hardens the official LET, SET, Friendly PRINT, Strin
 - [SMILE - String Literals Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20String%20Literals%20Official%20Specification%20v1.0.md)
 - [SMILE - Core Types and Expressions Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20Core%20Types%20and%20Expressions%20Official%20Specification%20v1.0.md)
 
-Current v0.5.0 behavior includes:
+Current v0.5.1 behavior includes:
 
 - `LET Name = "Sin"` string variable declarations.
 - `LET Age = 49` integer variable declarations.
@@ -36,6 +36,7 @@ Current v0.5.0 behavior includes:
 - Native integer and boolean expression generation plus safe typed `printf` and ordinal string equality in C and Objective-C.
 - Deterministic all-target runtime conformance tests against the SMILE reference evaluator.
 - Target identifier mapping for destination keywords, generator-owned names, Java/Swift `_`, COBOL data names, and C-family reserved identifier patterns.
+- Runtime-authentic direct variable reads in generated C, Objective-C, COBOL, and MASM, plus full-JDK Java and all-ten-target runtime validation.
 - Local Build & Run support for COBOL, Objective-C, and Swift when their Windows toolchains are installed.
 - Blank `PRINT`.
 - Ordinary quoted `PRINT`.

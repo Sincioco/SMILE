@@ -6,6 +6,8 @@ This document is the public standard for generated target-language code in SMILE
 
 Generated target code should be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write.
 
+When a direct variable read has a clear target representation, the generator must read the target variable's current storage. It must not replace that read with an unrelated compiler-time literal merely because the current straight-line value is known.
+
 ## Priority Order
 
 1. Preserve SMILE behavior exactly.
@@ -84,7 +86,7 @@ Typed SMILE values must display exactly like the reference evaluator. `Integer` 
 
 Native expression intent must not make a valid SMILE program invalid in the destination compiler. After binding validates both operands, the shared simplifier uses the current known values in every expression position. It simplifies and evaluates the left operand first, decides whether the right operand is reachable, and never simplifies or evaluates an unreachable right subtree. Target generators must consume that shared result rather than duplicate short-circuit policy.
 
-SMILE v0.5.0 remains fully traceable in source order because it has no input, branch, loop, function, or external runtime data. Optimization must nevertheless respect SET mutation, atomic right-side evaluation, and left-to-right short-circuiting. Never reuse an old known value after SET.
+SMILE v0.5.1 remains fully traceable in source order because it has no input, branch, loop, function, or external runtime data. Optimization must nevertheless respect SET mutation, atomic right-side evaluation, left-to-right short-circuiting, and direct runtime-storage reads. Never reuse an old known value after SET. v0.5.1 adds no syntax; compiler-owned target control flow used to preserve exact output does not introduce a SMILE statement.
 
 ## Semantic Integer And Target Storage
 
@@ -151,7 +153,7 @@ Low-level targets may lower a right side to the exact value proven by `BoundProg
 
 The front end completely normalizes a SET Block String Literal to an ordinary bound String value. Target generators never inspect delimiters, remove indentation, normalize physical newlines, decode block syntax, or choose behavior based on the original source form. They emit the normalized value using the clearest exact ordinary destination String syntax.
 
-One shared mutation analysis records every symbol targeted by SET. Swift declares those symbols with `var` and may retain `let` for symbols that never change. Other targets use their natural mutable declaration and assignment forms.
+One shared mutation analysis records every symbol targeted by SET. Swift declares those symbols with `var` and may retain `let` for symbols that never change. Because Swift diagnoses a plain `value = value` as an error, a direct SMILE self-assignment uses the smallest type-preserving identity expression while retaining a real target assignment: append an empty String, add integer zero, or OR Boolean false. Other targets use their natural mutable declaration and assignment forms.
 
 ## Python
 
@@ -212,7 +214,7 @@ int Age = 49;
 bool Adult = Age >= 18;
 ```
 
-This keeps generated programs dependency-light without treating an initial LET value as permanent. Every later SET still emits an actual destination storage update.
+This keeps generated programs dependency-light without treating an initial LET value as permanent. Every later SET still emits an actual destination storage update. A statement-local known value may guide storage size, literal construction, and complex-expression lowering, but it must not replace a required direct variable read when the destination can read that storage naturally.
 
 For current NUL-free C `PRINT`, SMILE emits one safe typed `printf` statement per SMILE `PRINT`:
 
@@ -238,7 +240,11 @@ printf("%s\n", Name);
 
 Ordinary `int` expressions use `%d`. Wide `int64_t` expressions use `%lld` with an explicit value-preserving cast to `long long`, because the exact underlying typedef of `int64_t` is platform-specific. Boolean expressions use `%s` with an argument that selects canonical `TRUE` or `FALSE`. Literal percent signs are doubled in the compiler-generated format.
 
-SMILE Strings are complete values with an exact length. C-family `%s` and `strcmp` may be used only when semantically valid for the complete statement-local value. C and Objective-C keep mutable `const char *` pointers, and every String SET right side lowers to one exact ordinary C literal followed by pointer assignment. If a variable can contain NUL at any point, a deterministic collision-safe `size_t smileString{variableIndex}Length` support variable is initialized at LET and updated at every SET. PRINT uses length-aware output whenever the current value contains NUL. NUL-sensitive equality may lower to the exact Boolean known at that statement position so bytes after NUL remain significant.
+SMILE Strings are complete values with an exact length. C-family `%s` and `strcmp` may be used only when semantically valid for the complete value. C and Objective-C keep mutable `const char *` pointers, and every String SET right side lowers to one exact ordinary C literal followed by pointer assignment. If a variable can contain NUL at any LET or SET position, a deterministic collision-safe `size_t smileString{variableIndex}Length` support variable is initialized at LET and updated immediately after every SET pointer update. The pointer and logical length must always describe the same current String value.
+
+A direct C or Objective-C String variable PRINT reads current target storage. When the variable has a logical-length companion, output uses the current pointer and current length, normally with `fwrite(variable, 1, variableLength, stdout)` followed by `fputc('\n', stdout)`. An ordinary NUL-free variable may continue to use `printf("%s\n", variable)`. The PRINT operation must not use a second independent static copy of the variable's statement-local value. Raw templates, interpolation, concatenation, and other complex expressions may retain their existing exact lowering.
+
+Applicable direct C-family String equality also reads current storage. NUL-free variable operands use ordinary ordinal `strcmp`. Exact byte-aware operands compare logical lengths before `memcmp`, so unequal lengths and prefix collisions cannot read past the shorter value or ignore bytes after NUL. Variable-versus-variable, variable-versus-literal, and literal-versus-variable equality and inequality follow this rule. A highly complex expression may still lower to its statement-local known Boolean when constructing a storage comparison would make the generated program substantially less clear.
 
 Objective-C follows the same stdout style in the Windows-local console profile:
 
@@ -257,7 +263,22 @@ COBOL uses GnuCOBOL free-format source and stores variables in `WORKING-STORAGE`
 DISPLAY "Hello Sin!".
 ```
 
-COBOL storage sizing must inspect every LET and SET value so each `PIC X` item fits the maximum assigned UTF-8 byte length. Every SET emits `MOVE <exact literal> TO <variable>`. A mutated variable also has a COMP-5 `SMILE-SET-LENGTH-{variableIndex}` field; its compiler-owned name is compared with mapped user names case-insensitively and receives a deterministic numeric suffix on collision. SET moves the exact byte length into that field. Fixed-length data items must not leak padding into SMILE output:
+COBOL storage sizing must inspect every LET and SET value so each `PIC X` item fits the maximum assigned UTF-8 byte length. Every SET emits `MOVE <exact literal> TO <variable>`. A mutated variable also has a COMP-5 `SMILE-SET-LENGTH-{variableIndex}` field; its compiler-owned name is compared with mapped user names case-insensitively and receives a deterministic numeric suffix on collision. SET moves the exact byte length into that field immediately after moving the value. Fixed-length data items must not leak padding into SMILE output.
+
+A direct COBOL variable PRINT reads the mapped `WORKING-STORAGE` item rather than displaying a compiler-time copy of its known value. Every directly printed String has a logical-length field; mutated values also maintain one across SET. Output reads that current length and uses reference modification for nonempty storage. A runtime zero-length condition emits exactly one line feed and no padding space. This applies equally to ordinary Strings, normalized Block Strings, embedded NUL, UTF-8, control bytes, and intentional trailing whitespace. Integer and Boolean storage continues to display canonical SMILE text.
+
+Conceptually, mutable output follows this GnuCOBOL shape:
+
+```cobol
+IF Name-LENGTH = 0
+    DISPLAY X"0A" WITH NO ADVANCING
+ELSE
+    DISPLAY Name(1:Name-LENGTH) WITH NO ADVANCING
+    DISPLAY X"0A" WITH NO ADVANCING
+END-IF.
+```
+
+For example, a fixed-width empty item remains a storage placeholder while surrounding output must not leak its padding:
 
 ```cobol
 01 Empty PIC X VALUE SPACE.
@@ -306,6 +327,8 @@ Target generators must use the compiler's symbol-based target identifier map. A 
 - destination-language reserved identifier patterns, such as C and Objective-C names beginning with `__` or with `_` followed by an uppercase ASCII letter;
 - another generated target name.
 
+C and Objective-C must map every standard-library facility or type name emitted by the generator, including `bool`, `int64_t`, `size_t`, `printf`, `fwrite`, `fputc`, `strcmp`, `memcmp`, `strlen`, `main`, and `stdout`. Learner variables must never shadow a generated storage read, comparison, output call, or declaration type.
+
 COBOL must map reserved words and identifiers that are not valid COBOL data names. Underscores should become readable hyphenated names such as `SMILE-internal`.
 
 Java and Swift must map a single SMILE `_` identifier because `_` is not a usable ordinary local variable spelling in those targets.
@@ -334,8 +357,8 @@ Every reference to a SMILE symbol must use the same mapped target name as its de
 
 ## Conformance Validation
 
-Every expression and statement feature is validated against the `SmileEvaluator` reference oracle. The generated-target suite includes sequential Integer, String, and Boolean mutation; old-value right sides; mutation-aware short circuits; SET-introduced wide profiles; ordinary and block String reassignment; structural indentation; blank, leading, and intentional trailing logical newlines; quotes; trailing spaces; tabs; and embedded NUL. It runs all locally installed toolchains for all ten targets and compares exact UTF-8 stdout bytes after normalizing only CRLF to LF in tests that explicitly permit platform line-ending normalization. Tests never trim or discard NUL, backspace, form feed, carriage return, tab, or meaningful trailing whitespace. Repeated generation of the same program must remain byte-for-byte deterministic.
+Every expression and statement feature is validated against the `SmileEvaluator` reference oracle. The generated-target suite includes sequential Integer, String, and Boolean mutation; old-value right sides; mutation-aware short circuits; SET-introduced wide profiles; ordinary and block String reassignment; structural indentation; blank, leading, and intentional trailing logical newlines; quotes; trailing spaces; tabs; embedded NUL; and direct current-storage reads. It runs all locally installed toolchains for all ten targets and compares exact UTF-8 stdout bytes after normalizing only CRLF to LF in tests that explicitly permit platform line-ending normalization. Tests never trim or discard NUL, backspace, form feed, carriage return, tab, or meaningful trailing whitespace. Repeated generation of the same program must remain byte-for-byte deterministic. C, Objective-C, COBOL, and MASM additionally require structural assertions proving that direct PRINT operations reference target storage. Java release validation requires both `javac` and `java` and executes the SET acceptance programs plus the cumulative `examples/language.smile` without SET-related skips.
 
 ## Destination-Language Freeze
 
-C++ is SMILE's tenth and final planned destination language. Target-language expansion is frozen unless Sin explicitly reopens it. After v0.5.0 runtime variables and assignment, new compiler work should deepen conditions, input, loops, functions, scopes, debugging, and teaching tools rather than adding another backend. Rust, Zig, and Go remain deferred.
+C++ is SMILE's tenth and final planned destination language. Target-language expansion is frozen unless Sin explicitly reopens it. After the syntax-free v0.5.1 runtime-readiness release, the next language milestone is v0.6.0 `IF / THEN / ELSE`; later work should deepen input, loops, functions, scopes, debugging, and teaching tools rather than adding another backend. Rust, Zig, and Go remain deferred.

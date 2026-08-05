@@ -54,9 +54,22 @@ node Program.js
 Java:
 
 ```bat
-javac Program.java
+javac -encoding UTF-8 Program.java
 java Program
 ```
+
+SMILE accepts Java as build-capable only when one real directory contains both
+`javac.exe` and `java.exe` and both version probes succeed. Detection checks
+ordinary `PATH` entries first, then `%JAVA_HOME%\bin`, then the existing known
+JDK vendor folders under Program Files. It resolves the executable paths before
+running them, so a runtime from one installation cannot be paired with a
+compiler from another. Windows Store aliases under `Microsoft\WindowsApps` are
+ignored and are never launched.
+
+The Desktop status distinguishes `Full JDK detected`, `Java runtime detected,
+but javac is missing`, and `JDK missing`. A runtime-only installation can run
+already compiled classes, but SMILE correctly leaves Java Build & Run disabled
+because it cannot compile `Program.java`.
 
 A free Microsoft OpenJDK 25 LTS installation can be added with:
 
@@ -65,6 +78,22 @@ winget install --id Microsoft.OpenJDK.25 --exact
 ```
 
 Restart the terminal or desktop app after installation so its process receives the updated `PATH`. A user-local extracted JDK also works when `JAVA_HOME` points at its root and `%JAVA_HOME%\bin` is on the user `PATH`.
+
+The v0.5.1 Java acceptance tests remain environment-aware for contributors who
+do not have a JDK. Official release validation makes the JDK mandatory so the
+ordinary SET, String reassignment, SET Block String, embedded-NUL, wide-Integer
+SET, and cumulative `language.smile` programs execute instead of skipping:
+
+```powershell
+$env:SMILE_REQUIRE_JAVA = '1'
+dotnet test SMILE.sln -c Release --no-build -nologo --filter FullyQualifiedName~JavaRuntimeReadinessTests
+Remove-Item Env:SMILE_REQUIRE_JAVA
+```
+
+Each acceptance test records the selected `javac` and `java` paths, detected
+versions, compiler success, program exit code, and exact logical UTF-8 stdout
+comparison with `SmileEvaluator`. Machine-specific paths are validation output
+only and are never stored in the repository.
 
 COBOL:
 
@@ -153,7 +182,8 @@ Detection, build, run, timeout, cancellation, folder opening, and process-launch
 - Missing .NET SDK: install .NET SDK 10 or newer.
 - Missing C, C++, or MASM: install Visual Studio 2026 Enterprise or Build Tools with Desktop development with C++.
 - Missing JavaScript runtime: install Node.js.
-- Missing Java compiler: install a full JDK such as Microsoft OpenJDK 25 LTS, not only a JRE.
+- Java runtime detected but `javac` missing: install a full JDK such as Microsoft OpenJDK 25 LTS, not only a JRE, then restart SMILE so it receives the updated environment.
+- JDK missing: install a full JDK and expose its `bin` directory through `PATH` or point `JAVA_HOME` at the JDK root. SMILE does not launch Windows Store aliases or installers.
 - Missing COBOL compiler: install MSYS2 and `mingw-w64-x86_64-gnucobol`.
 - Missing Objective-C compiler: install MSYS2 and `mingw-w64-x86_64-clang`.
 - Missing Swift compiler: install Swift.Toolchain for Windows and the Visual Studio C++ linker tools.

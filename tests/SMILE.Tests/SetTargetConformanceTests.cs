@@ -92,6 +92,31 @@ PRINT {Counter}
     }
 
     [TestMethod]
+    public void Swift_preserves_direct_self_assignment_with_real_type_safe_storage_updates()
+    {
+        const string source = """
+LET Text = "SMILE"
+LET Number = 1
+LET Flag = TRUE
+SET Text = Text
+SET Number = Number
+SET Flag = Flag
+PRINT {Text}
+PRINT {Number}
+PRINT {Flag}
+""";
+
+        string swift = Generate(source, TargetLanguage.Swift);
+
+        StringAssert.Contains(swift, "Text = Text + \"\"");
+        StringAssert.Contains(swift, "Number = Number + 0");
+        StringAssert.Contains(swift, "Flag = Flag || false");
+        Assert.IsFalse(swift.Contains("Text = Text\n", StringComparison.Ordinal));
+        Assert.IsFalse(swift.Contains("Number = Number\n", StringComparison.Ordinal));
+        Assert.IsFalse(swift.Contains("Flag = Flag\n", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public void Block_values_reach_every_target_only_as_normalized_ordinary_Strings()
     {
         const string source = """
@@ -178,7 +203,8 @@ PRINT {Data}
             Assert.AreEqual(3, CountOccurrences(generated, "smileString0Length = 3;"));
             StringAssert.Contains(generated, "Data = \"A\\000B\";");
             StringAssert.Contains(generated, "Data = \"XYZ\";");
-            StringAssert.Contains(generated, "fwrite(smilePrintBytes, 1, 3, stdout);");
+            StringAssert.Contains(generated, "fwrite(Data, 1, smileString0Length, stdout);");
+            Assert.IsFalse(generated.Contains("smilePrintBytes", StringComparison.Ordinal));
         }
     }
 
@@ -200,7 +226,9 @@ PRINT {Data = "A\0B"}
         foreach (TargetLanguage language in new[] { TargetLanguage.C, TargetLanguage.ObjectiveC })
         {
             string generated = Generate(source, language);
-            StringAssert.Contains(generated, "#include <stdbool.h>");
+            StringAssert.Contains(generated, "#include <string.h>");
+            StringAssert.Contains(generated, "memcmp(Data, \"A\\000B\"");
+            Assert.IsFalse(generated.Contains("#include <stdbool.h>", StringComparison.Ordinal));
         }
 
         await AssertInstalledTargetsMatchEvaluator(source);

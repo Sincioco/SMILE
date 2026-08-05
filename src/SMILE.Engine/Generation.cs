@@ -463,12 +463,12 @@ internal sealed class CCodeGenerator : ICodeGenerator
             source.AppendLine("#include <stdint.h>");
         }
 
-        if (CGenerationFacts.NeedsBooleanHeader(program, trace))
+        if (CGenerationFacts.NeedsBooleanHeader(program, trace, exactStringLengths))
         {
             source.AppendLine("#include <stdbool.h>");
         }
 
-        if (CGenerationFacts.NeedsStringComparison(program, trace))
+        if (CGenerationFacts.NeedsStringComparison(program, trace, exactStringLengths))
         {
             source.AppendLine("#include <string.h>");
         }
@@ -490,7 +490,12 @@ internal sealed class CCodeGenerator : ICodeGenerator
                     SmileValue letValue = GeneratorValueFacts.Evaluate(let.Initializer, step.ValuesBefore);
                     string initializer = let.Variable.Type is SmileType.String
                         ? TargetExpression.CConstant(letValue, integers)
-                        : TargetExpression.C(let.Initializer, identifiers, integers, step.ValuesBefore);
+                        : TargetExpression.C(
+                            let.Initializer,
+                            identifiers,
+                            integers,
+                            step.ValuesBefore,
+                            exactStringLengths);
                     source.AppendLine($"    {TargetTypes.CDeclaration(let.Variable.Type, identifiers.Get(let.Variable), integers)} = {initializer};");
                     if (exactStringLengths.TryGetValue(let.Variable, out string? letLengthName))
                     {
@@ -510,7 +515,12 @@ internal sealed class CCodeGenerator : ICodeGenerator
                     SmileValue setValue = GeneratorValueFacts.Evaluate(set.Value, step.ValuesBefore);
                     string value = set.Variable.Type is SmileType.String
                         ? TargetExpression.CConstant(setValue, integers)
-                        : TargetExpression.C(set.Value, identifiers, integers, step.ValuesBefore);
+                        : TargetExpression.C(
+                            set.Value,
+                            identifiers,
+                            integers,
+                            step.ValuesBefore,
+                            exactStringLengths);
                     source.AppendLine($"    {identifiers.Get(set.Variable)} = {value};");
                     if (exactStringLengths.TryGetValue(set.Variable, out string? setLengthName))
                     {
@@ -527,7 +537,13 @@ internal sealed class CCodeGenerator : ICodeGenerator
                         source.AppendLine();
                     }
 
-                    AppendCPrint(source, print, identifiers, integers, step.ValuesBefore);
+                    AppendCPrint(
+                        source,
+                        print,
+                        identifiers,
+                        integers,
+                        step.ValuesBefore,
+                        exactStringLengths);
                     emittedExecutable = true;
                     emittedBodyStatement = true;
                     break;
@@ -552,8 +568,19 @@ internal sealed class CCodeGenerator : ICodeGenerator
         BoundPrintStatement print,
         TargetIdentifierMap identifiers,
         TargetIntegerProfile integers,
-        IReadOnlyDictionary<VariableSymbol, SmileValue> values)
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values,
+        IReadOnlyDictionary<VariableSymbol, string> exactStringLengths)
     {
+        if (TryAppendDirectStringVariablePrint(
+            source,
+            "    ",
+            print,
+            identifiers,
+            exactStringLengths))
+        {
+            return;
+        }
+
         if (TryAppendExactNulStringPrint(source, "    ", print, values))
         {
             return;
@@ -561,9 +588,46 @@ internal sealed class CCodeGenerator : ICodeGenerator
 
         CPrintfPlan plan = CPrintfPlan.FromPrint(
             print,
-            expression => TargetExpression.C(expression, identifiers, integers, values),
+            expression => TargetExpression.C(
+                expression,
+                identifiers,
+                integers,
+                values,
+                exactStringLengths),
             integers.RequiresSigned64Storage);
         AppendPrintfCall(source, "    ", plan);
+    }
+
+    internal static bool TryAppendDirectStringVariablePrint(
+        StringBuilder source,
+        string indent,
+        BoundPrintStatement print,
+        TargetIdentifierMap identifiers,
+        IReadOnlyDictionary<VariableSymbol, string> exactStringLengths)
+    {
+        if (print.IsBlankLine ||
+            print.Value is not BoundVariableExpression variable ||
+            variable.Variable.Type is not SmileType.String)
+        {
+            return false;
+        }
+
+        string name = identifiers.Get(variable.Variable);
+        if (exactStringLengths.TryGetValue(variable.Variable, out string? lengthName))
+        {
+            // Exact mutable Strings are pointer-plus-length values in C. Read
+            // both pieces of current target storage instead of re-emitting the
+            // statement's statically known bytes as an unrelated print literal.
+            source.Append(indent).Append("fwrite(").Append(name).Append(", 1, ")
+                .Append(lengthName).AppendLine(", stdout);");
+            source.Append(indent).AppendLine("fputc('\\n', stdout);");
+        }
+        else
+        {
+            source.Append(indent).Append("printf(\"%s\\n\", ").Append(name).AppendLine(");");
+        }
+
+        return true;
     }
 
     internal static void AppendPrintfCall(StringBuilder source, string indent, CPrintfPlan plan)
@@ -1029,7 +1093,7 @@ internal sealed class CobolCodeGenerator : ICodeGenerator
 
         source.AppendLine();
         source.AppendLine("PROCEDURE DIVISION.");
-        source.AppendLine("*> Each SMILE PRINT becomes one DISPLAY operation.");
+        source.AppendLine("*> SMILE PRINT reads current storage when it directly names a variable.");
 
         foreach (BoundStatementExecution step in trace.Steps)
         {
@@ -1040,7 +1104,12 @@ internal sealed class CobolCodeGenerator : ICodeGenerator
                     break;
 
                 case BoundPrintStatement print:
-                    AppendCobolPrint(source, print, step.ValuesBefore);
+                    AppendCobolPrint(
+                        source,
+                        print,
+                        step.ValuesBefore,
+                        identifiers,
+                        logicalLengths);
                     break;
             }
         }
@@ -1094,8 +1163,41 @@ internal sealed class CobolCodeGenerator : ICodeGenerator
     private static void AppendCobolPrint(
         StringBuilder source,
         BoundPrintStatement print,
-        IReadOnlyDictionary<VariableSymbol, SmileValue> values)
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values,
+        TargetIdentifierMap identifiers,
+        IReadOnlyDictionary<VariableSymbol, string> logicalLengths)
     {
+        if (!print.IsBlankLine && print.Value is BoundVariableExpression variable)
+        {
+            string name = identifiers.Get(variable.Variable);
+            if (logicalLengths.TryGetValue(variable.Variable, out string? lengthName))
+            {
+                // COBOL String values used by direct PRINT, and every mutated
+                // value, carry a logical length beside their PIC X storage.
+                // Reference modification reads the current logical bytes so
+                // old data and padding never leak after SET. The explicit LF
+                // also keeps an empty value to exactly one SMILE newline.
+                source.AppendLine($"    IF {lengthName} = 0");
+                source.AppendLine("        DISPLAY X\"0A\" WITH NO ADVANCING");
+                source.AppendLine("    ELSE");
+                source.AppendLine($"        DISPLAY {name}(1:{lengthName}) WITH NO ADVANCING");
+                source.AppendLine("        DISPLAY X\"0A\" WITH NO ADVANCING");
+                source.AppendLine("    END-IF.");
+                return;
+            }
+
+            string currentText = GeneratorValueFacts.DisplayText(print.Value, values);
+            if (currentText.Length == 0)
+            {
+                source.AppendLine("    DISPLAY X\"0A\" WITH NO ADVANCING.");
+                return;
+            }
+
+            source.AppendLine($"    DISPLAY {name} WITH NO ADVANCING.");
+            source.AppendLine("    DISPLAY X\"0A\" WITH NO ADVANCING.");
+            return;
+        }
+
         string text = print.IsBlankLine
             ? string.Empty
             : GeneratorValueFacts.DisplayText(print.Value, values);
@@ -1121,11 +1223,19 @@ internal sealed class CobolCodeGenerator : ICodeGenerator
         var used = program.Variables
             .Select(identifiers.Get)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var directStringReads = program.Statements
+            .OfType<BoundPrintStatement>()
+            .Where(print => !print.IsBlankLine)
+            .Select(print => print.Value)
+            .OfType<BoundVariableExpression>()
+            .Where(variable => variable.Variable.Type is SmileType.String)
+            .Select(variable => variable.Variable)
+            .ToHashSet();
 
         for (int index = 0; index < program.Variables.Count; index++)
         {
             VariableSymbol variable = program.Variables[index];
-            if (trace.MutatedVariables.Contains(variable))
+            if (trace.MutatedVariables.Contains(variable) || directStringReads.Contains(variable))
             {
                 string preferred = $"SMILE-SET-LENGTH-{index}";
                 string name = preferred;
@@ -1162,12 +1272,12 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
             source.AppendLine("#include <stdint.h>");
         }
 
-        if (CGenerationFacts.NeedsBooleanHeader(program, trace))
+        if (CGenerationFacts.NeedsBooleanHeader(program, trace, exactStringLengths))
         {
             source.AppendLine("#include <stdbool.h>");
         }
 
-        if (CGenerationFacts.NeedsStringComparison(program, trace))
+        if (CGenerationFacts.NeedsStringComparison(program, trace, exactStringLengths))
         {
             source.AppendLine("#include <string.h>");
         }
@@ -1192,7 +1302,12 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
                     SmileValue letValue = GeneratorValueFacts.Evaluate(let.Initializer, step.ValuesBefore);
                     string initializer = let.Variable.Type is SmileType.String
                         ? TargetExpression.CConstant(letValue, integers)
-                        : TargetExpression.ObjectiveC(let.Initializer, identifiers, integers, step.ValuesBefore);
+                        : TargetExpression.ObjectiveC(
+                            let.Initializer,
+                            identifiers,
+                            integers,
+                            step.ValuesBefore,
+                            exactStringLengths);
                     source.AppendLine($"    {TargetTypes.CDeclaration(let.Variable.Type, identifiers.Get(let.Variable), integers)} = {initializer};");
                     if (exactStringLengths.TryGetValue(let.Variable, out string? letLengthName))
                     {
@@ -1212,7 +1327,12 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
                     SmileValue setValue = GeneratorValueFacts.Evaluate(set.Value, step.ValuesBefore);
                     string value = set.Variable.Type is SmileType.String
                         ? TargetExpression.CConstant(setValue, integers)
-                        : TargetExpression.ObjectiveC(set.Value, identifiers, integers, step.ValuesBefore);
+                        : TargetExpression.ObjectiveC(
+                            set.Value,
+                            identifiers,
+                            integers,
+                            step.ValuesBefore,
+                            exactStringLengths);
                     source.AppendLine($"    {identifiers.Get(set.Variable)} = {value};");
                     if (exactStringLengths.TryGetValue(set.Variable, out string? setLengthName))
                     {
@@ -1229,7 +1349,13 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
                         source.AppendLine();
                     }
 
-                    AppendObjectiveCPrint(source, print, identifiers, integers, step.ValuesBefore);
+                    AppendObjectiveCPrint(
+                        source,
+                        print,
+                        identifiers,
+                        integers,
+                        step.ValuesBefore,
+                        exactStringLengths);
                     emittedExecutable = true;
                     emittedBodyStatement = true;
                     break;
@@ -1254,8 +1380,19 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
         BoundPrintStatement print,
         TargetIdentifierMap identifiers,
         TargetIntegerProfile integers,
-        IReadOnlyDictionary<VariableSymbol, SmileValue> values)
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values,
+        IReadOnlyDictionary<VariableSymbol, string> exactStringLengths)
     {
+        if (CCodeGenerator.TryAppendDirectStringVariablePrint(
+            source,
+            "    ",
+            print,
+            identifiers,
+            exactStringLengths))
+        {
+            return;
+        }
+
         if (CCodeGenerator.TryAppendExactNulStringPrint(source, "    ", print, values))
         {
             return;
@@ -1263,7 +1400,12 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
 
         CPrintfPlan plan = CPrintfPlan.FromPrint(
             print,
-            expression => TargetExpression.ObjectiveC(expression, identifiers, integers, values),
+            expression => TargetExpression.ObjectiveC(
+                expression,
+                identifiers,
+                integers,
+                values,
+                exactStringLengths),
             integers.RequiresSigned64Storage);
         CCodeGenerator.AppendPrintfCall(source, "    ", plan);
     }
@@ -1291,7 +1433,25 @@ internal sealed class SwiftCodeGenerator : ICodeGenerator
                     break;
 
                 case BoundSetStatement set:
-                    source.AppendLine($"{identifiers.Get(set.Variable)} = {TargetExpression.Swift(set.Value, identifiers, integers)}");
+                    string name = identifiers.Get(set.Variable);
+                    string value = TargetExpression.Swift(set.Value, identifiers, integers);
+                    if (set.Value is BoundVariableExpression variable &&
+                        variable.Variable == set.Variable)
+                    {
+                        // Swift rejects a plain `value = value` as a compile-time
+                        // error even though direct self-assignment is valid SMILE.
+                        // Keep the required target storage update with the
+                        // smallest type-preserving identity expression.
+                        value = set.Variable.Type switch
+                        {
+                            SmileType.String => value + " + \"\"",
+                            SmileType.Integer => value + " + 0",
+                            SmileType.Boolean => value + " || false",
+                            _ => value
+                        };
+                    }
+
+                    source.AppendLine($"{name} = {value}");
                     break;
 
                 case BoundPrintStatement print:
@@ -2215,7 +2375,8 @@ internal static class CGenerationFacts
 {
     public static bool NeedsBooleanHeader(
         BoundProgram program,
-        BoundProgramExecutionTrace trace)
+        BoundProgramExecutionTrace trace,
+        IReadOnlyDictionary<VariableSymbol, string> exactStringLengths)
     {
         if (program.Variables.Any(variable => variable.Type is SmileType.Boolean))
         {
@@ -2226,7 +2387,10 @@ internal static class CGenerationFacts
         {
             if (program.Statements[index] is BoundPrintStatement { IsBlankLine: false } print &&
                 (ContainsBooleanLiteral(print.Value) ||
-                 ContainsNulSensitiveStringComparison(print.Value, trace.Steps[index].ValuesBefore)))
+                 ContainsNulSensitiveStringComparison(
+                     print.Value,
+                     trace.Steps[index].ValuesBefore,
+                     exactStringLengths)))
             {
                 return true;
             }
@@ -2237,7 +2401,8 @@ internal static class CGenerationFacts
 
     public static bool NeedsStringComparison(
         BoundProgram program,
-        BoundProgramExecutionTrace trace)
+        BoundProgramExecutionTrace trace,
+        IReadOnlyDictionary<VariableSymbol, string> exactStringLengths)
     {
         for (int index = 0; index < program.Statements.Count; index++)
         {
@@ -2245,11 +2410,11 @@ internal static class CGenerationFacts
             bool needsComparison = step.Statement switch
             {
                 BoundLetStatement let when let.Variable.Type is not SmileType.String =>
-                    ContainsStringComparison(let.Initializer, step.ValuesBefore),
+                    ContainsStringComparison(let.Initializer, step.ValuesBefore, exactStringLengths),
                 BoundSetStatement set when set.Variable.Type is not SmileType.String =>
-                    ContainsStringComparison(set.Value, step.ValuesBefore),
+                    ContainsStringComparison(set.Value, step.ValuesBefore, exactStringLengths),
                 BoundPrintStatement print when !print.IsBlankLine =>
-                    ContainsStringComparison(print.Value, step.ValuesBefore),
+                    ContainsStringComparison(print.Value, step.ValuesBefore, exactStringLengths),
                 _ => false
             };
 
@@ -2277,36 +2442,80 @@ internal static class CGenerationFacts
 
     private static bool ContainsStringComparison(
         BoundExpression expression,
-        IReadOnlyDictionary<VariableSymbol, SmileValue> values) =>
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values,
+        IReadOnlyDictionary<VariableSymbol, string> exactStringLengths) =>
         expression switch
         {
             BoundBinaryExpression binary =>
-                NeedsStrcmp(binary, values) ||
-                ContainsStringComparison(binary.Left, values) ||
-                ContainsStringComparison(binary.Right, values),
-            BoundUnaryExpression unary => ContainsStringComparison(unary.Operand, values),
+                NeedsCStringComparisonFacility(binary, values, exactStringLengths) ||
+                ContainsStringComparison(binary.Left, values, exactStringLengths) ||
+                ContainsStringComparison(binary.Right, values, exactStringLengths),
+            BoundUnaryExpression unary =>
+                ContainsStringComparison(unary.Operand, values, exactStringLengths),
             BoundInterpolatedStringExpression interpolated => interpolated.Parts.Any(part =>
                 part is BoundInterpolationExpressionPart interpolation &&
-                ContainsStringComparison(interpolation.Expression, values)),
+                ContainsStringComparison(interpolation.Expression, values, exactStringLengths)),
             _ => false
         };
 
     private static bool ContainsNulSensitiveStringComparison(
         BoundExpression expression,
-        IReadOnlyDictionary<VariableSymbol, SmileValue> values) =>
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values,
+        IReadOnlyDictionary<VariableSymbol, string> exactStringLengths) =>
         expression switch
         {
             BoundBinaryExpression binary =>
-                IsNulSensitiveStringComparison(binary, values) ||
-                ContainsNulSensitiveStringComparison(binary.Left, values) ||
-                ContainsNulSensitiveStringComparison(binary.Right, values),
+                (IsNulSensitiveStringComparison(binary, values) &&
+                 !ShouldUseExactStorageComparison(binary, exactStringLengths)) ||
+                ContainsNulSensitiveStringComparison(binary.Left, values, exactStringLengths) ||
+                ContainsNulSensitiveStringComparison(binary.Right, values, exactStringLengths),
             BoundUnaryExpression unary =>
-                ContainsNulSensitiveStringComparison(unary.Operand, values),
+                ContainsNulSensitiveStringComparison(unary.Operand, values, exactStringLengths),
             BoundInterpolatedStringExpression interpolated => interpolated.Parts.Any(part =>
                 part is BoundInterpolationExpressionPart interpolation &&
-                ContainsNulSensitiveStringComparison(interpolation.Expression, values)),
+                ContainsNulSensitiveStringComparison(
+                    interpolation.Expression,
+                    values,
+                    exactStringLengths)),
             _ => false
         };
+
+    internal static bool ShouldUseExactStorageComparison(
+        BoundBinaryExpression expression,
+        IReadOnlyDictionary<VariableSymbol, string> exactStringLengths)
+    {
+        if (expression.Left.Type is not SmileType.String ||
+            expression.Operator.Kind is not (BoundBinaryOperatorKind.Equality or BoundBinaryOperatorKind.Inequality) ||
+            !IsDirectStringStorageOperand(expression.Left) ||
+            !IsDirectStringStorageOperand(expression.Right) ||
+            expression.Left is not BoundVariableExpression &&
+            expression.Right is not BoundVariableExpression)
+        {
+            return false;
+        }
+
+        return RequiresExactLength(expression.Left, exactStringLengths) ||
+            RequiresExactLength(expression.Right, exactStringLengths);
+    }
+
+    private static bool IsDirectStringStorageOperand(BoundExpression expression) =>
+        expression is BoundVariableExpression or BoundStringLiteralExpression;
+
+    private static bool RequiresExactLength(
+        BoundExpression expression,
+        IReadOnlyDictionary<VariableSymbol, string> exactStringLengths) =>
+        expression switch
+        {
+            BoundVariableExpression variable => exactStringLengths.ContainsKey(variable.Variable),
+            BoundStringLiteralExpression literal => literal.Value.Contains('\0', StringComparison.Ordinal),
+            _ => false
+        };
+
+    private static bool NeedsCStringComparisonFacility(
+        BoundBinaryExpression expression,
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values,
+        IReadOnlyDictionary<VariableSymbol, string> exactStringLengths) =>
+        ShouldUseExactStorageComparison(expression, exactStringLengths) || NeedsStrcmp(expression, values);
 
     private static bool IsNulSensitiveStringComparison(
         BoundBinaryExpression expression,
@@ -2522,15 +2731,27 @@ internal static class TargetExpression
         BoundExpression expression,
         TargetIdentifierMap identifiers,
         TargetIntegerProfile integers,
-        IReadOnlyDictionary<VariableSymbol, SmileValue> values) =>
-        new Writer(TargetLanguage.C, identifiers, integers, values).Write(expression);
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values,
+        IReadOnlyDictionary<VariableSymbol, string> exactStringLengths) =>
+        new Writer(
+            TargetLanguage.C,
+            identifiers,
+            integers,
+            values,
+            exactStringLengths).Write(expression);
 
     public static string ObjectiveC(
         BoundExpression expression,
         TargetIdentifierMap identifiers,
         TargetIntegerProfile integers,
-        IReadOnlyDictionary<VariableSymbol, SmileValue> values) =>
-        new Writer(TargetLanguage.ObjectiveC, identifiers, integers, values).Write(expression);
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values,
+        IReadOnlyDictionary<VariableSymbol, string> exactStringLengths) =>
+        new Writer(
+            TargetLanguage.ObjectiveC,
+            identifiers,
+            integers,
+            values,
+            exactStringLengths).Write(expression);
 
     public static string CConstant(SmileValue value, TargetIntegerProfile integers) =>
         value.Type switch
@@ -2564,17 +2785,22 @@ internal static class TargetExpression
         private readonly TargetIdentifierMap _identifiers;
         private readonly TargetIntegerProfile _integers;
         private readonly IReadOnlyDictionary<VariableSymbol, SmileValue>? _values;
+        private readonly IReadOnlyDictionary<VariableSymbol, string>? _exactStringLengths;
+
+        private readonly record struct CStringStorageOperand(string Value, string Length);
 
         public Writer(
             TargetLanguage language,
             TargetIdentifierMap identifiers,
             TargetIntegerProfile integers,
-            IReadOnlyDictionary<VariableSymbol, SmileValue>? values = null)
+            IReadOnlyDictionary<VariableSymbol, SmileValue>? values = null,
+            IReadOnlyDictionary<VariableSymbol, string>? exactStringLengths = null)
         {
             _language = language;
             _identifiers = identifiers;
             _integers = integers;
             _values = values;
+            _exactStringLengths = exactStringLengths;
         }
 
         public string Write(BoundExpression expression) =>
@@ -2733,6 +2959,28 @@ internal static class TargetExpression
             bool isRightChild,
             BoundBinaryOperatorKind? parentOperator)
         {
+            if (_exactStringLengths is not null &&
+                CGenerationFacts.ShouldUseExactStorageComparison(expression, _exactStringLengths))
+            {
+                CStringStorageOperand left = WriteCStringStorageOperand(expression.Left);
+                CStringStorageOperand right = WriteCStringStorageOperand(expression.Right);
+                bool equality = expression.Operator.Kind is BoundBinaryOperatorKind.Equality;
+                string lengthOperator = equality ? " == " : " != ";
+                string logicalOperator = equality ? " && " : " || ";
+                string byteOperator = equality ? " == 0" : " != 0";
+
+                // Compare lengths first so memcmp is reached only when both
+                // operands expose the same number of logical UTF-8 bytes. That
+                // keeps prefix collisions exact and never reads past either
+                // current target value.
+                return "(" +
+                    left.Length + lengthOperator + right.Length +
+                    logicalOperator +
+                    "memcmp(" + left.Value + ", " + right.Value + ", " + left.Length + ")" +
+                    byteOperator +
+                    ")";
+            }
+
             if (_values is not null &&
                 (GeneratorValueFacts.TryGetNulContainingString(expression.Left, _values, out _) ||
                  GeneratorValueFacts.TryGetNulContainingString(expression.Right, _values, out _)) &&
@@ -2760,6 +3008,26 @@ internal static class TargetExpression
             return NeedsParentheses(precedence, parentPrecedence, isRightChild, parentOperator)
                 ? "(" + text + ")"
                 : text;
+        }
+
+        private CStringStorageOperand WriteCStringStorageOperand(BoundExpression expression) =>
+            expression switch
+            {
+                BoundVariableExpression variable => WriteCStringVariableStorageOperand(variable),
+                BoundStringLiteralExpression literal => new CStringStorageOperand(
+                    TargetEscapes.CString(literal.Value),
+                    Encoding.UTF8.GetByteCount(literal.Value).ToString(CultureInfo.InvariantCulture)),
+                _ => throw new InvalidOperationException(
+                    "Exact C String storage comparisons require a variable or literal operand.")
+            };
+
+        private CStringStorageOperand WriteCStringVariableStorageOperand(BoundVariableExpression variable)
+        {
+            string name = _identifiers.Get(variable.Variable);
+            string length = _exactStringLengths!.TryGetValue(variable.Variable, out string? exactLength)
+                ? exactLength
+                : $"strlen({name})";
+            return new CStringStorageOperand(name, length);
         }
 
         private string WriteCStringEqualityOperand(BoundExpression expression)

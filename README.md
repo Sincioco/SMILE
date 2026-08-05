@@ -16,7 +16,7 @@ A programming language inspired by BASIC that makes it easy for newcomers to lea
 
 ## Current Release
 
-SMILE v0.5.0, "Runtime Variables, SET, and SET Block String Literals," adds mutable fixed-type variables across the completed ten-target compiler. `LET` declares and initializes; case-insensitive `SET` changes the current value of an earlier declaration; and `PRINT` reads the latest state. The SET Block String Literal — The SMILE Way preserves multiline content, structural indentation, official escapes, trailing whitespace, and embedded NUL while keeping ordinary expressions one-line:
+SMILE v0.5.1, "Runtime Storage Readiness," is a syntax-free hardening release for the mutable language introduced in v0.5.0. `LET` still declares and initializes, case-insensitive `SET` still changes an existing fixed-type variable, and the SET Block String Literal — The SMILE Way still preserves multiline content, structural indentation, official escapes, trailing whitespace, and embedded NUL. v0.5.1 proves that direct variable output observes generated target storage: C and Objective-C read the current String pointer and logical length, exact C-family String equality reads current storage where applicable, COBOL reads its current data item and logical length, and MASM retains its pointer-and-length reads. The complete Java SET, Block String, embedded-NUL, wide-Integer, and cumulative `language.smile` programs are validated with both `javac` and `java` from a full JDK.
 
 ```text
 SMILE source
@@ -30,6 +30,7 @@ SMILE source
   -> map SMILE symbols to safe target identifiers once per target
   -> choose one idiomatic target Integer profile from every LET, SET, operand, and intermediate
   -> generate ten target programs with a real storage update for every SET
+  -> read current generated storage for direct variable output and applicable exact equality
   -> compare generated runtime behavior to the SMILE reference evaluator in tests
   -> show three debounced live target previews with line numbers and syntax highlighting
   -> build and run locally when the matching toolchain is installed
@@ -132,7 +133,7 @@ Implemented rules:
 - `AND` and `OR` evaluate left to right and short-circuit at runtime: `FALSE AND ...` and `TRUE OR ...` do not evaluate their right operands. Both operands are still parsed, bound, and type-checked.
 - After successful binding, one shared statement-order trace records current values for `LET`, `SET`, and `PRINT`. The simplifier decides short-circuit reachability before visiting the right operand and never propagates an old value past SET.
 - Parentheses control expression grouping.
-- SMILE does not perform implicit conversions in v0.5.0. For example, `"Age " + 49` is a type error.
+- SMILE does not perform implicit conversions in v0.5.1. For example, `"Age " + 49` is a type error.
 - `PRINT` alone, or followed only by spaces/tabs, prints one blank line.
 - `PRINT "Hello"` prints an ordinary quoted string.
 - Ordinary quoted strings do not interpolate, so `PRINT "Hello {Name}!"` prints `{Name}` literally.
@@ -153,10 +154,11 @@ Implemented rules:
 - Target generators map valid SMILE identifiers when a destination language reserves the same spelling, when a spelling would shadow generator-owned runtime APIs, or when a target has reserved identifier patterns.
 - Java and Swift map a single `_` SMILE identifier because those languages cannot use `_` as an ordinary readable local variable.
 - C and Objective-C map implementation-reserved prefixes such as `__internal` and `_Upper`.
+- C and Objective-C also map emitted runtime facility and type names such as `bool`, `int64_t`, `size_t`, `fwrite`, `fputc`, `strcmp`, `memcmp`, and `strlen`, so learner variables cannot shadow generated storage operations.
 - C, Objective-C, and C++ map fixed-width Integer and limit macro names such as `INT64_MAX`, `INT64_C`, `UINT64_MAX`, and `SIZE_MAX`, preventing wide-profile headers from rewriting learner variables.
 - C++ additionally maps `__` anywhere in a name. The readable `_smile_` result spells reserved underscore runs out so the emitted C++ identifier is itself safe.
 
-Not implemented in v0.5.0: comments, `INPUT`, conditions, loops, functions, arrays, classes, floating-point numbers, assignment expressions, compound assignment, and user-defined types.
+Not implemented in v0.5.1: comments, `INPUT`, conditions, loops, functions, arrays, classes, floating-point numbers, assignment expressions, compound assignment, and user-defined types.
 
 ## Generated Examples
 
@@ -343,9 +345,11 @@ each destination emits a real update at the SET position:
 | COBOL | `MOVE` into sized `PIC X` storage plus a logical-length update |
 | MASM x64 | Update `variable{n}Ptr` and `variable{n}Length` to deterministic SET data |
 
+Swift rejects a plain direct self-assignment such as `Name = Name`. For that valid SMILE SET form, the Swift generator emits the smallest type-preserving identity expression (`Name = Name + ""`, `Count = Count + 0`, or `Ready = Ready || false`) so the destination still contains a real assignment and builds successfully.
+
 A SET Block String generates only as its normalized ordinary String value. No backend scans delimiters, removes indentation, or normalizes source newlines.
 
-Generated target code is expected to be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write. SMILE `Integer` always means signed 64-bit semantically, but each complete bound program uses the smallest natural target representation that preserves every LET value, SET value, operand, and reachable intermediate. A shared statement-order pass simplifies Boolean identities and known-value short circuits without traversing an unreachable right operand or carrying stale state past SET. C++ uses RAII-owned `std::string`, exact assignment, length-aware embedded-NUL construction, native equality, and `std::cout`. Python preserves natural assignment and emits `_smile_text` or `_smile_div` only when needed. C and Objective-C keep mutable `const char *` pointers and add collision-safe `smileString{variableIndex}Length` metadata only for variables that can contain NUL. COBOL sizes `PIC X` across all assigned values and emits real value/length `MOVE` operations. MASM uses deterministic UTF-8 labels and runtime pointer-plus-length updates. See [SMILE Target Code Generation Standard v1.0](docs/SMILE%20Target%20Code%20Generation%20Standard%20v1.0.md).
+Generated target code is expected to be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write. SMILE `Integer` always means signed 64-bit semantically, but each complete bound program uses the smallest natural target representation that preserves every LET value, SET value, operand, and reachable intermediate. A shared statement-order pass simplifies Boolean identities and known-value short circuits without traversing an unreachable right operand or carrying stale state past SET. C++ uses RAII-owned `std::string`, exact assignment, length-aware embedded-NUL construction, native equality, and `std::cout`. Python preserves natural assignment and emits `_smile_text` or `_smile_div` only when needed. C and Objective-C keep mutable `const char *` pointers and add collision-safe `smileString{variableIndex}Length` metadata only for variables that can contain NUL; direct String PRINT reads that current pointer and length, and direct exact equality uses `strcmp` or length plus `memcmp` as appropriate. COBOL sizes `PIC X` across all assigned values, emits real value/length `MOVE` operations, gives every directly printed String a logical length, and prints direct variables from current storage with the current logical length. MASM uses deterministic UTF-8 labels and runtime pointer-plus-length updates and reads those fields for direct variable PRINT. See [SMILE Target Code Generation Standard v1.0](docs/SMILE%20Target%20Code%20Generation%20Standard%20v1.0.md).
 
 ## Supported Targets
 
@@ -362,7 +366,7 @@ Generated target code is expected to be semantically correct, idiomatic for the 
 | `python` | Python | `Program.py` | Python 3.10 or newer |
 | `cpp` | C++ | `Program.cpp` | Visual Studio x64 C++ tools |
 
-Transpilation works even when optional target toolchains are missing. Build & Run is enabled only when the matching local tools are detected. COBOL local Build & Run uses GnuCOBOL free-format source. Objective-C local Build & Run currently uses SMILE's Foundation-free console profile so generated `.m` files compile reliably with MSYS2 Clang on Windows.
+Transpilation works even when optional target toolchains are missing. Build & Run is enabled only when the matching local tools are detected. Java Build & Run requires a complete JDK containing both `javac` and `java`; detection distinguishes a full JDK from a Java-runtime-only installation and a missing JDK. COBOL local Build & Run uses GnuCOBOL free-format source. Objective-C local Build & Run currently uses SMILE's Foundation-free console profile so generated `.m` files compile reliably with MSYS2 Clang on Windows.
 
 ## Requirements
 
@@ -380,6 +384,8 @@ Visual Studio setup must include the x64 C++ tools and `VC\Auxiliary\Build\vcvar
 
 Microsoft OpenJDK 25 LTS is a free Java toolchain and can be installed with `winget install --id Microsoft.OpenJDK.25 --exact`. Restart the terminal or SMILE after installing so the updated user `PATH` is visible.
 
+The v0.5.1 Java acceptance suite invokes both `javac` and `java` and compares ordinary SET, String reassignment, Block String, embedded-NUL, SET-introduced wide Integer, runtime-authenticity, and complete `examples/language.smile` output to `SmileEvaluator`.
+
 ## Build, Test, And Run
 
 ```bat
@@ -389,6 +395,16 @@ cmd /c cd /d C:\SMILE && dotnet build SMILE.sln -c Debug
 cmd /c cd /d C:\SMILE && dotnet test SMILE.sln -c Debug --no-build
 cmd /c cd /d C:\SMILE && dotnet build SMILE.sln -c Release
 cmd /c cd /d C:\SMILE && dotnet test SMILE.sln -c Release --no-build
+```
+
+Official release validation makes Java and all ten local toolchains mandatory instead of contributor-optional:
+
+```powershell
+$env:SMILE_REQUIRE_JAVA = '1'
+$env:SMILE_REQUIRE_ALL_TARGETS = '1'
+dotnet test SMILE.sln -c Release --no-build -nologo
+Remove-Item Env:SMILE_REQUIRE_JAVA
+Remove-Item Env:SMILE_REQUIRE_ALL_TARGETS
 ```
 
 Run the desktop app:
@@ -439,7 +455,7 @@ When Open Generated Folder is enabled, SMILE asks Windows Explorer to open the g
 
 When Press Any Key Launcher is enabled, SMILE writes `Run Program - Press Any Key.cmd` into each successful build/run workspace. Double-clicking that launcher runs the generated program and then shows `Press any key to exit...`, which keeps the console window open long enough to inspect the output.
 
-Current desktop build version: `0.5.0 Runtime Variables, SET, and SET Block String Literals`.
+Current desktop build version: `0.5.1 Runtime Storage Readiness`.
 
 ## Diagnostics
 
@@ -522,7 +538,7 @@ Source -> Lexer -> Tokens -> Parser -> Syntax Tree -> Binder -> Bound Program
                                                                                Build and Run Result
 ```
 
-`SMILE.Engine` owns lexing, block String normalization, parsing, diagnostics, syntax nodes, binding, variable symbols, typed bound statements and expressions, the mutable reference evaluator, `BoundProgramExecutionTrace`, mutation-aware simplification, variable mutation analysis, per-program target Integer profiling, target identifier mapping, and all ten generators. `BoundLetStatement` owns an initializer, not permanent current state; the evaluator environment owns current values. The execution trace records values before and after LET, SET, and PRINT so simplification, NUL handling, String equality, Integer promotion, COBOL sizing, and MASM pointer/length planning use the correct statement-local state. Every SET emits a real storage update. Block delimiter recognition, indentation removal, newline normalization, and escape decoding remain entirely in the front end; targets receive one ordinary bound String value. `SMILE.Toolchains` owns detection, temporary workspaces, async process execution, cancellation, timeouts, bounded process output, build, and run. `SMILE.Cli` and `SMILE.Desktop` reuse both projects, and the desktop keeps live transpilation and build/run work off the WPF UI thread.
+`SMILE.Engine` owns lexing, block String normalization, parsing, diagnostics, syntax nodes, binding, variable symbols, typed bound statements and expressions, the mutable reference evaluator, `BoundProgramExecutionTrace`, mutation-aware simplification, variable mutation analysis, per-program target Integer profiling, target identifier mapping, and all ten generators. `BoundLetStatement` owns an initializer, not permanent current state; the evaluator environment owns current values. The execution trace records values before and after LET, SET, and PRINT so simplification, NUL handling, String equality, Integer promotion, COBOL sizing, and MASM pointer/length planning use the correct statement-local state. Every SET emits a real storage update. The reference evaluator state and generated target runtime storage must agree not only in final output but also when a direct variable read has a clear target representation; such a read must not be replaced with an unrelated compiler-time literal. Block delimiter recognition, indentation removal, newline normalization, and escape decoding remain entirely in the front end; targets receive one ordinary bound String value. `SMILE.Toolchains` owns detection, temporary workspaces, async process execution, cancellation, timeouts, bounded process output, build, and run. `SMILE.Cli` and `SMILE.Desktop` reuse both projects, and the desktop keeps live transpilation and build/run work off the WPF UI thread.
 
 SMILE-owned build/output artifacts older than 1 day may be cleaned from known generated locations such as `bin`, `obj`, `out`, and `%TEMP%\SMILE\Runs`.
 
@@ -548,7 +564,7 @@ C++ is SMILE's tenth and final planned destination language. Target-language exp
 
 ## Roadmap
 
-Future ideas, not implemented in v0.5.0:
+Future ideas, not implemented in v0.5.1:
 
 The next major milestone is **v0.6.0 - `IF / THEN / ELSE`**.
 

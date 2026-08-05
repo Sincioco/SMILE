@@ -249,7 +249,9 @@ internal sealed class TargetIdentifierMap
             "register", "restrict", "return", "short", "signed", "sizeof", "static", "struct",
             "switch", "typedef", "union", "unsigned", "void", "volatile", "while", "_Alignas",
             "_Alignof", "_Atomic", "_Bool", "_Complex", "_Generic", "_Imaginary", "_Noreturn",
-            "_Static_assert", "_Thread_local", "printf", "main", "stdout"
+            "_Static_assert", "_Thread_local",
+            "bool", "fputc", "fwrite", "int64_t", "main", "memcmp", "printf", "size_t",
+            "stdout", "strcmp", "strlen"
         }
             .Concat(FixedWidthIntegerMacros)
             .ToArray();
@@ -281,10 +283,10 @@ internal sealed class TargetIdentifierMap
             "copy", "count",
             "data", "display", "divide", "division", "else", "end", "entry", "environment", "evaluate",
             "exit", "fd", "file", "from", "function", "global", "goback", "identification", "if", "in", "initialize",
-            "input-output", "inspect", "into", "is", "left", "linkage", "merge", "message", "move", "multiply", "nested", "not", "object",
+            "input-output", "inspect", "into", "is", "left", "linkage", "merge", "message", "move", "multiply", "nested", "not", "number", "object",
             "negative", "of", "open", "or", "perform", "pic", "picture", "procedure", "program", "program-id", "quote", "read", "right",
             "record", "return", "rewrite", "run", "section", "select", "self", "set", "sort", "stop",
-            "same", "string", "subtract", "super", "then", "to", "type", "until", "using", "value", "when",
+            "same", "string", "subtract", "super", "text", "then", "to", "type", "until", "using", "value", "when",
             "working-storage", "write",
             "Program", "SMILE-NEWLINE", "SPACE", "SPACES", "ZERO", "ZEROS", "ZEROES"
         };

@@ -375,13 +375,19 @@ LET Different = Left <> "sin"
         string generated = Generate("""
 LET Quote = "Text"
 LET Negative = -12
+LET Text = "Current"
+LET Number = 42
 
 PRINT {Quote}
 PRINT {Negative}
+PRINT {Text}
+PRINT {Number}
 """, TargetLanguage.Cobol).PrimaryFile.Content;
 
         StringAssert.Contains(generated, "01 SMILE-Quote PIC X(4) VALUE \"Text\".");
         StringAssert.Contains(generated, "01 SMILE-Negative PIC X(3) VALUE \"-12\".");
+        StringAssert.Contains(generated, "01 SMILE-Text PIC X(7) VALUE \"Current\".");
+        StringAssert.Contains(generated, "01 SMILE-Number PIC X(2) VALUE \"42\".");
     }
 
     [TestMethod]

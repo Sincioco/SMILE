@@ -176,8 +176,12 @@ PRINT {Middle}
             .Content;
 
         StringAssert.Contains(cobol, "01 Empty PIC X VALUE SPACE.");
+        StringAssert.Contains(cobol, "01 SMILE-SET-LENGTH-0 PIC 9(9) COMP-5 VALUE 0.");
         StringAssert.Contains(cobol, "DISPLAY \"[]\".");
-        StringAssert.Contains(cobol, "DISPLAY X\"0A\" WITH NO ADVANCING.");
+        StringAssert.Contains(cobol, "DISPLAY X\"0A\" WITH NO ADVANCING");
+        StringAssert.Contains(
+            cobol,
+            "DISPLAY Empty(1:SMILE-SET-LENGTH-0) WITH NO ADVANCING");
         Assert.IsFalse(cobol.Contains("DISPLAY Empty.", StringComparison.Ordinal));
     }
 
@@ -280,7 +284,9 @@ PRINT {Middle}
         StringAssert.Contains(cobol, "01 printf PIC X(6) VALUE \"printf\".");
         StringAssert.Contains(cobol, "01 SMILE-VAR PIC X VALUE \"_\".");
         StringAssert.Contains(cobol, "01 SMILE-internal PIC X(10) VALUE \"__internal\".");
-        StringAssert.Contains(cobol, "DISPLAY \"__internal\".");
+        StringAssert.Contains(
+            cobol,
+            "DISPLAY SMILE-internal(1:SMILE-SET-LENGTH-30) WITH NO ADVANCING");
 
         string swift = Generate(AdversarialIdentifierSource, TargetLanguage.Swift).PrimaryFile.Content;
         StringAssert.Contains(swift, "let _smile_: String = \"_\"");

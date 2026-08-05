@@ -14,7 +14,7 @@ public sealed class ExactStringAndTargetSafeExpressionTests
     [TestMethod]
     [DataRow(TargetLanguage.C)]
     [DataRow(TargetLanguage.ObjectiveC)]
-    public void C_family_uses_exact_length_output_only_for_NUL_sensitive_strings(
+    public void C_family_reads_direct_NUL_sensitive_variables_with_current_storage_and_length(
         TargetLanguage language)
     {
         string generated = Generate("""
@@ -25,18 +25,17 @@ PRINT {Exact}
 PRINT {Ordinary}
 """, language).PrimaryFile.Content;
 
-        StringAssert.Contains(
-            generated,
-            "static const unsigned char smilePrintBytes[] = { 65, 0, 66 };");
-        StringAssert.Contains(generated, "fwrite(smilePrintBytes, 1, 3, stdout);");
+        StringAssert.Contains(generated, "size_t smileString0Length = 3;");
+        StringAssert.Contains(generated, "fwrite(Exact, 1, smileString0Length, stdout);");
         StringAssert.Contains(generated, "fputc('\\n', stdout);");
         StringAssert.Contains(generated, "printf(\"%s\\n\", Ordinary);");
+        Assert.IsFalse(generated.Contains("smilePrintBytes", StringComparison.Ordinal));
     }
 
     [TestMethod]
     [DataRow(TargetLanguage.C)]
     [DataRow(TargetLanguage.ObjectiveC)]
-    public void C_family_lowers_only_NUL_sensitive_equality(
+    public void C_family_reads_direct_NUL_sensitive_equality_from_current_storage(
         TargetLanguage language)
     {
         string generated = Generate("""
@@ -49,7 +48,11 @@ LET Right = "B"
 LET Ordinary = Left = Right
 """, language).PrimaryFile.Content;
 
-        StringAssert.Contains(generated, "bool Exact = false;");
+        StringAssert.Contains(generated, "smileString0Length");
+        StringAssert.Contains(generated, "smileString1Length");
+        StringAssert.Contains(generated, "memcmp(NulLeft, NulRight");
+        StringAssert.Contains(generated, " == 0");
+        Assert.IsFalse(generated.Contains("bool Exact = false;", StringComparison.Ordinal));
         StringAssert.Contains(generated, "bool Ordinary = strcmp(Left, Right) == 0;");
     }
 

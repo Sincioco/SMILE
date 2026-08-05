@@ -214,7 +214,7 @@ PRINT "Hello " + Name + "!"
                 "PROGRAM-ID. Program.",
                 "",
                 "PROCEDURE DIVISION.",
-                "*> Each SMILE PRINT becomes one DISPLAY operation.",
+                "*> SMILE PRINT reads current storage when it directly names a variable.",
                 "    DISPLAY \"Hello from SMILE!\".",
                 "    DISPLAY \"Different syntax, same idea.\".",
                 "    STOP RUN."),

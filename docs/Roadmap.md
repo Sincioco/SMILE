@@ -148,6 +148,15 @@
 - Add the committed cumulative `examples/language.smile`, package it for Desktop deployment, load it only after the first window paint, and preserve visible-target-only background transpilation. Keep SET/block syntax highlighting, official specifications, diagnostics, CLI examples, and About version synchronized.
 - Preserve asynchronous debounced live transpilation, exact-byte evaluator conformance, deterministic generation, and the ten-target destination-language freeze.
 
+## Implemented In v0.5.1
+
+- Complete Java SET runtime validation with a full JDK containing both `javac` and `java`, including ordinary assignment, String reassignment, Block String, embedded NUL, wide Integer, runtime-authenticity, and cumulative `language.smile` programs.
+- Make direct C and Objective-C String variable PRINT read the current target pointer and logical length instead of an independent compiler-time output copy.
+- Make applicable C and Objective-C String equality read current target storage, using `strcmp` for ordinary NUL-free values and exact length plus `memcmp` when embedded NUL is possible.
+- Make COBOL direct variable PRINT read current `WORKING-STORAGE` and current logical length, including exact empty, Block String, control-byte, UTF-8, and trailing-whitespace output.
+- Preserve MASM pointer-and-length direct reads and natural high-level target assignments with structural runtime-authenticity regression tests across all ten targets.
+- Add no SMILE syntax. Preserve the cumulative deployable `examples/language.smile`, first-paint Desktop startup, asynchronous visible-target transpilation, deterministic generation, and the destination-language freeze.
+
 ## Next Major Milestone: v0.6.0 - IF / THEN / ELSE
 
 The next language milestone is conditional execution with `IF / THEN / ELSE`.
@@ -158,7 +167,7 @@ C++ is SMILE's tenth and final planned destination language. Target-language exp
 
 ## Active Language-Depth Milestones
 
-These are not implemented in v0.5.0:
+These are not implemented in v0.5.1:
 
 1. v0.6.0 - `IF / THEN / ELSE`
 2. v0.7.0 - `INPUT`
