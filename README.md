@@ -16,7 +16,7 @@ A programming language inspired by BASIC that makes it easy for newcomers to lea
 
 ## Current Release
 
-SMILE v0.5.1, "Runtime Storage Readiness," is a syntax-free hardening release for the mutable language introduced in v0.5.0. `LET` still declares and initializes, case-insensitive `SET` still changes an existing fixed-type variable, and the SET Block String Literal — The SMILE Way still preserves multiline content, structural indentation, official escapes, trailing whitespace, and embedded NUL. v0.5.1 proves that direct variable output observes generated target storage: C and Objective-C read the current String pointer and logical length, exact C-family String equality reads current storage where applicable, COBOL reads its current data item and logical length, and MASM retains its pointer-and-length reads. The complete Java SET, Block String, embedded-NUL, wide-Integer, and cumulative `language.smile` programs are validated with both `javac` and `java` from a full JDK.
+SMILE v0.5.1.1, "Generated Warning Hygiene," is a syntax-free maintenance release for the mutable language introduced in v0.5.0. `LET` still declares and initializes, case-insensitive `SET` still changes an existing fixed-type variable, and the SET Block String Literal — The SMILE Way still preserves multiline content, structural indentation, official escapes, trailing whitespace, and embedded NUL. A valid direct self-assignment remains a real no-op assignment in every target. C# now uses the smallest type-preserving identity expression instead of warning-producing `target = target`, while Swift retains its equivalent identity lowering. Strict release validation separately verifies a zero-warning generated C# build, runs the self-assignment acceptance program through all ten targets, and keeps the cumulative `language.smile` reference intact.
 
 ```text
 SMILE source
@@ -133,7 +133,7 @@ Implemented rules:
 - `AND` and `OR` evaluate left to right and short-circuit at runtime: `FALSE AND ...` and `TRUE OR ...` do not evaluate their right operands. Both operands are still parsed, bound, and type-checked.
 - After successful binding, one shared statement-order trace records current values for `LET`, `SET`, and `PRINT`. The simplifier decides short-circuit reachability before visiting the right operand and never propagates an old value past SET.
 - Parentheses control expression grouping.
-- SMILE does not perform implicit conversions in v0.5.1. For example, `"Age " + 49` is a type error.
+- SMILE does not perform implicit conversions in v0.5.1.1. For example, `"Age " + 49` is a type error.
 - `PRINT` alone, or followed only by spaces/tabs, prints one blank line.
 - `PRINT "Hello"` prints an ordinary quoted string.
 - Ordinary quoted strings do not interpolate, so `PRINT "Hello {Name}!"` prints `{Name}` literally.
@@ -158,7 +158,7 @@ Implemented rules:
 - C, Objective-C, and C++ map fixed-width Integer and limit macro names such as `INT64_MAX`, `INT64_C`, `UINT64_MAX`, and `SIZE_MAX`, preventing wide-profile headers from rewriting learner variables.
 - C++ additionally maps `__` anywhere in a name. The readable `_smile_` result spells reserved underscore runs out so the emitted C++ identifier is itself safe.
 
-Not implemented in v0.5.1: comments, `INPUT`, conditions, loops, functions, arrays, classes, floating-point numbers, assignment expressions, compound assignment, and user-defined types.
+Not implemented in v0.5.1.1: comments, `INPUT`, conditions, loops, functions, arrays, classes, floating-point numbers, assignment expressions, compound assignment, and user-defined types.
 
 ## Generated Examples
 
@@ -345,7 +345,7 @@ each destination emits a real update at the SET position:
 | COBOL | `MOVE` into sized `PIC X` storage plus a logical-length update |
 | MASM x64 | Update `variable{n}Ptr` and `variable{n}Length` to deterministic SET data |
 
-Swift rejects a plain direct self-assignment such as `Name = Name`. For that valid SMILE SET form, the Swift generator emits the smallest type-preserving identity expression (`Name = Name + ""`, `Count = Count + 0`, or `Ready = Ready || false`) so the destination still contains a real assignment and builds successfully.
+C# warns about a plain direct self-assignment such as `Name = Name`, while Swift rejects it. For that valid SMILE SET form, both generators emit the smallest type-preserving identity expression (`Name = Name + ""`, `Count = Count + 0`, or `Ready = Ready || false`) so the destination still contains a real assignment and compiles cleanly. This target-local rule is based on bound symbol identity, so case-insensitive and mapped-name self-assignment use the same generated target name; assigning a different variable remains a natural assignment.
 
 A SET Block String generates only as its normalized ordinary String value. No backend scans delimiters, removes indentation, or normalizes source newlines.
 
@@ -384,7 +384,7 @@ Visual Studio setup must include the x64 C++ tools and `VC\Auxiliary\Build\vcvar
 
 Microsoft OpenJDK 25 LTS is a free Java toolchain and can be installed with `winget install --id Microsoft.OpenJDK.25 --exact`. Restart the terminal or SMILE after installing so the updated user `PATH` is visible.
 
-The v0.5.1 Java acceptance suite invokes both `javac` and `java` and compares ordinary SET, String reassignment, Block String, embedded-NUL, SET-introduced wide Integer, runtime-authenticity, and complete `examples/language.smile` output to `SmileEvaluator`.
+The v0.5.1.1 Java acceptance suite invokes both `javac` and `java` and compares ordinary SET, String reassignment, Block String, embedded-NUL, SET-introduced wide Integer, runtime-authenticity, and complete `examples/language.smile` output to `SmileEvaluator`.
 
 ## Build, Test, And Run
 
@@ -397,15 +397,19 @@ cmd /c cd /d C:\SMILE && dotnet build SMILE.sln -c Release
 cmd /c cd /d C:\SMILE && dotnet test SMILE.sln -c Release --no-build
 ```
 
-Official release validation makes Java and all ten local toolchains mandatory instead of contributor-optional:
+Official release validation makes Java and all ten local toolchains mandatory instead of contributor-optional and separately requires generated C# compiler-warning validation:
 
 ```powershell
 $env:SMILE_REQUIRE_JAVA = '1'
 $env:SMILE_REQUIRE_ALL_TARGETS = '1'
+$env:SMILE_REQUIRE_ZERO_TARGET_WARNINGS = '1'
 dotnet test SMILE.sln -c Release --no-build -nologo
 Remove-Item Env:SMILE_REQUIRE_JAVA
 Remove-Item Env:SMILE_REQUIRE_ALL_TARGETS
+Remove-Item Env:SMILE_REQUIRE_ZERO_TARGET_WARNINGS
 ```
+
+A warning-free `dotnet build SMILE.sln` proves the SMILE solution itself is clean; it does not prove generated target programs are warning-free. `SMILE_REQUIRE_ZERO_TARGET_WARNINGS=1` activates the supported generated-target warning gate, which compiles generated C# through the existing toolchain and fails on C# compiler diagnostics such as `warning CS1717`. Runtime conformance remains a separate all-ten-target evaluator comparison.
 
 Run the desktop app:
 
@@ -455,7 +459,7 @@ When Open Generated Folder is enabled, SMILE asks Windows Explorer to open the g
 
 When Press Any Key Launcher is enabled, SMILE writes `Run Program - Press Any Key.cmd` into each successful build/run workspace. Double-clicking that launcher runs the generated program and then shows `Press any key to exit...`, which keeps the console window open long enough to inspect the output.
 
-Current desktop build version: `0.5.1 Runtime Storage Readiness`.
+Current desktop build version: `0.5.1.1 Generated Warning Hygiene`.
 
 ## Diagnostics
 
@@ -564,7 +568,7 @@ C++ is SMILE's tenth and final planned destination language. Target-language exp
 
 ## Roadmap
 
-Future ideas, not implemented in v0.5.1:
+Future ideas, not implemented in v0.5.1.1:
 
 The next major milestone is **v0.6.0 - `IF / THEN / ELSE`**.
 

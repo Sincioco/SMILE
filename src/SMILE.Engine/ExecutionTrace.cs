@@ -12,7 +12,7 @@ public sealed record BoundStatementExecution(
     SmileValue Value,
     IReadOnlyDictionary<VariableSymbol, SmileValue> ValuesAfter);
 
-// SMILE v0.5.1 has mutable runtime variables but still no input, branches,
+// SMILE v0.5.1.1 has mutable runtime variables but still no input, branches,
 // loops, functions, or other unknown runtime data. This small source-order
 // analysis therefore gives every optimization and target the same current
 // values without pretending a LET initializer remains the variable's value.

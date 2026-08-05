@@ -79,21 +79,31 @@ winget install --id Microsoft.OpenJDK.25 --exact
 
 Restart the terminal or desktop app after installation so its process receives the updated `PATH`. A user-local extracted JDK also works when `JAVA_HOME` points at its root and `%JAVA_HOME%\bin` is on the user `PATH`.
 
-The v0.5.1 Java acceptance tests remain environment-aware for contributors who
-do not have a JDK. Official release validation makes the JDK mandatory so the
+The v0.5.1.1 Java and generated-target acceptance tests remain
+environment-aware for contributors who do not have every local toolchain.
+Official release validation makes Java and all ten targets mandatory and
+separately enables generated compiler-warning validation. This ensures the
 ordinary SET, String reassignment, SET Block String, embedded-NUL, wide-Integer
-SET, and cumulative `language.smile` programs execute instead of skipping:
+SET, direct self-assignment, and cumulative `language.smile` programs execute
+instead of skipping:
 
 ```powershell
 $env:SMILE_REQUIRE_JAVA = '1'
-dotnet test SMILE.sln -c Release --no-build -nologo --filter FullyQualifiedName~JavaRuntimeReadinessTests
+$env:SMILE_REQUIRE_ALL_TARGETS = '1'
+$env:SMILE_REQUIRE_ZERO_TARGET_WARNINGS = '1'
+dotnet test SMILE.sln -c Release --no-build -nologo
 Remove-Item Env:SMILE_REQUIRE_JAVA
+Remove-Item Env:SMILE_REQUIRE_ALL_TARGETS
+Remove-Item Env:SMILE_REQUIRE_ZERO_TARGET_WARNINGS
 ```
 
 Each acceptance test records the selected `javac` and `java` paths, detected
 versions, compiler success, program exit code, and exact logical UTF-8 stdout
 comparison with `SmileEvaluator`. Machine-specific paths are validation output
-only and are never stored in the repository.
+only and are never stored in the repository. The warning-hygiene suite inspects
+the retained generated compiler output with destination-specific diagnostic
+patterns; JavaScript and Python are identified explicitly as interpreted
+targets with no compile stage in their normal SMILE toolchains.
 
 COBOL:
 

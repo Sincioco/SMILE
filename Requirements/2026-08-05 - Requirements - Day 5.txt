@@ -132,3 +132,21 @@ Is this a feasible multi-line string literal that would not damage SMILE's futur
 9.) Execute the file located in "D:\SMILE\Requirements\2026-08-05 1711 - SMILE Codex Instructions v0.5.1 Runtime Storage Readiness.md".  You have my permission if you need to download any files from the internet to complete the task.  Commit all and push when your tests are green.
 
 	Status: **Complete**. SMILE v0.5.1 Runtime Storage Readiness adds no syntax. Java discovery now requires same-directory `javac` and `java`, distinguishes a full JDK from runtime-only and missing states, rejects Windows Store aliases, and executed every required Java program with Microsoft OpenJDK 25.0.4 and zero skips. C and Objective-C direct String PRINT reads current pointer/length storage, exact direct equality uses current storage with `strcmp` or length plus `memcmp`, COBOL direct variables read current `WORKING-STORAGE` and logical length including the empty path, and MASM retains pointer/length reads. Debug and Release builds each complete with 0 warnings and 0 errors; Debug and Release each pass 509 tests with 0 failures and 0 skips under mandatory Java/all-ten release gates. Both the runtime-authenticity program and deployed `language.smile` built and ran through all ten targets and matched `SmileEvaluator`; exact NUL, Block String, empty String, and trailing-space bytes passed. The real Desktop smoke reached Ready after first paint, loaded and transpiled packaged `language.smile`, ran Java/C/COBOL programs successfully, remained responsive through rapid target switches, reloaded the reference through New, and displayed `0.5.1 Runtime Storage Readiness` in About.
+
+10.) I need you to make sure that all 10 target languages compile without any warnings.  Read, follow and execute the instructions in "D:\SMILE\Requirements\2026-08-05 1855 - SMILE Codex Instructions v0.5.1.1 Generated Warning Hygiene.md".  Commit all and push when your tests are green.
+
+	Status: **Complete**. SMILE v0.5.1.1 Generated Warning Hygiene adds no syntax. The baseline cumulative `language.smile` build reproduced C# `CS1717` with 1 warning from `LastName = LastName;`; direct bound-symbol self-assignment now remains a real target update through the warning-free identities `String + ""`, `Integer + 0`, and `Boolean || false`, including wide Integers, case-insensitive references, and mapped identifiers, while different-variable and explicit expression assignments remain natural. The strict `SMILE_REQUIRE_ZERO_TARGET_WARNINGS=1` gate distinguishes generated compiler diagnostics from the SMILE solution build, validates its warning parser deterministically, and builds/runs the required self-assignment program through all ten targets against `SmileEvaluator`. C#, C, MASM x64, Java, COBOL, Objective-C, Swift, and C++ compiler streams contain zero warning diagnostics; JavaScript and Python have no compile stage and produce no runtime stderr. Generated C# `language.smile` builds with 0 warnings and 0 errors and matches the evaluator without removing its self-assignment example. Debug and Release solution builds each complete with 0 warnings and 0 errors, and both strict suites pass 537 tests with 0 failures and 0 skips under mandatory Java, all-target, and generated-warning gates. The real Desktop painted in 745 ms while toolchain detection continued, loaded `language.smile`, visibly generated `LastName = LastName + "";`, built and ran C# with 0 warnings/0 errors and exit code 0, remained Ready through rapid target switching, and displayed `0.5.1.1 Generated Warning Hygiene` in About.
+
+
+Designing the IF statement - No Functions Allowed in the Condition
+------------------------------------------------------------------
+Question as a mental exercise: For SMILE's IF statement, I'm thinking of not allowing functions to be part of the condition. I'm thinking in the condition part, everything must already be a variable. What are your thoughts on that? Will that end up being a problem down the road as SMILE becomes a full-pledge programming language?
+
+VALID
+LET X = FUNC(A)
+IF X > 10 THEN
+END IF
+
+INVALID
+IF FUNC(A) > 10 THEN
+END IF

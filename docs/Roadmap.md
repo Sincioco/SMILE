@@ -157,6 +157,14 @@
 - Preserve MASM pointer-and-length direct reads and natural high-level target assignments with structural runtime-authenticity regression tests across all ten targets.
 - Add no SMILE syntax. Preserve the cumulative deployable `examples/language.smile`, first-paint Desktop startup, asynchronous visible-target transpilation, deterministic generation, and the destination-language freeze.
 
+## Implemented In v0.5.1.1
+
+- Lower valid direct C# self-assignment to the smallest type-preserving identity assignment, eliminating `CS1717` while retaining an explicit target update for String, Integer, and Boolean values.
+- Add a generated C# compiler-warning gate controlled by `SMILE_REQUIRE_ZERO_TARGET_WARNINGS`, distinct from the SMILE solution's own warning count.
+- Build and run generated C# for the cumulative `examples/language.smile`, require zero C# compiler warnings, and compare output with `SmileEvaluator`.
+- Run direct self-assignment through all ten targets, preserve Swift identity lowering, and compare each installed target's runtime output with `SmileEvaluator`.
+- Add no SMILE syntax. Preserve the cumulative deployable `examples/language.smile`, first-paint Desktop startup, asynchronous visible-target transpilation, deterministic generation, and the destination-language freeze.
+
 ## Next Major Milestone: v0.6.0 - IF / THEN / ELSE
 
 The next language milestone is conditional execution with `IF / THEN / ELSE`.
@@ -167,7 +175,7 @@ C++ is SMILE's tenth and final planned destination language. Target-language exp
 
 ## Active Language-Depth Milestones
 
-These are not implemented in v0.5.1:
+These are not implemented in v0.5.1.1:
 
 1. v0.6.0 - `IF / THEN / ELSE`
 2. v0.7.0 - `INPUT`

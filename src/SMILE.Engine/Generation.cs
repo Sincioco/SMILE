@@ -404,7 +404,25 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
                     break;
 
                 case BoundSetStatement set:
-                    source.AppendLine($"        {identifiers.Get(set.Variable)} = {TargetExpression.CSharp(set.Value, identifiers, integers)};");
+                    string name = identifiers.Get(set.Variable);
+                    string value = TargetExpression.CSharp(set.Value, identifiers, integers);
+                    if (set.Value is BoundVariableExpression variable &&
+                        ReferenceEquals(variable.Variable, set.Variable))
+                    {
+                        // Direct self-assignment is valid SMILE, but C# warns
+                        // about a plain `value = value` (CS1717). Keep the real
+                        // storage update with the smallest type-preserving
+                        // identity expression instead of deleting the SET.
+                        value = set.Variable.Type switch
+                        {
+                            SmileType.String => value + " + \"\"",
+                            SmileType.Integer => value + " + 0",
+                            SmileType.Boolean => value + " || false",
+                            _ => value
+                        };
+                    }
+
+                    source.AppendLine($"        {name} = {value};");
                     break;
 
                 case BoundPrintStatement print:
