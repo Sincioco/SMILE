@@ -10,7 +10,7 @@ The language definition was introduced in:
 
 The current implementation baseline is:
 
-> **SMILE v0.6.0.1 — IF Hardening**
+> **SMILE v0.6.1 — Full-Line Comments and Source Layout Preservation**
 
 This specification defines three permanent SMILE rules:
 
@@ -23,7 +23,7 @@ This specification defines three permanent SMILE rules:
 3. **ELSE IF clause rule**
    When `ELSE` is immediately followed by `IF` on the same logical statement line, the two keywords form an `ELSE IF` clause belonging to the current IF statement.
 
-This specification works together with the official SMILE specifications for LET, SET, PRINT, String literals, and core expressions.
+This specification works together with the numbered official SMILE specifications for LET, SET, PRINT, String literals, core expressions, and [007 - Full-Line Comments and Source Layout Preservation](007%20-%20SMILE%20-%20Full-Line%20Comments%20and%20Source%20Layout%20Preservation%20Official%20Specification%20v1.0.md).
 
 ---
 
@@ -107,7 +107,7 @@ else-clause ->
     statement-list
 
 statement-list ->
-    zero or more permitted statements
+    zero or more permitted statements, full-line comments, or blank-line layout items
 
 statement-end ->
     line-end
@@ -627,8 +627,11 @@ Permitted:
 - PRINT;
 - SET;
 - nested IF;
+- full-line `REM`, `//`, `#`, and `--` comments;
 - blank lines;
 - SET Block String Literals within SET.
+
+Comments and blank lines are ordered non-semantic source items. Comment payloads that spell `IF`, `ELSE`, `ELSE IF`, `END IF`, malformed terminators, or Block String delimiters have no control-flow meaning. Marker-looking and blank physical lines inside a SET Block String remain String data rather than branch layout.
 
 Example:
 
@@ -647,7 +650,7 @@ END IF
 
 # 24. LET is not permitted inside IF v1.0
 
-v0.6.0 does not introduce block-local declarations or scopes.
+v0.6.1 does not introduce block-local declarations or scopes.
 
 Valid:
 
@@ -959,6 +962,8 @@ Ready for the next lesson.
 # 40. Implementation safety limit
 
 The maximum supported IF nesting depth is 128, where the first outermost IF is depth 1. A program nested to exactly depth 128 is valid. Attempting to enter depth 129 produces the `DiagnosticSeverity.Error` diagnostic `SMILE1416` at that IF keyword, and the compiler recovers without recursively processing the over-limit body.
+
+Iterative recovery gives the canonical SET Block String scanner first ownership of block content, then recognizes and ignores valid full-line comments before examining structural headers. Comment payloads such as `// END IF`, `# IF TRUE = TRUE THEN`, `-- ELSE`, and `REM ENDIF` therefore cannot change the nesting balance or prevent recovery to later top-level code.
 
 This is a compiler safety and resource limit. It does not change IF syntax, clause selection, branch validation, or the behavior of ordinary valid programs within the supported depth.
 

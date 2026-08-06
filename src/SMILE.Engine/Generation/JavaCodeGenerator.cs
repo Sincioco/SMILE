@@ -17,7 +17,7 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
         source.AppendLine("    public static void main(String[] args)");
         source.AppendLine("    {");
 
-        AppendStatements(source, program.Statements, "        ", identifiers, integers);
+        AppendSourceItems(source, program.SourceItems, "        ", identifiers, integers);
 
         source.AppendLine("    }");
         source.AppendLine("}");
@@ -27,17 +27,25 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
             new[] { new GeneratedFile("Program.java", TextOutput.EnsureOneTrailingNewLine(source.ToString()), IsPrimary: true) });
     }
 
-    private static void AppendStatements(
+    private static void AppendSourceItems(
         StringBuilder source,
-        IReadOnlyList<BoundStatement> statements,
+        IReadOnlyList<BoundSourceItem> sourceItems,
         string indent,
         TargetIdentifierMap identifiers,
         TargetIntegerProfile integers)
     {
-        foreach (BoundStatement statement in statements)
+        foreach (BoundSourceItem sourceItem in sourceItems)
         {
-            switch (statement)
+            switch (sourceItem)
             {
+                case BoundFullLineComment comment:
+                    TargetComments.Append(source, TargetLanguage.Java, indent, comment.Payload);
+                    break;
+
+                case BoundBlankLine:
+                    source.AppendLine();
+                    break;
+
                 case BoundLetStatement let:
                     string initializer = TargetExpression.Java(let.Initializer, identifiers, integers);
                     source.AppendLine($"{indent}{TargetTypes.Java(let.Variable.Type, integers)} {identifiers.Get(let.Variable)} = {initializer};");
@@ -75,7 +83,7 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
                 .Append(TargetExpression.Java(clause.Condition, identifiers, integers))
                 .AppendLine(")");
             source.Append(indent).AppendLine("{");
-            AppendStatements(source, clause.Statements, indent + "    ", identifiers, integers);
+            AppendSourceItems(source, clause.SourceItems, indent + "    ", identifiers, integers);
             source.Append(indent).AppendLine("}");
         }
 
@@ -83,7 +91,7 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
         {
             source.Append(indent).AppendLine("else");
             source.Append(indent).AppendLine("{");
-            AppendStatements(source, conditional.ElseStatements, indent + "    ", identifiers, integers);
+            AppendSourceItems(source, conditional.ElseSourceItems, indent + "    ", identifiers, integers);
             source.Append(indent).AppendLine("}");
         }
     }

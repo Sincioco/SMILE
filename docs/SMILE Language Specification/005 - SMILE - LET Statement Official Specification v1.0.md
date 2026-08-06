@@ -5,8 +5,8 @@
 **Applies to:** SMILE language
 **Primary statement:** `LET`
 **Companion statements:** `PRINT`, `SET`, `IF`
-**Companion specifications:** the official PRINT, SET, IF, String literal, and core expression specifications in this directory
-**Repository destination:** `docs/SMILE Language Specification/SMILE - LET Statement Official Specification v1.0.md`
+**Companion specifications:** the numbered official PRINT, SET, IF, String literal, core expression, and full-line comment/source-layout specifications in this directory
+**Repository destination:** `docs/SMILE Language Specification/005 - SMILE - LET Statement Official Specification v1.0.md`
 
 ---
 
@@ -438,7 +438,7 @@ SMILE v0.5.0 defines reassignment through the separate `SET` statement:
 SET Name = "Joy"
 ```
 
-`LET` declares the variable, determines its fixed SMILE type, evaluates its initializer, and stores its initial runtime value. `SET` changes the current value only after an earlier successful declaration and only when the new value has exactly the same type. The complete assignment rules are defined by the [SMILE SET Statement Official Specification v1.0](SMILE%20-%20SET%20Statement%20Official%20Specification%20v1.0.md).
+`LET` declares the variable, determines its fixed SMILE type, evaluates its initializer, and stores its initial runtime value. `SET` changes the current value only after an earlier successful declaration and only when the new value has exactly the same type. The complete assignment rules are defined by the [001 - SMILE SET Statement Official Specification v1.0](001%20-%20SMILE%20-%20SET%20Statement%20Official%20Specification%20v1.0.md).
 
 ---
 
@@ -874,13 +874,11 @@ This is compatible with `PRINT`, where a semicolon in raw-template mode is print
 
 ## 22. Comments
 
-Version 1.0 does not define trailing inline comments for `LET`.
+SMILE v0.6.1 does not define trailing inline comments for `LET`.
 
 The complete initializer expression consumes the remainder of its physical source line.
 
-When comments become official, their syntax will be defined separately and MUST preserve the one-statement-per-line rule.
-
-Until then, comment-like character sequences inside strings are ordinary string data:
+The [007 - Full-Line Comments and Source Layout Preservation specification](007%20-%20SMILE%20-%20Full-Line%20Comments%20and%20Source%20Layout%20Preservation%20Official%20Specification%20v1.0.md) defines contextual `REM`, `//`, `#`, and `--` only on their own first-non-whitespace lines. `REM` is not globally reserved, so `LET REM = "Value"` remains valid. Comment-like character sequences inside String initializers remain String data:
 
 ```basic
 LET WebAddress = "https://example.com"
@@ -1394,7 +1392,8 @@ LET Enabled = TRUE
 
 The official v0.4.1 expression grammar and short-circuit evaluation rules are defined in:
 
-- [SMILE - Core Types and Expressions Official Specification v1.0](SMILE%20-%20Core%20Types%20and%20Expressions%20Official%20Specification%20v1.0.md)
+- [004 - SMILE - Core Types and Expressions Official Specification v1.0](004%20-%20SMILE%20-%20Core%20Types%20and%20Expressions%20Official%20Specification%20v1.0.md)
+- [007 - SMILE - Full-Line Comments and Source Layout Preservation Official Specification v1.0](007%20-%20SMILE%20-%20Full-Line%20Comments%20and%20Source%20Layout%20Preservation%20Official%20Specification%20v1.0.md)
 
 Future expression features may expand valid initializers beyond this core:
 

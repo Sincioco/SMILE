@@ -186,13 +186,23 @@
 - Limit supported IF nesting to 128 levels and report `SMILE1416` at depth 129, using bounded recovery so pathological input cannot recurse into an over-limit body or destabilize the Desktop editor.
 - Add direct invalid-source regressions for function-shaped IF and ELSE IF conditions while preserving the permanent call-free rule and introducing no function-call grammar.
 
+## Implemented In v0.6.1
+
+- Add equivalent first-non-whitespace `REM`, `//`, `#`, and `--` full-line comments, with ordinal case-insensitive boundary-aware contextual REM and no inline-comment syntax.
+- Retain comments and every blank physical source line as ordered non-semantic syntax and bound items while keeping evaluation, execution trace, analysis, diagnostics, mutation, and runtime output unchanged.
+- Preserve comments once in each target's primary user-code region with native `//`, `#`, `*>`, or `;` syntax, deterministic target-safe payload rendering, conservative COBOL wrapping, and explicit source blank-line boundaries.
+- Keep SET Block String content authoritative over comment/layout classification and make IF parsing plus 128-level recovery ignore comment payloads safely.
+- Preserve layout through simplification and nested branches, including leading, trailing, consecutive, and layout-only bodies with required Python or COBOL no-op placeholders.
+- Extend the cumulative packaged `examples/language.smile`, AvalonEdit Comment highlighting, numbered official specifications, evaluator conformance, and strict all-ten-target warning-free runtime validation.
+- Preserve first-paint Desktop startup, asynchronous visible-target transpilation, cancellation, failure containment, and the destination-language freeze.
+
 ## Final Destination-Language Freeze
 
 C++ is SMILE's tenth and final planned destination language. Target-language expansion is frozen so development can focus on input, loops, functions, scopes, debugging, and teaching tools. Do not add another destination language unless Sin explicitly reopens target expansion. Rust, Zig, and Go remain intentionally deferred and are not active targets.
 
 ## Active Language-Depth Milestones
 
-These are not implemented in v0.6.0.1:
+These are not implemented in v0.6.1:
 
 1. v0.7.0 - `INPUT`
 2. v0.8.0 - Loops

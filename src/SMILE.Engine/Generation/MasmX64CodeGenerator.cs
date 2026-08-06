@@ -411,9 +411,9 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         }
 
         int printIndex = 0;
-        AppendMasmStatements(
+        AppendMasmSourceItems(
             source,
-            program.Statements,
+            program.SourceItems,
             analysis,
             variableIndexes,
             statementBuffers,
@@ -435,9 +435,9 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         source.AppendLine("END");
     }
 
-    private static void AppendMasmStatements(
+    private static void AppendMasmSourceItems(
         StringBuilder source,
-        IReadOnlyList<BoundStatement> statements,
+        IReadOnlyList<BoundSourceItem> sourceItems,
         BoundProgramAnalysis analysis,
         IReadOnlyDictionary<VariableSymbol, int> variableIndexes,
         IReadOnlyDictionary<BoundStatement, RuntimeStringBuffer> statementBuffers,
@@ -445,8 +445,24 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> booleanStringBuffers,
         ref int printIndex)
     {
-        foreach (BoundStatement statement in statements)
+        foreach (BoundSourceItem sourceItem in sourceItems)
         {
+            if (sourceItem is BoundFullLineComment comment)
+            {
+                // User layout belongs in the instruction stream. Static
+                // storage remains generator-owned so comments are never
+                // duplicated into .data.
+                TargetComments.Append(source, TargetLanguage.MasmX64, "    ", comment.Payload);
+                continue;
+            }
+
+            if (sourceItem is BoundBlankLine)
+            {
+                source.AppendLine();
+                continue;
+            }
+
+            var statement = (BoundStatement)sourceItem;
             BoundStatementAnalysis facts = analysis.GetStatementFacts(statement);
             switch (statement)
             {
@@ -597,9 +613,9 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
                 ref partIndex);
             AppendMasmLine(source, "    test eax, eax", "Zero means this clause did not match.");
             AppendMasmLine(source, $"    jz {falseLabel}", "Continue with the next clause or ELSE.");
-            AppendMasmStatements(
+            AppendMasmSourceItems(
                 source,
-                clause.Statements,
+                clause.SourceItems,
                 analysis,
                 variableIndexes,
                 statementBuffers,
@@ -612,9 +628,9 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         if (conditional.HasElseClause)
         {
             AppendMasmLine(source, $"{IfElseLabel(ifOrdinal)}:", "Final ELSE branch.");
-            AppendMasmStatements(
+            AppendMasmSourceItems(
                 source,
-                conditional.ElseStatements,
+                conditional.ElseSourceItems,
                 analysis,
                 variableIndexes,
                 statementBuffers,

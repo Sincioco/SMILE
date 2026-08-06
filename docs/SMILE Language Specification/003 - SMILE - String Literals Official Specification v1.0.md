@@ -6,7 +6,7 @@ This specification was introduced in SMILE v0.4.1 and remains normative for SMIL
 
 Ordinary String literals are the one-line source form for fixed text values. They are used by `LET`, ordinary `SET` expressions, `PRINT`, and interpolation text.
 
-SMILE v0.5.0 also defines one deliberately separate multiline source form: the [SET Block String Literal — The SMILE Way](SMILE%20-%20SET%20Statement%20Official%20Specification%20v1.0.md). It is valid only as the complete value of `SET`. It does not make ordinary String expressions multiline-capable.
+SMILE v0.5.0 also defines one deliberately separate multiline source form: the [SET Block String Literal — The SMILE Way](001%20-%20SMILE%20-%20SET%20Statement%20Official%20Specification%20v1.0.md). It is valid only as the complete value of `SET`. It does not make ordinary String expressions multiline-capable.
 
 ## Source Form
 
@@ -21,6 +21,8 @@ An ordinary String literal begins with `"` and ends with the next unescaped `"` 
 SMILE also accepts legacy left and right smart quote characters as double quotes for beginner-friendly recovery, but generated examples should use ordinary ASCII quotes.
 
 A quote that ends a physical SET line may instead begin a SET Block String Literal. The SET specification exclusively defines its opening and closing delimiters, structural indentation removal, logical `\n` normalization, complete-value placement, and diagnostics. The front end normalizes that form to one ordinary String value before binding.
+
+SMILE v0.6.1 full-line comment markers inside ordinary or interpolated Strings remain String data. Comment and blank-line recognition is suspended inside a SET Block String Literal, so `REM`, `//`, `#`, `--`, and blank physical content lines retain their exact String meaning. See the [007 - Full-Line Comments and Source Layout Preservation specification](007%20-%20SMILE%20-%20Full-Line%20Comments%20and%20Source%20Layout%20Preservation%20Official%20Specification%20v1.0.md).
 
 ## Official Escape Sequences
 

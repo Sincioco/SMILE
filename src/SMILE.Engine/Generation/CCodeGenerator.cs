@@ -67,9 +67,9 @@ internal sealed class CCodeGenerator : ICodeGenerator
         bool emittedDeclaration = runtimeExpressionBuffers.Count > 0;
         bool emittedExecutable = false;
         bool emittedBodyStatement = false;
-        AppendStatements(
+        AppendSourceItems(
             source,
-            program.Statements,
+            program.SourceItems,
             "    ",
             analysis,
             identifiers,
@@ -94,9 +94,9 @@ internal sealed class CCodeGenerator : ICodeGenerator
             new[] { new GeneratedFile("Program.c", TextOutput.EnsureOneTrailingNewLine(source.ToString()), IsPrimary: true) });
     }
 
-    private static void AppendStatements(
+    private static void AppendSourceItems(
         StringBuilder source,
-        IReadOnlyList<BoundStatement> statements,
+        IReadOnlyList<BoundSourceItem> sourceItems,
         string indent,
         BoundProgramAnalysis analysis,
         TargetIdentifierMap identifiers,
@@ -108,8 +108,21 @@ internal sealed class CCodeGenerator : ICodeGenerator
         ref bool emittedExecutable,
         ref bool emittedBodyStatement)
     {
-        foreach (BoundStatement statement in statements)
+        foreach (BoundSourceItem sourceItem in sourceItems)
         {
+            if (sourceItem is BoundFullLineComment comment)
+            {
+                TargetComments.Append(source, TargetLanguage.C, indent, comment.Payload);
+                continue;
+            }
+
+            if (sourceItem is BoundBlankLine)
+            {
+                source.AppendLine();
+                continue;
+            }
+
+            var statement = (BoundStatement)sourceItem;
             BoundStatementAnalysis facts = analysis.GetStatementFacts(statement);
             switch (statement)
             {
@@ -309,9 +322,9 @@ internal sealed class CCodeGenerator : ICodeGenerator
                     runtimeExpressionBuffers))
                 .AppendLine(")");
             source.Append(indent).AppendLine("{");
-            AppendStatements(
+            AppendSourceItems(
                 source,
-                clause.Statements,
+                clause.SourceItems,
                 indent + "    ",
                 analysis,
                 identifiers,
@@ -329,9 +342,9 @@ internal sealed class CCodeGenerator : ICodeGenerator
         {
             source.Append(indent).AppendLine("else");
             source.Append(indent).AppendLine("{");
-            AppendStatements(
+            AppendSourceItems(
                 source,
-                conditional.ElseStatements,
+                conditional.ElseSourceItems,
                 indent + "    ",
                 analysis,
                 identifiers,

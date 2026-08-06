@@ -84,6 +84,7 @@ PRINT "Hello " + Name + "!"
                 "{",
                 "    const char *Name = \"Sin\";",
                 "",
+                "",
                 "    printf(\"\\n\");",
                 "    printf(\"Hello World!\\n\");",
                 "    printf(\"Hello World!\\n\");",
@@ -266,6 +267,7 @@ PRINT "Hello " + Name + "!"
                 "    private static void Main()",
                 "    {",
                 "        string Name = \"Sin\";",
+                "",
                 "        Console.WriteLine();",
                 "        Console.WriteLine(\"Hello World!\");",
                 "        Console.WriteLine(\"Hello World!\");",
@@ -281,6 +283,7 @@ PRINT "Hello " + Name + "!"
         Assert.AreEqual(
             Lines(
                 "let Name = \"Sin\";",
+                "",
                 "console.log();",
                 "console.log(\"Hello World!\");",
                 "console.log(\"Hello World!\");",
@@ -294,6 +297,7 @@ PRINT "Hello " + Name + "!"
         Assert.AreEqual(
             Lines(
                 "let Name: String = \"Sin\"",
+                "",
                 "print()",
                 "print(\"Hello World!\")",
                 "print(\"Hello World!\")",
@@ -311,6 +315,7 @@ PRINT "Hello " + Name + "!"
                 "    public static void main(String[] args)",
                 "    {",
                 "        String Name = \"Sin\";",
+                "",
                 "        System.out.println();",
                 "        System.out.println(\"Hello World!\");",
                 "        System.out.println(\"Hello World!\");",

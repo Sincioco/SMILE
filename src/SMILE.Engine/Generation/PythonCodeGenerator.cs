@@ -56,18 +56,15 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
         }
 
         source.AppendLine("def main() -> None:");
+        AppendSourceItems(
+            source,
+            program.SourceItems,
+            "    ",
+            identifiers,
+            knownValues);
         if (program.Statements.Count == 0)
         {
             source.AppendLine("    pass");
-        }
-        else
-        {
-            AppendStatements(
-                source,
-                program.Statements,
-                "    ",
-                identifiers,
-                knownValues);
         }
 
         source.AppendLine();
@@ -80,15 +77,28 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
             new[] { new GeneratedFile("Program.py", TextOutput.EnsureOneTrailingNewLine(source.ToString()), IsPrimary: true) });
     }
 
-    private static void AppendStatements(
+    private static void AppendSourceItems(
         StringBuilder source,
-        IReadOnlyList<BoundStatement> statements,
+        IReadOnlyList<BoundSourceItem> sourceItems,
         string indent,
         TargetIdentifierMap identifiers,
         IReadOnlyDictionary<BoundStatement, IReadOnlyDictionary<VariableSymbol, SmileValue>> knownValues)
     {
-        foreach (BoundStatement statement in statements)
+        foreach (BoundSourceItem sourceItem in sourceItems)
         {
+            if (sourceItem is BoundFullLineComment comment)
+            {
+                TargetComments.Append(source, TargetLanguage.Python, indent, comment.Payload);
+                continue;
+            }
+
+            if (sourceItem is BoundBlankLine)
+            {
+                source.AppendLine();
+                continue;
+            }
+
+            var statement = (BoundStatement)sourceItem;
             IReadOnlyDictionary<VariableSymbol, SmileValue> values =
                 knownValues.TryGetValue(statement, out var statementValues)
                     ? statementValues
@@ -133,31 +143,30 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
                 .Append(clauseIndex == 0 ? "if " : "elif ")
                 .Append(expressions.Write(clause.Condition))
                 .AppendLine(":");
+            AppendSourceItems(
+                source,
+                clause.SourceItems,
+                indent + "    ",
+                identifiers,
+                knownValues);
             if (clause.Statements.Count == 0)
             {
                 source.Append(indent).AppendLine("    pass");
-            }
-            else
-            {
-                AppendStatements(source, clause.Statements, indent + "    ", identifiers, knownValues);
             }
         }
 
         if (conditional.HasElseClause)
         {
             source.Append(indent).AppendLine("else:");
+            AppendSourceItems(
+                source,
+                conditional.ElseSourceItems,
+                indent + "    ",
+                identifiers,
+                knownValues);
             if (conditional.ElseStatements.Count == 0)
             {
                 source.Append(indent).AppendLine("    pass");
-            }
-            else
-            {
-                AppendStatements(
-                    source,
-                    conditional.ElseStatements,
-                    indent + "    ",
-                    identifiers,
-                    knownValues);
             }
         }
     }

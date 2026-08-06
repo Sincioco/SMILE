@@ -4,7 +4,7 @@
 **Status:** Official  
 **Applies to:** SMILE language  
 **Primary statement:** `PRINT`  
-**Repository destination:** `docs/SMILE Language Specification/SMILE - PRINT Statement Official Specification v1.0.md`
+**Repository destination:** `docs/SMILE Language Specification/002 - SMILE - PRINT Statement Official Specification v1.0.md`
 
 ---
 
@@ -558,9 +558,9 @@ prints:
 Hello // greeting
 ```
 
-When comments are supported by SMILE, comments intended to accompany a raw `PRINT` statement SHOULD be placed on their own line.
+SMILE v0.6.1 defines `REM`, `//`, `#`, and `--` comments only when a marker is the first non-space-or-tab source content. A comment intended to accompany PRINT therefore belongs on its own physical line. `PRINT // text`, `PRINT # text`, `PRINT -- text`, and `PRINT REM text` remain raw templates and print the marker text exactly.
 
-This avoids conflicts with printable apostrophes, slashes, number signs, and other punctuation.
+The complete rules are defined by the [007 - SMILE - Full-Line Comments and Source Layout Preservation Official Specification v1.0](007%20-%20SMILE%20-%20Full-Line%20Comments%20and%20Source%20Layout%20Preservation%20Official%20Specification%20v1.0.md). SMILE still has no trailing inline-comment form.
 
 ---
 
@@ -799,7 +799,7 @@ It is invalid or follows the separately defined expression grammar.
 
 Restricting quote omission to `PRINT` prevents ambiguity as SMILE grows.
 
-In particular, bare IF condition text never gains PRINT's raw-template behavior. IF conditions use the ordinary expression grammar plus the explicit-comparison and call-free rules in [SMILE - IF Statement Official Specification v1.0](SMILE%20-%20IF%20Statement%20Official%20Specification%20v1.0.md).
+In particular, bare IF condition text never gains PRINT's raw-template behavior. IF conditions use the ordinary expression grammar plus the explicit-comparison and call-free rules in [006 - SMILE - IF Statement Official Specification v1.0](006%20-%20SMILE%20-%20IF%20Statement%20Official%20Specification%20v1.0.md).
 
 ---
 
@@ -823,7 +823,8 @@ PRINT "text" + expression
 
 The official v0.4.1 expression grammar and short-circuit evaluation rules are defined in:
 
-- [SMILE - Core Types and Expressions Official Specification v1.0](SMILE%20-%20Core%20Types%20and%20Expressions%20Official%20Specification%20v1.0.md)
+- [004 - SMILE - Core Types and Expressions Official Specification v1.0](004%20-%20SMILE%20-%20Core%20Types%20and%20Expressions%20Official%20Specification%20v1.0.md)
+- [007 - SMILE - Full-Line Comments and Source Layout Preservation Official Specification v1.0](007%20-%20SMILE%20-%20Full-Line%20Comments%20and%20Source%20Layout%20Preservation%20Official%20Specification%20v1.0.md)
 
 Future versions may expand the expression grammar further without changing the raw-template rules.
 

@@ -5,6 +5,7 @@ public enum SyntaxKind
     BadToken,
     EndOfFileToken,
     EndOfLineToken,
+    FullLineCommentToken,
 
     IdentifierToken,
     StringLiteralToken,

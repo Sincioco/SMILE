@@ -7,20 +7,34 @@ public sealed class Lexer
     private readonly string _text;
     private readonly int _absoluteStart;
     private readonly int _end;
+    private readonly bool _isFullSource;
     private readonly List<Diagnostic> _diagnostics = new();
     private int _currentLineNumber;
     private int _lineStart;
     private int _position;
 
     public Lexer(string text)
-        : this(text, absoluteStart: 0, lineNumber: 1, start: 0, end: text.Length)
+        : this(
+            text,
+            absoluteStart: 0,
+            lineNumber: 1,
+            start: 0,
+            end: text.Length,
+            isFullSource: true)
     {
     }
 
-    internal Lexer(string text, int absoluteStart, int lineNumber, int start, int end)
+    internal Lexer(
+        string text,
+        int absoluteStart,
+        int lineNumber,
+        int start,
+        int end,
+        bool isFullSource = false)
     {
         _text = text;
         _absoluteStart = absoluteStart;
+        _isFullSource = isFullSource;
         _currentLineNumber = lineNumber;
         _lineStart = 0;
         _position = start;
@@ -45,11 +59,21 @@ public sealed class Lexer
 
     internal SyntaxToken LexToken()
     {
+        bool atPhysicalLineStart = _position == _lineStart;
         SkipHorizontalWhitespace();
 
         if (_position >= _end)
         {
             return Token(SyntaxKind.EndOfFileToken, _position, 0);
+        }
+
+        // Only the first token request for a physical line may classify a
+        // comment. Later marker text remains ordinary inline source.
+        if (_isFullSource &&
+            atPhysicalLineStart &&
+            TryLexFullLineComment(out SyntaxToken fullLineComment))
+        {
+            return fullLineComment;
         }
 
         int start = _position;
@@ -94,6 +118,21 @@ public sealed class Lexer
             _position + 1 < _end &&
             SyntaxFacts.IsDoubleQuote(_text[_position + 1]))
         {
+            if (_isFullSource)
+            {
+                int lineEnd = _position + 2;
+                while (lineEnd < _end && _text[lineEnd] is not ('\r' or '\n'))
+                {
+                    lineEnd++;
+                }
+
+                _position = InterpolatedStringScanner.Skip(_text, start, lineEnd);
+                return Token(
+                    SyntaxKind.InterpolatedStringStartToken,
+                    start,
+                    _position - start);
+            }
+
             _position += 2;
             return Token(SyntaxKind.InterpolatedStringStartToken, start, 2);
         }
@@ -218,6 +257,38 @@ public sealed class Lexer
         return Token(SyntaxKind.StringLiteralToken, start, Math.Max(0, _end - start), builder.ToString());
     }
 
+    private bool TryLexFullLineComment(out SyntaxToken token)
+    {
+        token = null!;
+
+        int lineEnd = _position;
+        while (lineEnd < _end && _text[lineEnd] is not ('\r' or '\n'))
+        {
+            lineEnd++;
+        }
+
+        string physicalLine = _text[_lineStart..lineEnd];
+        int relativeFirst = _position - _lineStart;
+        if (!FullLineCommentFacts.TryClassify(
+                physicalLine,
+                relativeFirst,
+                out FullLineCommentMarker marker,
+                out int payloadStart))
+        {
+            return false;
+        }
+
+        int tokenStart = _lineStart;
+        int tokenLength = lineEnd - tokenStart;
+        _position = lineEnd;
+        token = Token(
+            SyntaxKind.FullLineCommentToken,
+            tokenStart,
+            tokenLength,
+            new FullLineCommentTokenValue(marker, physicalLine[payloadStart..]));
+        return true;
+    }
+
     private bool TryLexBlockStringLiteral(out SyntaxToken token)
     {
         token = null!;
@@ -225,7 +296,7 @@ public sealed class Lexer
         // LexOne is intentionally bounded to one expression line. The public
         // full-source lexer can surface the dedicated block token, while the
         // indexed statement parser remains responsible for SET-only placement.
-        if (_absoluteStart != 0 || _end != _text.Length)
+        if (!_isFullSource)
         {
             return false;
         }

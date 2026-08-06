@@ -14,11 +14,14 @@ The SET-only multiline String form defined here is officially named:
 
 This specification works together with:
 
-- `SMILE - LET Statement Official Specification v1.0.md`
-- `SMILE - PRINT Statement Official Specification v1.0.md`
-- `SMILE - IF Statement Official Specification v1.0.md`
-- `SMILE - String Literals Official Specification v1.0.md`
-- `SMILE - Core Types and Expressions Official Specification v1.0.md`
+- [002 - SMILE - PRINT Statement Official Specification v1.0](002%20-%20SMILE%20-%20PRINT%20Statement%20Official%20Specification%20v1.0.md)
+- [003 - SMILE - String Literals Official Specification v1.0](003%20-%20SMILE%20-%20String%20Literals%20Official%20Specification%20v1.0.md)
+- [004 - SMILE - Core Types and Expressions Official Specification v1.0](004%20-%20SMILE%20-%20Core%20Types%20and%20Expressions%20Official%20Specification%20v1.0.md)
+- [005 - SMILE - LET Statement Official Specification v1.0](005%20-%20SMILE%20-%20LET%20Statement%20Official%20Specification%20v1.0.md)
+- [006 - SMILE - IF Statement Official Specification v1.0](006%20-%20SMILE%20-%20IF%20Statement%20Official%20Specification%20v1.0.md)
+- [007 - SMILE - Full-Line Comments and Source Layout Preservation Official Specification v1.0](007%20-%20SMILE%20-%20Full-Line%20Comments%20and%20Source%20Layout%20Preservation%20Official%20Specification%20v1.0.md)
+
+In SMILE v0.6.1, comment and blank-line recognition is suspended from a block's opening delimiter through its structural closing delimiter. Marker-looking lines and blank physical content lines remain exact String data and never become separate source-layout items.
 
 When this specification is implemented, the official LET specification must be updated to reflect this language model:
 

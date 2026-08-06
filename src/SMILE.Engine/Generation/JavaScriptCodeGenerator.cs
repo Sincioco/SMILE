@@ -13,24 +13,32 @@ internal sealed class JavaScriptCodeGenerator : ICodeGenerator
         TargetIntegerProfile integers = TargetIntegerProfile.Analyze(program, analysis);
         var source = new StringBuilder();
 
-        AppendStatements(source, program.Statements, string.Empty, identifiers, integers);
+        AppendSourceItems(source, program.SourceItems, string.Empty, identifiers, integers);
 
         return new GeneratedProgram(
             Language,
             new[] { new GeneratedFile("Program.js", TextOutput.EnsureOneTrailingNewLine(source.ToString()), IsPrimary: true) });
     }
 
-    private static void AppendStatements(
+    private static void AppendSourceItems(
         StringBuilder source,
-        IReadOnlyList<BoundStatement> statements,
+        IReadOnlyList<BoundSourceItem> sourceItems,
         string indent,
         TargetIdentifierMap identifiers,
         TargetIntegerProfile integers)
     {
-        foreach (BoundStatement statement in statements)
+        foreach (BoundSourceItem sourceItem in sourceItems)
         {
-            switch (statement)
+            switch (sourceItem)
             {
+                case BoundFullLineComment comment:
+                    TargetComments.Append(source, TargetLanguage.JavaScript, indent, comment.Payload);
+                    break;
+
+                case BoundBlankLine:
+                    source.AppendLine();
+                    break;
+
                 case BoundLetStatement let:
                     source.AppendLine($"{indent}let {identifiers.Get(let.Variable)} = {TargetExpression.JavaScript(let.Initializer, identifiers, integers)};");
                     break;
@@ -66,14 +74,14 @@ internal sealed class JavaScriptCodeGenerator : ICodeGenerator
                 .Append(clauseIndex == 0 ? "if (" : "else if (")
                 .Append(TargetExpression.JavaScript(clause.Condition, identifiers, integers))
                 .AppendLine(") {");
-            AppendStatements(source, clause.Statements, indent + "    ", identifiers, integers);
+            AppendSourceItems(source, clause.SourceItems, indent + "    ", identifiers, integers);
             source.Append(indent).AppendLine("}");
         }
 
         if (conditional.HasElseClause)
         {
             source.Append(indent).AppendLine("else {");
-            AppendStatements(source, conditional.ElseStatements, indent + "    ", identifiers, integers);
+            AppendSourceItems(source, conditional.ElseSourceItems, indent + "    ", identifiers, integers);
             source.Append(indent).AppendLine("}");
         }
     }

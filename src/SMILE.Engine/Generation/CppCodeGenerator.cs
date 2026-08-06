@@ -44,9 +44,9 @@ internal sealed class CppCodeGenerator : ICodeGenerator
 
         bool emittedDeclaration = false;
         bool emittedExecutable = false;
-        AppendStatements(
+        AppendSourceItems(
             source,
-            program.Statements,
+            program.SourceItems,
             "    ",
             expressions,
             identifiers,
@@ -73,9 +73,9 @@ internal sealed class CppCodeGenerator : ICodeGenerator
             });
     }
 
-    private static void AppendStatements(
+    private static void AppendSourceItems(
         StringBuilder source,
-        IReadOnlyList<BoundStatement> statements,
+        IReadOnlyList<BoundSourceItem> sourceItems,
         string indent,
         CppExpressionWriter expressions,
         TargetIdentifierMap identifiers,
@@ -83,10 +83,18 @@ internal sealed class CppCodeGenerator : ICodeGenerator
         ref bool emittedDeclaration,
         ref bool emittedExecutable)
     {
-        foreach (BoundStatement statement in statements)
+        foreach (BoundSourceItem sourceItem in sourceItems)
         {
-            switch (statement)
+            switch (sourceItem)
             {
+                case BoundFullLineComment comment:
+                    TargetComments.Append(source, TargetLanguage.Cpp, indent, comment.Payload);
+                    break;
+
+                case BoundBlankLine:
+                    source.AppendLine();
+                    break;
+
                 case BoundLetStatement let:
                     source.AppendLine(
                         $"{indent}{TargetTypes.Cpp(let.Variable.Type, integers)} {identifiers.Get(let.Variable)} = {expressions.Write(let.Initializer)};");
@@ -147,9 +155,9 @@ internal sealed class CppCodeGenerator : ICodeGenerator
                 .Append(expressions.Write(clause.Condition))
                 .AppendLine(")");
             source.Append(indent).AppendLine("{");
-            AppendStatements(
+            AppendSourceItems(
                 source,
-                clause.Statements,
+                clause.SourceItems,
                 indent + "    ",
                 expressions,
                 identifiers,
@@ -163,9 +171,9 @@ internal sealed class CppCodeGenerator : ICodeGenerator
         {
             source.Append(indent).AppendLine("else");
             source.Append(indent).AppendLine("{");
-            AppendStatements(
+            AppendSourceItems(
                 source,
-                conditional.ElseStatements,
+                conditional.ElseSourceItems,
                 indent + "    ",
                 expressions,
                 identifiers,

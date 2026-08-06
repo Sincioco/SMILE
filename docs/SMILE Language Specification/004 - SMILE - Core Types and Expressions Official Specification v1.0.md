@@ -1,6 +1,6 @@
 # SMILE - Core Types and Expressions Official Specification v1.0
 
-This specification was introduced in SMILE v0.4.1 and remains normative for SMILE v0.6.0 and later unless superseded by a newer official specification. IF-specific condition structure is additionally defined by the official IF statement specification.
+This specification was introduced in SMILE v0.4.1 and remains normative for SMILE v0.6.1 and later unless superseded by a newer official specification. IF-specific condition structure is additionally defined by the official IF statement specification.
 
 ## Core Types
 
@@ -29,6 +29,8 @@ The lexer recognizes:
 - `=`, `<>`, `<`, `<=`, `>`, `>=`;
 - `(` and `)`;
 - line endings and end of file.
+
+The public full-source lexer also retains v0.6.1 full-line comments for tooling. Comment recognition is contextual to physical source-line position and is not part of the bounded expression lexer, so marker-looking inline expression or String text is never deleted. Ordered blank-line items are parser layout rather than expression tokens. See the [007 - Full-Line Comments and Source Layout Preservation specification](007%20-%20SMILE%20-%20Full-Line%20Comments%20and%20Source%20Layout%20Preservation%20Official%20Specification%20v1.0.md).
 
 Keywords are case-insensitive. Identifiers are ASCII-only, begin with a letter or `_`, and then contain letters, digits, or `_`.
 
@@ -144,7 +146,7 @@ The official ordinary expression grammar is reused inside IF and ELSE IF headers
 - a compound AND/OR/NOT condition is valid only when every leaf is an explicit comparison;
 - an IF condition MUST NOT invoke a function or procedure.
 
-These restrictions are validated on the unsimplified bound expression so simplification cannot erase an explicit `= TRUE` comparison. Binding and type checking still examine both sides of a short-circuit operator and every source branch. The complete syntax, diagnostics, and future call-prohibition contract are defined by [SMILE - IF Statement Official Specification v1.0](SMILE%20-%20IF%20Statement%20Official%20Specification%20v1.0.md).
+These restrictions are validated on the unsimplified bound expression so simplification cannot erase an explicit `= TRUE` comparison. Binding and type checking still examine both sides of a short-circuit operator and every source branch. The complete syntax, diagnostics, and future call-prohibition contract are defined by [006 - SMILE - IF Statement Official Specification v1.0](006%20-%20SMILE%20-%20IF%20Statement%20Official%20Specification%20v1.0.md).
 
 ## Interpolation
 

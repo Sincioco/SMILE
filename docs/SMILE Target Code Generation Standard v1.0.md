@@ -86,7 +86,7 @@ Typed SMILE values must display exactly like the reference evaluator. `Integer` 
 
 Native expression intent must not make a valid SMILE program invalid in the destination compiler. After binding validates both operands, the shared simplifier uses the current known values in every expression position. It simplifies and evaluates the left operand first, decides whether the right operand is reachable, and never simplifies or evaluates an unreachable right subtree. Target generators must consume that shared result rather than duplicate short-circuit policy.
 
-SMILE v0.6.0.1 has conditional branches but still has no input, loop, function, or external runtime data. Optimization must respect SET mutation, branch boundaries, atomic right-side evaluation, left-to-right short-circuiting, and direct runtime-storage reads. Never reuse an old known value after SET, carry a value from one branch into another, propagate a post-IF value without a proven merge, or replace genuine IF control flow with a currently selected branch.
+SMILE v0.6.1 has conditional branches and non-semantic source layout but still has no input, loop, function, or external runtime data. Optimization must respect SET mutation, branch boundaries, atomic right-side evaluation, left-to-right short-circuiting, direct runtime-storage reads, and the exact relative order of comments and blank lines. Never reuse an old known value after SET, carry a value from one branch into another, propagate a post-IF value without a proven merge, replace genuine IF control flow with a currently selected branch, or move layout across a clause boundary.
 
 ## Semantic Integer And Target Storage
 
@@ -132,7 +132,7 @@ Wide profiles must be exact and consistent. For example, a C program that requir
 
 ## Runtime Variables, SET, And Block Strings
 
-`LET` declares a variable and stores its initial value. `SET` changes the current value of an earlier declaration without changing its SMILE type. Every target generator handles `BoundLetStatement`, `BoundSetStatement`, `BoundPrintStatement`, and recursive `BoundIfStatement` nodes in source order. High-level targets preserve natural assignment:
+`LET` declares a variable and stores its initial value. `SET` changes the current value of an earlier declaration without changing its SMILE type. Every target generator iterates ordered bound source items, handling non-semantic comments and blank lines directly while retaining the existing `BoundLetStatement`, `BoundSetStatement`, `BoundPrintStatement`, and recursive `BoundIfStatement` behavior. High-level targets preserve natural assignment:
 
 ```csharp
 int Counter = 0;
@@ -172,6 +172,27 @@ Integer profiling, String sizing, embedded-NUL planning, mutation analysis, requ
 ## Generator Source Organization
 
 `Generation.cs` is the small public transpilation facade. Shared generator helpers live under `src/SMILE.Engine/Generation/`, alongside one focused source file for each destination generator. This source split is organizational only: namespace, visibility, target registry order and IDs, public/internal APIs, generated filenames and project files, deterministic labels, and emitted bytes remain unchanged. Shared lowering and planning logic must stay shared rather than being copied into destination files; the split does not create a new generator framework, discovery mechanism, template system, or dependency.
+
+## Source Comments And Blank-Line Layout
+
+Comments and blank physical source lines are ordered non-semantic bound source items. Generators must emit them directly from that ordered tree, not reconstruct them from spans, offsets, original source text, or a side table. Semantic statements continue to use the existing analysis facts; generators must never request a statement ordinal, known value, mutation, range, or display fact for a layout item.
+
+One shared target-comment emitter maps every SMILE source marker to the destination's native full-line marker:
+
+| Destination | Generated marker |
+|---|---|
+| C#, C, C++, JavaScript, Java, Objective-C, Swift | `//` |
+| Python | `#` |
+| COBOL free source | `*>` |
+| Windows x64 MASM | `;` |
+
+The original marker kind does not leak into target source; the exact payload after it is preserved in order and safely rendered. NUL, U+2028, U+2029, and target-unsafe C0 controls other than permitted tab use readable reversible `\u{HEX}` text. C, C++, and Objective-C must not leave a literal backslash as the last non-horizontal-whitespace character before a physical line ending, because translation-phase splicing can otherwise consume the next line; trailing payload spaces and tabs remain present. Java must prevent source text such as `\u000A` from becoming a Unicode escape before ordinary tokenization. Printable Unicode remains literal when the current target toolchain accepts it. GnuCOBOL comments wrap deterministically only when needed, repeat `*>` and indentation on consecutive fragments, preserve payload order, and stay within a conservative 200-column cap. Width accounting includes UTF-8 byte length and conventional tab stops. At extreme IF depth, only generated comment indentation may be capped, at 40 spaces; payload text remains complete. No character may be silently dropped or invented.
+
+Each blank source line outside a SET Block String emits one physically empty target line at the corresponding source-order boundary. Preserve isolated, consecutive, leading, trailing, and branch-local blank lines in addition to generator-owned formatting. A statement that lowers to several target lines remains one chunk, so a source blank line belongs between chunks. Layout does not need to force target line numbers to equal SMILE line numbers.
+
+Comments and blank lines belong only in the primary generated program file. Python places them inside `main()` or the existing source-order user body, never before file-level boilerplate where a comment could become an encoding declaration or shebang. MASM places them in the `.code` source-order statement stream and never duplicates them into `.data`. COBOL emits every layout item exactly once in the closest deterministic `PROCEDURE DIVISION` user-code region; LET storage may remain in `WORKING-STORAGE`. Comment-only or blank-only target bodies are still semantically empty, so Python emits `pass` and COBOL emits `CONTINUE` wherever their grammar requires a statement.
+
+SET Block String ownership is stronger than comment and blank-line recognition. Its marker-looking and blank content lines are normalized into the ordinary bound String value and must never be emitted separately as source layout. Because preserved comments are copied into generated primary files, programmers must not put passwords, private keys, tokens, or other secrets in source comments.
 
 ## Python
 
@@ -375,12 +396,12 @@ Every reference to a SMILE symbol must use the same mapped target name as its de
 
 ## Conformance Validation
 
-Every expression and statement feature is validated against the `SmileEvaluator` reference oracle. The generated-target suite includes IF-only, IF/ELSE, multiple ELSE IF, final ELSE, no-selected-branch, nested IF, empty bodies, selected SET mutation, branch Block Strings, merged and unknown post-IF values, wide Integers and embedded NUL introduced on unselected branches, and all earlier SET/expression cases. Every generated source must retain every body. It runs all locally installed toolchains for all ten targets and compares exact UTF-8 stdout bytes after normalizing only CRLF to LF where explicitly permitted. Tests never trim or discard NUL, backspace, form feed, carriage return, tab, or meaningful trailing whitespace. Repeated generation of nested and multi-clause programs must remain byte-for-byte deterministic. Java release validation requires both `javac` and `java` and executes the official IF program plus cumulative `examples/language.smile` without skips.
+Every expression, statement, comment, and source-layout feature is validated against the `SmileEvaluator` reference oracle. The generated-target suite includes all four comment markers, nested and layout-only branches, comment-safe IF recovery, source blank-line boundaries, Block String ownership, unsafe control and Unicode payloads, C-family trailing backslash, Java Unicode-looking text, multilingual and long comments, IF control flow, SET mutation, wide Integers, and embedded NUL. Every generated source must retain every body and every source layout item exactly once except intentional safe wrapping. It runs all locally installed toolchains for all ten targets and compares exact UTF-8 stdout bytes after normalizing only CRLF to LF where explicitly permitted. Tests never trim or discard NUL, backspace, form feed, carriage return, tab, or meaningful trailing whitespace. Repeated generation must remain byte-for-byte deterministic. Java release validation requires both `javac` and `java` and executes the normative comment/layout program plus cumulative `examples/language.smile` without skips.
 
-Release validation must distinguish warnings from the SMILE solution build and warnings from generated target programs. `SMILE_REQUIRE_ZERO_TARGET_WARNINGS=1` activates destination-specific warning checks for compiler-backed targets; JavaScript and Python have no compile stage in their normal SMILE toolchains. The official IF program must build/run through all ten targets, return exit code zero, emit zero detected compiler warnings, preserve every source branch, and match `SmileEvaluator`. This generated warning gate remains separate from the solution-build warning count.
+Release validation must distinguish warnings from the SMILE solution build and warnings from generated target programs. `SMILE_REQUIRE_ZERO_TARGET_WARNINGS=1` activates destination-specific warning checks for compiler-backed targets; JavaScript and Python have no compile stage in their normal SMILE toolchains. The normative comment/layout program must build/run through all ten targets, return exit code zero, emit zero detected compiler warnings, preserve native comments and source blank-line boundaries safely, and match `SmileEvaluator`. This generated warning gate remains separate from the solution-build warning count.
 
 The hosted `SMILE CI` Windows workflow restores, builds, and tests the Debug and Release solution on .NET SDK 10.0.302. That independent solution check does not install the complete destination toolchain matrix and does not replace strict local release runs with `SMILE_REQUIRE_JAVA=1`, `SMILE_REQUIRE_ALL_TARGETS=1`, and `SMILE_REQUIRE_ZERO_TARGET_WARNINGS=1`.
 
 ## Destination-Language Freeze
 
-C++ is SMILE's tenth and final planned destination language. Target-language expansion is frozen unless Sin explicitly reopens it. After v0.6.0.1 IF Hardening, later work should deepen input, loops, functions, scopes, debugging, and teaching tools rather than adding another backend. Rust, Zig, and Go remain deferred.
+C++ is SMILE's tenth and final planned destination language. Target-language expansion is frozen unless Sin explicitly reopens it. After v0.6.1 Full-Line Comments and Source Layout Preservation, later work should deepen input, loops, functions, scopes, debugging, and teaching tools rather than adding another backend. Rust, Zig, and Go remain deferred.

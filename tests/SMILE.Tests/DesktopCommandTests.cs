@@ -10,14 +10,14 @@ namespace SMILE.Tests;
 public sealed class DesktopCommandTests
 {
     [TestMethod]
-    public void Desktop_assembly_reports_the_v0601_IF_hardening_release()
+    public void Desktop_assembly_reports_the_v061_comment_and_layout_release()
     {
         string? version = typeof(MainWindowViewModel).Assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
             .InformationalVersion;
 
         Assert.IsNotNull(version);
-        StringAssert.StartsWith(version, "0.6.0.1 IF Hardening");
+        StringAssert.StartsWith(version, "0.6.1 Full-Line Comments and Source Layout Preservation");
     }
 
     [TestMethod]
@@ -254,6 +254,21 @@ PRINT A; B; C
         StringAssert.Contains(viewModel.SourceText, "IF NOT (IfReady = FALSE) THEN");
         StringAssert.Contains(viewModel.SourceText, "SET IfMessage =\"");
         StringAssert.Contains(viewModel.SourceText, "PRINT Grade={IfGrade}");
+        StringAssert.Contains(viewModel.SourceText, "REM Full-line comments and source layout examples:");
+        StringAssert.Contains(viewModel.SourceText, "rEm This mixed-case marker is also a comment.");
+        StringAssert.Contains(viewModel.SourceText, "// C-family-style full-line comment.");
+        StringAssert.Contains(viewModel.SourceText, "# Script-language-style full-line comment.");
+        StringAssert.Contains(viewModel.SourceText, "-- SQL, Ada, and Haskell-style full-line comment.");
+        StringAssert.Contains(viewModel.SourceText, "LET REM = \"REM remains a valid variable name.\"");
+        StringAssert.Contains(viewModel.SourceText, "Rem Nested REM comments are valid.");
+        StringAssert.Contains(viewModel.SourceText, "PRINT // This text is printed");
+        StringAssert.Contains(viewModel.SourceText, "PRINT https://example.com");
+        StringAssert.Contains(
+            normalizedSource,
+            "LET CommentLayoutMessage = \"\"\n\n\n\nIF REM = \"REM remains a valid variable name.\" THEN");
+        StringAssert.Contains(
+            normalizedSource,
+            "SET CommentLayoutMessage =\"\nREM Block String data\n\n// Block String data\n# Block String data\n-- Block String data\n\"");
 
         EvaluationResult evaluation = new SmileEvaluator().Evaluate(viewModel.SourceText);
         Assert.IsTrue(

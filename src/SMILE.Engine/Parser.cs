@@ -11,41 +11,60 @@ internal sealed class Parser
 
     public Parser(string source)
     {
-        _source = NormalizeLegacySmartQuotes(source);
+        // Keep the parser's source byte-for-byte equivalent at the .NET String
+        // level. Actual left and right smart quotes are recognized directly by
+        // SyntaxFacts, while comment payloads, Block String data, and source
+        // spans must never be rewritten by a whole-source compatibility pass.
+        _source = source;
         _lines = SourceLine.Split(_source);
     }
 
     public ParseResult Parse()
     {
         int lineIndex = 0;
-        IReadOnlyList<StatementSyntax> statements = ParseStatementList(
+        IReadOnlyList<SourceItemSyntax> sourceItems = ParseStatementList(
             ref lineIndex,
             isIfBody: false,
             ifNestingDepth: 0);
 
-        TextSpan span = statements.Count == 0
+        TextSpan span = sourceItems.Count == 0
             ? new TextSpan(0, 0, 1, 1)
             : new TextSpan(
-                statements[0].Span.Start,
-                statements[^1].Span.Start + statements[^1].Span.Length - statements[0].Span.Start,
-                statements[0].Span.Line,
-                statements[0].Span.Column);
+                sourceItems[0].Span.Start,
+                sourceItems[^1].Span.Start + sourceItems[^1].Span.Length - sourceItems[0].Span.Start,
+                sourceItems[0].Span.Line,
+                sourceItems[0].Span.Column);
 
-        return new ParseResult(new SmileProgramSyntax(statements, span), _diagnostics);
+        return new ParseResult(new SmileProgramSyntax(sourceItems, span), _diagnostics);
     }
 
-    private IReadOnlyList<StatementSyntax> ParseStatementList(
+    private IReadOnlyList<SourceItemSyntax> ParseStatementList(
         ref int lineIndex,
         bool isIfBody,
         int ifNestingDepth)
     {
-        var statements = new List<StatementSyntax>();
+        var sourceItems = new List<SourceItemSyntax>();
         while (lineIndex < _lines.Count)
         {
             SourceLine line = _lines[lineIndex];
             int first = SkipHorizontalWhitespace(line.Text, 0);
             if (first >= line.Text.Length)
             {
+                sourceItems.Add(new BlankLineSyntax(line.Span(0, line.Text.Length)));
+                lineIndex++;
+                continue;
+            }
+
+            if (FullLineCommentFacts.TryClassify(
+                    line.Text,
+                    first,
+                    out FullLineCommentMarker marker,
+                    out int payloadStart))
+            {
+                sourceItems.Add(new FullLineCommentSyntax(
+                    marker,
+                    line.Text[payloadStart..],
+                    line.Span(0, line.Text.Length)));
                 lineIndex++;
                 continue;
             }
@@ -58,7 +77,7 @@ internal sealed class Parser
             {
                 if (isIfBody)
                 {
-                    return statements;
+                    return sourceItems;
                 }
 
                 string code = terminator is IfTerminatorKind.MalformedEnd
@@ -88,13 +107,13 @@ internal sealed class Parser
                 ifNestingDepth);
             if (statement is not null)
             {
-                statements.Add(statement);
+                sourceItems.Add(statement);
             }
 
             lineIndex++;
         }
 
-        return statements;
+        return sourceItems;
     }
 
     private StatementSyntax? ParseLine(
@@ -180,14 +199,14 @@ internal sealed class Parser
             ifLine.Text.Length - ifKeyword.Start);
 
         lineIndex++;
-        IReadOnlyList<StatementSyntax> firstStatements = ParseStatementList(
+        IReadOnlyList<SourceItemSyntax> firstSourceItems = ParseStatementList(
             ref lineIndex,
             isIfBody: true,
             ifNestingDepth: ifNestingDepth);
         clauses.Add(new ConditionalClauseSyntax(
             firstCondition,
-            firstStatements,
-            ExtendHeaderSpan(firstHeaderSpan, firstStatements)));
+            firstSourceItems,
+            ExtendHeaderSpan(firstHeaderSpan, firstSourceItems)));
 
         while (lineIndex < _lines.Count)
         {
@@ -209,18 +228,18 @@ internal sealed class Parser
             TextSpan headerSpan = line.Span(first, line.Text.Length - first);
 
             lineIndex++;
-            IReadOnlyList<StatementSyntax> statements = ParseStatementList(
+            IReadOnlyList<SourceItemSyntax> sourceItems = ParseStatementList(
                 ref lineIndex,
                 isIfBody: true,
                 ifNestingDepth: ifNestingDepth);
             clauses.Add(new ConditionalClauseSyntax(
                 condition,
-                statements,
-                ExtendHeaderSpan(headerSpan, statements)));
+                sourceItems,
+                ExtendHeaderSpan(headerSpan, sourceItems)));
         }
 
         bool hasElseClause = false;
-        var elseStatements = new List<StatementSyntax>();
+        var elseSourceItems = new List<SourceItemSyntax>();
         if (lineIndex < _lines.Count)
         {
             SourceLine line = _lines[lineIndex];
@@ -230,7 +249,7 @@ internal sealed class Parser
             {
                 hasElseClause = true;
                 lineIndex++;
-                elseStatements.AddRange(ParseStatementList(
+                elseSourceItems.AddRange(ParseStatementList(
                     ref lineIndex,
                     isIfBody: true,
                     ifNestingDepth: ifNestingDepth));
@@ -274,7 +293,7 @@ internal sealed class Parser
                     }
 
                     lineIndex++;
-                    elseStatements.AddRange(ParseStatementList(
+                    elseSourceItems.AddRange(ParseStatementList(
                         ref lineIndex,
                         isIfBody: true,
                         ifNestingDepth: ifNestingDepth));
@@ -322,7 +341,7 @@ internal sealed class Parser
 
         return new IfStatementSyntax(
             clauses,
-            elseStatements,
+            elseSourceItems,
             hasElseClause,
             new TextSpan(
                 statementStart,
@@ -345,6 +364,18 @@ internal sealed class Parser
             SourceLine line = _lines[scanIndex];
             int first = SkipHorizontalWhitespace(line.Text, 0);
             if (first >= line.Text.Length)
+            {
+                continue;
+            }
+
+            // Comment payload is inert even when it spells IF, ELSE, END IF,
+            // or a block-String opener. Recovery must classify it with the
+            // same contextual rules as the ordinary statement-list parser.
+            if (FullLineCommentFacts.TryClassify(
+                    line.Text,
+                    first,
+                    out _,
+                    out _))
             {
                 continue;
             }
@@ -562,9 +593,9 @@ internal sealed class Parser
         int position = start;
         while (position < line.Text.Length)
         {
-            if (StartsInterpolatedString(line.Text, position))
+            if (InterpolatedStringScanner.IsStart(line.Text, position))
             {
-                position = SkipInterpolatedString(line.Text, position, line.Text.Length);
+                position = InterpolatedStringScanner.Skip(line.Text, position, line.Text.Length);
                 continue;
             }
 
@@ -666,14 +697,14 @@ internal sealed class Parser
 
     private static TextSpan ExtendHeaderSpan(
         TextSpan headerSpan,
-        IReadOnlyList<StatementSyntax> statements)
+        IReadOnlyList<SourceItemSyntax> sourceItems)
     {
-        if (statements.Count == 0)
+        if (sourceItems.Count == 0)
         {
             return headerSpan;
         }
 
-        StatementSyntax last = statements[^1];
+        SourceItemSyntax last = sourceItems[^1];
         return headerSpan with
         {
             Length = last.Span.Start + last.Span.Length - headerSpan.Start
@@ -740,7 +771,7 @@ internal sealed class Parser
         }
 
         ExpressionSyntax? value;
-        if (StartsInterpolatedString(line.Text, payloadStart) ||
+        if (InterpolatedStringScanner.IsStart(line.Text, payloadStart) ||
             SyntaxFacts.IsDoubleQuote(line.Text[payloadStart]))
         {
             var parser = new ExpressionParser(this, line, payloadStart, line.Text.Length);
@@ -1057,7 +1088,10 @@ internal sealed class Parser
                 }
 
                 FlushText(position);
-                int close = FindInterpolationClose(line.Text, position + 1, end);
+                int close = InterpolatedStringScanner.FindInterpolationClose(
+                    line.Text,
+                    position + 1,
+                    end);
                 if (close < 0)
                 {
                     AddDiagnostic("SMILE1103", "Unterminated interpolation expression.", line.Span(position, 1));
@@ -1159,9 +1193,9 @@ internal sealed class Parser
         while (position < end)
         {
             char current = line.Text[position];
-            if (StartsInterpolatedString(line.Text, position))
+            if (InterpolatedStringScanner.IsStart(line.Text, position))
             {
-                position = SkipInterpolatedString(line.Text, position, end);
+                position = InterpolatedStringScanner.Skip(line.Text, position, end);
                 continue;
             }
 
@@ -1173,7 +1207,10 @@ internal sealed class Parser
 
             if (current == '{')
             {
-                int close = FindInterpolationClose(line.Text, position + 1, end);
+                int close = InterpolatedStringScanner.FindInterpolationClose(
+                    line.Text,
+                    position + 1,
+                    end);
                 position = close < 0 ? end : close + 1;
                 continue;
             }
@@ -1194,50 +1231,6 @@ internal sealed class Parser
         }
 
         return null;
-    }
-
-    private static int SkipInterpolatedString(string text, int start, int end)
-    {
-        int position = start + 2;
-        while (position < end)
-        {
-            if (text[position] == '\\')
-            {
-                position += position + 1 < end ? 2 : 1;
-                continue;
-            }
-
-            if (text[position] == '{')
-            {
-                // Doubled braces are literal template text.  The header scanner must
-                // mirror the real interpolation parser or a literal "{{" can make it
-                // consume the rest of the line while searching for a nonexistent "}".
-                if (position + 1 < end && text[position + 1] == '{')
-                {
-                    position += 2;
-                    continue;
-                }
-
-                int close = FindInterpolationClose(text, position + 1, end);
-                position = close < 0 ? end : close + 1;
-                continue;
-            }
-
-            if (text[position] == '}' && position + 1 < end && text[position + 1] == '}')
-            {
-                position += 2;
-                continue;
-            }
-
-            if (SyntaxFacts.IsDoubleQuote(text[position]))
-            {
-                return position + 1;
-            }
-
-            position++;
-        }
-
-        return end;
     }
 
     private static int SkipQuotedText(string text, int start, int end)
@@ -1261,39 +1254,6 @@ internal sealed class Parser
 
         return end;
     }
-
-    private static int FindInterpolationClose(string text, int start, int end)
-    {
-        int position = start;
-        while (position < end)
-        {
-            if (StartsInterpolatedString(text, position))
-            {
-                position = SkipInterpolatedString(text, position, end);
-                continue;
-            }
-
-            if (SyntaxFacts.IsDoubleQuote(text[position]))
-            {
-                position = SkipQuotedText(text, position + 1, end);
-                continue;
-            }
-
-            if (text[position] == '}')
-            {
-                return position;
-            }
-
-            position++;
-        }
-
-        return -1;
-    }
-
-    private static bool StartsInterpolatedString(string text, int position) =>
-        position + 1 < text.Length &&
-        text[position] == '$' &&
-        SyntaxFacts.IsDoubleQuote(text[position + 1]);
 
     private static int SkipHorizontalWhitespace(string text, int position)
     {
@@ -1365,11 +1325,6 @@ internal sealed class Parser
             message,
             span));
     }
-
-    private static string NormalizeLegacySmartQuotes(string text) =>
-        text
-            .Replace("\u00e2\u20ac\u0153", "\u201c", StringComparison.Ordinal)
-            .Replace("\u00e2\u20ac\u009d", "\u201d", StringComparison.Ordinal);
 
     private readonly record struct IdentifierRead(
         int Start,
@@ -1528,7 +1483,7 @@ internal sealed class Parser
             SyntaxToken startToken = Current;
             int tokenStart = startToken.Span.Start - _line.Start;
             if (startToken.Kind is not SyntaxKind.InterpolatedStringStartToken ||
-                !StartsInterpolatedString(_line.Text, tokenStart))
+                !InterpolatedStringScanner.IsStart(_line.Text, tokenStart))
             {
                 _owner.AddDiagnostic("SMILE1201", "Invalid or unexpected token in expression.", _line.Span(Position, 0));
                 return new ErrorExpressionSyntax(_line.Span(Position, 0));
@@ -1588,7 +1543,10 @@ internal sealed class Parser
                     }
 
                     FlushText(Position);
-                    int close = FindInterpolationClose(_line.Text, Position + 1, _end);
+                    int close = InterpolatedStringScanner.FindInterpolationClose(
+                        _line.Text,
+                        Position + 1,
+                        _end);
                     if (close < 0)
                     {
                         _owner.AddDiagnostic("SMILE1103", "Unterminated interpolation expression.", _line.Span(Position, 1));

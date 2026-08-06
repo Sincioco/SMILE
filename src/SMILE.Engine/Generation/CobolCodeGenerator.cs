@@ -93,9 +93,9 @@ internal sealed class CobolCodeGenerator : ICodeGenerator
         source.AppendLine();
         source.AppendLine("PROCEDURE DIVISION.");
         source.AppendLine("*> SMILE PRINT reads current storage when it directly names a variable.");
-        AppendStatements(
+        AppendSourceItems(
             source,
-            program.Statements,
+            program.SourceItems,
             "    ",
             analysis,
             identifiers,
@@ -514,9 +514,9 @@ internal sealed class CobolCodeGenerator : ICodeGenerator
             .AppendLine(terminateSentence ? "." : string.Empty);
     }
 
-    private static void AppendStatements(
+    private static void AppendSourceItems(
         StringBuilder source,
-        IReadOnlyList<BoundStatement> statements,
+        IReadOnlyList<BoundSourceItem> sourceItems,
         string indent,
         BoundProgramAnalysis analysis,
         TargetIdentifierMap identifiers,
@@ -525,8 +525,24 @@ internal sealed class CobolCodeGenerator : ICodeGenerator
         IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> runtimeStringBuffers,
         bool insideConditional)
     {
-        foreach (BoundStatement statement in statements)
+        foreach (BoundSourceItem sourceItem in sourceItems)
         {
+            if (sourceItem is BoundFullLineComment comment)
+            {
+                // COBOL declarations live in WORKING-STORAGE, but learner
+                // layout belongs exactly once in the source-order PROCEDURE
+                // stream nearest the executable form of the program.
+                TargetComments.Append(source, TargetLanguage.Cobol, indent, comment.Payload);
+                continue;
+            }
+
+            if (sourceItem is BoundBlankLine)
+            {
+                source.AppendLine();
+                continue;
+            }
+
+            var statement = (BoundStatement)sourceItem;
             BoundStatementAnalysis facts = analysis.GetStatementFacts(statement);
             switch (statement)
             {
@@ -620,44 +636,38 @@ internal sealed class CobolCodeGenerator : ICodeGenerator
                 storageLengths,
                 runtimeStringBuffers);
             source.Append(indent).Append("IF ").Append(conditionName).AppendLine(" = 1");
+            AppendSourceItems(
+                source,
+                clause.SourceItems,
+                indent + "    ",
+                analysis,
+                identifiers,
+                logicalLengths,
+                storageLengths,
+                runtimeStringBuffers,
+                insideConditional: true);
             if (clause.Statements.Count == 0)
             {
                 source.Append(indent).AppendLine("    CONTINUE");
-            }
-            else
-            {
-                AppendStatements(
-                    source,
-                    clause.Statements,
-                    indent + "    ",
-                    analysis,
-                    identifiers,
-                    logicalLengths,
-                    storageLengths,
-                    runtimeStringBuffers,
-                    insideConditional: true);
             }
         }
 
         if (conditional.HasElseClause)
         {
             source.Append(indent).AppendLine("ELSE");
+            AppendSourceItems(
+                source,
+                conditional.ElseSourceItems,
+                indent + "    ",
+                analysis,
+                identifiers,
+                logicalLengths,
+                storageLengths,
+                runtimeStringBuffers,
+                insideConditional: true);
             if (conditional.ElseStatements.Count == 0)
             {
                 source.Append(indent).AppendLine("    CONTINUE");
-            }
-            else
-            {
-                AppendStatements(
-                    source,
-                    conditional.ElseStatements,
-                    indent + "    ",
-                    analysis,
-                    identifiers,
-                    logicalLengths,
-                    storageLengths,
-                    runtimeStringBuffers,
-                    insideConditional: true);
             }
         }
 

@@ -88,16 +88,16 @@ and test Debug and Release independently. It validates the SMILE solution and
 the unit/integration tests supported by the hosted runner. It does not install
 or claim coverage for every destination-language toolchain.
 
-The v0.6.0.1 Java and generated-target acceptance tests remain environment-aware
+The v0.6.1 Java and generated-target acceptance tests remain environment-aware
 for contributors who do not have every local toolchain. Official release
 validation is therefore a separate local gate that makes Java and all ten
 targets mandatory and enables generated compiler-warning validation. This
-ensures the official IF program, the cumulative `language.smile` reference,
+ensures the normative full-line comment/source-layout program, the cumulative `language.smile` reference,
 and the established all-target runtime conformance programs execute through
 every destination instead of skipping. The clause-selection matrix remains an
 evaluator-side semantic test, while structural generation tests cover nested
-branches, branch preservation, branch SET and Block String cases, and wide/NUL
-planning without requiring a local toolchain. Run the complete local gate from
+branches, native comment preservation, source blank-line boundaries, comment-safe
+Block String/IF recovery, and wide/NUL planning without requiring a local toolchain. Run the complete local gate from
 the repository root before a release commit:
 
 ```powershell

@@ -30,13 +30,14 @@
 
 ## Official Language Specifications
 
-- The official PRINT syntax is defined by `docs/SMILE Language Specification/SMILE - PRINT Statement Official Specification v1.0.md`.
-- The official LET syntax is defined by `docs/SMILE Language Specification/SMILE - LET Statement Official Specification v1.0.md`.
-- The official SET syntax is defined by `docs/SMILE Language Specification/SMILE - SET Statement Official Specification v1.0.md`.
-- The official IF syntax is defined by `docs/SMILE Language Specification/SMILE - IF Statement Official Specification v1.0.md`.
-- Official string literal behavior is defined by `docs/SMILE Language Specification/SMILE - String Literals Official Specification v1.0.md`.
-- Official core type and expression behavior is defined by `docs/SMILE Language Specification/SMILE - Core Types and Expressions Official Specification v1.0.md`.
-- LET declares and initializes a variable. SET remains the only assignment statement in v0.6.0.1 and changes an existing variable without changing its type.
+- The official SET syntax is defined by `docs/SMILE Language Specification/001 - SMILE - SET Statement Official Specification v1.0.md`.
+- The official PRINT syntax is defined by `docs/SMILE Language Specification/002 - SMILE - PRINT Statement Official Specification v1.0.md`.
+- Official string literal behavior is defined by `docs/SMILE Language Specification/003 - SMILE - String Literals Official Specification v1.0.md`.
+- Official core type and expression behavior is defined by `docs/SMILE Language Specification/004 - SMILE - Core Types and Expressions Official Specification v1.0.md`.
+- The official LET syntax is defined by `docs/SMILE Language Specification/005 - SMILE - LET Statement Official Specification v1.0.md`.
+- The official IF syntax is defined by `docs/SMILE Language Specification/006 - SMILE - IF Statement Official Specification v1.0.md`.
+- Official full-line comment and source-layout behavior is defined by `docs/SMILE Language Specification/007 - SMILE - Full-Line Comments and Source Layout Preservation Official Specification v1.0.md`.
+- LET declares and initializes a variable. SET remains the only assignment statement in v0.6.1 and changes an existing variable without changing its type.
 - Current runtime state belongs to the evaluator environment, not permanently to `BoundLetStatement`.
 - Compile-time propagation must be statement-order, mutation aware, and branch aware. Never reuse an old known value after SET or propagate a branch-specific value unless every outgoing path merges to the same known value.
 - Every expression feature must be defined once in the official core expression specification and implemented through the shared lexer, parser, binder, evaluator, and bound tree.
@@ -54,6 +55,14 @@
 - Exact-byte conformance tests must not trim or discard NUL, backspace, form-feed, carriage-return, or tab characters.
 - A physical source line normally contains one statement, and semicolons do not separate statements.
 - A second standalone `PRINT` keyword on the same line is a compiler error.
+- `REM`, `//`, `#`, and `--` are equivalent full-line comment markers only at the first non-space-or-tab position. `REM` is ordinal case-insensitive, requires a space, tab, line ending, or EOF boundary, and remains a valid identifier elsewhere.
+- Inline and trailing comments are not SMILE syntax. Marker-looking text after PRINT, inside an ordinary or interpolated String, or inside a SET Block String Literal remains data.
+- Program and branch bodies retain comments and blank physical lines as ordered non-semantic source items. Semantic passes must enumerate statements without assigning layout items ordinals, values, mutations, diagnostics, or execution-trace entries.
+- The SET Block String scanner owns all content through its closing delimiter. Comment classification, syntax highlighting, and IF recovery must never reinterpret marker-looking block content.
+- Every target emits preserved comments once in its primary user-code region using native syntax: `//` for C#, C, C++, JavaScript, Java, Objective-C, and Swift; `#` for Python; `*>` for COBOL; and `;` for MASM x64.
+- Preserved comment payloads must be deterministic and target-safe. Escape unsafe controls and line separators, protect C-family trailing backslashes and Java Unicode escapes, wrap COBOL when needed, and keep Python comments inside the generated user body.
+- Every source-authored blank line outside a Block String remains one physically empty target line at the corresponding source-order boundary. Generator formatting may add lines but must not erase or coalesce source layout.
+- Preserved comments are copied into generated source. Documentation and examples must warn learners not to place secrets, passwords, keys, or tokens in comments.
 - Low-level targets may lower a provably known SET value, but they must emit an actual target storage update at the SET position.
 - Direct SMILE self-assignment is valid and must remain a real generated assignment. For destinations that reject or warn about `target = target`, use the smallest type-preserving identity expression.
 - Direct variable PRINT should read the generated target variable's current storage. Do not replace a direct variable read with an unrelated compiler-time literal when the target can represent the read clearly.

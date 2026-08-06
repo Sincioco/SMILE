@@ -12,23 +12,49 @@ internal sealed class Binder
 
     public BindResult Bind(SmileProgramSyntax program)
     {
-        var statements = new List<BoundStatement>();
+        IReadOnlyList<BoundSourceItem> sourceItems = BindSourceItems(
+            program.SourceItems,
+            appendExecution: true,
+            isIfBody: false);
 
-        foreach (StatementSyntax statement in program.Statements)
+        return new BindResult(
+            new BoundProgram(sourceItems, _declaredVariables.ToArray()),
+            _diagnostics);
+    }
+
+    private IReadOnlyList<BoundSourceItem> BindSourceItems(
+        IReadOnlyList<SourceItemSyntax> sourceItems,
+        bool appendExecution,
+        bool isIfBody)
+    {
+        var boundItems = new List<BoundSourceItem>(sourceItems.Count);
+        foreach (SourceItemSyntax sourceItem in sourceItems)
         {
-            BoundStatement? bound = BindStatement(
-                statement,
-                appendExecution: true,
-                isIfBody: false);
-            if (bound is not null)
+            switch (sourceItem)
             {
-                statements.Add(bound);
+                case FullLineCommentSyntax comment:
+                    boundItems.Add(new BoundFullLineComment(comment.Marker, comment.Payload));
+                    break;
+
+                case BlankLineSyntax:
+                    boundItems.Add(new BoundBlankLine());
+                    break;
+
+                case StatementSyntax statement:
+                    BoundStatement? bound = BindStatement(
+                        statement,
+                        appendExecution,
+                        isIfBody);
+                    if (bound is not null)
+                    {
+                        boundItems.Add(bound);
+                    }
+
+                    break;
             }
         }
 
-        return new BindResult(
-            new BoundProgram(statements, _declaredVariables.ToArray()),
-            _diagnostics);
+        return boundItems;
     }
 
     private BoundStatement? BindStatement(
@@ -170,10 +196,10 @@ internal sealed class Binder
 
             clauses.Add(new BoundConditionalClause(
                 condition,
-                BindIfBody(clause.Statements)));
+                BindIfBody(clause.SourceItems)));
         }
 
-        IReadOnlyList<BoundStatement> elseStatements = BindIfBody(syntax.ElseStatements);
+        IReadOnlyList<BoundSourceItem> elseSourceItems = BindIfBody(syntax.ElseSourceItems);
         if (_diagnostics.Count != diagnosticsBefore ||
             clauses.Any(clause => clause.Condition.Type is SmileType.Error))
         {
@@ -182,31 +208,16 @@ internal sealed class Binder
 
         var statement = new BoundIfStatement(
             clauses,
-            elseStatements,
+            elseSourceItems,
             syntax.HasElseClause);
         return !appendExecution || _execution.TryAppend(statement, _diagnostics)
             ? statement
             : null;
     }
 
-    private IReadOnlyList<BoundStatement> BindIfBody(
-        IReadOnlyList<StatementSyntax> statements)
-    {
-        var boundStatements = new List<BoundStatement>(statements.Count);
-        foreach (StatementSyntax statement in statements)
-        {
-            BoundStatement? bound = BindStatement(
-                statement,
-                appendExecution: false,
-                isIfBody: true);
-            if (bound is not null)
-            {
-                boundStatements.Add(bound);
-            }
-        }
-
-        return boundStatements;
-    }
+    private IReadOnlyList<BoundSourceItem> BindIfBody(
+        IReadOnlyList<SourceItemSyntax> sourceItems) =>
+        BindSourceItems(sourceItems, appendExecution: false, isIfBody: true);
 
     private void ValidateIfCondition(ExpressionSyntax expression)
     {

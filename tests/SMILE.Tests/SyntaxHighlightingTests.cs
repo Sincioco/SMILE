@@ -211,6 +211,120 @@ PRINT {Name}
     }
 
     [TestMethod]
+    public void Smile_highlighting_colors_every_full_line_comment_form_with_contextual_REM_rules()
+    {
+        string source = string.Join(
+            '\n',
+            "REM",
+            "rem lowercase comment",
+            "    Rem comment after spaces",
+            "\trEm\tcomment after a tab",
+            "//comment",
+            "    #comment",
+            "\t--comment",
+            "# final comment without a trailing newline");
+        var document = new TextDocument(source);
+        IHighlightingDefinition definition = SyntaxHighlightingCatalog.GetDefinition("smile")!;
+        var highlighter = new DocumentHighlighter(document, definition);
+        HighlightingColor comment = definition.GetNamedColor("Comment")!;
+
+        HighlightedLine[] lines = Enumerable.Range(1, document.LineCount)
+            .Select(highlighter.HighlightLine)
+            .ToArray();
+
+        for (int lineNumber = 1; lineNumber <= document.LineCount; lineNumber++)
+        {
+            DocumentLine documentLine = document.GetLineByNumber(lineNumber);
+            AssertRangeHasColor(
+                lines[lineNumber - 1],
+                documentLine.Offset,
+                documentLine.Length,
+                comment,
+                $"full-line comment {lineNumber}");
+        }
+    }
+
+    [TestMethod]
+    public void Smile_highlighting_keeps_near_misses_strings_PRINT_text_and_block_content_out_of_comments()
+    {
+        const string source = """
+REMEMBER
+REMARK
+REMOTE
+REM:
+REM#
+LET REM = "// String data"
+PRINT // raw template data
+PRINT # raw template data
+PRINT -- raw template data
+PRINT REM raw template data
+LET Inline = "# String data" // not an inline comment
+LET Interpolated = $"-- {REM}" # not an inline comment
+SET REM ="
+REM Block String data
+// Block String data
+# Block String data
+-- Block String data
+
+"
+-- highlighting resumes after the block
+""";
+        var document = new TextDocument(source);
+        IHighlightingDefinition definition = SyntaxHighlightingCatalog.GetDefinition("smile")!;
+        var highlighter = new DocumentHighlighter(document, definition);
+        HighlightingColor comment = definition.GetNamedColor("Comment")!;
+        HighlightingColor stringColor = definition.GetNamedColor("String")!;
+
+        HighlightedLine[] lines = Enumerable.Range(1, document.LineCount)
+            .Select(highlighter.HighlightLine)
+            .ToArray();
+
+        for (int lineNumber = 1; lineNumber <= 12; lineNumber++)
+        {
+            DocumentLine line = document.GetLineByNumber(lineNumber);
+            AssertRangeDoesNotHaveColor(
+                lines[lineNumber - 1],
+                line.Offset,
+                line.Length,
+                comment,
+                $"line {lineNumber} is not a full-line comment");
+        }
+
+        for (int lineNumber = 14; lineNumber <= 17; lineNumber++)
+        {
+            DocumentLine line = document.GetLineByNumber(lineNumber);
+            AssertRangeHasColor(
+                lines[lineNumber - 1],
+                line.Offset,
+                line.Length,
+                stringColor,
+                $"Block String content line {lineNumber}");
+            AssertRangeDoesNotHaveColor(
+                lines[lineNumber - 1],
+                line.Offset,
+                line.Length,
+                comment,
+                $"Block String content line {lineNumber} must remain String-owned");
+        }
+
+        DocumentLine closingDelimiter = document.GetLineByNumber(19);
+        AssertRangeHasColor(
+            lines[18],
+            closingDelimiter.Offset,
+            closingDelimiter.Length,
+            stringColor,
+            "Block String closing delimiter");
+
+        DocumentLine finalComment = document.GetLineByNumber(20);
+        AssertRangeHasColor(
+            lines[19],
+            finalComment.Offset,
+            finalComment.Length,
+            comment,
+            "comment highlighting after a Block String");
+    }
+
+    [TestMethod]
     public void Smile_highlighting_colors_IF_clause_and_terminator_keywords_individually()
     {
         const string source = """

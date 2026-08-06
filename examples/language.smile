@@ -180,3 +180,53 @@ END IF
 PRINT Grade={IfGrade}
 PRINT {IfNestedResult}
 PRINT {IfMessage}
+
+REM Full-line comments and source layout examples:
+rem REM is case-insensitive.
+rEm This mixed-case marker is also a comment.
+// C-family-style full-line comment.
+# Script-language-style full-line comment.
+-- SQL, Ada, and Haskell-style full-line comment.
+
+LET REM = "REM remains a valid variable name."
+LET CommentBranch = ""
+LET CommentLayoutMessage = ""
+
+
+
+IF REM = "REM remains a valid variable name." THEN
+    // Comments and blank lines remain in their IF branch.
+
+    SET CommentBranch = "Comments preserve source order."
+ELSE
+    # This fallback remains present in generated source.
+
+    SET CommentBranch = "Unexpected comment branch."
+END IF
+
+IF CommentBranch = "Comments preserve source order." THEN
+    -- A comment may precede a nested IF.
+    IF REM = "REM remains a valid variable name." THEN
+        Rem Nested REM comments are valid.
+        SET CommentBranch = CommentBranch + " Nested comments work too."
+    END IF
+END IF
+
+SET CommentLayoutMessage ="
+REM Block String data
+
+// Block String data
+# Block String data
+-- Block String data
+"
+
+PRINT
+PRINT "Full-line comments and source layout preservation:"
+PRINT {REM}
+PRINT {CommentBranch}
+PRINT // This text is printed
+PRINT # This text is printed
+PRINT -- This text is printed
+PRINT REM This text is printed
+PRINT https://example.com
+PRINT {CommentLayoutMessage}

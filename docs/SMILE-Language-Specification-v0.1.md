@@ -8,16 +8,17 @@ SMILE v0.1 supported only:
 PRINT "text"
 ```
 
-SMILE v0.6.0.1 implements and hardens the official LET, SET, IF, Friendly PRINT, String literal, and typed expression behavior defined in:
+SMILE v0.6.1 implements the official LET, SET, IF, Friendly PRINT, String literal, typed expression, full-line comment, and source-layout behavior defined in:
 
-- [SMILE - LET Statement Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20LET%20Statement%20Official%20Specification%20v1.0.md)
-- [SMILE - SET Statement Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20SET%20Statement%20Official%20Specification%20v1.0.md)
-- [SMILE - IF Statement Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20IF%20Statement%20Official%20Specification%20v1.0.md)
-- [SMILE - PRINT Statement Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20PRINT%20Statement%20Official%20Specification%20v1.0.md)
-- [SMILE - String Literals Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20String%20Literals%20Official%20Specification%20v1.0.md)
-- [SMILE - Core Types and Expressions Official Specification v1.0](SMILE%20Language%20Specification/SMILE%20-%20Core%20Types%20and%20Expressions%20Official%20Specification%20v1.0.md)
+- [001 - SMILE - SET Statement Official Specification v1.0](SMILE%20Language%20Specification/001%20-%20SMILE%20-%20SET%20Statement%20Official%20Specification%20v1.0.md)
+- [002 - SMILE - PRINT Statement Official Specification v1.0](SMILE%20Language%20Specification/002%20-%20SMILE%20-%20PRINT%20Statement%20Official%20Specification%20v1.0.md)
+- [003 - SMILE - String Literals Official Specification v1.0](SMILE%20Language%20Specification/003%20-%20SMILE%20-%20String%20Literals%20Official%20Specification%20v1.0.md)
+- [004 - SMILE - Core Types and Expressions Official Specification v1.0](SMILE%20Language%20Specification/004%20-%20SMILE%20-%20Core%20Types%20and%20Expressions%20Official%20Specification%20v1.0.md)
+- [005 - SMILE - LET Statement Official Specification v1.0](SMILE%20Language%20Specification/005%20-%20SMILE%20-%20LET%20Statement%20Official%20Specification%20v1.0.md)
+- [006 - SMILE - IF Statement Official Specification v1.0](SMILE%20Language%20Specification/006%20-%20SMILE%20-%20IF%20Statement%20Official%20Specification%20v1.0.md)
+- [007 - SMILE - Full-Line Comments and Source Layout Preservation Official Specification v1.0](SMILE%20Language%20Specification/007%20-%20SMILE%20-%20Full-Line%20Comments%20and%20Source%20Layout%20Preservation%20Official%20Specification%20v1.0.md)
 
-Current v0.6.0.1 behavior includes:
+Current v0.6.1 behavior includes:
 
 - `LET Name = "Sin"` string variable declarations.
 - `LET Age = 49` integer variable declarations.
@@ -35,6 +36,10 @@ Current v0.6.0.1 behavior includes:
 - Recursive Known/Unknown analysis that merges all possible outgoing paths and never leaks branch-specific values.
 - Genuine idiomatic control flow across all ten targets without deleting source clauses or bodies.
 - A maximum supported IF nesting depth of 128, with `SMILE1416` and bounded parser recovery at depth 129.
+- Contextual ordinal case-insensitive `REM` plus `//`, `#`, and `--` full-line comments at the first space/tab-trimmed position, with REM remaining valid as an identifier elsewhere.
+- No inline or trailing comment syntax; PRINT raw templates and marker-looking ordinary, interpolated, and Block String content remain data.
+- Ordered non-semantic comment and blank-line source items preserved through parsing, binding, simplification, and all ten primary generated source files while semantic analysis and evaluation ignore them.
+- Native target comment markers, deterministic safe payload rendering, conservative COBOL wrapping, source blank-line boundaries, and required no-op placeholders in semantically empty target bodies.
 - The SET Block String Literal — The SMILE Way, with exact logical newlines, structural indentation removal, quotes, escapes, trailing whitespace, and embedded NUL.
 - Empty string `LET` values preserved exactly across the evaluator and generated targets.
 - Official string escapes for quote, backslash, control characters, and tab/newline text.

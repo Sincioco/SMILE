@@ -47,3 +47,9 @@ If this can be implemented with no issues to the long-term plan of making SMILE 
 	PRINT a
 
 5.) If this can be implemented without any issues, provide me the new full markdown files for the official comment language specification for SMILE (if there are changes) and the new markdown file needed for CODEX to implement it.  If there are no changes to the official comment language specification for SMILE, just provide me with the new markdown file needed for CODEX to implement it.
+
+6.) Execute the instructions contained in "D:\SMILE\Requirements\2026-08-06 1917 - SMILE Codex Instructions v0.6.1 Full-Line Comments and Source Layout Preservation.md".  Commit all and push when your tests are green.
+
+	Status: **Implemented and locally validated.** SMILE v0.6.1 preserves case-insensitive contextual REM, //, #, and -- full-line comments plus source-authored blank lines through the ordered syntax tree, bound tree, and all ten target generators. Block String contents, raw PRINT marker text, IF structure, evaluator behavior, and asynchronous Desktop live transpilation remain protected.
+
+	Validation: Debug and Release builds each completed with 0 warnings and 0 errors. Normal Debug, normal Release, strict Debug, and strict Release each passed 730/730 tests with 0 skipped. Strict runs required Java, all ten target toolchains, exact evaluator conformance, and zero detected generated compiler warnings. The Release CLI transpiled the cumulative language reference to all ten targets and ran C# with exit code 0. The real Desktop smoke passed first paint, cumulative loading, syntax highlighting, live blank-line updates, rapid Python/MASM/COBOL switching, Python execution with exact output and exit code 0, and the v0.6.1 About identity. Exact-SHA GitHub Actions verification remains the mandatory post-push completion gate.

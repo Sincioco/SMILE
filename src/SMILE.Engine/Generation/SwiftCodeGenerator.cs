@@ -31,9 +31,9 @@ internal sealed class SwiftCodeGenerator : ICodeGenerator
             source.AppendLine();
         }
 
-        AppendStatements(
+        AppendSourceItems(
             source,
-            program.Statements,
+            program.SourceItems,
             string.Empty,
             identifiers,
             integers,
@@ -45,19 +45,27 @@ internal sealed class SwiftCodeGenerator : ICodeGenerator
             new[] { new GeneratedFile("Program.swift", TextOutput.EnsureOneTrailingNewLine(source.ToString()), IsPrimary: true) });
     }
 
-    private static void AppendStatements(
+    private static void AppendSourceItems(
         StringBuilder source,
-        IReadOnlyList<BoundStatement> statements,
+        IReadOnlyList<BoundSourceItem> sourceItems,
         string indent,
         TargetIdentifierMap identifiers,
         TargetIntegerProfile integers,
         IReadOnlySet<VariableSymbol> mutatedVariables,
         bool hasConditionHelper)
     {
-        foreach (BoundStatement statement in statements)
+        foreach (BoundSourceItem sourceItem in sourceItems)
         {
-            switch (statement)
+            switch (sourceItem)
             {
+                case BoundFullLineComment comment:
+                    TargetComments.Append(source, TargetLanguage.Swift, indent, comment.Payload);
+                    break;
+
+                case BoundBlankLine:
+                    source.AppendLine();
+                    break;
+
                 case BoundLetStatement let:
                     string initializer = TargetExpression.Swift(let.Initializer, identifiers, integers);
                     string declaration = mutatedVariables.Contains(let.Variable) ? "var" : "let";
@@ -128,9 +136,9 @@ internal sealed class SwiftCodeGenerator : ICodeGenerator
                 .Append(clauseIndex == 0 ? "if " : "else if ")
                 .Append(condition)
                 .AppendLine(" {");
-            AppendStatements(
+            AppendSourceItems(
                 source,
-                clause.Statements,
+                clause.SourceItems,
                 indent + "    ",
                 identifiers,
                 integers,
@@ -142,9 +150,9 @@ internal sealed class SwiftCodeGenerator : ICodeGenerator
         if (conditional.HasElseClause)
         {
             source.Append(indent).AppendLine("else {");
-            AppendStatements(
+            AppendSourceItems(
                 source,
-                conditional.ElseStatements,
+                conditional.ElseSourceItems,
                 indent + "    ",
                 identifiers,
                 integers,

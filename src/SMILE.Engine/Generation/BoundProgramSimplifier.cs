@@ -5,23 +5,31 @@ internal static class BoundProgramSimplifier
     public static BoundProgram Simplify(BoundProgram program)
     {
         var values = new Dictionary<VariableSymbol, SmileValue>();
-        IReadOnlyList<BoundStatement> statements = SimplifyStatementList(program.Statements, values);
-        return new BoundProgram(statements, program.Variables);
+        IReadOnlyList<BoundSourceItem> sourceItems = SimplifySourceItems(program.SourceItems, values);
+        return new BoundProgram(sourceItems, program.Variables);
     }
 
-    private static IReadOnlyList<BoundStatement> SimplifyStatementList(
-        IReadOnlyList<BoundStatement> sourceStatements,
+    private static IReadOnlyList<BoundSourceItem> SimplifySourceItems(
+        IReadOnlyList<BoundSourceItem> sourceItems,
         Dictionary<VariableSymbol, SmileValue> values)
     {
-        var statements = new List<BoundStatement>(sourceStatements.Count);
+        var simplifiedItems = new List<BoundSourceItem>(sourceItems.Count);
 
-        foreach (BoundStatement statement in sourceStatements)
+        foreach (BoundSourceItem sourceItem in sourceItems)
         {
+            if (sourceItem is not BoundStatement statement)
+            {
+                // Layout has no value facts to simplify, but its exact place
+                // in the ordered body is part of generated source fidelity.
+                simplifiedItems.Add(sourceItem);
+                continue;
+            }
+
             switch (statement)
             {
                 case BoundLetStatement let:
                     BoundExpression initializer = SimplifyExpression(let.Initializer, values);
-                    statements.Add(let with { Initializer = initializer });
+                    simplifiedItems.Add(let with { Initializer = initializer });
                     UpdateKnownValue(values, let.Variable, initializer);
                     break;
 
@@ -30,28 +38,28 @@ internal static class BoundProgramSimplifier
                     // Only after simplification and evaluation succeeds does the
                     // new value become visible to later statements.
                     BoundExpression value = SimplifyExpression(set.Value, values);
-                    statements.Add(set with { Value = value });
+                    simplifiedItems.Add(set with { Value = value });
                     UpdateKnownValue(values, set.Variable, value);
                     break;
 
                 case BoundPrintStatement print:
-                    statements.Add(print with
+                    simplifiedItems.Add(print with
                     {
                         Value = SimplifyExpression(print.Value, values)
                     });
                     break;
 
                 case BoundIfStatement conditional:
-                    statements.Add(SimplifyIfStatement(conditional, values));
+                    simplifiedItems.Add(SimplifyIfStatement(conditional, values));
                     break;
 
                 default:
-                    statements.Add(statement);
+                    simplifiedItems.Add(statement);
                     break;
             }
         }
 
-        return statements;
+        return simplifiedItems;
     }
 
     private static BoundIfStatement SimplifyIfStatement(
@@ -75,20 +83,16 @@ internal static class BoundProgramSimplifier
                 clause.Condition,
                 new Dictionary<VariableSymbol, SmileValue>());
             var branchValues = new Dictionary<VariableSymbol, SmileValue>(values);
-            IReadOnlyList<BoundStatement> branchStatements =
-                SimplifyStatementList(clause.Statements, branchValues);
-            clauses.Add(clause with
-            {
-                Condition = condition,
-                Statements = branchStatements
-            });
+            IReadOnlyList<BoundSourceItem> branchSourceItems =
+                SimplifySourceItems(clause.SourceItems, branchValues);
+            clauses.Add(new BoundConditionalClause(condition, branchSourceItems));
             outgoingEnvironments.Add(branchValues);
         }
 
         var elseValues = new Dictionary<VariableSymbol, SmileValue>(values);
-        IReadOnlyList<BoundStatement> elseStatements = conditional.HasElseClause
-            ? SimplifyStatementList(conditional.ElseStatements, elseValues)
-            : conditional.ElseStatements;
+        IReadOnlyList<BoundSourceItem> elseSourceItems = conditional.HasElseClause
+            ? SimplifySourceItems(conditional.ElseSourceItems, elseValues)
+            : conditional.ElseSourceItems;
 
         // An IF without ELSE has an implicit unchanged path. Every explicit
         // branch is retained and contributes to the merge even when its
@@ -100,11 +104,10 @@ internal static class BoundProgramSimplifier
                 : new Dictionary<VariableSymbol, SmileValue>(values));
         MergeKnownValues(values, outgoingEnvironments);
 
-        return conditional with
-        {
-            Clauses = clauses,
-            ElseStatements = elseStatements
-        };
+        return new BoundIfStatement(
+            clauses,
+            elseSourceItems,
+            conditional.HasElseClause);
     }
 
     private static void UpdateKnownValue(

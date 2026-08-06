@@ -29,9 +29,9 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
         source.AppendLine("    private static void Main()");
         source.AppendLine("    {");
 
-        AppendStatements(
+        AppendSourceItems(
             source,
-            program.Statements,
+            program.SourceItems,
             "        ",
             identifiers,
             integers,
@@ -67,18 +67,26 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
             });
     }
 
-    private static void AppendStatements(
+    private static void AppendSourceItems(
         StringBuilder source,
-        IReadOnlyList<BoundStatement> statements,
+        IReadOnlyList<BoundSourceItem> sourceItems,
         string indent,
         TargetIdentifierMap identifiers,
         TargetIntegerProfile integers,
         bool hasConditionHelper)
     {
-        foreach (BoundStatement statement in statements)
+        foreach (BoundSourceItem sourceItem in sourceItems)
         {
-            switch (statement)
+            switch (sourceItem)
             {
+                case BoundFullLineComment comment:
+                    TargetComments.Append(source, TargetLanguage.CSharp, indent, comment.Payload);
+                    break;
+
+                case BoundBlankLine:
+                    source.AppendLine();
+                    break;
+
                 case BoundLetStatement let:
                     string initializer = TargetExpression.CSharp(let.Initializer, identifiers, integers);
                     source.AppendLine($"{indent}{TargetTypes.CSharp(let.Variable.Type, integers)} {identifiers.Get(let.Variable)} = {initializer};");
@@ -153,9 +161,9 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
                 .Append(condition)
                 .AppendLine(")");
             source.Append(indent).AppendLine("{");
-            AppendStatements(
+            AppendSourceItems(
                 source,
-                clause.Statements,
+                clause.SourceItems,
                 indent + "    ",
                 identifiers,
                 integers,
@@ -167,9 +175,9 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
         {
             source.Append(indent).AppendLine("else");
             source.Append(indent).AppendLine("{");
-            AppendStatements(
+            AppendSourceItems(
                 source,
-                conditional.ElseStatements,
+                conditional.ElseSourceItems,
                 indent + "    ",
                 identifiers,
                 integers,

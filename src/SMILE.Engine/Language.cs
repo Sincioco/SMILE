@@ -31,13 +31,47 @@ public readonly record struct TextSpan(
 // names or decides what an operator means for particular operand types.
 public abstract record SyntaxNode(TextSpan Span);
 
-public sealed record SmileProgramSyntax(
-    IReadOnlyList<StatementSyntax> Statements,
-    TextSpan Span)
+public enum FullLineCommentMarker
+{
+    Rem,
+    SlashSlash,
+    Hash,
+    DashDash
+}
+
+// A source-item list retains the learner's authored layout in the same order
+// as executable statements. Statements remain a filtered convenience view so
+// semantic compiler passes never need to treat layout as executable behavior.
+public abstract record SourceItemSyntax(TextSpan Span)
     : SyntaxNode(Span);
 
+public sealed record SmileProgramSyntax : SyntaxNode
+{
+    public SmileProgramSyntax(
+        IReadOnlyList<SourceItemSyntax> SourceItems,
+        TextSpan Span)
+        : base(Span)
+    {
+        this.SourceItems = SourceItems;
+        Statements = SourceItems.OfType<StatementSyntax>().ToArray();
+    }
+
+    public IReadOnlyList<SourceItemSyntax> SourceItems { get; }
+
+    public IReadOnlyList<StatementSyntax> Statements { get; }
+}
+
 public abstract record StatementSyntax(TextSpan Span)
-    : SyntaxNode(Span);
+    : SourceItemSyntax(Span);
+
+public sealed record FullLineCommentSyntax(
+    FullLineCommentMarker Marker,
+    string Payload,
+    TextSpan Span)
+    : SourceItemSyntax(Span);
+
+public sealed record BlankLineSyntax(TextSpan Span)
+    : SourceItemSyntax(Span);
 
 public sealed record PrintStatementSyntax(
     ExpressionSyntax Value,
@@ -59,17 +93,51 @@ public sealed record SetStatementSyntax(
     TextSpan Span)
     : StatementSyntax(Span);
 
-public sealed record ConditionalClauseSyntax(
-    ExpressionSyntax Condition,
-    IReadOnlyList<StatementSyntax> Statements,
-    TextSpan Span);
+public sealed record ConditionalClauseSyntax
+{
+    public ConditionalClauseSyntax(
+        ExpressionSyntax Condition,
+        IReadOnlyList<SourceItemSyntax> SourceItems,
+        TextSpan Span)
+    {
+        this.Condition = Condition;
+        this.SourceItems = SourceItems;
+        this.Span = Span;
+        Statements = SourceItems.OfType<StatementSyntax>().ToArray();
+    }
 
-public sealed record IfStatementSyntax(
-    IReadOnlyList<ConditionalClauseSyntax> Clauses,
-    IReadOnlyList<StatementSyntax> ElseStatements,
-    bool HasElseClause,
-    TextSpan Span)
-    : StatementSyntax(Span);
+    public ExpressionSyntax Condition { get; }
+
+    public IReadOnlyList<SourceItemSyntax> SourceItems { get; }
+
+    public IReadOnlyList<StatementSyntax> Statements { get; }
+
+    public TextSpan Span { get; }
+}
+
+public sealed record IfStatementSyntax : StatementSyntax
+{
+    public IfStatementSyntax(
+        IReadOnlyList<ConditionalClauseSyntax> Clauses,
+        IReadOnlyList<SourceItemSyntax> ElseSourceItems,
+        bool HasElseClause,
+        TextSpan Span)
+        : base(Span)
+    {
+        this.Clauses = Clauses;
+        this.ElseSourceItems = ElseSourceItems;
+        this.HasElseClause = HasElseClause;
+        ElseStatements = ElseSourceItems.OfType<StatementSyntax>().ToArray();
+    }
+
+    public IReadOnlyList<ConditionalClauseSyntax> Clauses { get; }
+
+    public IReadOnlyList<SourceItemSyntax> ElseSourceItems { get; }
+
+    public IReadOnlyList<StatementSyntax> ElseStatements { get; }
+
+    public bool HasElseClause { get; }
+}
 
 public abstract record ExpressionSyntax(TextSpan Span)
     : SyntaxNode(Span);
@@ -211,11 +279,36 @@ public sealed record VariableSymbol(
 
 // Bound nodes describe what the program means after name lookup and type
 // checking. Generators consume this layer so no backend has to reparse SMILE.
-public sealed record BoundProgram(
-    IReadOnlyList<BoundStatement> Statements,
-    IReadOnlyList<VariableSymbol> Variables);
+public abstract record BoundSourceItem;
 
-public abstract record BoundStatement;
+public sealed record BoundProgram
+{
+    public BoundProgram(
+        IReadOnlyList<BoundSourceItem> SourceItems,
+        IReadOnlyList<VariableSymbol> Variables)
+    {
+        this.SourceItems = SourceItems;
+        this.Variables = Variables;
+        Statements = SourceItems.OfType<BoundStatement>().ToArray();
+    }
+
+    public IReadOnlyList<BoundSourceItem> SourceItems { get; }
+
+    public IReadOnlyList<BoundStatement> Statements { get; }
+
+    public IReadOnlyList<VariableSymbol> Variables { get; }
+}
+
+public abstract record BoundStatement
+    : BoundSourceItem;
+
+public sealed record BoundFullLineComment(
+    FullLineCommentMarker OriginalMarker,
+    string Payload)
+    : BoundSourceItem;
+
+public sealed record BoundBlankLine()
+    : BoundSourceItem;
 
 public sealed record BoundLetStatement(
     VariableSymbol Variable,
@@ -232,15 +325,45 @@ public sealed record BoundPrintStatement(
     bool IsBlankLine = false)
     : BoundStatement;
 
-public sealed record BoundConditionalClause(
-    BoundExpression Condition,
-    IReadOnlyList<BoundStatement> Statements);
+public sealed record BoundConditionalClause
+{
+    public BoundConditionalClause(
+        BoundExpression Condition,
+        IReadOnlyList<BoundSourceItem> SourceItems)
+    {
+        this.Condition = Condition;
+        this.SourceItems = SourceItems;
+        Statements = SourceItems.OfType<BoundStatement>().ToArray();
+    }
 
-public sealed record BoundIfStatement(
-    IReadOnlyList<BoundConditionalClause> Clauses,
-    IReadOnlyList<BoundStatement> ElseStatements,
-    bool HasElseClause)
-    : BoundStatement;
+    public BoundExpression Condition { get; }
+
+    public IReadOnlyList<BoundSourceItem> SourceItems { get; }
+
+    public IReadOnlyList<BoundStatement> Statements { get; }
+}
+
+public sealed record BoundIfStatement : BoundStatement
+{
+    public BoundIfStatement(
+        IReadOnlyList<BoundConditionalClause> Clauses,
+        IReadOnlyList<BoundSourceItem> ElseSourceItems,
+        bool HasElseClause)
+    {
+        this.Clauses = Clauses;
+        this.ElseSourceItems = ElseSourceItems;
+        this.HasElseClause = HasElseClause;
+        ElseStatements = ElseSourceItems.OfType<BoundStatement>().ToArray();
+    }
+
+    public IReadOnlyList<BoundConditionalClause> Clauses { get; }
+
+    public IReadOnlyList<BoundSourceItem> ElseSourceItems { get; }
+
+    public IReadOnlyList<BoundStatement> ElseStatements { get; }
+
+    public bool HasElseClause { get; }
+}
 
 public abstract record BoundExpression(SmileType Type);
 
