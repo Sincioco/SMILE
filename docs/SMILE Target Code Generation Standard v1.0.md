@@ -86,7 +86,7 @@ Typed SMILE values must display exactly like the reference evaluator. `Integer` 
 
 Native expression intent must not make a valid SMILE program invalid in the destination compiler. After binding validates both operands, the shared simplifier uses the current known values in every expression position. It simplifies and evaluates the left operand first, decides whether the right operand is reachable, and never simplifies or evaluates an unreachable right subtree. Target generators must consume that shared result rather than duplicate short-circuit policy.
 
-SMILE v0.6.0 has conditional branches but still has no input, loop, function, or external runtime data. Optimization must respect SET mutation, branch boundaries, atomic right-side evaluation, left-to-right short-circuiting, and direct runtime-storage reads. Never reuse an old known value after SET, carry a value from one branch into another, propagate a post-IF value without a proven merge, or replace genuine IF control flow with a currently selected branch.
+SMILE v0.6.0.1 has conditional branches but still has no input, loop, function, or external runtime data. Optimization must respect SET mutation, branch boundaries, atomic right-side evaluation, left-to-right short-circuiting, and direct runtime-storage reads. Never reuse an old known value after SET, carry a value from one branch into another, propagate a post-IF value without a proven merge, or replace genuine IF control flow with a currently selected branch.
 
 ## Semantic Integer And Target Storage
 
@@ -161,11 +161,17 @@ A valid direct SMILE self-assignment must remain an explicit assignment in gener
 
 Every generator consumes the shared ordered `BoundConditionalClause` and `BoundIfStatement` tree. It must emit every source clause and body, even when current known values make one clause predictably selected. Generators must not inspect IF source text, flatten a nested IF with ad hoc searches, or substitute one compiler-time branch for genuine destination control flow.
 
+The front end supports IF nesting depth 1 through 128. Attempting to enter depth 129 produces `SMILE1416`, so target generation is not attempted for that invalid program. This compiler resource limit does not alter the generated control flow of any valid program within the supported depth.
+
 C#, C, C++, Java, JavaScript, Objective-C, and Swift use natural `if / else if / else` blocks. Python uses `if / elif / else` and emits `pass` for an empty body. COBOL emits warning-free free-format `IF / ELSE / END-IF`; a nested ELSE/IF shape is acceptable for multiple clauses when order and matching terminators remain clear. MASM x64 emits deterministic compare/jump control flow with stable labels for each clause and the shared end.
 
 An IF condition reads current target storage whenever the destination can represent the bound expression clearly. Branch SET operations update real storage only when that branch executes. An IF without ELSE includes the unchanged incoming path for analysis. After IF, a target-local known value may be used only when every possible outgoing path proves the same value; branch-specific facts never leak into later code.
 
 Integer profiling, String sizing, embedded-NUL planning, mutation analysis, required headers/helpers, and compiler-owned names inspect the complete recursive IF tree. A branch-assigned String contributes its maximum UTF-8 byte length and NUL possibility even when another branch is selected by current values. Deterministic output requires stable indentation, COBOL names, and MASM labels for nested and multi-clause programs.
+
+## Generator Source Organization
+
+`Generation.cs` is the small public transpilation facade. Shared generator helpers live under `src/SMILE.Engine/Generation/`, alongside one focused source file for each destination generator. This source split is organizational only: namespace, visibility, target registry order and IDs, public/internal APIs, generated filenames and project files, deterministic labels, and emitted bytes remain unchanged. Shared lowering and planning logic must stay shared rather than being copied into destination files; the split does not create a new generator framework, discovery mechanism, template system, or dependency.
 
 ## Python
 
@@ -373,6 +379,8 @@ Every expression and statement feature is validated against the `SmileEvaluator`
 
 Release validation must distinguish warnings from the SMILE solution build and warnings from generated target programs. `SMILE_REQUIRE_ZERO_TARGET_WARNINGS=1` activates destination-specific warning checks for compiler-backed targets; JavaScript and Python have no compile stage in their normal SMILE toolchains. The official IF program must build/run through all ten targets, return exit code zero, emit zero detected compiler warnings, preserve every source branch, and match `SmileEvaluator`. This generated warning gate remains separate from the solution-build warning count.
 
+The hosted `SMILE CI` Windows workflow restores, builds, and tests the Debug and Release solution on .NET SDK 10.0.302. That independent solution check does not install the complete destination toolchain matrix and does not replace strict local release runs with `SMILE_REQUIRE_JAVA=1`, `SMILE_REQUIRE_ALL_TARGETS=1`, and `SMILE_REQUIRE_ZERO_TARGET_WARNINGS=1`.
+
 ## Destination-Language Freeze
 
-C++ is SMILE's tenth and final planned destination language. Target-language expansion is frozen unless Sin explicitly reopens it. After v0.6.0 IF / ELSE IF / ELSE, later work should deepen input, loops, functions, scopes, debugging, and teaching tools rather than adding another backend. Rust, Zig, and Go remain deferred.
+C++ is SMILE's tenth and final planned destination language. Target-language expansion is frozen unless Sin explicitly reopens it. After v0.6.0.1 IF Hardening, later work should deepen input, loops, functions, scopes, debugging, and teaching tools rather than adding another backend. Rust, Zig, and Go remain deferred.

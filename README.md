@@ -16,7 +16,9 @@ A programming language inspired by BASIC that makes it easy for newcomers to lea
 
 ## Current Release
 
-SMILE v0.6.0 — IF / ELSE IF / ELSE — adds genuine block conditional execution to the mutable language. Conditions are call-free and every Boolean leaf must be an explicit comparison, so `IF Ready = TRUE THEN` is valid while `IF Ready THEN` is not. `ELSE IF` is two keywords on the same logical header line; an `IF` after a standalone `ELSE` line is a nested statement with its own `END IF`. IF v1.0 permits `PRINT`, `SET`, nested `IF`, blank lines, and SET Block String Literals in branches, while `LET` remains top-level until scopes are formally introduced. All ten generators preserve every source branch, and branch-aware Known/Unknown analysis propagates a value after IF only when every possible outgoing path agrees.
+SMILE v0.6.0.1 — IF Hardening — preserves the v0.6.0 IF language and generated behavior while strengthening the compiler around it. The release adds independent Windows GitHub Actions validation, separates the binder and ten destination generators into focused source files, keeps the public generation facade small, rejects IF nesting beyond 128 levels with `SMILE1416`, and directly regresses function-shaped condition text without introducing function-call syntax.
+
+IF semantics are unchanged: conditions are call-free and every Boolean leaf must be an explicit comparison, so `IF Ready = TRUE THEN` is valid while `IF Ready THEN` is not. `ELSE IF` is two keywords on the same logical header line; an `IF` after a standalone `ELSE` line is a nested statement with its own `END IF`. IF v1.0 permits `PRINT`, `SET`, nested `IF`, blank lines, and SET Block String Literals in branches, while `LET` remains top-level until scopes are formally introduced. All ten generators preserve every source branch, and branch-aware Known/Unknown analysis propagates a value after IF only when every possible outgoing path agrees.
 
 ```text
 SMILE source
@@ -138,9 +140,10 @@ Implemented rules:
 - `ELSE IF` is a clause only when ELSE and IF occur on the same logical header line. An IF after a standalone ELSE line is nested and needs its own END IF.
 - Every complete IF condition has type Boolean, invokes no function or procedure, and contains an explicit comparison at every Boolean leaf. Standalone Boolean variables and literals are not conditions.
 - Conditions retain normal left-to-right `AND`/`OR` short-circuit evaluation, but parsing, binding, structural validation, and type checking still inspect both operands and every source branch.
-- IF v1.0 branches permit `PRINT`, `SET`, nested `IF`, blank lines, and SET Block String Literals. `LET` is rejected inside every IF-related body because v0.6.0 introduces no block scope.
+- IF v1.0 branches permit `PRINT`, `SET`, nested `IF`, blank lines, and SET Block String Literals. `LET` is rejected inside every IF-related body because v0.6.0.1 has no block scope.
 - Clauses are tested in order; only the first successful clause executes, otherwise ELSE executes when present. Only the selected branch mutates evaluator state.
 - Every generator preserves all source branches even when current values make one branch predictable. Known-value analysis merges outgoing paths and propagates a post-IF value only when every possible path proves the same value.
+- IF nesting depth 1 through 128 is supported. Attempting to enter depth 129 reports `SMILE1416` at that IF keyword and uses bounded recovery instead of recursing into the over-limit body.
 - A SET Block String Literal is valid only as the complete SET value. It is not legal in LET, PRINT, interpolation, concatenation, or parentheses.
 - Block delimiter lines are excluded. Each boundary between content lines becomes one logical `\n`, with no automatic leading or trailing newline.
 - The exact spaces/tabs before the closing quote form the structural indentation margin. That exact margin is removed only from content lines that begin with it; all additional or nonmatching whitespace is preserved.
@@ -156,7 +159,7 @@ Implemented rules:
 - `AND` and `OR` evaluate left to right and short-circuit at runtime: `FALSE AND ...` and `TRUE OR ...` do not evaluate their right operands. Both operands are still parsed, bound, and type-checked.
 - After successful binding, one shared recursive statement-list analysis records current values, mutations, and branch outcomes for `LET`, `SET`, `PRINT`, and `IF`. The simplifier decides short-circuit reachability before visiting the right operand, never propagates an old value past SET, and never deletes IF clauses or bodies.
 - Parentheses control expression grouping.
-- SMILE does not perform implicit conversions in v0.6.0. For example, `"Age " + 49` is a type error.
+- SMILE does not perform implicit conversions in v0.6.0.1. For example, `"Age " + 49` is a type error.
 - `PRINT` alone, or followed only by spaces/tabs, prints one blank line.
 - `PRINT "Hello"` prints an ordinary quoted string.
 - Ordinary quoted strings do not interpolate, so `PRINT "Hello {Name}!"` prints `{Name}` literally.
@@ -181,7 +184,7 @@ Implemented rules:
 - C, Objective-C, and C++ map fixed-width Integer and limit macro names such as `INT64_MAX`, `INT64_C`, `UINT64_MAX`, and `SIZE_MAX`, preventing wide-profile headers from rewriting learner variables.
 - C++ additionally maps `__` anywhere in a name. The readable `_smile_` result spells reserved underscore runs out so the emitted C++ identifier is itself safe.
 
-Not implemented in v0.6.0: comments, `INPUT`, loops, functions, procedures, scopes, arrays, classes, floating-point numbers, one-line IF, assignment expressions, compound assignment, and user-defined types.
+Not implemented in v0.6.0.1: comments, `INPUT`, loops, functions, procedures, scopes, arrays, classes, floating-point numbers, one-line IF, assignment expressions, compound assignment, and user-defined types.
 
 ## Generated Examples
 
@@ -409,27 +412,32 @@ Visual Studio setup must include the x64 C++ tools and `VC\Auxiliary\Build\vcvar
 
 Microsoft OpenJDK 25 LTS is a free Java toolchain and can be installed with `winget install --id Microsoft.OpenJDK.25 --exact`. Restart the terminal or SMILE after installing so the updated user `PATH` is visible.
 
-The v0.6.0 Java acceptance suite invokes both `javac` and `java` and compares IF clause selection, nested branches, SET mutation across branches, Block Strings, embedded NUL, wide Integer planning, runtime-authenticity, and complete `examples/language.smile` output to `SmileEvaluator`.
+The v0.6.0.1 Java acceptance suite invokes both `javac` and `java` and compares IF clause selection, nested branches, SET mutation across branches, Block Strings, embedded NUL, wide Integer planning, runtime-authenticity, and complete `examples/language.smile` output to `SmileEvaluator`.
 
 ## Build, Test, And Run
 
 ```bat
-cmd /c git clone https://github.com/Sincioco/SMILE.git C:\SMILE
-cmd /c cd /d C:\SMILE && dotnet restore SMILE.sln
-cmd /c cd /d C:\SMILE && dotnet build SMILE.sln -c Debug
-cmd /c cd /d C:\SMILE && dotnet test SMILE.sln -c Debug --no-build
-cmd /c cd /d C:\SMILE && dotnet build SMILE.sln -c Release
-cmd /c cd /d C:\SMILE && dotnet test SMILE.sln -c Release --no-build
+cmd /c "git clone https://github.com/Sincioco/SMILE.git C:\SMILE"
+cmd /c "cd /d C:\SMILE && dotnet restore SMILE.sln"
+cmd /c "cd /d C:\SMILE && dotnet build SMILE.sln -c Debug --no-restore -nologo"
+cmd /c "cd /d C:\SMILE && dotnet test SMILE.sln -c Debug --no-build --no-restore -nologo"
+cmd /c "cd /d C:\SMILE && dotnet build SMILE.sln -c Release --no-restore -nologo"
+cmd /c "cd /d C:\SMILE && dotnet test SMILE.sln -c Release --no-build --no-restore -nologo"
 ```
 
-Official release validation makes Java and all ten local toolchains mandatory instead of contributor-optional and separately requires generated compiler-warning validation:
+The `SMILE CI` workflow at `.github/workflows/smile-ci.yml` independently restores, builds, and tests the solution in Debug and Release on `windows-latest` with .NET SDK 10.0.302. It runs for pushes to `main`, pull requests targeting `main`, and manual dispatch. Hosted CI validates the SMILE solution and the unit/integration tests available on that runner; it deliberately does not install every destination-language toolchain.
+
+Official release validation therefore remains a separate local requirement. Before a release commit, restore once, make Java and all ten local toolchains mandatory instead of contributor-optional, and enable generated compiler-warning validation for both configurations:
 
 ```powershell
+dotnet restore SMILE.sln
 $env:SMILE_REQUIRE_JAVA = '1'
 $env:SMILE_REQUIRE_ALL_TARGETS = '1'
 $env:SMILE_REQUIRE_ZERO_TARGET_WARNINGS = '1'
-dotnet test SMILE.sln -c Debug --no-build -nologo
-dotnet test SMILE.sln -c Release --no-build -nologo
+dotnet build SMILE.sln -c Debug --no-restore -nologo
+dotnet test SMILE.sln -c Debug --no-build --no-restore -nologo
+dotnet build SMILE.sln -c Release --no-restore -nologo
+dotnet test SMILE.sln -c Release --no-build --no-restore -nologo
 Remove-Item Env:SMILE_REQUIRE_JAVA
 Remove-Item Env:SMILE_REQUIRE_ALL_TARGETS
 Remove-Item Env:SMILE_REQUIRE_ZERO_TARGET_WARNINGS
@@ -486,7 +494,7 @@ When Open Generated Folder is enabled, SMILE asks Windows Explorer to open the g
 
 When Press Any Key Launcher is enabled, SMILE writes `Run Program - Press Any Key.cmd` into each successful build/run workspace. Double-clicking that launcher runs the generated program and then shows `Press any key to exit...`, which keeps the console window open long enough to inspect the output.
 
-Current desktop build version: `0.6.0 IF / ELSE IF / ELSE`.
+Current desktop build version: `0.6.0.1 IF Hardening`.
 
 ## Diagnostics
 
@@ -543,6 +551,7 @@ SMILE reports source errors as diagnostics instead of ordinary crashes. Current 
 | `SMILE1413` | END IF is malformed or has trailing content |
 | `SMILE1414` | LET is not permitted inside IF v1.0 |
 | `SMILE1415` | Statement is not permitted inside IF v1.0 |
+| `SMILE1416` | Maximum IF nesting depth of 128 exceeded |
 
 Desktop crash containment is intentionally defensive. Recoverable Build & Run, toolchain detection, process execution, command refresh, and folder-opening failures are reported in the output area without closing the IDE. Detailed desktop diagnostics are written to `%LOCALAPPDATA%\SMILE\Logs\SMILE-yyyy-MM-dd.log`, with `%TEMP%\SMILE\Logs` used as a fallback if the normal log folder is unavailable.
 
@@ -555,11 +564,17 @@ LICENSE
 AGENTS.md
 .editorconfig
 .gitignore
+.github/
+  workflows/
+    smile-ci.yml
 examples/
 Requirements/
 docs/
 src/
   SMILE.Engine/
+    Binder.cs
+    Generation.cs
+    Generation/
   SMILE.Toolchains/
   SMILE.Cli/
   SMILE.Desktop/
@@ -584,7 +599,7 @@ Source -> Lexer -> Tokens -> Recursive Block Parser -> Syntax Tree -> Binder -> 
                                                                                Build and Run Result
 ```
 
-`SMILE.Engine` owns lexing, block String normalization, recursive statement-list parsing, diagnostics, syntax nodes, binding, variable symbols, typed bound statements and expressions, the mutable reference evaluator, branch-aware Known/Unknown analysis, mutation-aware simplification, variable mutation analysis, bounded per-expression display facts, per-program Integer/String planning, target identifier mapping, and all ten generators. `BoundLetStatement` owns an initializer, not permanent current state; the evaluator environment owns current values. Every IF branch is analyzed from the same incoming environment and outgoing paths are merged before later statements. Simplification, NUL handling, String equality, Integer promotion, COBOL sizing, and MASM runtime-storage planning inspect the entire IF tree without deleting unselected branches. Every SET emits a real storage update, and only the selected evaluator branch mutates runtime state. The reference evaluator state and generated target runtime storage must agree at every observable expression, not only in final output; the selected concrete trace cannot replace a runtime value where branch-aware analysis reports Unknown. Block delimiter recognition, indentation removal, newline normalization, and escape decoding remain entirely in the front end; targets receive one ordinary bound String value. `SMILE.Toolchains` owns detection, temporary workspaces, async process execution, cancellation, timeouts, bounded process output, build, and run. `SMILE.Cli` and `SMILE.Desktop` reuse both projects, and the desktop keeps live transpilation and build/run work off the WPF UI thread.
+`SMILE.Engine` owns lexing, block String normalization, recursive statement-list parsing, diagnostics, syntax nodes, binding, variable symbols, typed bound statements and expressions, the mutable reference evaluator, branch-aware Known/Unknown analysis, mutation-aware simplification, variable mutation analysis, bounded per-expression display facts, per-program Integer/String planning, target identifier mapping, and all ten generators. Parsing remains in `Parser.cs`; the behavior-preserving `Binder` phase lives in `Binder.cs`. `Generation.cs` is the small public transpilation facade, while shared helpers and one focused file per destination generator live under `src/SMILE.Engine/Generation/` without changing the existing APIs or emitted files. `BoundLetStatement` owns an initializer, not permanent current state; the evaluator environment owns current values. Every IF branch is analyzed from the same incoming environment and outgoing paths are merged before later statements. Simplification, NUL handling, String equality, Integer promotion, COBOL sizing, and MASM runtime-storage planning inspect the entire IF tree without deleting unselected branches. Every SET emits a real storage update, and only the selected evaluator branch mutates runtime state. The reference evaluator state and generated target runtime storage must agree at every observable expression, not only in final output; the selected concrete trace cannot replace a runtime value where branch-aware analysis reports Unknown. Block delimiter recognition, indentation removal, newline normalization, and escape decoding remain entirely in the front end; targets receive one ordinary bound String value. `SMILE.Toolchains` owns detection, temporary workspaces, async process execution, cancellation, timeouts, bounded process output, build, and run. `SMILE.Cli` and `SMILE.Desktop` reuse both projects, and the desktop keeps live transpilation and build/run work off the WPF UI thread.
 
 SMILE-owned build/output artifacts older than 1 day may be cleaned from known generated locations such as `bin`, `obj`, `out`, and `%TEMP%\SMILE\Runs`.
 
@@ -594,6 +609,7 @@ SMILE-owned build/output artifacts older than 1 day may be cleaned from known ge
 - `SET` is the only assignment statement. Assignment expressions, compound assignment, increment/decrement syntax, and multiple assignment are not implemented.
 - Multiline String source syntax is limited to one complete SET Block String value; general block Strings and block interpolation are not implemented.
 - IF v1.0 is block-only. One-line IF, branch-local LET, and scopes are not implemented. Function/procedure calls in conditions are permanently prohibited, and standalone Boolean conditions are invalid because every atomic condition requires an explicit comparison.
+- The supported IF nesting depth is limited to 128 as a compiler resource-safety boundary; ordinary programs within that depth retain the same IF syntax and behavior.
 - SMILE Integer semantics are signed 64-bit. Generated storage is intentionally target-idiomatic and may be narrower when the complete bound program proves that safe; floating-point and decimal types are not implemented.
 - Syntax highlighting is lexical only; semantic highlighting, autocomplete, and diagnostic squiggles are not implemented.
 - C and MASM target output is focused on Windows local toolchains.
@@ -611,7 +627,7 @@ C++ is SMILE's tenth and final planned destination language. Target-language exp
 
 ## Roadmap
 
-Future ideas, not implemented in v0.6.0:
+Future ideas, not implemented in v0.6.0.1:
 
 1. v0.7.0 - `INPUT`
 2. v0.8.0 - Loops

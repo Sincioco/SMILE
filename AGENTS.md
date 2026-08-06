@@ -29,7 +29,7 @@
 - The official IF syntax is defined by `docs/SMILE Language Specification/SMILE - IF Statement Official Specification v1.0.md`.
 - Official string literal behavior is defined by `docs/SMILE Language Specification/SMILE - String Literals Official Specification v1.0.md`.
 - Official core type and expression behavior is defined by `docs/SMILE Language Specification/SMILE - Core Types and Expressions Official Specification v1.0.md`.
-- LET declares and initializes a variable. SET remains the only assignment statement in v0.6.0 and changes an existing variable without changing its type.
+- LET declares and initializes a variable. SET remains the only assignment statement in v0.6.0.1 and changes an existing variable without changing its type.
 - Current runtime state belongs to the evaluator environment, not permanently to `BoundLetStatement`.
 - Compile-time propagation must be statement-order, mutation aware, and branch aware. Never reuse an old known value after SET or propagate a branch-specific value unless every outgoing path merges to the same known value.
 - Every expression feature must be defined once in the official core expression specification and implemented through the shared lexer, parser, binder, evaluator, and bound tree.
@@ -59,6 +59,7 @@
 - IF v1.0 permits PRINT, SET, nested IF, blank lines, and SET Block String Literals in branches. LET is not permitted until scopes are formally introduced.
 - Every target must preserve genuine branch structure. Do not delete unselected source branches merely because current values are known.
 - Branch-aware known-value analysis may propagate a value after IF only when outgoing-path merge proves it known.
+- The maximum supported IF nesting depth is 128. Entering depth 129 must report `SMILE1416` at that IF keyword and recover without recursing into the over-limit body or interpreting SET Block String content as control-flow headers.
 - A SET Block String Literal is a SET-only complete-value source form. Its delimiter lines are excluded, content-line boundaries become logical line feeds, and the closing delimiter's indentation margin is removed from matching content lines.
 - Source tooling must not trim trailing spaces or tabs because block String content may depend on them.
 - Block String normalization belongs entirely to the front end. Target generators receive only the normalized ordinary String value.
@@ -77,6 +78,9 @@
 - C++ identifiers containing a double underscore anywhere are implementation-reserved; the mapped target spelling itself must not retain a double underscore.
 - C++ headers must be emitted according to the facilities used by generated code, not merely according to broad SMILE expression categories.
 - Rust, Zig, and Go are intentionally deferred destination languages. Do not add them to target metadata, generators, toolchains, active roadmap milestones, or desktop selectors unless Sin explicitly reactivates one of them.
+- Keep `Parser.cs` focused on parsing and `Binder.cs` focused on binding. File-organization refactors must preserve their existing syntax-tree boundary, diagnostics, spans, and behavior.
+- Keep `Generation.cs` as the small public generation facade, shared generator helpers under `src/SMILE.Engine/Generation`, and each destination generator in its own focused file. Do not duplicate shared logic or change generated output merely because code moves between files.
+- `.github/workflows/smile-ci.yml` is the normal hosted Windows solution check. It does not replace strict local release validation with Java, all ten target toolchains, and zero generated compiler warnings required through `SMILE_REQUIRE_JAVA`, `SMILE_REQUIRE_ALL_TARGETS`, and `SMILE_REQUIRE_ZERO_TARGET_WARNINGS`.
 
 ## Educational Code Comments
 

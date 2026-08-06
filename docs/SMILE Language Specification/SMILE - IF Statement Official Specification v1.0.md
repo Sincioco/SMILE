@@ -4,9 +4,13 @@
 
 This document is the complete official language specification for SMILE conditional execution.
 
-It is intended for:
+The language definition was introduced in:
 
 > **SMILE v0.6.0 — IF / ELSE IF / ELSE**
+
+The current implementation baseline is:
+
+> **SMILE v0.6.0.1 — IF Hardening**
 
 This specification defines three permanent SMILE rules:
 
@@ -833,6 +837,7 @@ END IF
 | `SMILE1413` | END IF is malformed or has trailing content |
 | `SMILE1414` | LET is not permitted inside IF v1.0 |
 | `SMILE1415` | Statement is not permitted inside IF v1.0 |
+| `SMILE1416` | Maximum IF nesting depth of 128 exceeded |
 
 Existing expression and type diagnostics remain applicable.
 
@@ -951,7 +956,15 @@ Ready for the next lesson.
 
 ---
 
-# 40. Future compatibility
+# 40. Implementation safety limit
+
+The maximum supported IF nesting depth is 128, where the first outermost IF is depth 1. A program nested to exactly depth 128 is valid. Attempting to enter depth 129 produces the `DiagnosticSeverity.Error` diagnostic `SMILE1416` at that IF keyword, and the compiler recovers without recursively processing the over-limit body.
+
+This is a compiler safety and resource limit. It does not change IF syntax, clause selection, branch validation, or the behavior of ordinary valid programs within the supported depth.
+
+---
+
+# 41. Future compatibility
 
 Future function syntax must preserve the call-free condition rule.
 

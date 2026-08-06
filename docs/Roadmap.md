@@ -176,13 +176,23 @@
 - Extend the cumulative deployable `examples/language.smile`, lexical highlighting, official documentation, exact evaluator conformance, deterministic generation, and strict generated-warning validation.
 - Preserve first-paint Desktop startup, asynchronous visible-target transpilation, cancellation, failure containment, and the destination-language freeze.
 
+## Implemented In v0.6.0.1
+
+- Harden the existing IF implementation without adding or changing SMILE syntax or valid-program behavior.
+- Add the `SMILE CI` Windows GitHub Actions workflow for main pushes, pull requests targeting main, and manual dispatch, with independent Debug and Release solution validation on .NET SDK 10.0.302.
+- Keep strict local release validation separate from hosted CI so Java, all ten destination toolchains, exact evaluator conformance, and zero generated compiler warnings remain mandatory before publication.
+- Move `Binder` from `Parser.cs` into focused `Binder.cs` while preserving the syntax-tree boundary, binding behavior, diagnostics, and source spans.
+- Keep `Generation.cs` as the small public facade and split shared helpers plus all ten destination generators into focused files without changing registry order, APIs, deterministic labels, generated files, or output.
+- Limit supported IF nesting to 128 levels and report `SMILE1416` at depth 129, using bounded recovery so pathological input cannot recurse into an over-limit body or destabilize the Desktop editor.
+- Add direct invalid-source regressions for function-shaped IF and ELSE IF conditions while preserving the permanent call-free rule and introducing no function-call grammar.
+
 ## Final Destination-Language Freeze
 
 C++ is SMILE's tenth and final planned destination language. Target-language expansion is frozen so development can focus on input, loops, functions, scopes, debugging, and teaching tools. Do not add another destination language unless Sin explicitly reopens target expansion. Rust, Zig, and Go remain intentionally deferred and are not active targets.
 
 ## Active Language-Depth Milestones
 
-These are not implemented in v0.6.0:
+These are not implemented in v0.6.0.1:
 
 1. v0.7.0 - `INPUT`
 2. v0.8.0 - Loops

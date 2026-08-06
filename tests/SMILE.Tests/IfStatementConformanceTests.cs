@@ -124,6 +124,137 @@ PRINT {Message}
     }
 
     [TestMethod]
+    public void Parser_accepts_the_first_if_nesting_level()
+    {
+        ParseResult result = _transpiler.Parse(CreateNestedIfSource(1));
+
+        Assert.IsTrue(result.Success, Join(result.Diagnostics));
+        Assert.IsInstanceOfType<IfStatementSyntax>(result.Program!.Statements.Single());
+    }
+
+    [TestMethod]
+    public void Complete_pipeline_accepts_exactly_128_if_nesting_levels()
+    {
+        string source = CreateNestedIfSource(128);
+
+        EvaluationResult evaluation = _evaluator.Evaluate(source);
+        TranspileResult transpile = _transpiler.Transpile(source, TargetLanguage.CSharp);
+
+        Assert.IsTrue(evaluation.Success, Join(evaluation.Diagnostics));
+        Assert.AreEqual("Reached\n", Normalize(evaluation.Output));
+        Assert.IsTrue(transpile.Success, Join(transpile.Diagnostics));
+        Assert.IsNotNull(transpile.GeneratedProgram);
+    }
+
+    [TestMethod]
+    public void Parser_reports_SMILE1416_on_the_129th_if_keyword()
+    {
+        string source = CreateNestedIfSource(129);
+        ParseResult result = _transpiler.Parse(source);
+        TranspileResult transpile = _transpiler.Transpile(source, TargetLanguage.CSharp);
+
+        Assert.IsFalse(result.Success);
+        Diagnostic diagnostic = result.Diagnostics.Single(diagnostic => diagnostic.Code == "SMILE1416");
+        Assert.AreEqual("Maximum IF nesting depth of 128 exceeded.", diagnostic.Message);
+        Assert.AreEqual(DiagnosticSeverity.Error, diagnostic.Severity);
+        Assert.AreEqual(129, diagnostic.Span.Line);
+        Assert.AreEqual(1, diagnostic.Span.Column);
+        Assert.AreEqual(2, diagnostic.Span.Length);
+        Assert.IsFalse(transpile.Success);
+        Assert.IsNull(transpile.GeneratedProgram);
+        Assert.HasCount(1, transpile.Diagnostics);
+        Assert.AreEqual("SMILE1416", transpile.Diagnostics[0].Code);
+    }
+
+    [TestMethod]
+    public void Parser_recovers_from_1000_if_levels_without_a_diagnostic_storm()
+    {
+        ParseResult result = _transpiler.Parse(CreateNestedIfSource(1_000));
+
+        Assert.IsFalse(result.Success);
+        Assert.HasCount(1, result.Diagnostics);
+        Assert.AreEqual("SMILE1416", result.Diagnostics[0].Code);
+    }
+
+    [TestMethod]
+    public void Over_limit_recovery_keeps_same_line_else_if_and_later_top_level_code_balanced()
+    {
+        string source = CreateNestedIfSource(
+            129,
+            innermostBody: "ELSE IF FALSE = TRUE THEN\n",
+            trailingSource: "PRINT Recovered\n");
+
+        ParseResult result = _transpiler.Parse(source);
+
+        Assert.HasCount(1, result.Diagnostics);
+        Assert.AreEqual("SMILE1416", result.Diagnostics[0].Code);
+        Assert.IsInstanceOfType<PrintStatementSyntax>(result.Program!.Statements.Last());
+    }
+
+    [TestMethod]
+    public void Over_limit_recovery_counts_if_after_standalone_else_as_nested()
+    {
+        string source = CreateNestedIfSource(
+            129,
+            innermostBody: "ELSE\nIF FALSE = TRUE THEN\nEND IF\n",
+            trailingSource: "PRINT Recovered\n");
+
+        ParseResult result = _transpiler.Parse(source);
+
+        Assert.HasCount(1, result.Diagnostics);
+        Assert.AreEqual("SMILE1416", result.Diagnostics[0].Code);
+        Assert.IsInstanceOfType<PrintStatementSyntax>(result.Program!.Statements.Last());
+    }
+
+    [TestMethod]
+    [DataRow("END IF extra")]
+    [DataRow("ENDIF")]
+    public void Over_limit_recovery_balances_malformed_end_as_the_rejected_if_boundary(
+        string malformedEnd)
+    {
+        string source = CreateNestedIfSource(
+            128,
+            innermostBody: $"IF TRUE = TRUE THEN\n{malformedEnd}\n",
+            trailingSource: "PRINT Recovered\n");
+
+        ParseResult result = _transpiler.Parse(source);
+
+        Assert.HasCount(1, result.Diagnostics);
+        Assert.AreEqual("SMILE1416", result.Diagnostics[0].Code);
+        Assert.IsInstanceOfType<PrintStatementSyntax>(result.Program!.Statements.Last());
+    }
+
+    [TestMethod]
+    public void Over_limit_recovery_ignores_control_flow_text_inside_set_block_strings()
+    {
+        string source = CreateNestedIfSource(
+            129,
+            innermostBody: "SET Message =\"\nEND IF\nIF FALSE = TRUE THEN\nELSE\n\"\n",
+            trailingSource: "PRINT Recovered\n");
+
+        ParseResult result = _transpiler.Parse(source);
+
+        Assert.HasCount(1, result.Diagnostics);
+        Assert.AreEqual("SMILE1416", result.Diagnostics[0].Code);
+        Assert.IsInstanceOfType<PrintStatementSyntax>(result.Program!.Statements.Last());
+    }
+
+    [TestMethod]
+    public void Over_limit_recovery_ignores_control_flow_text_after_a_misplaced_set_block_opener()
+    {
+        string source = CreateNestedIfSource(
+            129,
+            innermostBody: "SET Message = \"prefix\" + \"\nEND IF\nIF FALSE = TRUE THEN\n\"\n",
+            trailingSource: "PRINT Recovered\n");
+
+        ParseResult result = _transpiler.Parse(source);
+
+        Assert.HasCount(1, result.Diagnostics);
+        Assert.AreEqual("SMILE1416", result.Diagnostics[0].Code);
+        Assert.IsInstanceOfType<PrintStatementSyntax>(result.Program!.Statements.Last());
+    }
+
+    [TestMethod]
     [DataRow("IF X = 1\nEND IF", "SMILE1405")]
     [DataRow("IF X = 1 THEN PRINT One\nEND IF", "SMILE1406")]
     [DataRow("ELSE", "SMILE1411")]
@@ -296,6 +427,31 @@ END IF
 
         Assert.IsFalse(result.Success);
         Assert.IsTrue(result.Diagnostics.Any(diagnostic => diagnostic.Code == "SMILE1404"), Join(result.Diagnostics));
+    }
+
+    [TestMethod]
+    [DataRow("IF FUNC(A) > 10 THEN\nEND IF")]
+    [DataRow("IF TRUE = FALSE THEN\nELSE IF FUNC(A) > 10 THEN\nEND IF")]
+    [DataRow("IF Result = FUNC(A) THEN\nEND IF")]
+    public void Function_shaped_if_source_remains_invalid_without_call_grammar(string source)
+    {
+        // Functions are not syntax in v0.6.0.1, so these sources must fail at
+        // the current expression parser and never reach generation or runtime.
+        // SMILE1404 remains reserved for the day call syntax exists: that work
+        // must update this regression to reject a syntactically valid call in
+        // an IF condition through the binder's permanent call-free rule.
+        ParseResult parse = _transpiler.Parse(source);
+        TranspileResult transpile = _transpiler.Transpile(source, TargetLanguage.CSharp);
+        EvaluationResult evaluation = _evaluator.Evaluate(source);
+
+        Assert.IsFalse(parse.Success);
+        Assert.IsTrue(parse.Diagnostics.Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error));
+        Assert.IsFalse(transpile.Success);
+        Assert.IsNull(transpile.GeneratedProgram);
+        Assert.IsTrue(transpile.Diagnostics.Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error));
+        Assert.IsFalse(evaluation.Success);
+        Assert.AreEqual(string.Empty, evaluation.Output);
+        Assert.IsTrue(evaluation.Diagnostics.Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error));
     }
 
     [TestMethod]
@@ -1193,6 +1349,34 @@ PRINT {Result}
 
     private static string Normalize(string value) =>
         value.Replace("\r\n", "\n", StringComparison.Ordinal);
+
+    private static string CreateNestedIfSource(
+        int depth,
+        string innermostBody = "PRINT Reached\n",
+        string trailingSource = "")
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(depth);
+
+        var source = new StringBuilder();
+        for (int level = 0; level < depth; level++)
+        {
+            source.AppendLine("IF TRUE = TRUE THEN");
+        }
+
+        source.Append(innermostBody);
+        if (innermostBody.Length > 0 && innermostBody[^1] is not ('\r' or '\n'))
+        {
+            source.AppendLine();
+        }
+
+        for (int level = 0; level < depth; level++)
+        {
+            source.AppendLine("END IF");
+        }
+
+        source.Append(trailingSource);
+        return source.ToString();
+    }
 
     private static string Join(IEnumerable<Diagnostic> diagnostics) =>
         string.Join(Environment.NewLine, diagnostics);

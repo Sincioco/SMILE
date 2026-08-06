@@ -10,14 +10,14 @@ namespace SMILE.Tests;
 public sealed class DesktopCommandTests
 {
     [TestMethod]
-    public void Desktop_assembly_reports_the_v060_IF_milestone()
+    public void Desktop_assembly_reports_the_v0601_IF_hardening_release()
     {
         string? version = typeof(MainWindowViewModel).Assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
             .InformationalVersion;
 
         Assert.IsNotNull(version);
-        StringAssert.StartsWith(version, "0.6.0 IF / ELSE IF / ELSE");
+        StringAssert.StartsWith(version, "0.6.0.1 IF Hardening");
     }
 
     [TestMethod]
@@ -275,6 +275,25 @@ PRINT A; B; C
             Assert.IsTrue(pane.HasValidSource);
             Assert.IsFalse(string.IsNullOrWhiteSpace(pane.GeneratedCode));
         }
+    }
+
+    [TestMethod]
+    public async Task Live_transpilation_reports_1000_level_if_source_without_crashing_the_desktop_path()
+    {
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(),
+            new FakeErrorReporter(),
+            new FakeFolderOpener());
+        await viewModel.InitializeAsync();
+
+        viewModel.SourceText = CreateNestedIfSource(1_000);
+
+        await WaitUntilAsync(() =>
+            viewModel.Panes.All(pane => pane.HasSyntaxError) &&
+            viewModel.OutputText.Contains("SMILE1416", StringComparison.Ordinal));
+
+        Assert.IsTrue(viewModel.Panes.All(pane => pane.Status == "Syntax Error"));
+        Assert.IsTrue(viewModel.Panes.All(pane => string.IsNullOrEmpty(pane.GeneratedCode)));
     }
 
     [TestMethod]
@@ -593,6 +612,11 @@ PRINT A; B; C
 
     private static string NormalizeLineEndings(string text) =>
         text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+
+    private static string CreateNestedIfSource(int depth) =>
+        string.Concat(Enumerable.Repeat("IF TRUE = TRUE THEN\n", depth)) +
+        "PRINT Reached\n" +
+        string.Concat(Enumerable.Repeat("END IF\n", depth));
 
     private static ToolchainRegistry CreateRegistry(params FakeToolchain[] overrides)
     {
