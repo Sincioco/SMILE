@@ -57,6 +57,7 @@ LET Ordinary = Left = Right
     }
 
     [TestMethod]
+    [DoNotParallelize]
     [DataRow(TargetLanguage.CSharp)]
     [DataRow(TargetLanguage.C)]
     [DataRow(TargetLanguage.MasmX64)]

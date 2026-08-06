@@ -38,3 +38,12 @@ REM Original BASIC
 Following the simple rule that they are the first non-white space characters on a line.  The rest of the line is considered a comment and should be ignored by the parser.
 
 If this can be implemented with no issues to the long-term plan of making SMILE full-pledge programming language, provide me with 2 markdowns files:  1.) The official specifications for the line comment syntax in SMILE; 2.) The markdown file needed for CODEX to implement it.
+
+3.) Since line-comments are generally pretty harmless, couldn't we preserve the comments on the target languages by using the correct line-comment syntax for the target language?
+4.) I also want to preserve blank lines in SMILE source code (like the blank lines between statements) and transpile those to the target platforms.  For example, in the code below, there should be a blank line between the variable declaration and the print statement in the target languages.
+
+	LET a = 49
+
+	PRINT a
+
+5.) If this can be implemented without any issues, provide me the new full markdown files for the official comment language specification for SMILE (if there are changes) and the new markdown file needed for CODEX to implement it.  If there are no changes to the official comment language specification for SMILE, just provide me with the new markdown file needed for CODEX to implement it.
