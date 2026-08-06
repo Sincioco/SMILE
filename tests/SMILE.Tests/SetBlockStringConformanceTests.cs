@@ -90,14 +90,16 @@ public sealed class SetBlockStringConformanceTests
     [TestMethod]
     public void CRLF_LF_and_standalone_CR_produce_the_same_bound_value()
     {
-        const string lf = """
+        // Raw string literals preserve the source file's physical line endings. Normalize
+        // the seed so Git checkout settings cannot change the three cases under test.
+        string lf = """
 LET Value = ""
 SET Value ="
     S
      I
       N
     "
-""";
+""".ReplaceLineEndings("\n");
         string crlf = lf.Replace("\n", "\r\n", StringComparison.Ordinal);
         string cr = lf.Replace("\n", "\r", StringComparison.Ordinal);
 
