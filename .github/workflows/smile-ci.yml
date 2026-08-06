@@ -1,5 +1,8 @@
 name: SMILE CI
 
+permissions:
+  contents: read
+
 on:
   push:
     branches:
@@ -13,6 +16,7 @@ jobs:
   build-and-test:
     name: Build and test
     runs-on: windows-latest
+    timeout-minutes: 30
 
     steps:
       - name: Check out repository

@@ -8,6 +8,13 @@
 - Never include build/output folders or generated build/output files in commits, even when committing all files. Do not force-add ignored artifacts.
 - Never force-push, never discard user work, and do not commit unrelated local changes.
 
+## Post-Push CI Completion Gate
+
+- **Post-push CI verification:** After pushing to `main`, identify the exact current `main` commit SHA and inspect the `SMILE CI` GitHub Actions run for that SHA and the expected push event. The task is not complete until that run has status `completed` and conclusion `success`. An older green run does not validate a newer commit, and a run that is queued, in progress, skipped, cancelled, timed out, or neutral is not successful completion.
+- If the exact-SHA run fails, inspect the failed step and logs, fix the root cause, rerun all applicable local validation, create a normal follow-up commit, push it, and verify the replacement commit's own `SMILE CI` run. Preserve the failed run for history; never hide or delete it, amend the public commit, force-push, or rewrite published `main` history merely to remove a failure.
+- When a failure is a CI-only portability problem, correct the underlying test or workflow issue rather than weakening production behavior.
+- The completion report for every task pushed to `main` must include the final commit SHA, the `SMILE CI` workflow name and conclusion, whether the first run passed or required a follow-up fix, and the final run URL or ID when available.
+
 ## Guiding Principles
 
 - SMILE stands for "Simple Modern Interactive Learning Environment." Use that expansion in public documentation and in the IDE title where the full project name is shown.

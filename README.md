@@ -425,9 +425,9 @@ cmd /c "cd /d C:\SMILE && dotnet build SMILE.sln -c Release --no-restore -nologo
 cmd /c "cd /d C:\SMILE && dotnet test SMILE.sln -c Release --no-build --no-restore -nologo"
 ```
 
-The `SMILE CI` workflow at `.github/workflows/smile-ci.yml` independently restores, builds, and tests the solution in Debug and Release on `windows-latest` with .NET SDK 10.0.302. It runs for pushes to `main`, pull requests targeting `main`, and manual dispatch. Hosted CI validates the SMILE solution and the unit/integration tests available on that runner; it deliberately does not install every destination-language toolchain.
+The `SMILE CI` workflow at `.github/workflows/smile-ci.yml` independently restores, builds, and tests the solution in Debug and Release on `windows-latest` with .NET SDK 10.0.302. It runs for pushes to `main`, pull requests targeting `main`, and manual dispatch. After every direct push to `main`, this hosted check is mandatory: the task is not complete until the run for the exact current `main` commit finishes successfully, and an older green run cannot validate a newer commit. Hosted CI validates the SMILE solution and the unit/integration tests available on that runner; it deliberately does not install every destination-language toolchain.
 
-Official release validation therefore remains a separate local requirement. Before a release commit, restore once, make Java and all ten local toolchains mandatory instead of contributor-optional, and enable generated compiler-warning validation for both configurations:
+Official release validation therefore remains a separate local requirement covering Java, all ten destination toolchains, zero generated compiler warnings, and evaluator-versus-target conformance. Before a release commit, restore once, make Java and all ten local toolchains mandatory instead of contributor-optional, and enable generated compiler-warning validation for both configurations:
 
 ```powershell
 dotnet restore SMILE.sln
