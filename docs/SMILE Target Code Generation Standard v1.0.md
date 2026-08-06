@@ -86,13 +86,13 @@ Typed SMILE values must display exactly like the reference evaluator. `Integer` 
 
 Native expression intent must not make a valid SMILE program invalid in the destination compiler. After binding validates both operands, the shared simplifier uses the current known values in every expression position. It simplifies and evaluates the left operand first, decides whether the right operand is reachable, and never simplifies or evaluates an unreachable right subtree. Target generators must consume that shared result rather than duplicate short-circuit policy.
 
-SMILE v0.6.1 has conditional branches and non-semantic source layout but still has no input, loop, function, or external runtime data. Optimization must respect SET mutation, branch boundaries, atomic right-side evaluation, left-to-right short-circuiting, direct runtime-storage reads, and the exact relative order of comments and blank lines. Never reuse an old known value after SET, carry a value from one branch into another, propagate a post-IF value without a proven merge, replace genuine IF control flow with a currently selected branch, or move layout across a clause boundary.
+SMILE v0.7.0 has runtime input, conditional branches, and non-semantic source layout but still has no loop, function, or other external runtime operation. Optimization must respect SET and INPUT mutation, branch boundaries, atomic updates, left-to-right short-circuiting, direct runtime-storage reads, and the exact relative order of INPUT, comments, and blank lines. Never reuse an old known value after SET or INPUT, carry a value from one branch into another, propagate a post-IF value without a proven merge, replace genuine IF control flow with a currently selected branch, remove or duplicate INPUT, or move layout across a clause boundary.
 
 ## Semantic Integer And Target Storage
 
 SMILE `Integer` is always a signed 64-bit semantic type. The parser, binder, checked constant evaluator, diagnostics, and reference evaluator enforce that definition regardless of how a destination stores a particular program.
 
-Generated storage must use the most idiomatic natural Integer representation that preserves the complete bound program. One per-program profile examines every Integer literal, LET value, SET value, IF and ELSE IF condition, operand, intermediate, PRINT expression, interpolation hole, and nested branch, including branches not selected by current values:
+Generated storage must use the most idiomatic natural Integer representation that preserves the complete bound program. One per-program profile examines every Integer literal, LET value, SET value, INPUT target and dependent runtime expression, IF and ELSE IF condition, operand, intermediate, PRINT expression, interpolation hole, and nested branch, including branches not selected by current values:
 
 - C and Objective-C use `int` when all observed values fit signed 32-bit; otherwise they use `int64_t`, `<stdint.h>`, `INT64_C(...)`, and `INT64_MIN` as needed.
 - C++ uses `int` when all observed values fit signed 32-bit; otherwise it uses `std::int64_t`, `<cstdint>`, `INT64_C(...)`, and `INT64_MIN` as needed.
@@ -101,6 +101,8 @@ Generated storage must use the most idiomatic natural Integer representation tha
 - JavaScript uses `Number` while every observed value is within `-9007199254740991` through `9007199254740991`; otherwise every Integer literal and operation uses `BigInt` consistently.
 - Swift uses `Int` for the ordinary safe profile and `Int64` only when the program requires explicit signed 64-bit storage.
 - Python uses normal `int`.
+
+An Integer targeted by INPUT may receive any signed 64-bit value. It therefore forces `int64_t` in C/Objective-C, `std::int64_t` in C++, `long` in C#/Java, `BigInt` in JavaScript, `Int64` in Swift, signed 64-bit MASM/COBOL storage, and explicit signed-64 validation around Python `int`. Every dependent runtime operation must preserve that range.
 
 An ordinary target Integer profile must not carry wide suffixes such as `L`, `LL`, or `n`:
 
@@ -130,9 +132,11 @@ bool WorkingAge = Adult;
 
 Wide profiles must be exact and consistent. For example, a C program that requires a value above signed 32-bit uses `int64_t Age = INT64_C(2147483648);`, while a JavaScript program that exceeds the safe Integer range uses `2147483648n` for otherwise small literals in that same program as well. JavaScript `Number` division must use `Math.trunc(left / right)` to preserve SMILE's truncation-toward-zero quotient; `BigInt` division already has the required behavior.
 
-## Runtime Variables, SET, And Block Strings
+Source-known, definitely evaluated arithmetic keeps compile diagnostics `SMILE1206` and `SMILE1207`. Runtime-dependent unary negation, addition, subtraction, multiplication, division by zero, and `-9223372036854775808 / -1` must be checked at the reached operation. A reached failure writes `SMILER1206` or `SMILER1207`; an unreachable short-circuit operand or unselected branch must not fail.
 
-`LET` declares a variable and stores its initial value. `SET` changes the current value of an earlier declaration without changing its SMILE type. Every target generator iterates ordered bound source items, handling non-semantic comments and blank lines directly while retaining the existing `BoundLetStatement`, `BoundSetStatement`, `BoundPrintStatement`, and recursive `BoundIfStatement` behavior. High-level targets preserve natural assignment:
+## Runtime Variables, SET, INPUT, And Block Strings
+
+`LET` declares a variable and stores its initial value. `SET` changes the current value of an earlier declaration from a SMILE expression. `INPUT` changes an earlier declaration from one runtime input line. Neither changes its SMILE type. Every target generator iterates ordered bound source items, handling non-semantic comments and blank lines directly while retaining canonical `BoundLetStatement`, `BoundSetStatement`, `BoundInputStatement`, `BoundPrintStatement`, and recursive `BoundIfStatement` behavior. High-level targets preserve natural assignment:
 
 ```csharp
 int Counter = 0;
@@ -149,11 +153,11 @@ Ready = False
 Ready = True
 ```
 
-Low-level targets may lower a right side to the exact value proven by the shared branch-aware program analysis, but they must emit a real storage update at the SET statement. A generator must not omit SET merely because a later or final value is already known.
+Low-level targets may lower a SET right side to the exact value proven by the shared branch-aware program analysis, but they must emit a real storage update at the SET statement. INPUT is always a runtime operation and must remain at its source position. A generator must not omit SET or INPUT merely because a later or pre-input value is known.
 
 The front end completely normalizes a SET Block String Literal to an ordinary bound String value. Target generators never inspect delimiters, remove indentation, normalize physical newlines, decode block syntax, or choose behavior based on the original source form. They emit the normalized value using the clearest exact ordinary destination String syntax.
 
-One shared recursive mutation analysis records every symbol targeted by SET anywhere in the program, including currently unselected IF branches. Swift declares those symbols with `var` and may retain `let` only for symbols never changed on any path.
+One shared recursive mutation analysis records every symbol targeted by SET or INPUT anywhere in the program, including currently unselected IF branches. Swift declares those symbols with `var` and may retain `let` only for symbols never changed on any path.
 
 A valid direct SMILE self-assignment must remain an explicit assignment in generated code. When a destination rejects or warns about `target = target`, its generator must emit the smallest type-preserving identity expression while retaining a real target assignment: append an empty String, add Integer zero, or OR Boolean false. C# uses this lowering to avoid `CS1717`, and Swift uses it because plain self-assignment is rejected. Detection is based only on a direct bound variable expression whose `VariableSymbol` is the same symbol as the SET target; equal current values, differently cased source spellings, or mapped target names must not substitute source-text comparison for symbol identity. Other targets use their natural mutable assignment forms unless their compiler proves that focused lowering is necessary.
 
@@ -168,6 +172,36 @@ C#, C, C++, Java, JavaScript, Objective-C, and Swift use natural `if / else if /
 An IF condition reads current target storage whenever the destination can represent the bound expression clearly. Branch SET operations update real storage only when that branch executes. An IF without ELSE includes the unchanged incoming path for analysis. After IF, a target-local known value may be used only when every possible outgoing path proves the same value; branch-specific facts never leak into later code.
 
 Integer profiling, String sizing, embedded-NUL planning, mutation analysis, required headers/helpers, and compiler-owned names inspect the complete recursive IF tree. A branch-assigned String contributes its maximum UTF-8 byte length and NUL possibility even when another branch is selected by current values. Deterministic output requires stable indentation, COBOL names, and MASM labels for nested and multi-clause programs.
+
+INPUT is permitted in the initial IF body, every ELSE IF body, ELSE, and nested IF. Only the selected branch reads a line. Generation must retain every source INPUT even when a current known condition predicts another branch, because earlier INPUT can make later conditions runtime-dependent.
+
+## Runtime INPUT And Errors
+
+Every executed `INPUT variable` consumes exactly one CRLF-, LF-, standalone-CR-, or final-nonempty-EOF-terminated logical line from standard input. Redirected bytes are strict UTF-8. After removing the terminator and before any type-specific trim, the line may contain at most the shared `MaximumInputLineUtf8Bytes` value of 4096 bytes.
+
+- String receives the complete logical line, including leading/trailing spaces, tabs, an empty line, Unicode, and embedded NUL.
+- Integer removes only leading/trailing ASCII spaces and tabs, accepts one optional `+` or `-` followed by ASCII decimal digits, and requires the signed 64-bit range.
+- Boolean removes only leading/trailing ASCII spaces and tabs and accepts only TRUE or FALSE ordinal case-insensitively.
+
+Assignment is atomic: reading, byte validation, UTF-8 decoding, and conversion all succeed before target storage changes. The generator must never place scripted test input in generated source or include rejected input text in an error. Input-dependent String storage plans allow 0 through 4096 UTF-8 bytes and NUL. Repeated INPUT must not alias a shared read buffer, and direct PRINT, equality, SET-after-INPUT, INPUT-after-SET, interpolation, and concatenation must read the current storage and logical length.
+
+Target strategies are dependency-free and native to each destination:
+
+| Target | Required INPUT strategy |
+|---|---|
+| C# | Standard console input, strict byte/type checks, `long`, checked arithmetic, canonical `Console.Error` failure |
+| C / Objective-C | Explicit byte-counted reader with CRLF/LF/CR, UTF-8 validation, stable pointer-plus-length String storage, `int64_t`, checked helpers |
+| MASM x64 | Windows stdin/stdout/stderr APIs, stable per-variable buffers and lengths, signed overflow flags, guarded `idiv`, deterministic labels |
+| JavaScript | Deterministic Node.js UTF-8 stdin reader, explicit line splitting and EOF distinction, signed-64 `BigInt` validation |
+| Java | UTF-8 reader, `long`, strict parsing, `Math.*Exact`, explicit division checks, Unicode-safe generated comments |
+| COBOL | Proven exact native input or one generated dependency-free C companion; `Program.cob` remains primary and full signed-64 storage is required |
+| Swift | Standard Unicode input, exact UTF-8 byte count, `Int64`, reporting-overflow operations, standard error |
+| Python | `sys.stdin.buffer`, strict decoding and line normalization, signed-64 checks around ordinary `int` |
+| C++ | C++20 byte-at-a-time `std::cin.get()`, length-aware `std::string`, strict `std::from_chars` parsing, `std::int64_t`, checked arithmetic, `std::cerr` |
+
+Emit input, conversion, checked-arithmetic, and runtime-error helpers only when used. A program without INPUT or runtime-dependent arithmetic must not acquire unrelated stdin code.
+
+Runtime errors preserve stdout already produced, write exactly one canonical line plus one line ending to stderr, stop every later SMILE statement, and terminate with exit code 1. Successful completion returns 0. INPUT uses `SMILER1501` through `SMILER1506`; runtime Integer overflow and division by zero use `SMILER1206` and `SMILER1207`.
 
 ## Generator Source Organization
 
@@ -198,6 +232,8 @@ SET Block String ownership is stronger than comment and blank-line recognition. 
 
 Python generation produces one dependency-free `Program.py` compatible with Python 3.10 or newer. It uses a conventional `main()` function and `if __name__ == "__main__":` guard. SMILE `String`, `Integer`, and `Boolean` values map to Python `str`, `int`, and `bool` values.
 
+When INPUT is present, Python reads from `sys.stdin.buffer`, owns CRLF/LF/CR normalization, distinguishes an empty line from EOF, decodes UTF-8 strictly, and preserves NUL. Integer input and every dependent arithmetic result are explicitly constrained to signed 64-bit even though Python `int` is arbitrary precision. Canonical failures write to `sys.stderr` and call `sys.exit(1)`.
+
 Python interpolation remains interpolation through f-strings. Literal braces in f-string text are doubled, official backslash and control-character escapes are preserved, and String concatenation remains `+`.
 
 Python's normal Boolean text is not SMILE's canonical display text, so a generated helper is used only when a non-String value becomes text:
@@ -223,6 +259,8 @@ The Python expression writer renders the bound tree with Python-aware precedence
 ## C++
 
 C++ generation produces one dependency-free `Program.cpp` compiled as C++20. It is a dedicated bound-tree backend, not C output with another filename. SMILE `String`, `Integer`, and `Boolean` map to `std::string`, the selected `int`/`std::int64_t` profile, and `bool`.
+
+When INPUT is present, C++ reads one byte at a time with `std::cin.get()`. It recognizes CRLF, LF, standalone CR, and final nonempty EOF lines without consuming bytes from a later logical line; enforces the 4096-byte limit before decoding; validates strict UTF-8; and preserves embedded NUL in its length-aware `std::string`. Strict signed-decimal parsing uses `std::from_chars` with explicit optional-plus handling. Checked arithmetic and conversion failures use `std::cerr` and return 1.
 
 Strings are RAII-owned values. Concatenation preserves the bound expression, but when a chain would begin with two literals the first operand becomes an owned value:
 
@@ -279,7 +317,7 @@ printf("%s\n", Name);
 
 Ordinary `int` expressions use `%d`. Wide `int64_t` expressions use `%lld` with an explicit value-preserving cast to `long long`, because the exact underlying typedef of `int64_t` is platform-specific. Boolean expressions use `%s` with an argument that selects canonical `TRUE` or `FALSE`. Literal percent signs are doubled in the compiler-generated format.
 
-SMILE Strings are complete values with an exact length. C-family `%s` and `strcmp` may be used only when semantically valid for the complete value. C and Objective-C keep mutable `const char *` pointers. A branch-aware Known String assignment may lower to one exact ordinary C literal followed by pointer assignment; a runtime-unknown direct assignment or later LET copies current source storage, while an Unknown composite expression materializes its current segments into a bounded deterministic buffer. Direct runtime copies preserve value semantics without later mutable-buffer aliasing. If a variable can contain NUL at any LET or SET position, a deterministic collision-safe `size_t smileString{variableIndex}Length` support variable accompanies it. Runtime copies and materialization synchronize the logical length, using `strlen` only when the complete source value is proved NUL-free. The pointer and logical length must always describe the same current String value.
+SMILE Strings are complete values with an exact length. C-family `%s` and `strcmp` may be used only when semantically valid for the complete value. C and Objective-C keep mutable `const char *` pointers. A branch-aware Known String assignment may lower to one exact ordinary C literal followed by pointer assignment; a runtime-unknown direct assignment or later LET copies current source storage, while an Unknown composite expression materializes its current segments into a bounded deterministic buffer. Direct runtime copies preserve value semantics without later mutable-buffer aliasing. If a variable can contain NUL at any LET, SET, or INPUT position, a deterministic collision-safe `size_t smileString{variableIndex}Length` support variable accompanies it. INPUT-targeted String storage has stable capacity for the 4096-byte maximum and never uses `strlen` to discover the logical input length. Runtime input, copies, and materialization synchronize the pointer and logical length so they always describe the same current String value.
 
 A direct C or Objective-C String variable PRINT reads current target storage. When the variable has a logical-length companion, output uses the current pointer and current length, normally with `fwrite(variable, 1, variableLength, stdout)` followed by `fputc('\n', stdout)`. An ordinary NUL-free variable may continue to use `printf("%s\n", variable)`. Composite output writes runtime String segments with their current logical lengths when NUL is possible and may combine those writes with static literal segments. The PRINT operation must not use a second independent static copy of a variable whose branch-aware value is Unknown. Raw templates, interpolation, concatenation, and other complex expressions may use exact static lowering only when their complete value is branch-aware Known.
 
@@ -302,7 +340,7 @@ COBOL uses GnuCOBOL free-format source and stores variables in `WORKING-STORAGE`
 DISPLAY "Hello Sin!".
 ```
 
-COBOL storage sizing must inspect every LET and SET value so each `PIC X` item fits the maximum assigned UTF-8 display-byte length. A branch-aware Known assignment emits `MOVE <exact literal> TO <variable>`. A runtime-unknown direct SET or later LET moves the current source item and copies its logical length; an Unknown composite LET or SET uses a runtime `STRING` plan plus numeric/Boolean display storage and writes the resulting length. Unknown output and conditions use the same current storage rather than selected concrete values. A mutated variable also has a COMP-5 `SMILE-SET-LENGTH-{variableIndex}` field; its compiler-owned name is compared with mapped user names case-insensitively and receives a deterministic numeric suffix on collision. Fixed-length data items must not leak padding into SMILE output.
+COBOL storage sizing must inspect every LET and SET value plus the full INPUT facts so each `PIC X` item fits the maximum assigned UTF-8 display-byte length. A branch-aware Known assignment emits `MOVE <exact literal> TO <variable>`. A runtime-unknown direct SET or later LET moves the current source item and copies its logical length; an Unknown composite LET or SET uses a runtime `STRING` plan plus numeric/Boolean display storage and writes the resulting length. INPUT uses exact native facilities only when conformance proves every required byte, line, EOF, and Unicode rule; otherwise one deterministic dependency-free C companion supplies the reader while `Program.cob` remains primary. Unknown output and conditions use current storage rather than selected concrete values. Mutated values maintain collision-safe logical lengths, and fixed-length data items must not leak padding into SMILE output.
 
 A direct COBOL variable PRINT reads the mapped `WORKING-STORAGE` item rather than displaying a compiler-time copy of its known value. Every directly printed String has a logical-length field; mutated values also maintain one across SET. Output reads that current length and uses reference modification for nonempty storage. A runtime zero-length condition emits exactly one line feed and no padding space. This applies equally to ordinary Strings, normalized Block Strings, embedded NUL, UTF-8, control bytes, and intentional trailing whitespace. Integer and Boolean storage continues to display canonical SMILE text.
 
@@ -330,7 +368,7 @@ Blank SMILE `PRINT` must emit an empty line, not a line containing a single spac
 DISPLAY X"0A" WITH NO ADVANCING.
 ```
 
-MASM stays dependency-light and uses explicit output operations, but the generated assembly should keep explanatory right-side comments so learners can follow the code. Runtime variables retain `variable{n}Ptr` and `variable{n}Length`, and Integer variables also retain signed runtime numeric storage for arithmetic and relational conditions. LET data uses deterministic `variable{n}Value` labels. A branch-aware Known SET may use a deterministic `set{statementIndex}Value` label; runtime-unknown direct LET or SET copies current source value storage without later mutable-buffer aliasing, and Unknown composite expressions use bounded deterministic buffers plus one signed Integer text formatter. Direct and composite PRINT or condition plans read current storage. Exact static bytes may be used only when the complete value is branch-aware Known; the selected concrete trace is never a lowering authority after Unknown.
+MASM stays dependency-light and uses explicit output operations, but the generated assembly should keep explanatory right-side comments so learners can follow the code. Runtime variables retain `variable{n}Ptr` and `variable{n}Length`, and Integer variables also retain signed runtime numeric storage for arithmetic and relational conditions. INPUT uses Windows standard-handle and Unicode/UTF-8 conversion APIs with stable per-variable String storage, explicit logical lengths, strict Integer/Boolean parsing, overflow-flag checks, guarded `idiv`, canonical stderr, and exit code 1. LET data uses deterministic `variable{n}Value` labels. A branch-aware Known SET may use a deterministic `set{statementIndex}Value` label; runtime-unknown direct LET or SET copies current source value storage without later mutable-buffer aliasing, and Unknown composite expressions use bounded deterministic buffers plus one signed Integer text formatter. Direct and composite PRINT or condition plans read current storage. Exact static bytes may be used only when the complete value is branch-aware Known; the selected concrete trace is never a lowering authority after Unknown.
 
 For MASM empty strings, storage may use one placeholder byte so a label has an address:
 
@@ -396,12 +434,12 @@ Every reference to a SMILE symbol must use the same mapped target name as its de
 
 ## Conformance Validation
 
-Every expression, statement, comment, and source-layout feature is validated against the `SmileEvaluator` reference oracle. The generated-target suite includes all four comment markers, nested and layout-only branches, comment-safe IF recovery, source blank-line boundaries, Block String ownership, unsafe control and Unicode payloads, C-family trailing backslash, Java Unicode-looking text, multilingual and long comments, IF control flow, SET mutation, wide Integers, and embedded NUL. Every generated source must retain every body and every source layout item exactly once except intentional safe wrapping. It runs all locally installed toolchains for all ten targets and compares exact UTF-8 stdout bytes after normalizing only CRLF to LF where explicitly permitted. Tests never trim or discard NUL, backspace, form feed, carriage return, tab, or meaningful trailing whitespace. Repeated generation must remain byte-for-byte deterministic. Java release validation requires both `javac` and `java` and executes the normative comment/layout program plus cumulative `examples/language.smile` without skips.
+Every expression, statement, comment, and source-layout feature is validated against the `SmileEvaluator` reference oracle. The generated-target suite includes INPUT casing and placement, all String/Integer/Boolean conversions, UTF-8 and 4096-byte boundaries, EOF, invalid input, repeated and branch-dependent consumption, checked runtime arithmetic and reachability, all four comment markers, nested and layout-only branches, Block String ownership, SET mutation, wide Integers, and embedded NUL. Every generated source must retain every INPUT, branch body, and source layout item exactly once except intentional safe comment wrapping. Tests provide identical scripted stdin without shell `echo`, capture exact stdout and stderr, require the canonical exit code, and inspect compiler warnings for all ten targets. They never trim or discard NUL, backspace, form feed, carriage return, tab, or meaningful trailing whitespace; only explicitly permitted physical CRLF normalization occurs. Repeated generation, including helper names, buffers, labels, ancillary files, comments, blank lines, and project files, remains byte-for-byte deterministic. Java release validation requires both `javac` and `java` and executes the normative INPUT, invalid-input, runtime-arithmetic, comment/layout, and cumulative `examples/language.smile` programs without skips.
 
-Release validation must distinguish warnings from the SMILE solution build and warnings from generated target programs. `SMILE_REQUIRE_ZERO_TARGET_WARNINGS=1` activates destination-specific warning checks for compiler-backed targets; JavaScript and Python have no compile stage in their normal SMILE toolchains. The normative comment/layout program must build/run through all ten targets, return exit code zero, emit zero detected compiler warnings, preserve native comments and source blank-line boundaries safely, and match `SmileEvaluator`. This generated warning gate remains separate from the solution-build warning count.
+Release validation must distinguish warnings from the SMILE solution build and warnings from generated target programs. `SMILE_REQUIRE_ZERO_TARGET_WARNINGS=1` activates destination-specific warning checks for compiler-backed targets; JavaScript and Python have no compile stage in their normal SMILE toolchains. The normative INPUT and comment/layout programs must build/run through all ten targets, emit zero detected compiler warnings, preserve native input and layout structure, and match `SmileEvaluator` stdout, stderr, and exit code exactly. This generated warning gate remains separate from the solution-build warning count.
 
 The hosted `SMILE CI` Windows workflow restores, builds, and tests the Debug and Release solution on .NET SDK 10.0.302. That independent solution check does not install the complete destination toolchain matrix and does not replace strict local release runs with `SMILE_REQUIRE_JAVA=1`, `SMILE_REQUIRE_ALL_TARGETS=1`, and `SMILE_REQUIRE_ZERO_TARGET_WARNINGS=1`.
 
 ## Destination-Language Freeze
 
-C++ is SMILE's tenth and final planned destination language. Target-language expansion is frozen unless Sin explicitly reopens it. After v0.6.1 Full-Line Comments and Source Layout Preservation, later work should deepen input, loops, functions, scopes, debugging, and teaching tools rather than adding another backend. Rust, Zig, and Go remain deferred.
+C++ is SMILE's tenth and final planned destination language. Target-language expansion is frozen unless Sin explicitly reopens it. After v0.7.0 INPUT, later work should deepen loops, functions, scopes, debugging, and teaching tools rather than adding another backend. Rust, Zig, and Go remain deferred.

@@ -196,16 +196,27 @@
 - Extend the cumulative packaged `examples/language.smile`, AvalonEdit Comment highlighting, numbered official specifications, evaluator conformance, and strict all-ten-target warning-free runtime validation.
 - Preserve first-paint Desktop startup, asynchronous visible-target transpilation, cancellation, failure containment, and the destination-language freeze.
 
+## Implemented In v0.7.0
+
+- Add case-insensitive `INPUT variable` for an existing fixed-type String, Integer, or Boolean variable at top level and inside every IF-related body.
+- Reserve INPUT globally, add one canonical syntax and bound statement, and publish the numbered official INPUT specification with exact `SMILE1501` through `SMILE1505` compile diagnostics.
+- Separate statically Known, runtime-Unknown, and Invalid evaluation facts so no LET or SET value can be propagated past INPUT and every possible IF path remains conservative.
+- Read one strict UTF-8 logical line per executed INPUT, preserve complete String data, parse invariant signed 64-bit Integer and exact TRUE/FALSE text, and enforce the shared 4096-byte limit.
+- Add injectable evaluator input plus canonical runtime stdout, stderr, exit-code, and `SMILER1206`, `SMILER1207`, and `SMILER1501` through `SMILER1506` error behavior.
+- Preserve checked signed 64-bit runtime arithmetic, left-to-right short circuiting, selected-branch-only input consumption, full-range Integer planning, and 0-to-4096-byte NUL-capable String planning.
+- Generate dependency-free native INPUT support for all ten frozen destinations, provide scripted stdin conformance with exact stdout/stderr/exit comparisons and zero generated warnings, and keep no-INPUT output minimal.
+- Make CLI runs inherit interactive standard input and stream prompts live. Launch Desktop INPUT programs through one visible interactive console path while keeping live transpilation and the WPF UI responsive.
+- Extend and package the cumulative `examples/language.smile`, add the focused `examples/input.smile`, highlight INPUT lexically in AvalonEdit, and align public documentation and About SMILE at `0.7.0 INPUT`.
+
 ## Final Destination-Language Freeze
 
 C++ is SMILE's tenth and final planned destination language. Target-language expansion is frozen so development can focus on input, loops, functions, scopes, debugging, and teaching tools. Do not add another destination language unless Sin explicitly reopens target expansion. Rust, Zig, and Go remain intentionally deferred and are not active targets.
 
 ## Active Language-Depth Milestones
 
-These are not implemented in v0.6.1:
+These are not implemented in v0.7.0:
 
-1. v0.7.0 - `INPUT`
-2. v0.8.0 - Loops
-3. v0.9.0 - Functions and scopes
+1. v0.8.0 - Loops
+2. v0.9.0 - Functions and scopes
 
 Later teaching-depth ideas include floating-point and decimal numeric types, debugging and source mapping, semantic highlighting, autocomplete, diagnostic squiggles, and a reusable web interface.

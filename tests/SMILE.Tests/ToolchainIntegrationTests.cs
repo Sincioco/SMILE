@@ -88,7 +88,10 @@ PRINT A; B; C
 
         string launcher = await File.ReadAllTextAsync(launcherPath);
         AssertPauseLauncherCommand(language, launcher);
+        StringAssert.Contains(launcher, "chcp 65001 >nul");
+        StringAssert.Contains(launcher, "set \"SMILE_PROGRAM_EXIT=%ERRORLEVEL%\"");
         StringAssert.Contains(launcher, "Press any key to exit...");
+        StringAssert.Contains(launcher, "exit /b %SMILE_PROGRAM_EXIT%");
     }
 
     [TestMethod]

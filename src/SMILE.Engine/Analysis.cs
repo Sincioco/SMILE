@@ -26,7 +26,8 @@ public sealed record BoundStatementAnalysis(
     IReadOnlyDictionary<VariableSymbol, AnalyzedValue> ValuesAfter,
     IReadOnlyDictionary<VariableSymbol, SmileValue> ConcreteValuesBefore,
     SmileValue ConcreteValue,
-    IReadOnlyDictionary<VariableSymbol, SmileValue> ConcreteValuesAfter);
+    IReadOnlyDictionary<VariableSymbol, SmileValue> ConcreteValuesAfter,
+    bool HasConcreteValue = true);
 
 public sealed record BoundConditionalClauseAnalysis(
     int Ordinal,
@@ -207,6 +208,7 @@ public sealed class BoundProgramAnalysis
                 BoundProgramExecutionTrace.Snapshot(concreteValues);
             AnalyzedValue analyzedValue = AnalyzedValue.Unknown;
             SmileValue concreteValue = default;
+            bool hasConcreteValue = false;
 
             switch (statement)
             {
@@ -233,6 +235,7 @@ public sealed class BoundProgramAnalysis
                             out concreteValue))
                     {
                         concreteValues.Add(let.Variable, concreteValue);
+                        hasConcreteValue = true;
                     }
 
                     break;
@@ -254,14 +257,46 @@ public sealed class BoundProgramAnalysis
                             out concreteValue))
                     {
                         concreteValues[set.Variable] = concreteValue;
+                        hasConcreteValue = true;
+                    }
+                    else
+                    {
+                        concreteValues.Remove(set.Variable);
                     }
 
+                    break;
+
+                case BoundInputStatement input:
+                    abstractValues[input.Variable] = AnalyzedValue.Unknown;
+                    concreteValues.Remove(input.Variable);
+                    MutatedVariables.Add(input.Variable);
+
+                    PossibleValueState possibleInput = input.Variable.Type switch
+                    {
+                        SmileType.String => PossibleValueState.Inexact(
+                            SmileType.String,
+                            SmileLanguage.MaximumInputLineUtf8Bytes,
+                            mayContainNul: true),
+                        SmileType.Integer => PossibleValueState.InexactInteger(
+                            long.MinValue,
+                            long.MaxValue),
+                        SmileType.Boolean => PossibleValueState.Exact(
+                            SmileType.Boolean,
+                            new[]
+                            {
+                                SmileValue.FromBoolean(false),
+                                SmileValue.FromBoolean(true)
+                            }),
+                        _ => PossibleValueState.Inexact(input.Variable.Type)
+                    };
+                    possibleValues[input.Variable] = possibleInput;
+                    RecordAssignedValues(input.Variable, possibleInput);
                     break;
 
                 case BoundPrintStatement print:
                     analyzedValue = Evaluate(print.Value, abstractValues);
                     EvaluatePossible(print.Value, possibleValues);
-                    BoundExpressionEvaluator.TryEvaluate(
+                    hasConcreteValue = BoundExpressionEvaluator.TryEvaluate(
                         print.Value,
                         concreteValues,
                         out concreteValue);
@@ -269,8 +304,16 @@ public sealed class BoundProgramAnalysis
 
                 case BoundIfStatement conditional:
                     IfOrdinals.Add(conditional, _nextIfOrdinal++);
-                    AnalyzeIf(conditional, abstractValues, concreteValues, possibleValues);
-                    concreteValue = SmileValue.FromBoolean(true);
+                    hasConcreteValue = AnalyzeIf(
+                        conditional,
+                        abstractValues,
+                        concreteValues,
+                        possibleValues);
+                    if (hasConcreteValue)
+                    {
+                        concreteValue = SmileValue.FromBoolean(true);
+                    }
+
                     break;
             }
 
@@ -283,10 +326,11 @@ public sealed class BoundProgramAnalysis
                     Snapshot(abstractValues),
                     concreteBefore,
                     concreteValue,
-                    BoundProgramExecutionTrace.Snapshot(concreteValues)));
+                    BoundProgramExecutionTrace.Snapshot(concreteValues),
+                    hasConcreteValue));
         }
 
-        private void AnalyzeIf(
+        private bool AnalyzeIf(
             BoundIfStatement conditional,
             Dictionary<VariableSymbol, AnalyzedValue> abstractValues,
             Dictionary<VariableSymbol, SmileValue> concreteValues,
@@ -337,11 +381,13 @@ public sealed class BoundProgramAnalysis
                     elseConcrete,
                     elsePossible);
                 abstractOutgoing.Add(elseAbstract);
+                concreteOutgoing.Add(elseConcrete);
                 possibleOutgoing.Add(elsePossible);
             }
             else
             {
                 abstractOutgoing.Add(new Dictionary<VariableSymbol, AnalyzedValue>(abstractValues));
+                concreteOutgoing.Add(new Dictionary<VariableSymbol, SmileValue>(concreteValues));
                 possibleOutgoing.Add(ClonePossibleValues(possibleValues));
             }
 
@@ -349,27 +395,70 @@ public sealed class BoundProgramAnalysis
             MergePossibleValues(possibleValues, possibleOutgoing);
 
             int selectedClause = -1;
+            bool selectionIsUnknown = false;
             for (int index = 0; index < conditional.Clauses.Count; index++)
             {
-                if (BoundExpressionEvaluator.TryEvaluate(
-                        conditional.Clauses[index].Condition,
-                        concreteValues,
-                        out SmileValue condition) &&
-                    condition.BooleanValue)
+                StaticEvaluationResult condition = BoundExpressionEvaluator.Evaluate(
+                    conditional.Clauses[index].Condition,
+                    concreteValues);
+                if (!condition.IsKnown)
+                {
+                    selectionIsUnknown = true;
+                    break;
+                }
+
+                if (condition.Value.BooleanValue)
                 {
                     selectedClause = index;
                     break;
                 }
             }
 
-            Dictionary<VariableSymbol, SmileValue> selectedConcrete =
-                selectedClause >= 0
-                    ? concreteOutgoing[selectedClause]
-                    : elseConcrete ?? new Dictionary<VariableSymbol, SmileValue>(concreteValues);
-            concreteValues.Clear();
-            foreach ((VariableSymbol variable, SmileValue value) in selectedConcrete)
+            if (selectionIsUnknown)
             {
-                concreteValues.Add(variable, value);
+                MergeConcreteValues(concreteValues, concreteOutgoing);
+                return false;
+            }
+
+            Dictionary<VariableSymbol, SmileValue> selectedConcrete = selectedClause >= 0
+                ? concreteOutgoing[selectedClause]
+                : concreteOutgoing[^1];
+            ReplaceConcreteValues(concreteValues, selectedConcrete);
+            return true;
+        }
+
+        private static void MergeConcreteValues(
+            Dictionary<VariableSymbol, SmileValue> destination,
+            IReadOnlyList<Dictionary<VariableSymbol, SmileValue>> outgoing)
+        {
+            if (outgoing.Count == 0)
+            {
+                destination.Clear();
+                return;
+            }
+
+            var merged = new Dictionary<VariableSymbol, SmileValue>();
+            foreach ((VariableSymbol variable, SmileValue value) in outgoing[0])
+            {
+                if (outgoing.Skip(1).All(environment =>
+                        environment.TryGetValue(variable, out SmileValue candidate) &&
+                        candidate == value))
+                {
+                    merged.Add(variable, value);
+                }
+            }
+
+            ReplaceConcreteValues(destination, merged);
+        }
+
+        private static void ReplaceConcreteValues(
+            Dictionary<VariableSymbol, SmileValue> destination,
+            IReadOnlyDictionary<VariableSymbol, SmileValue> source)
+        {
+            destination.Clear();
+            foreach ((VariableSymbol variable, SmileValue value) in source)
+            {
+                destination.Add(variable, value);
             }
         }
 

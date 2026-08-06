@@ -13,7 +13,7 @@ It defines:
 3. preservation of blank source lines in generated target source;
 4. the non-semantic source-layout model needed to support both features safely.
 
-This specification works together with the official SMILE specifications for LET, SET, PRINT, IF, String literals, and core expressions.
+This specification works together with the official SMILE specifications for LET, SET, INPUT, PRINT, IF, String literals, and core expressions.
 
 **Repository destination:** `docs/SMILE Language Specification/007 - SMILE - Full-Line Comments and Source Layout Preservation Official Specification v1.0.md`
 
@@ -23,6 +23,7 @@ This specification works together with the official SMILE specifications for LET
 - [004 - SMILE - Core Types and Expressions Official Specification v1.0](004%20-%20SMILE%20-%20Core%20Types%20and%20Expressions%20Official%20Specification%20v1.0.md)
 - [005 - SMILE - LET Statement Official Specification v1.0](005%20-%20SMILE%20-%20LET%20Statement%20Official%20Specification%20v1.0.md)
 - [006 - SMILE - IF Statement Official Specification v1.0](006%20-%20SMILE%20-%20IF%20Statement%20Official%20Specification%20v1.0.md)
+- [008 - SMILE - INPUT Statement Official Specification v1.0](008%20-%20SMILE%20-%20INPUT%20Statement%20Official%20Specification%20v1.0.md)
 
 ---
 
@@ -461,6 +462,19 @@ Examples include:
 - Python `pass`;
 - COBOL `CONTINUE` when required by the existing generator.
 
+Comments and blank lines may surround INPUT exactly as they surround PRINT or SET:
+
+```smile
+LET Age = 0
+
+// Read one runtime line.
+INPUT Age
+
+PRINT {Age}
+```
+
+The two blank boundaries and native target comment are preserved. The INPUT remains one executable statement at the same source-order position. A comment whose payload contains `INPUT Age` does not read input, and marker-looking INPUT text inside a SET Block String remains String data.
+
 ---
 
 # 16. Comment text cannot alter block structure
@@ -502,6 +516,8 @@ They must not:
 - affect String size or NUL planning;
 - alter runtime output;
 - satisfy a target language's requirement for an executable statement.
+
+In particular, layout cannot consume an input line, reset a runtime error, or change which branch-local INPUT executes.
 
 The compiler may use a shared ordered-item base internally, but comments and blank lines are not semantic statements.
 
@@ -809,11 +825,13 @@ Removing all full-line comments and blank source lines from a valid program must
 - variable values;
 - branch selection;
 - target executable behavior;
-- target exit code.
+- target exit code;
+- input-line consumption order;
+- runtime stderr or runtime-error identity.
 
 Generated source is expected to differ because comments and blank lines are intentionally preserved.
 
-All ten generated executables must continue to match the SMILE evaluator.
+All ten generated executables must continue to match the SMILE evaluator when given identical scripted stdin. Exact stdout, stderr, and exit code must remain unchanged by removing layout.
 
 ---
 
@@ -842,6 +860,7 @@ Highlighting must:
 - avoid highlighting inline occurrences as comments;
 - keep marker-looking text inside ordinary Strings styled as String;
 - keep marker-looking lines and blank lines inside SET Block String Literals owned by the String span;
+- highlight INPUT as a case-insensitive keyword only outside Comment and String spans;
 - remain safe for incomplete source.
 
 Blank lines require no special color.

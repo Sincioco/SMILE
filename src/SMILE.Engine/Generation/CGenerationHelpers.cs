@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 
 namespace SMILE.Engine;
@@ -268,4 +269,292 @@ internal static class CGenerationFacts
             _ => false
         };
 
+}
+
+internal static class CGeneratedRuntime
+{
+    public static void Append(
+        StringBuilder source,
+        BoundProgram program,
+        bool checkedArithmetic)
+    {
+        bool hasInput = TargetRuntimeFacts.HasInput(program);
+        if (hasInput)
+        {
+            AppendInput(source, program);
+        }
+
+        if (checkedArithmetic)
+        {
+            if (hasInput)
+            {
+                source.AppendLine();
+            }
+
+            AppendArithmetic(source, program);
+        }
+
+        if (hasInput || checkedArithmetic)
+        {
+            source.AppendLine();
+        }
+    }
+
+    public static void AppendInputStatement(
+        StringBuilder source,
+        string indent,
+        BoundInputStatement input,
+        int ordinal,
+        TargetIdentifierMap identifiers,
+        IReadOnlyDictionary<VariableSymbol, string> exactStringLengths)
+    {
+        string name = identifiers.Get(input.Variable);
+        string declaredName = TargetEscapes.CString(input.Variable.Name);
+        switch (input.Variable.Type)
+        {
+            case SmileType.String:
+                string buffer = $"smileInput{ordinal}Buffer";
+                source.Append(indent).AppendLine("{");
+                source.Append(indent).Append("    static unsigned char ").Append(buffer)
+                    .Append('[').Append(SmileLanguage.MaximumInputLineUtf8Bytes + 1)
+                    .AppendLine("] = { 0 };");
+                source.Append(indent).Append("    size_t smileInputLength = _smile_input_string(")
+                    .Append(buffer).Append(", ").Append(declaredName).AppendLine(");");
+                source.Append(indent).Append("    ").Append(name).Append(" = (const char *)")
+                    .Append(buffer).AppendLine(";");
+                source.Append(indent).Append("    ").Append(exactStringLengths[input.Variable])
+                    .AppendLine(" = smileInputLength;");
+                source.Append(indent).AppendLine("}");
+                break;
+
+            case SmileType.Integer:
+                source.Append(indent).Append(name).Append(" = _smile_input_integer(")
+                    .Append(declaredName).AppendLine(");");
+                break;
+
+            case SmileType.Boolean:
+                source.Append(indent).Append(name).Append(" = _smile_input_boolean(")
+                    .Append(declaredName).AppendLine(");");
+                break;
+
+            default:
+                throw new InvalidOperationException("Unsupported C-family INPUT target type.");
+        }
+    }
+
+    private static void AppendInput(StringBuilder source, BoundProgram program)
+    {
+        source.AppendLine("static void _smile_input_error(int code, const char *variableName)");
+        source.AppendLine("{");
+        source.AppendLine("    switch (code)");
+        source.AppendLine("    {");
+        source.AppendLine("        case 1: fprintf(stderr, \"SMILE Runtime Error SMILER1501: Input ended before a value was received for '%s'.\\n\", variableName); break;");
+        source.AppendLine($"        case 2: fprintf(stderr, \"SMILE Runtime Error SMILER1502: Input for '%s' exceeds the {SmileLanguage.MaximumInputLineUtf8Bytes}-byte UTF-8 limit.\\n\", variableName); break;");
+        source.AppendLine("        case 3: fprintf(stderr, \"SMILE Runtime Error SMILER1503: Input for '%s' is not a valid Integer.\\n\", variableName); break;");
+        source.AppendLine("        case 4: fprintf(stderr, \"SMILE Runtime Error SMILER1504: Input for '%s' is outside the signed 64-bit Integer range.\\n\", variableName); break;");
+        source.AppendLine("        case 5: fprintf(stderr, \"SMILE Runtime Error SMILER1505: Input for '%s' must be TRUE or FALSE.\\n\", variableName); break;");
+        source.AppendLine("        default: fprintf(stderr, \"SMILE Runtime Error SMILER1506: Input for '%s' could not be read as valid UTF-8 text.\\n\", variableName); break;");
+        source.AppendLine("    }");
+        source.AppendLine("    exit(1);");
+        source.AppendLine("}");
+        source.AppendLine();
+        source.AppendLine("static bool _smile_valid_utf8(const unsigned char *bytes, size_t length)");
+        source.AppendLine("{");
+        source.AppendLine("    size_t index = 0;");
+        source.AppendLine("    while (index < length)");
+        source.AppendLine("    {");
+        source.AppendLine("        unsigned char first = bytes[index++];");
+        source.AppendLine("        if (first <= 0x7f) continue;");
+        source.AppendLine("        int continuationCount;");
+        source.AppendLine("        uint32_t scalar;");
+        source.AppendLine("        uint32_t minimum;");
+        source.AppendLine("        if ((first & 0xe0) == 0xc0) { continuationCount = 1; scalar = first & 0x1f; minimum = 0x80; }");
+        source.AppendLine("        else if ((first & 0xf0) == 0xe0) { continuationCount = 2; scalar = first & 0x0f; minimum = 0x800; }");
+        source.AppendLine("        else if ((first & 0xf8) == 0xf0) { continuationCount = 3; scalar = first & 0x07; minimum = 0x10000; }");
+        source.AppendLine("        else return false;");
+        source.AppendLine("        if (index + (size_t)continuationCount > length) return false;");
+        source.AppendLine("        while (continuationCount-- > 0)");
+        source.AppendLine("        {");
+        source.AppendLine("            unsigned char next = bytes[index++];");
+        source.AppendLine("            if ((next & 0xc0) != 0x80) return false;");
+        source.AppendLine("            scalar = (scalar << 6) | (next & 0x3f);");
+        source.AppendLine("        }");
+        source.AppendLine("        if (scalar < minimum || scalar > 0x10ffff || (scalar >= 0xd800 && scalar <= 0xdfff)) return false;");
+        source.AppendLine("    }");
+        source.AppendLine("    return true;");
+        source.AppendLine("}");
+        source.AppendLine();
+        source.AppendLine("static size_t _smile_read_line(unsigned char *buffer, const char *variableName)");
+        source.AppendLine("{");
+        source.AppendLine("#ifdef _WIN32");
+        source.AppendLine("    static int binaryInputConfigured = 0;");
+        source.AppendLine("    if (!binaryInputConfigured)");
+        source.AppendLine("    {");
+        source.AppendLine("        if (_setmode(_fileno(stdin), _O_BINARY) == -1) _smile_input_error(6, variableName);");
+        source.AppendLine("        binaryInputConfigured = 1;");
+        source.AppendLine("    }");
+        source.AppendLine("#endif");
+        source.AppendLine("    static bool skipLf = false;");
+        source.AppendLine("    size_t length = 0;");
+        source.AppendLine("    bool firstByte = true;");
+        source.AppendLine("    for (;;)");
+        source.AppendLine("    {");
+        source.AppendLine("        int value = fgetc(stdin);");
+        source.AppendLine("        if (firstByte)");
+        source.AppendLine("        {");
+        source.AppendLine("            firstByte = false;");
+        source.AppendLine("            if (skipLf)");
+        source.AppendLine("            {");
+        source.AppendLine("                skipLf = false;");
+        source.AppendLine("                if (value == '\\n') continue;");
+        source.AppendLine("            }");
+        source.AppendLine("        }");
+        source.AppendLine("        if (value == EOF)");
+        source.AppendLine("        {");
+        source.AppendLine("            if (ferror(stdin)) _smile_input_error(6, variableName);");
+        source.AppendLine("            if (length == 0) _smile_input_error(1, variableName);");
+        source.AppendLine("            break;");
+        source.AppendLine("        }");
+        source.AppendLine("        if (value == '\\n') break;");
+        source.AppendLine("        if (value == '\\r')");
+        source.AppendLine("        {");
+        source.AppendLine("            skipLf = true;");
+        source.AppendLine("            break;");
+        source.AppendLine("        }");
+        source.AppendLine($"        if (length == {SmileLanguage.MaximumInputLineUtf8Bytes}) _smile_input_error(2, variableName);");
+        source.AppendLine("        buffer[length++] = (unsigned char)value;");
+        source.AppendLine("    }");
+        source.AppendLine("    if (!_smile_valid_utf8(buffer, length)) _smile_input_error(6, variableName);");
+        source.AppendLine("    buffer[length] = 0;");
+        source.AppendLine("    return length;");
+        source.AppendLine("}");
+
+        if (TargetRuntimeFacts.HasInput(program, SmileType.String))
+        {
+            source.AppendLine();
+            source.AppendLine("static size_t _smile_input_string(unsigned char *buffer, const char *variableName)");
+            source.AppendLine("{");
+            source.AppendLine("    return _smile_read_line(buffer, variableName);");
+            source.AppendLine("}");
+        }
+
+        if (TargetRuntimeFacts.HasInput(program, SmileType.Integer))
+        {
+            source.AppendLine();
+            source.AppendLine("static int64_t _smile_input_integer(const char *variableName)");
+            source.AppendLine("{");
+            source.AppendLine($"    unsigned char buffer[{SmileLanguage.MaximumInputLineUtf8Bytes + 1}];");
+            source.AppendLine("    size_t length = _smile_read_line(buffer, variableName);");
+            source.AppendLine("    size_t first = 0;");
+            source.AppendLine("    while (first < length && (buffer[first] == ' ' || buffer[first] == '\\t')) ++first;");
+            source.AppendLine("    while (length > first && (buffer[length - 1] == ' ' || buffer[length - 1] == '\\t')) --length;");
+            source.AppendLine("    bool negative = first < length && buffer[first] == '-';");
+            source.AppendLine("    if (first < length && (buffer[first] == '+' || buffer[first] == '-')) ++first;");
+            source.AppendLine("    if (first == length) _smile_input_error(3, variableName);");
+            source.AppendLine("    uint64_t magnitude = 0;");
+            source.AppendLine("    uint64_t limit = negative ? UINT64_C(9223372036854775808) : UINT64_C(9223372036854775807);");
+            source.AppendLine("    for (; first < length; ++first)");
+            source.AppendLine("    {");
+            source.AppendLine("        unsigned char digit = buffer[first];");
+            source.AppendLine("        if (digit < '0' || digit > '9') _smile_input_error(3, variableName);");
+            source.AppendLine("        digit = (unsigned char)(digit - '0');");
+            source.AppendLine("        if (magnitude > (limit - digit) / 10) _smile_input_error(4, variableName);");
+            source.AppendLine("        magnitude = magnitude * 10 + digit;");
+            source.AppendLine("    }");
+            source.AppendLine("    if (!negative) return (int64_t)magnitude;");
+            source.AppendLine("    return magnitude == UINT64_C(9223372036854775808) ? INT64_MIN : -(int64_t)magnitude;");
+            source.AppendLine("}");
+        }
+
+        if (TargetRuntimeFacts.HasInput(program, SmileType.Boolean))
+        {
+            source.AppendLine();
+            source.AppendLine("static bool _smile_input_boolean(const char *variableName)");
+            source.AppendLine("{");
+            source.AppendLine($"    unsigned char buffer[{SmileLanguage.MaximumInputLineUtf8Bytes + 1}];");
+            source.AppendLine("    size_t length = _smile_read_line(buffer, variableName);");
+            source.AppendLine("    size_t first = 0;");
+            source.AppendLine("    while (first < length && (buffer[first] == ' ' || buffer[first] == '\\t')) ++first;");
+            source.AppendLine("    while (length > first && (buffer[length - 1] == ' ' || buffer[length - 1] == '\\t')) --length;");
+            source.AppendLine("    size_t count = length - first;");
+            source.AppendLine("    if (count == 4 && (buffer[first] | 32) == 't' && (buffer[first + 1] | 32) == 'r' && (buffer[first + 2] | 32) == 'u' && (buffer[first + 3] | 32) == 'e') return true;");
+            source.AppendLine("    if (count == 5 && (buffer[first] | 32) == 'f' && (buffer[first + 1] | 32) == 'a' && (buffer[first + 2] | 32) == 'l' && (buffer[first + 3] | 32) == 's' && (buffer[first + 4] | 32) == 'e') return false;");
+            source.AppendLine("    _smile_input_error(5, variableName);");
+            source.AppendLine("    return false;");
+            source.AppendLine("}");
+        }
+    }
+
+    private static void AppendArithmetic(StringBuilder source, BoundProgram program)
+    {
+        int depth = Math.Max(
+            1,
+            BoundStatementTree.EnumerateExpressions(program)
+                .Select(expression => CheckedArithmeticDepth(expression, 0))
+                .DefaultIfEmpty(1)
+                .Max());
+        source.Append("static int64_t _smile_arithmetic_left[")
+            .Append(depth.ToString(CultureInfo.InvariantCulture))
+            .AppendLine("];");
+        source.Append("static int64_t _smile_arithmetic_right[")
+            .Append(depth.ToString(CultureInfo.InvariantCulture))
+            .AppendLine("];");
+        source.AppendLine("static void _smile_arithmetic_overflow(void)");
+        source.AppendLine("{");
+        source.AppendLine("    fputs(\"SMILE Runtime Error SMILER1206: Integer arithmetic overflow.\\n\", stderr);");
+        source.AppendLine("    exit(1);");
+        source.AppendLine("}");
+        source.AppendLine("static int64_t _smile_add(int64_t left, int64_t right)");
+        source.AppendLine("{");
+        source.AppendLine("    if ((right > 0 && left > INT64_MAX - right) || (right < 0 && left < INT64_MIN - right)) _smile_arithmetic_overflow();");
+        source.AppendLine("    return left + right;");
+        source.AppendLine("}");
+        source.AppendLine("static int64_t _smile_subtract(int64_t left, int64_t right)");
+        source.AppendLine("{");
+        source.AppendLine("    if ((right < 0 && left > INT64_MAX + right) || (right > 0 && left < INT64_MIN + right)) _smile_arithmetic_overflow();");
+        source.AppendLine("    return left - right;");
+        source.AppendLine("}");
+        source.AppendLine("static int64_t _smile_multiply(int64_t left, int64_t right)");
+        source.AppendLine("{");
+        source.AppendLine("    if (left == 0 || right == 0) return 0;");
+        source.AppendLine("    if ((left == -1 && right == INT64_MIN) || (right == -1 && left == INT64_MIN)) _smile_arithmetic_overflow();");
+        source.AppendLine("    if (left > 0 ? (right > 0 ? left > INT64_MAX / right : right < INT64_MIN / left) : (right > 0 ? left < INT64_MIN / right : left != 0 && right < INT64_MAX / left)) _smile_arithmetic_overflow();");
+        source.AppendLine("    return left * right;");
+        source.AppendLine("}");
+        source.AppendLine("static int64_t _smile_negate(int64_t value)");
+        source.AppendLine("{");
+        source.AppendLine("    if (value == INT64_MIN) _smile_arithmetic_overflow();");
+        source.AppendLine("    return -value;");
+        source.AppendLine("}");
+        source.AppendLine("static int64_t _smile_divide(int64_t left, int64_t right)");
+        source.AppendLine("{");
+        source.AppendLine("    if (right == 0)");
+        source.AppendLine("    {");
+        source.AppendLine("        fputs(\"SMILE Runtime Error SMILER1207: Division by zero.\\n\", stderr);");
+        source.AppendLine("        exit(1);");
+        source.AppendLine("    }");
+        source.AppendLine("    if (left == INT64_MIN && right == -1) _smile_arithmetic_overflow();");
+        source.AppendLine("    return left / right;");
+        source.AppendLine("}");
+    }
+
+    private static int CheckedArithmeticDepth(BoundExpression expression, int currentDepth)
+    {
+        int depth = expression is BoundBinaryExpression
+            ? currentDepth + 1
+            : currentDepth;
+        return expression switch
+        {
+            BoundUnaryExpression unary => CheckedArithmeticDepth(unary.Operand, depth),
+            BoundBinaryExpression nested => Math.Max(
+                CheckedArithmeticDepth(nested.Left, depth),
+                CheckedArithmeticDepth(nested.Right, depth)),
+            BoundInterpolatedStringExpression interpolated => interpolated.Parts
+                .OfType<BoundInterpolationExpressionPart>()
+                .Select(part => CheckedArithmeticDepth(part.Expression, depth))
+                .DefaultIfEmpty(depth)
+                .Max(),
+            _ => depth
+        };
+    }
 }

@@ -8,50 +8,58 @@ internal static class TargetExpression
     public static string CSharp(
         BoundExpression expression,
         TargetIdentifierMap identifiers,
-        TargetIntegerProfile integers) =>
-        new Writer(TargetLanguage.CSharp, identifiers, integers).Write(expression);
+        TargetIntegerProfile integers,
+        bool checkedRuntimeArithmetic = false) =>
+        new Writer(TargetLanguage.CSharp, identifiers, integers, checkedRuntimeArithmetic: checkedRuntimeArithmetic).Write(expression);
 
     public static string CSharpDisplay(
         BoundExpression expression,
         TargetIdentifierMap identifiers,
-        TargetIntegerProfile integers) =>
-        new Writer(TargetLanguage.CSharp, identifiers, integers).WriteDisplay(expression);
+        TargetIntegerProfile integers,
+        bool checkedRuntimeArithmetic = false) =>
+        new Writer(TargetLanguage.CSharp, identifiers, integers, checkedRuntimeArithmetic: checkedRuntimeArithmetic).WriteDisplay(expression);
 
     public static string JavaScript(
         BoundExpression expression,
         TargetIdentifierMap identifiers,
-        TargetIntegerProfile integers) =>
-        new Writer(TargetLanguage.JavaScript, identifiers, integers).Write(expression);
+        TargetIntegerProfile integers,
+        bool checkedRuntimeArithmetic = false) =>
+        new Writer(TargetLanguage.JavaScript, identifiers, integers, checkedRuntimeArithmetic: checkedRuntimeArithmetic).Write(expression);
 
     public static string JavaScriptDisplay(
         BoundExpression expression,
         TargetIdentifierMap identifiers,
-        TargetIntegerProfile integers) =>
-        new Writer(TargetLanguage.JavaScript, identifiers, integers).WriteDisplay(expression);
+        TargetIntegerProfile integers,
+        bool checkedRuntimeArithmetic = false) =>
+        new Writer(TargetLanguage.JavaScript, identifiers, integers, checkedRuntimeArithmetic: checkedRuntimeArithmetic).WriteDisplay(expression);
 
     public static string Java(
         BoundExpression expression,
         TargetIdentifierMap identifiers,
-        TargetIntegerProfile integers) =>
-        new Writer(TargetLanguage.Java, identifiers, integers).Write(expression);
+        TargetIntegerProfile integers,
+        bool checkedRuntimeArithmetic = false) =>
+        new Writer(TargetLanguage.Java, identifiers, integers, checkedRuntimeArithmetic: checkedRuntimeArithmetic).Write(expression);
 
     public static string JavaDisplay(
         BoundExpression expression,
         TargetIdentifierMap identifiers,
-        TargetIntegerProfile integers) =>
-        new Writer(TargetLanguage.Java, identifiers, integers).WriteDisplay(expression);
+        TargetIntegerProfile integers,
+        bool checkedRuntimeArithmetic = false) =>
+        new Writer(TargetLanguage.Java, identifiers, integers, checkedRuntimeArithmetic: checkedRuntimeArithmetic).WriteDisplay(expression);
 
     public static string Swift(
         BoundExpression expression,
         TargetIdentifierMap identifiers,
-        TargetIntegerProfile integers) =>
-        new Writer(TargetLanguage.Swift, identifiers, integers).Write(expression);
+        TargetIntegerProfile integers,
+        bool checkedRuntimeArithmetic = false) =>
+        new Writer(TargetLanguage.Swift, identifiers, integers, checkedRuntimeArithmetic: checkedRuntimeArithmetic).Write(expression);
 
     public static string SwiftDisplay(
         BoundExpression expression,
         TargetIdentifierMap identifiers,
-        TargetIntegerProfile integers) =>
-        new Writer(TargetLanguage.Swift, identifiers, integers).WriteDisplay(expression);
+        TargetIntegerProfile integers,
+        bool checkedRuntimeArithmetic = false) =>
+        new Writer(TargetLanguage.Swift, identifiers, integers, checkedRuntimeArithmetic: checkedRuntimeArithmetic).WriteDisplay(expression);
 
     public static string C(
         BoundExpression expression,
@@ -59,14 +67,16 @@ internal static class TargetExpression
         TargetIntegerProfile integers,
         IReadOnlyDictionary<VariableSymbol, SmileValue> values,
         IReadOnlyDictionary<VariableSymbol, string> exactStringLengths,
-        IReadOnlyDictionary<BoundExpression, CCodeGenerator.RuntimeStringBuffer>? runtimeStringBuffers = null) =>
+        IReadOnlyDictionary<BoundExpression, CCodeGenerator.RuntimeStringBuffer>? runtimeStringBuffers = null,
+        bool checkedRuntimeArithmetic = false) =>
         new Writer(
             TargetLanguage.C,
             identifiers,
             integers,
             values,
             exactStringLengths,
-            runtimeStringBuffers).Write(expression);
+            runtimeStringBuffers,
+            checkedRuntimeArithmetic).Write(expression);
 
     public static string ObjectiveC(
         BoundExpression expression,
@@ -74,14 +84,16 @@ internal static class TargetExpression
         TargetIntegerProfile integers,
         IReadOnlyDictionary<VariableSymbol, SmileValue> values,
         IReadOnlyDictionary<VariableSymbol, string> exactStringLengths,
-        IReadOnlyDictionary<BoundExpression, CCodeGenerator.RuntimeStringBuffer>? runtimeStringBuffers = null) =>
+        IReadOnlyDictionary<BoundExpression, CCodeGenerator.RuntimeStringBuffer>? runtimeStringBuffers = null,
+        bool checkedRuntimeArithmetic = false) =>
         new Writer(
             TargetLanguage.ObjectiveC,
             identifiers,
             integers,
             values,
             exactStringLengths,
-            runtimeStringBuffers).Write(expression);
+            runtimeStringBuffers,
+            checkedRuntimeArithmetic).Write(expression);
 
     public static string CConstant(SmileValue value, TargetIntegerProfile integers) =>
         value.Type switch
@@ -118,6 +130,8 @@ internal static class TargetExpression
         private readonly IReadOnlyDictionary<VariableSymbol, string>? _exactStringLengths;
         private readonly IReadOnlyDictionary<BoundExpression, CCodeGenerator.RuntimeStringBuffer>?
             _runtimeStringBuffers;
+        private readonly bool _checkedRuntimeArithmetic;
+        private int _checkedArithmeticDepth;
 
         private readonly record struct CStringStorageOperand(
             string Value,
@@ -131,7 +145,8 @@ internal static class TargetExpression
             IReadOnlyDictionary<VariableSymbol, SmileValue>? values = null,
             IReadOnlyDictionary<VariableSymbol, string>? exactStringLengths = null,
             IReadOnlyDictionary<BoundExpression, CCodeGenerator.RuntimeStringBuffer>?
-                runtimeStringBuffers = null)
+                runtimeStringBuffers = null,
+            bool checkedRuntimeArithmetic = false)
         {
             _language = language;
             _identifiers = identifiers;
@@ -139,6 +154,7 @@ internal static class TargetExpression
             _values = values;
             _exactStringLengths = exactStringLengths;
             _runtimeStringBuffers = runtimeStringBuffers;
+            _checkedRuntimeArithmetic = checkedRuntimeArithmetic;
         }
 
         public string Write(BoundExpression expression) =>
@@ -190,6 +206,16 @@ internal static class TargetExpression
 
         private string WriteUnary(BoundUnaryExpression expression, int parentPrecedence)
         {
+            if (_checkedRuntimeArithmetic &&
+                expression.Operator.Kind is BoundUnaryOperatorKind.Negation &&
+                expression.Operand.Type is SmileType.Integer)
+            {
+                string call = "_smile_negate(" +
+                    WriteExpression(expression.Operand, 0, isRightChild: false, parentOperator: null) +
+                    ")";
+                return parentPrecedence > 7 ? "(" + call + ")" : call;
+            }
+
             int precedence = 7;
             string op = expression.Operator.Kind switch
             {
@@ -216,6 +242,45 @@ internal static class TargetExpression
             bool isRightChild,
             BoundBinaryOperatorKind? parentOperator)
         {
+            if (_checkedRuntimeArithmetic &&
+                expression.Left.Type is SmileType.Integer &&
+                expression.Operator.Kind is BoundBinaryOperatorKind.Addition or
+                    BoundBinaryOperatorKind.Subtraction or
+                    BoundBinaryOperatorKind.Multiplication or
+                    BoundBinaryOperatorKind.Division)
+            {
+                string helper = expression.Operator.Kind switch
+                {
+                    BoundBinaryOperatorKind.Addition => "_smile_add",
+                    BoundBinaryOperatorKind.Subtraction => "_smile_subtract",
+                    BoundBinaryOperatorKind.Multiplication => "_smile_multiply",
+                    BoundBinaryOperatorKind.Division => "_smile_divide",
+                    _ => throw new InvalidOperationException("Unsupported checked Integer operator.")
+                };
+                int depth = _checkedArithmeticDepth++;
+                string checkedLeft = WriteExpression(
+                    expression.Left,
+                    0,
+                    isRightChild: false,
+                    parentOperator: null);
+                string checkedRight = WriteExpression(
+                    expression.Right,
+                    0,
+                    isRightChild: false,
+                    parentOperator: null);
+                _checkedArithmeticDepth--;
+                string call = _language is TargetLanguage.C or TargetLanguage.ObjectiveC
+                    ? "(_smile_arithmetic_left[" + depth.ToString(CultureInfo.InvariantCulture) +
+                      "] = " + checkedLeft + ", _smile_arithmetic_right[" +
+                      depth.ToString(CultureInfo.InvariantCulture) + "] = " + checkedRight + ", " +
+                      helper + "(_smile_arithmetic_left[" +
+                      depth.ToString(CultureInfo.InvariantCulture) +
+                      "], _smile_arithmetic_right[" +
+                      depth.ToString(CultureInfo.InvariantCulture) + "]))"
+                    : helper + "(" + checkedLeft + ", " + checkedRight + ")";
+                return parentPrecedence > 7 ? "(" + call + ")" : call;
+            }
+
             if (_language is TargetLanguage.JavaScript &&
                 !_integers.RequiresJavaScriptBigInt &&
                 expression.Operator.Kind is BoundBinaryOperatorKind.Division)
@@ -253,6 +318,33 @@ internal static class TargetExpression
                 expression.Operator.Kind is BoundBinaryOperatorKind.Equality or BoundBinaryOperatorKind.Inequality)
             {
                 return WriteCStringEquality(expression, parentPrecedence, isRightChild, parentOperator);
+            }
+
+            if (_checkedRuntimeArithmetic &&
+                _language is TargetLanguage.C or TargetLanguage.ObjectiveC &&
+                expression.Left.Type is SmileType.Integer or SmileType.Boolean &&
+                expression.Operator.Kind is not (
+                    BoundBinaryOperatorKind.LogicalAnd or BoundBinaryOperatorKind.LogicalOr) &&
+                (ContainsCheckedArithmetic(expression.Left) || ContainsCheckedArithmetic(expression.Right)))
+            {
+                int depth = _checkedArithmeticDepth++;
+                string sequencedLeft = WriteExpression(
+                    expression.Left,
+                    0,
+                    isRightChild: false,
+                    parentOperator: null);
+                string sequencedRight = WriteExpression(
+                    expression.Right,
+                    0,
+                    isRightChild: false,
+                    parentOperator: null);
+                _checkedArithmeticDepth--;
+                string slot = depth.ToString(CultureInfo.InvariantCulture);
+                return "(_smile_arithmetic_left[" + slot + "] = " + sequencedLeft +
+                    ", _smile_arithmetic_right[" + slot + "] = " + sequencedRight +
+                    ", _smile_arithmetic_left[" + slot + "] " +
+                    OperatorText(expression.Operator.Kind) + " _smile_arithmetic_right[" +
+                    slot + "])";
             }
 
             int precedence = Precedence(expression.Operator.Kind);
@@ -571,6 +663,27 @@ internal static class TargetExpression
             };
 
         private string EmptyStringLiteral() => StringLiteral(string.Empty);
+
+        private static bool ContainsCheckedArithmetic(BoundExpression expression) =>
+            expression switch
+            {
+                BoundUnaryExpression unary =>
+                    (unary.Operator.Kind is BoundUnaryOperatorKind.Negation &&
+                     unary.Operand.Type is SmileType.Integer) ||
+                    ContainsCheckedArithmetic(unary.Operand),
+                BoundBinaryExpression binary =>
+                    (binary.Left.Type is SmileType.Integer &&
+                     binary.Operator.Kind is BoundBinaryOperatorKind.Addition or
+                         BoundBinaryOperatorKind.Subtraction or
+                         BoundBinaryOperatorKind.Multiplication or
+                         BoundBinaryOperatorKind.Division) ||
+                    ContainsCheckedArithmetic(binary.Left) ||
+                    ContainsCheckedArithmetic(binary.Right),
+                BoundInterpolatedStringExpression interpolated => interpolated.Parts
+                    .OfType<BoundInterpolationExpressionPart>()
+                    .Any(part => ContainsCheckedArithmetic(part.Expression)),
+                _ => false
+            };
 
         private string IntegerLiteral(long value) =>
             _language switch

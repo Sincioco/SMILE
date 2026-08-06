@@ -14,6 +14,7 @@ public enum SyntaxKind
 
     LetKeyword,
     SetKeyword,
+    InputKeyword,
     PrintKeyword,
     IfKeyword,
     ThenKeyword,

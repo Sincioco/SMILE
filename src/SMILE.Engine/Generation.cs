@@ -7,7 +7,8 @@ public sealed record GeneratedFile(
 
 public sealed record GeneratedProgram(
     TargetLanguage Language,
-    IReadOnlyList<GeneratedFile> Files)
+    IReadOnlyList<GeneratedFile> Files,
+    bool RequiresStandardInput = false)
 {
     public GeneratedFile PrimaryFile => Files.Single(file => file.IsPrimary);
 }
@@ -79,11 +80,18 @@ public sealed class SmileTranspiler
         // bound tree and therefore cannot invent target-specific identities.
         BoundProgram simplifiedProgram = BoundProgramSimplifier.Simplify(bindResult.Program);
 
+        bool requiresStandardInput = BoundStatementTree.Enumerate(simplifiedProgram)
+            .Any(statement => statement is BoundInputStatement);
+
         return languages
             .Select(language =>
             {
                 ICodeGenerator generator = CodeGeneratorRegistry.Get(language);
-                return new TranspileResult(language, generator.Generate(simplifiedProgram), bindResult.Diagnostics);
+                GeneratedProgram generatedProgram = generator.Generate(simplifiedProgram) with
+                {
+                    RequiresStandardInput = requiresStandardInput
+                };
+                return new TranspileResult(language, generatedProgram, bindResult.Diagnostics);
             })
             .ToArray();
     }

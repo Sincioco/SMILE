@@ -671,10 +671,22 @@ public sealed class MainWindowViewModel : ViewModelBase
             pane.Status = GetInitialBuildStatus(language);
             AppendOutput($"=== {languageName} ===");
 
-            var options = new BuildRunOptions(CreatePauseLauncher: CreatePauseLauncherAfterBuild);
+            BuildRunOptions options = generatedProgram.RequiresStandardInput
+                ? BuildRunOptions.VisibleInteractiveConsole
+                : new BuildRunOptions(CreatePauseLauncher: CreatePauseLauncherAfterBuild);
             BuildRunResult result = await _toolchains.Get(language)
                 .BuildAndRunAsync(generatedProgram, cancellationToken, options)
                 .ConfigureAwait(true);
+
+            if (generatedProgram.RequiresStandardInput &&
+                result.WorkingDirectory is not null &&
+                result.Stage.Equals("Running", StringComparison.OrdinalIgnoreCase) &&
+                (result.ExitCode.HasValue || result.TimedOut || result.Cancelled))
+            {
+                AppendOutput(
+                    $"{languageName} interactive console launched. " +
+                    "Prompts, learner input, normal output, and runtime errors were handled in that console.");
+            }
 
             pane.Status = BuildRunStatusText(result);
             AppendBuildRunResult(result);

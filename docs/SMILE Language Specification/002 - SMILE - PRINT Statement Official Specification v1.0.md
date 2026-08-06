@@ -12,9 +12,9 @@
 
 `PRINT` writes text to the program's standard output and appends one newline.
 
-Evaluated variable references read the variable's current runtime value at the `PRINT` statement. An earlier `SET` therefore changes what every later direct expression, raw-template hole, and interpolated String hole prints.
+Evaluated variable references read the variable's current runtime value at the `PRINT` statement. An earlier `SET` or successful `INPUT` therefore changes what every later direct expression, raw-template hole, and interpolated String hole prints. After INPUT, a generator must read current target storage rather than reuse the LET or SET value that preceded the input operation.
 
-SMILE v0.6.0 permits PRINT in IF, ELSE IF, ELSE, and nested IF bodies. A PRINT executes only when its containing branch is selected. All PRINT source text in unselected branches is still parsed and bound, and every target retains the complete branch structure.
+SMILE v0.7.0 permits PRINT and INPUT in IF, ELSE IF, ELSE, and nested IF bodies. A PRINT executes only when its containing branch is selected. All PRINT source text in unselected branches is still parsed and bound, and every target retains the complete branch structure. PRINT prompts remain separate statements before INPUT; INPUT has no built-in prompt form.
 
 SMILE deliberately provides both:
 
@@ -707,7 +707,7 @@ The language-neutral representation MUST preserve enough expression shape for ge
 
 Generated target code SHOULD be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write. C, Objective-C, assembly, and other lower-level targets MAY lower interpolation and concatenation into target-specific output operations. However, the generator SHOULD still choose the clearest idiomatic destination-language form. For C string output, a single safe `printf` call with a compiler-generated format string is generally preferred over exposing every internal literal and variable segment as a separate output statement.
 
-When a `PRINT` expression references a variable, the target generator MUST use the same symbol-based target identifier map as the corresponding `LET` declaration and every `SET` assignment. This keeps valid SMILE identifiers safe in target languages without changing bare `PRINT` text into variable references.
+When a `PRINT` expression references a variable, the target generator MUST use the same symbol-based target identifier map as the corresponding `LET` declaration and every `SET` or `INPUT` update. This keeps valid SMILE identifiers safe in target languages without changing bare `PRINT` text into variable references.
 
 ---
 
@@ -825,10 +825,13 @@ The official v0.4.1 expression grammar and short-circuit evaluation rules are de
 
 - [004 - SMILE - Core Types and Expressions Official Specification v1.0](004%20-%20SMILE%20-%20Core%20Types%20and%20Expressions%20Official%20Specification%20v1.0.md)
 - [007 - SMILE - Full-Line Comments and Source Layout Preservation Official Specification v1.0](007%20-%20SMILE%20-%20Full-Line%20Comments%20and%20Source%20Layout%20Preservation%20Official%20Specification%20v1.0.md)
+- [008 - SMILE - INPUT Statement Official Specification v1.0](008%20-%20SMILE%20-%20INPUT%20Statement%20Official%20Specification%20v1.0.md)
 
 Future versions may expand the expression grammar further without changing the raw-template rules.
 
 SMILE v0.6.0 reuses these same expression, interpolation, display, and current-value rules for PRINT statements inside conditional branches. Only the selected branch produces output.
+
+SMILE v0.7.0 reuses them for runtime-entered values. PRINT writes only program output; interactive terminal echo is host behavior and is not part of SMILE stdout. If a runtime input or arithmetic error follows earlier PRINT statements, that stdout remains present while the canonical error is written separately to stderr.
 
 Future versions MUST preserve the deterministic distinction:
 
@@ -862,10 +865,12 @@ The official SMILE `PRINT` rules are:
 15. Quote-free string convenience is specific to `PRINT`.
 16. Every form lowers to a common language-neutral expression representation.
 17. Target generators preserve expression intent when the target language has an idiomatic equivalent.
-18. Evaluated variable references read the current value established by earlier `LET` and `SET` statements.
+18. Evaluated variable references read the current value established by earlier `LET`, `SET`, and successful `INPUT` statements.
 19. SET Block String Literals are not legal directly in `PRINT`.
 20. PRINT is permitted in every IF v1.0 body and executes only when that branch is selected.
 21. Bare PRINT templates do not change IF condition parsing or ELSE/END IF terminator recognition.
+22. Prompts are ordinary PRINT statements before INPUT; INPUT has no built-in prompt syntax in v1.0.
+23. Runtime errors preserve earlier PRINT stdout and write their canonical line to stderr.
 
 ---
 

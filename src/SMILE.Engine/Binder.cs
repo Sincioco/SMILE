@@ -8,7 +8,9 @@ internal sealed class Binder
     private readonly List<Diagnostic> _diagnostics = new();
     private readonly Dictionary<string, VariableSymbol> _variables = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<VariableSymbol> _declaredVariables = new();
-    private readonly BoundProgramExecutionTraceBuilder _execution = new();
+    private readonly Dictionary<VariableSymbol, SmileValue> _knownValues = new();
+    private bool _topLevelCanContinue = true;
+    private bool _topLevelDefinitelyContinues = true;
 
     public BindResult Bind(SmileProgramSyntax program)
     {
@@ -66,6 +68,7 @@ internal sealed class Binder
             LetStatementSyntax let when isIfBody => RejectBranchLet(let),
             LetStatementSyntax let => BindLetStatement(let, appendExecution),
             SetStatementSyntax set => BindSetStatement(set, appendExecution),
+            InputStatementSyntax input => BindInputStatement(input, appendExecution),
             PrintStatementSyntax print => BindPrintStatement(print, appendExecution),
             IfStatementSyntax conditional => BindIfStatement(conditional, appendExecution),
             _ => null
@@ -108,7 +111,7 @@ internal sealed class Binder
 
         var symbol = new VariableSymbol(syntax.Name, syntax.NameSpan, initializer.Type);
         var statement = new BoundLetStatement(symbol, initializer);
-        if (appendExecution && !_execution.TryAppend(statement, _diagnostics))
+        if (appendExecution && !TryApplyTopLevelStatement(statement))
         {
             return null;
         }
@@ -151,7 +154,27 @@ internal sealed class Binder
         }
 
         var statement = new BoundSetStatement(variable, value);
-        return !appendExecution || _execution.TryAppend(statement, _diagnostics)
+        return !appendExecution || TryApplyTopLevelStatement(statement)
+            ? statement
+            : null;
+    }
+
+    private BoundStatement? BindInputStatement(
+        InputStatementSyntax syntax,
+        bool appendExecution)
+    {
+        if (!_variables.TryGetValue(syntax.Name, out VariableSymbol? variable))
+        {
+            _diagnostics.Add(new Diagnostic(
+                "SMILE1505",
+                DiagnosticSeverity.Error,
+                $"INPUT target variable '{syntax.Name}' is undefined.",
+                syntax.NameSpan));
+            return null;
+        }
+
+        var statement = new BoundInputStatement(variable);
+        return !appendExecution || TryApplyTopLevelStatement(statement)
             ? statement
             : null;
     }
@@ -169,7 +192,7 @@ internal sealed class Binder
         }
 
         var statement = new BoundPrintStatement(value, syntax.IsBlankLine);
-        return !appendExecution || _execution.TryAppend(statement, _diagnostics)
+        return !appendExecution || TryApplyTopLevelStatement(statement)
             ? statement
             : null;
     }
@@ -210,9 +233,371 @@ internal sealed class Binder
             clauses,
             elseSourceItems,
             syntax.HasElseClause);
-        return !appendExecution || _execution.TryAppend(statement, _diagnostics)
+        return !appendExecution || TryApplyTopLevelStatement(statement)
             ? statement
             : null;
+    }
+
+    private bool TryApplyTopLevelStatement(BoundStatement statement)
+    {
+        // Binding and type checking continue through unreachable source so the
+        // learner still receives structural diagnostics. Static evaluation is
+        // skipped once every possible runtime path has already terminated;
+        // later arithmetic is then not definitely evaluated.
+        if (!_topLevelCanContinue)
+        {
+            return true;
+        }
+
+        bool succeeded = TryApplyStaticStatement(
+            statement,
+            _knownValues,
+            reportInvalid: _topLevelDefinitelyContinues,
+            out bool canContinue,
+            out bool definitelyContinues);
+        if (succeeded)
+        {
+            _topLevelCanContinue = canContinue;
+            _topLevelDefinitelyContinues &= definitelyContinues;
+        }
+
+        return succeeded;
+    }
+
+    private bool TryApplyStaticStatement(
+        BoundStatement statement,
+        Dictionary<VariableSymbol, SmileValue> knownValues,
+        bool reportInvalid,
+        out bool canContinue,
+        out bool definitelyContinues)
+    {
+        switch (statement)
+        {
+            case BoundLetStatement let:
+                return TryApplyStaticAssignment(
+                    let.Variable,
+                    let.Initializer,
+                    knownValues,
+                    reportInvalid,
+                    out canContinue,
+                    out definitelyContinues);
+
+            case BoundSetStatement set:
+                return TryApplyStaticAssignment(
+                    set.Variable,
+                    set.Value,
+                    knownValues,
+                    reportInvalid,
+                    out canContinue,
+                    out definitelyContinues);
+
+            case BoundInputStatement input:
+                knownValues.Remove(input.Variable);
+                canContinue = true;
+                definitelyContinues = true;
+                return true;
+
+            case BoundPrintStatement print:
+                StaticEvaluationResult printed = BoundExpressionEvaluator.Evaluate(
+                    print.Value,
+                    knownValues);
+                return HandleStaticResult(
+                    printed,
+                    reportInvalid,
+                    out canContinue,
+                    out definitelyContinues);
+
+            case BoundIfStatement conditional:
+                return TryApplyStaticIf(
+                    conditional,
+                    knownValues,
+                    reportInvalid,
+                    out canContinue,
+                    out definitelyContinues);
+
+            default:
+                canContinue = true;
+                definitelyContinues = true;
+                return true;
+        }
+    }
+
+    private bool TryApplyStaticAssignment(
+        VariableSymbol variable,
+        BoundExpression expression,
+        Dictionary<VariableSymbol, SmileValue> knownValues,
+        bool reportInvalid,
+        out bool canContinue,
+        out bool definitelyContinues)
+    {
+        StaticEvaluationResult result = BoundExpressionEvaluator.Evaluate(
+            expression,
+            knownValues);
+        if (!HandleStaticResult(
+                result,
+                reportInvalid,
+                out canContinue,
+                out definitelyContinues))
+        {
+            return false;
+        }
+
+        if (!canContinue)
+        {
+            return true;
+        }
+
+        if (result.IsKnown)
+        {
+            knownValues[variable] = result.Value;
+        }
+        else
+        {
+            knownValues.Remove(variable);
+        }
+
+        return true;
+    }
+
+    private bool HandleStaticResult(
+        StaticEvaluationResult result,
+        bool reportInvalid,
+        out bool canContinue,
+        out bool definitelyContinues)
+    {
+        if (!result.IsInvalid)
+        {
+            canContinue = true;
+            // A value can be Known on every successful runtime path while its
+            // evaluation can still fail first (for example, an INPUT-dependent
+            // division hidden behind a Boolean identity). Later source-known
+            // errors are therefore diagnostics only when this expression is
+            // also guaranteed to complete.
+            definitelyContinues = !result.MayFailAtRuntime;
+            return true;
+        }
+
+        canContinue = false;
+        definitelyContinues = false;
+        if (!reportInvalid)
+        {
+            return true;
+        }
+
+        SmileArithmeticError error = result.Error!.Value;
+        _diagnostics.Add(new Diagnostic(
+            error.CompileCode,
+            DiagnosticSeverity.Error,
+            error.Message,
+            error.Span));
+        return false;
+    }
+
+    private bool TryApplyStaticIf(
+        BoundIfStatement conditional,
+        Dictionary<VariableSymbol, SmileValue> knownValues,
+        bool reportInvalid,
+        out bool canContinue,
+        out bool definitelyContinues)
+    {
+        var outgoing = new List<Dictionary<VariableSymbol, SmileValue>>();
+        bool remainingPathIsPossible = true;
+        bool remainingPathIsDefinite = reportInvalid;
+        definitelyContinues = true;
+
+        foreach (BoundConditionalClause clause in conditional.Clauses)
+        {
+            if (!remainingPathIsPossible)
+            {
+                break;
+            }
+
+            StaticEvaluationResult condition = BoundExpressionEvaluator.Evaluate(
+                clause.Condition,
+                knownValues);
+            if (condition.IsInvalid)
+            {
+                if (remainingPathIsDefinite)
+                {
+                    canContinue = false;
+                    definitelyContinues = false;
+                    return HandleStaticResult(
+                        condition,
+                        reportInvalid: true,
+                        out _,
+                        out _);
+                }
+
+                // This remaining path terminates at runtime if earlier clauses
+                // all failed. It cannot reach a later clause or the merge.
+                remainingPathIsPossible = false;
+                definitelyContinues = false;
+                break;
+            }
+
+            if (condition.MayFailAtRuntime)
+            {
+                // The condition's value describes successful evaluations only.
+                // A runtime arithmetic failure can prevent both its selected
+                // body and every later clause from being reached.
+                definitelyContinues = false;
+                remainingPathIsDefinite = false;
+            }
+
+            if (condition.IsKnown)
+            {
+                if (!condition.Value.BooleanValue)
+                {
+                    continue;
+                }
+
+                var selectedValues = new Dictionary<VariableSymbol, SmileValue>(knownValues);
+                if (!TryApplyStaticStatementList(
+                        clause.Statements,
+                        selectedValues,
+                        remainingPathIsDefinite,
+                        out bool selectedContinues,
+                        out bool selectedDefinitelyContinues))
+                {
+                    canContinue = false;
+                    definitelyContinues = false;
+                    return false;
+                }
+
+                if (selectedContinues)
+                {
+                    outgoing.Add(selectedValues);
+                }
+
+                definitelyContinues &= selectedContinues && selectedDefinitelyContinues;
+
+                remainingPathIsPossible = false;
+                break;
+            }
+
+            var branchValues = new Dictionary<VariableSymbol, SmileValue>(knownValues);
+            if (!TryApplyStaticStatementList(
+                    clause.Statements,
+                    branchValues,
+                    reportInvalid: false,
+                    out bool branchContinues,
+                    out bool branchDefinitelyContinues))
+            {
+                canContinue = false;
+                definitelyContinues = false;
+                return false;
+            }
+
+            if (branchContinues)
+            {
+                outgoing.Add(branchValues);
+            }
+
+            definitelyContinues &= branchContinues && branchDefinitelyContinues;
+
+            // A runtime-unknown condition makes both its selected body and the
+            // later-clause path conditional from this point onward.
+            remainingPathIsDefinite = false;
+        }
+
+        if (remainingPathIsPossible)
+        {
+            if (conditional.HasElseClause)
+            {
+                var elseValues = new Dictionary<VariableSymbol, SmileValue>(knownValues);
+                if (!TryApplyStaticStatementList(
+                        conditional.ElseStatements,
+                        elseValues,
+                        remainingPathIsDefinite,
+                        out bool elseContinues,
+                        out bool elseDefinitelyContinues))
+                {
+                    canContinue = false;
+                    definitelyContinues = false;
+                    return false;
+                }
+
+                if (elseContinues)
+                {
+                    outgoing.Add(elseValues);
+                }
+
+                definitelyContinues &= elseContinues && elseDefinitelyContinues;
+            }
+            else
+            {
+                outgoing.Add(new Dictionary<VariableSymbol, SmileValue>(knownValues));
+            }
+        }
+
+        canContinue = outgoing.Count > 0;
+        definitelyContinues &= canContinue;
+        if (canContinue)
+        {
+            MergeKnownValues(knownValues, outgoing);
+        }
+
+        return true;
+    }
+
+    private bool TryApplyStaticStatementList(
+        IReadOnlyList<BoundStatement> statements,
+        Dictionary<VariableSymbol, SmileValue> knownValues,
+        bool reportInvalid,
+        out bool canContinue,
+        out bool definitelyContinues)
+    {
+        definitelyContinues = true;
+        foreach (BoundStatement statement in statements)
+        {
+            if (!TryApplyStaticStatement(
+                    statement,
+                    knownValues,
+                    reportInvalid && definitelyContinues,
+                    out canContinue,
+                    out bool statementDefinitelyContinues))
+            {
+                definitelyContinues = false;
+                return false;
+            }
+
+            if (!canContinue)
+            {
+                definitelyContinues = false;
+                return true;
+            }
+
+            definitelyContinues &= statementDefinitelyContinues;
+        }
+
+        canContinue = true;
+        return true;
+    }
+
+    private static void MergeKnownValues(
+        Dictionary<VariableSymbol, SmileValue> destination,
+        IReadOnlyList<Dictionary<VariableSymbol, SmileValue>> outgoing)
+    {
+        VariableSymbol[] variables = outgoing
+            .SelectMany(environment => environment.Keys)
+            .Distinct()
+            .ToArray();
+        destination.Clear();
+
+        foreach (VariableSymbol variable in variables)
+        {
+            if (!outgoing[0].TryGetValue(variable, out SmileValue first))
+            {
+                continue;
+            }
+
+            if (outgoing.Skip(1).All(environment =>
+                    environment.TryGetValue(variable, out SmileValue candidate) &&
+                    candidate == first))
+            {
+                destination.Add(variable, first);
+            }
+        }
     }
 
     private IReadOnlyList<BoundSourceItem> BindIfBody(

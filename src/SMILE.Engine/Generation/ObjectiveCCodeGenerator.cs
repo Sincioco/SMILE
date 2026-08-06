@@ -12,6 +12,12 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
         TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
         BoundProgramAnalysis analysis = BoundProgramAnalysis.Create(program);
         TargetIntegerProfile integers = TargetIntegerProfile.Analyze(program, analysis);
+        bool hasInput = TargetRuntimeFacts.HasInput(program);
+        bool checkedArithmetic = TargetRuntimeFacts.NeedsCheckedIntegerArithmetic(program);
+        if (TargetRuntimeFacts.HasInput(program, SmileType.Integer) || checkedArithmetic)
+        {
+            integers = new TargetIntegerProfile(RequiresSigned64Storage: true, RequiresJavaScriptBigInt: true);
+        }
         IReadOnlyDictionary<BoundStatement, CCodeGenerator.RuntimeStringBuffer> runtimeStringBuffers =
             CCodeGenerator.CreateRuntimeStringBuffers(program, identifiers, analysis);
         IReadOnlyDictionary<BoundExpression, CCodeGenerator.RuntimeStringBuffer> runtimeExpressionBuffers =
@@ -26,15 +32,18 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
                     BoundLetStatement let => let.Variable,
                     BoundSetStatement set => set.Variable,
                     _ => throw new InvalidOperationException("Unexpected Objective-C runtime String statement.")
-                }));
+                })
+                .Concat(TargetRuntimeFacts.Inputs(program)
+                    .Where(input => input.Variable.Type is SmileType.String)
+                    .Select(input => input.Variable)));
         var source = new StringBuilder();
         source.AppendLine("#include <stdio.h>");
-        if (integers.RequiresSigned64Storage)
+        if (integers.RequiresSigned64Storage || hasInput)
         {
             source.AppendLine("#include <stdint.h>");
         }
 
-        if (CGenerationFacts.NeedsBooleanHeader(program))
+        if (CGenerationFacts.NeedsBooleanHeader(program) || hasInput)
         {
             source.AppendLine("#include <stdbool.h>");
         }
@@ -45,7 +54,21 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
             source.AppendLine("#include <string.h>");
         }
 
+        if (hasInput || checkedArithmetic)
+        {
+            source.AppendLine("#include <stdlib.h>");
+        }
+
+        if (hasInput)
+        {
+            source.AppendLine("#ifdef _WIN32");
+            source.AppendLine("#include <fcntl.h>");
+            source.AppendLine("#include <io.h>");
+            source.AppendLine("#endif");
+        }
+
         source.AppendLine();
+        CGeneratedRuntime.Append(source, program, checkedArithmetic);
         source.AppendLine("int main(void)");
         source.AppendLine("{");
 
@@ -75,6 +98,7 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
             exactStringLengths,
             runtimeStringBuffers,
             runtimeExpressionBuffers,
+            checkedArithmetic,
             ref emittedDeclaration,
             ref emittedExecutable,
             ref emittedBodyStatement);
@@ -102,6 +126,7 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
         IReadOnlyDictionary<VariableSymbol, string> exactStringLengths,
         IReadOnlyDictionary<BoundStatement, CCodeGenerator.RuntimeStringBuffer> runtimeStringBuffers,
         IReadOnlyDictionary<BoundExpression, CCodeGenerator.RuntimeStringBuffer> runtimeExpressionBuffers,
+        bool checkedArithmetic,
         ref bool emittedDeclaration,
         ref bool emittedExecutable,
         ref bool emittedBodyStatement)
@@ -163,7 +188,8 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
                                 integers,
                                 exactStringLengths,
                                 runtimeExpressionBuffers,
-                                declareBuffer: false);
+                                declareBuffer: false,
+                                checkedArithmetic);
                         }
                     }
                     else
@@ -179,7 +205,8 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
                                 integers,
                                 GeneratorConditionFacts.KnownValues(facts.ValuesBefore),
                                 exactStringLengths,
-                                runtimeExpressionBuffers);
+                                runtimeExpressionBuffers,
+                                checkedArithmetic);
                         source.AppendLine($"{indent}{TargetTypes.CDeclaration(let.Variable.Type, identifiers.Get(let.Variable), integers)} = {initializer};");
                         if (exactStringLengths.TryGetValue(let.Variable, out string? letLengthName))
                         {
@@ -221,7 +248,8 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
                             integers,
                             exactStringLengths,
                             runtimeExpressionBuffers,
-                            declareBuffer: true);
+                            declareBuffer: true,
+                            checkedArithmetic);
                     }
                     else
                     {
@@ -236,7 +264,8 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
                                 integers,
                                 GeneratorConditionFacts.KnownValues(facts.ValuesBefore),
                                 exactStringLengths,
-                                runtimeExpressionBuffers);
+                                runtimeExpressionBuffers,
+                                checkedArithmetic);
                         source.AppendLine($"{indent}{identifiers.Get(set.Variable)} = {value};");
                         if (exactStringLengths.TryGetValue(set.Variable, out string? setLengthName))
                         {
@@ -244,6 +273,23 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
                         }
                     }
 
+                    emittedExecutable = true;
+                    emittedBodyStatement = true;
+                    break;
+
+                case BoundInputStatement input:
+                    if (!emittedExecutable && emittedDeclaration)
+                    {
+                        source.AppendLine();
+                    }
+
+                    CGeneratedRuntime.AppendInputStatement(
+                        source,
+                        indent,
+                        input,
+                        facts.Ordinal,
+                        identifiers,
+                        exactStringLengths);
                     emittedExecutable = true;
                     emittedBodyStatement = true;
                     break;
@@ -263,7 +309,8 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
                         facts.Value.IsKnown,
                         GeneratorConditionFacts.KnownValues(facts.ValuesBefore),
                         exactStringLengths,
-                        runtimeExpressionBuffers);
+                        runtimeExpressionBuffers,
+                        checkedArithmetic);
                     emittedExecutable = true;
                     emittedBodyStatement = true;
                     break;
@@ -284,6 +331,7 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
                         exactStringLengths,
                         runtimeStringBuffers,
                         runtimeExpressionBuffers,
+                        checkedArithmetic,
                         ref emittedDeclaration,
                         ref emittedExecutable,
                         ref emittedBodyStatement);
@@ -304,6 +352,7 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
         IReadOnlyDictionary<VariableSymbol, string> exactStringLengths,
         IReadOnlyDictionary<BoundStatement, CCodeGenerator.RuntimeStringBuffer> runtimeStringBuffers,
         IReadOnlyDictionary<BoundExpression, CCodeGenerator.RuntimeStringBuffer> runtimeExpressionBuffers,
+        bool checkedArithmetic,
         ref bool emittedDeclaration,
         ref bool emittedExecutable,
         ref bool emittedBodyStatement)
@@ -320,7 +369,8 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
                     integers,
                     GeneratorConditionFacts.KnownValues(clauseFacts.ValuesBefore),
                     exactStringLengths,
-                    runtimeExpressionBuffers))
+                    runtimeExpressionBuffers,
+                    checkedArithmetic))
                 .AppendLine(")");
             source.Append(indent).AppendLine("{");
             AppendSourceItems(
@@ -333,6 +383,7 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
                 exactStringLengths,
                 runtimeStringBuffers,
                 runtimeExpressionBuffers,
+                checkedArithmetic,
                 ref emittedDeclaration,
                 ref emittedExecutable,
                 ref emittedBodyStatement);
@@ -353,6 +404,7 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
                 exactStringLengths,
                 runtimeStringBuffers,
                 runtimeExpressionBuffers,
+                checkedArithmetic,
                 ref emittedDeclaration,
                 ref emittedExecutable,
                 ref emittedBodyStatement);
@@ -369,7 +421,8 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
         bool valueIsKnown,
         IReadOnlyDictionary<VariableSymbol, SmileValue> values,
         IReadOnlyDictionary<VariableSymbol, string> exactStringLengths,
-        IReadOnlyDictionary<BoundExpression, CCodeGenerator.RuntimeStringBuffer> runtimeExpressionBuffers)
+        IReadOnlyDictionary<BoundExpression, CCodeGenerator.RuntimeStringBuffer> runtimeExpressionBuffers,
+        bool checkedArithmetic)
     {
         if (CCodeGenerator.TryAppendDirectStringVariablePrint(
             source,
@@ -377,6 +430,19 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
             print,
             identifiers,
             exactStringLengths))
+        {
+            return;
+        }
+
+        if (!valueIsKnown && CCodeGenerator.TryAppendAtomicRuntimeStringPrint(
+                source,
+                indent,
+                print,
+                identifiers,
+                integers,
+                exactStringLengths,
+                runtimeExpressionBuffers,
+                checkedArithmetic))
         {
             return;
         }
@@ -390,7 +456,9 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
                 values,
                 exactStringLengths,
                 runtimeExpressionBuffers,
-                TargetLanguage.ObjectiveC))
+                TargetLanguage.ObjectiveC,
+                checkedArithmetic,
+                forceSequential: checkedArithmetic))
         {
             return;
         }
@@ -408,7 +476,8 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
                 integers,
                 values,
                 exactStringLengths,
-                runtimeExpressionBuffers),
+                runtimeExpressionBuffers,
+                checkedArithmetic),
             integers.RequiresSigned64Storage);
         CCodeGenerator.AppendPrintfCall(source, indent, plan);
     }

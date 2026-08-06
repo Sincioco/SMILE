@@ -136,7 +136,11 @@ PRINT {Class}
         Assert.IsFalse(
             program.PrimaryFile.Content.Contains("LastName = LastName;", StringComparison.Ordinal));
 
-        await AssertCSharpMatchesEvaluatorWithoutWarnings("language.smile", source, program);
+        await AssertCSharpMatchesEvaluatorWithoutWarnings(
+            "language.smile",
+            source,
+            program,
+            InputTestData.CanonicalScriptedInput);
     }
 
     [TestMethod]
@@ -240,7 +244,8 @@ PRINT {Class}
     private async Task AssertCSharpMatchesEvaluatorWithoutWarnings(
         string programName,
         string source,
-        GeneratedProgram program)
+        GeneratedProgram program,
+        string? scriptedInput = null)
     {
         IToolchain toolchain = _toolchains.Get(TargetLanguage.CSharp);
         ToolchainStatus status = await toolchain.DetectAsync(CancellationToken.None);
@@ -255,10 +260,15 @@ PRINT {Class}
             Assert.Inconclusive(status.Message);
         }
 
-        EvaluationResult reference = _evaluator.Evaluate(source);
+        EvaluationResult reference = scriptedInput is null
+            ? _evaluator.Evaluate(source)
+            : _evaluator.Evaluate(source, scriptedInput);
         Assert.IsTrue(reference.Success, JoinDiagnostics(reference.Diagnostics));
 
-        BuildRunResult result = await toolchain.BuildAndRunAsync(program, CancellationToken.None);
+        BuildRunResult result = await toolchain.BuildAndRunAsync(
+            program,
+            CancellationToken.None,
+            scriptedInput is null ? null : BuildRunOptions.Scripted(scriptedInput));
         Assert.IsTrue(result.Success, FormatBuildAndErrorOutput(result));
         Assert.AreEqual(0, result.ExitCode);
         Assert.AreEqual(

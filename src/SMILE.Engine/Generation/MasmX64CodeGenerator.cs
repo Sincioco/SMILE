@@ -19,6 +19,9 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
     {
         BoundProgramAnalysis analysis = BoundProgramAnalysis.Create(program);
         BoundLetStatement[] lets = program.Statements.OfType<BoundLetStatement>().ToArray();
+        BoundInputStatement[] inputs = TargetRuntimeFacts.Inputs(program).ToArray();
+        bool hasInput = inputs.Length > 0;
+        bool checkedArithmetic = NeedsMasmRuntimeArithmetic(analysis);
         BoundPrintStatement[] prints = analysis.EnumerateStatements()
             .OfType<BoundPrintStatement>()
             .ToArray();
@@ -36,20 +39,29 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
             statementBuffers,
             conditionBuffers,
             booleanStringBuffers);
+        needsIntegerFormatter |= inputs.Any(input => input.Variable.Type is SmileType.Integer);
         bool needsBooleanText = NeedsMasmBooleanText(
             analysis,
             statementBuffers,
             conditionBuffers,
             booleanStringBuffers);
+        needsBooleanText |= inputs.Any(input => input.Variable.Type is SmileType.Boolean);
         var source = new StringBuilder();
 
         AppendMasmLine(source, "option casemap:none", "Keep symbol names case-sensitive.");
         source.AppendLine();
 
-        if (prints.Length > 0)
+        if (prints.Length > 0 || hasInput || checkedArithmetic)
         {
             AppendMasmLine(source, "EXTERN GetStdHandle:PROC", "Windows API: get standard console handles.");
             AppendMasmLine(source, "EXTERN WriteFile:PROC", "Windows API: write bytes to the console.");
+        }
+
+        if (hasInput)
+        {
+            AppendMasmLine(source, "EXTERN ReadFile:PROC", "Windows API: read exact redirected or console input bytes.");
+            AppendMasmLine(source, "EXTERN GetLastError:PROC", "Distinguish a closed redirected pipe from a real read failure.");
+            AppendMasmLine(source, "EXTERN SetConsoleCP:PROC", "Use UTF-8 for interactive console input.");
         }
 
         AppendMasmLine(source, "EXTERN ExitProcess:PROC", "Windows API: terminate the process.");
@@ -60,6 +72,8 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
             analysis,
             variableIndexes,
             prints.Length,
+            inputs,
+            checkedArithmetic,
             statementBuffers,
             conditionBuffers,
             booleanStringBuffers,
@@ -71,6 +85,8 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
             analysis,
             variableIndexes,
             prints.Length,
+            hasInput,
+            checkedArithmetic,
             statementBuffers,
             conditionBuffers,
             booleanStringBuffers,
@@ -86,6 +102,8 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         BoundProgramAnalysis analysis,
         IReadOnlyDictionary<VariableSymbol, int> variableIndexes,
         int printCount,
+        IReadOnlyList<BoundInputStatement> inputs,
+        bool checkedArithmetic,
         IReadOnlyDictionary<BoundStatement, RuntimeStringBuffer> statementBuffers,
         IReadOnlyDictionary<BoundConditionalClause, IReadOnlyList<RuntimeStringBuffer>> conditionBuffers,
         IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> booleanStringBuffers,
@@ -94,6 +112,8 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
     {
         if (variableIndexes.Count == 0 &&
             printCount == 0 &&
+            inputs.Count == 0 &&
+            !checkedArithmetic &&
             statementBuffers.Count == 0 &&
             conditionBuffers.Values.All(buffers => buffers.Count == 0) &&
             booleanStringBuffers.Count == 0 &&
@@ -108,6 +128,16 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         if (printCount > 0)
         {
             AppendMasmLine(source, "STD_OUTPUT_HANDLE EQU -11", "Magic value for the console output handle.");
+        }
+
+        if (inputs.Count > 0)
+        {
+            AppendMasmLine(source, "STD_INPUT_HANDLE EQU -10", "Magic value for the standard input handle.");
+        }
+
+        if (inputs.Count > 0 || checkedArithmetic)
+        {
+            AppendMasmLine(source, "STD_ERROR_HANDLE EQU -12", "Magic value for the standard error handle.");
         }
 
         int printIndex = 0;
@@ -201,6 +231,27 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
                 "Logical UTF-8 byte length of this runtime text.");
         }
 
+        if (inputs.Count > 0)
+        {
+            AppendMasmInputData(source, inputs, analysis);
+        }
+
+        if (checkedArithmetic)
+        {
+            AppendMasmStringData(
+                source,
+                "smileRuntimeOverflowMessage",
+                "SMILE Runtime Error SMILER1206: Integer arithmetic overflow.\n",
+                "Exact SMILE Integer overflow diagnostic.",
+                "Length of the overflow diagnostic.");
+            AppendMasmStringData(
+                source,
+                "smileRuntimeDivisionByZeroMessage",
+                "SMILE Runtime Error SMILER1207: Division by zero.\n",
+                "Exact SMILE division-by-zero diagnostic.",
+                "Length of the division-by-zero diagnostic.");
+        }
+
         if (needsIntegerFormatter)
         {
             AppendMasmLine(
@@ -230,6 +281,20 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
             AppendMasmLine(source, "newline BYTE 13, 10", "SMILE PRINT appends CR/LF on Windows.");
             AppendMasmLine(source, "newlineLength EQU $ - newline", "Length of the newline bytes.");
             AppendMasmLine(source, "stdoutHandle QWORD ?", "Cached standard output handle.");
+        }
+
+        if (inputs.Count > 0)
+        {
+            AppendMasmLine(source, "stdinHandle QWORD ?", "Cached standard input handle.");
+        }
+
+        if (inputs.Count > 0 || checkedArithmetic)
+        {
+            AppendMasmLine(source, "stderrHandle QWORD ?", "Cached standard error handle.");
+        }
+
+        if (printCount > 0 || inputs.Count > 0 || checkedArithmetic)
+        {
             AppendMasmLine(source, "bytesWritten DWORD ?", "WriteFile stores how many bytes it wrote.");
         }
 
@@ -295,6 +360,89 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
             : $"$ - {label}";
         AppendMasmLine(source, $"{label}Length EQU {lengthExpression}", lengthComment);
     }
+
+    private static void AppendMasmInputData(
+        StringBuilder source,
+        IReadOnlyList<BoundInputStatement> inputs,
+        BoundProgramAnalysis analysis)
+    {
+        AppendMasmLine(
+            source,
+            $"smileInputLineBuffer BYTE {SmileLanguage.MaximumInputLineUtf8Bytes} DUP (?)",
+            "One strict UTF-8 physical INPUT line before conversion.");
+        AppendMasmLine(source, "smileInputLength DWORD 0", "Current INPUT line byte length.");
+        AppendMasmLine(source, "smileInputByte BYTE 0", "One byte returned by ReadFile.");
+        AppendMasmLine(source, "smileInputSkipLf BYTE 0", "Whether the next INPUT may begin with CR's paired LF.");
+        AppendMasmLine(source, "smileInputFirstByte BYTE 0", "Whether this INPUT is classifying its first byte.");
+        AppendMasmLine(source, "smileInputBytesRead DWORD 0", "ReadFile byte count for INPUT.");
+
+        if (inputs.Any(input => input.Variable.Type is SmileType.Integer))
+        {
+            AppendMasmLine(source, "smileInputInteger QWORD 0", "Converted signed 64-bit INPUT value.");
+            AppendMasmLine(source, "smileInputNegative BYTE 0", "Integer parser sign flag.");
+        }
+
+        if (inputs.Any(input => input.Variable.Type is SmileType.Boolean))
+        {
+            AppendMasmLine(source, "smileInputBoolean BYTE 0", "Converted Boolean INPUT value.");
+        }
+
+        foreach (BoundInputStatement input in inputs)
+        {
+            int ordinal = analysis.GetStatementFacts(input).Ordinal;
+            if (input.Variable.Type is SmileType.String)
+            {
+                AppendMasmLine(
+                    source,
+                    $"{InputValueLabel(ordinal)} BYTE {SmileLanguage.MaximumInputLineUtf8Bytes} DUP (?)",
+                    $"Stable exact String storage for INPUT {input.Variable.Name}.");
+            }
+            else if (input.Variable.Type is SmileType.Integer)
+            {
+                AppendMasmLine(
+                    source,
+                    $"{InputValueLabel(ordinal)} BYTE 21 DUP (?)",
+                    $"Stable canonical Integer text for INPUT {input.Variable.Name}.");
+            }
+
+            foreach (int code in InputErrorCodes(input.Variable.Type))
+            {
+                AppendMasmStringData(
+                    source,
+                    InputErrorLabel(ordinal, code),
+                    InputErrorText(code, input.Variable.Name),
+                    $"Exact SMILER15{code:00} diagnostic for INPUT {input.Variable.Name}.",
+                    "Length of this INPUT diagnostic.");
+            }
+        }
+    }
+
+    private static IEnumerable<int> InputErrorCodes(SmileType type)
+    {
+        yield return 1;
+        yield return 2;
+        if (type is SmileType.Integer)
+        {
+            yield return 3;
+            yield return 4;
+        }
+        else if (type is SmileType.Boolean)
+        {
+            yield return 5;
+        }
+
+        yield return 6;
+    }
+
+    private static string InputErrorText(int code, string variableName) => code switch
+    {
+        1 => $"SMILE Runtime Error SMILER1501: Input ended before a value was received for '{variableName}'.\n",
+        2 => $"SMILE Runtime Error SMILER1502: Input for '{variableName}' exceeds the {SmileLanguage.MaximumInputLineUtf8Bytes}-byte UTF-8 limit.\n",
+        3 => $"SMILE Runtime Error SMILER1503: Input for '{variableName}' is not a valid Integer.\n",
+        4 => $"SMILE Runtime Error SMILER1504: Input for '{variableName}' is outside the signed 64-bit Integer range.\n",
+        5 => $"SMILE Runtime Error SMILER1505: Input for '{variableName}' must be TRUE or FALSE.\n",
+        _ => $"SMILE Runtime Error SMILER1506: Input for '{variableName}' could not be read as valid UTF-8 text.\n"
+    };
 
     private static void AppendMasmConditionData(
         StringBuilder source,
@@ -393,6 +541,8 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         BoundProgramAnalysis analysis,
         IReadOnlyDictionary<VariableSymbol, int> variableIndexes,
         int printCount,
+        bool hasInput,
+        bool checkedArithmetic,
         IReadOnlyDictionary<BoundStatement, RuntimeStringBuffer> statementBuffers,
         IReadOnlyDictionary<BoundConditionalClause, IReadOnlyList<RuntimeStringBuffer>> conditionBuffers,
         IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> booleanStringBuffers,
@@ -410,6 +560,23 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
             AppendMasmLine(source, "    mov QWORD PTR [stdoutHandle], rax", "Cache stdout for every PRINT segment.");
         }
 
+        if (hasInput)
+        {
+            source.AppendLine();
+            AppendMasmLine(source, "    mov ecx, 65001", "Use UTF-8 for interactive Windows console input.");
+            AppendMasmLine(source, "    call SetConsoleCP", "Redirected byte streams are unaffected.");
+            AppendMasmLine(source, "    mov ecx, STD_INPUT_HANDLE", "Ask Windows for stdin.");
+            AppendMasmLine(source, "    call GetStdHandle", "RAX receives the stdin handle.");
+            AppendMasmLine(source, "    mov QWORD PTR [stdinHandle], rax", "Cache stdin for every INPUT.");
+        }
+
+        if (hasInput || checkedArithmetic)
+        {
+            AppendMasmLine(source, "    mov ecx, STD_ERROR_HANDLE", "Ask Windows for stderr.");
+            AppendMasmLine(source, "    call GetStdHandle", "RAX receives the stderr handle.");
+            AppendMasmLine(source, "    mov QWORD PTR [stderrHandle], rax", "Cache stderr for exact runtime diagnostics.");
+        }
+
         int printIndex = 0;
         AppendMasmSourceItems(
             source,
@@ -424,11 +591,36 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         source.AppendLine();
         AppendMasmLine(source, "    xor ecx, ecx", "ExitProcess arg 1: process exit code 0.");
         AppendMasmLine(source, "    call ExitProcess", "End the program.");
+
+        if (checkedArithmetic)
+        {
+            AppendMasmLine(source, "smileRuntimeOverflow:", "Reached checked signed Integer overflow.");
+            AppendMasmLine(source, "    lea rdx, smileRuntimeOverflowMessage", "Address of exact SMILER1206 text.");
+            AppendMasmLine(source, "    mov r8d, smileRuntimeOverflowMessageLength", "Length of exact SMILER1206 text.");
+            AppendMasmLine(source, "    call smileFail", "Write stderr and terminate with exit code 1.");
+            AppendMasmLine(source, "smileRuntimeDivisionByZero:", "Reached checked signed Integer division by zero.");
+            AppendMasmLine(source, "    lea rdx, smileRuntimeDivisionByZeroMessage", "Address of exact SMILER1207 text.");
+            AppendMasmLine(source, "    mov r8d, smileRuntimeDivisionByZeroMessageLength", "Length of exact SMILER1207 text.");
+            AppendMasmLine(source, "    call smileFail", "Write stderr and terminate with exit code 1.");
+        }
+
         AppendMasmLine(source, "main ENDP", "End of the main procedure.");
         if (needsIntegerFormatter)
         {
             source.AppendLine();
             AppendMasmIntegerFormatter(source);
+        }
+
+        if (hasInput)
+        {
+            source.AppendLine();
+            AppendMasmInputProcedures(source, TargetRuntimeFacts.Inputs(program));
+        }
+
+        if (hasInput || checkedArithmetic)
+        {
+            source.AppendLine();
+            AppendMasmFailureProcedure(source);
         }
 
         source.AppendLine();
@@ -537,6 +729,14 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
 
                     break;
 
+                case BoundInputStatement input:
+                    AppendMasmInputStatement(
+                        source,
+                        input,
+                        facts.Ordinal,
+                        variableIndexes);
+                    break;
+
                 case BoundPrintStatement print:
                     AppendMasmPrint(
                         source,
@@ -545,6 +745,7 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
                         printIndex,
                         variableIndexes,
                         $"print{printIndex}",
+                        statementBuffers,
                         booleanStringBuffers);
                     printIndex++;
                     break;
@@ -886,6 +1087,7 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
                 if (unary.Operator.Kind is BoundUnaryOperatorKind.Negation)
                 {
                     AppendMasmLine(source, "    neg rax", "Apply SMILE signed Integer negation.");
+                    AppendMasmLine(source, "    jo smileRuntimeOverflow", "Int64.MinValue cannot be negated.");
                 }
 
                 return;
@@ -900,17 +1102,28 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
                 {
                     case BoundBinaryOperatorKind.Addition:
                         AppendMasmLine(source, "    add rax, r9", "Apply SMILE signed Integer addition.");
+                        AppendMasmLine(source, "    jo smileRuntimeOverflow", "Report signed addition overflow.");
                         break;
 
                     case BoundBinaryOperatorKind.Subtraction:
                         AppendMasmLine(source, "    sub rax, r9", "Apply SMILE signed Integer subtraction.");
+                        AppendMasmLine(source, "    jo smileRuntimeOverflow", "Report signed subtraction overflow.");
                         break;
 
                     case BoundBinaryOperatorKind.Multiplication:
                         AppendMasmLine(source, "    imul rax, r9", "Apply SMILE signed Integer multiplication.");
+                        AppendMasmLine(source, "    jo smileRuntimeOverflow", "Report signed multiplication overflow.");
                         break;
 
                     case BoundBinaryOperatorKind.Division:
+                        AppendMasmLine(source, "    test r9, r9", "Reject a zero divisor before IDIV.");
+                        AppendMasmLine(source, "    jz smileRuntimeDivisionByZero", "Report SMILER1207 without a CPU trap.");
+                        AppendMasmLine(source, "    mov r10, 08000000000000000h", "Int64.MinValue overflow sentinel.");
+                        AppendMasmLine(source, "    cmp rax, r10", "Only Int64.MinValue divided by -1 overflows.");
+                        AppendMasmLine(source, "    jne @F", "All other nonzero divisors are safe.");
+                        AppendMasmLine(source, "    cmp r9, -1", "Inspect the one overflowing divisor.");
+                        AppendMasmLine(source, "    je smileRuntimeOverflow", "Report SMILER1206 without a CPU trap.");
+                        AppendMasmLine(source, "@@:", "The signed division is safe to execute.");
                         AppendMasmLine(source, "    cqo", "Extend the signed dividend into RDX:RAX.");
                         AppendMasmLine(source, "    idiv r9", "Apply truncating signed Integer division.");
                         break;
@@ -1019,6 +1232,7 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         int printIndex,
         IReadOnlyDictionary<VariableSymbol, int> variableIndexes,
         string labelPrefix,
+        IReadOnlyDictionary<BoundStatement, RuntimeStringBuffer> statementBuffers,
         IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> booleanStringBuffers)
     {
         source.AppendLine();
@@ -1034,6 +1248,24 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         else if (print.IsBlankLine || facts.Value.IsKnown)
         {
             AppendMasmWriteLiteral(source, PrintLiteralLabel(printIndex, 0));
+        }
+        else if (statementBuffers.TryGetValue(print, out RuntimeStringBuffer? buffer))
+        {
+            int partIndex = 0;
+            AppendMasmRuntimeTextMaterialization(
+                source,
+                print.Value,
+                buffer,
+                variableIndexes,
+                labelPrefix,
+                booleanStringBuffers,
+                ref partIndex);
+            AppendMasmLine(source, $"    lea rax, {buffer.Label}", "Address of the complete PRINT value.");
+            AppendMasmLine(
+                source,
+                $"    mov edx, DWORD PTR [{buffer.Label}Length]",
+                "Length of the complete PRINT value.");
+            AppendMasmWriteBuffer(source, "rax", "edx", "atomic runtime PRINT text");
         }
         else
         {
@@ -1609,6 +1841,544 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         AppendMasmLine(source, $"{IntegerFormatProcedure} ENDP", "End signed Integer formatter.");
     }
 
+    private static void AppendMasmInputStatement(
+        StringBuilder source,
+        BoundInputStatement input,
+        int ordinal,
+        IReadOnlyDictionary<VariableSymbol, int> variableIndexes)
+    {
+        int variableIndex = variableIndexes[input.Variable];
+        string prefix = $"input{ordinal}";
+        string convertedLabel = prefix + "Converted";
+        string doneLabel = prefix + "Done";
+
+        source.AppendLine();
+        AppendMasmLine(source, $"; INPUT {input.Variable.Name}", "Read one physical UTF-8 line, then convert atomically.");
+        AppendMasmLine(source, "    call smileReadInputLine", "EAX is 0 or the SMILER15xx suffix code.");
+        AppendMasmLine(source, "    test eax, eax", "Was the physical line read successfully?");
+        AppendMasmLine(source, $"    jz {prefix}LineReady", "Only a complete valid UTF-8 line may be converted.");
+        AppendMasmLine(source, "    cmp eax, 1", "Distinguish immediate EOF.");
+        AppendMasmLine(source, $"    je {prefix}Error1", "Report SMILER1501.");
+        AppendMasmLine(source, "    cmp eax, 2", "Distinguish an over-limit line.");
+        AppendMasmLine(source, $"    je {prefix}Error2", "Report SMILER1502.");
+        AppendMasmLine(source, $"    jmp {prefix}Error6", "Every other read/decoding failure is SMILER1506.");
+        AppendMasmLine(source, $"{prefix}LineReady:", "The exact line bytes are available.");
+
+        switch (input.Variable.Type)
+        {
+            case SmileType.String:
+                AppendMasmLine(source, "    lea rsi, smileInputLineBuffer", "Copy from the shared line buffer.");
+                AppendMasmLine(source, $"    lea rdi, {InputValueLabel(ordinal)}", "Use stable storage owned by this INPUT.");
+                AppendMasmLine(source, "    mov ecx, DWORD PTR [smileInputLength]", "Copy the exact logical byte count.");
+                AppendMasmLine(source, "    rep movsb", "Embedded NUL and every other valid UTF-8 byte are data.");
+                AppendMasmLine(source, $"    lea rax, {InputValueLabel(ordinal)}", "Address of the new String value.");
+                AppendMasmLine(source, $"    mov QWORD PTR [{VariablePointerLabel(variableIndex)}], rax", "Commit the String pointer after successful reading.");
+                AppendMasmLine(source, "    mov eax, DWORD PTR [smileInputLength]", "Read the exact String byte length.");
+                AppendMasmLine(source, $"    mov DWORD PTR [{VariableLengthLabel(variableIndex)}], eax", "Commit the String length atomically with its pointer.");
+                break;
+
+            case SmileType.Integer:
+                AppendMasmLine(source, "    call smileParseInputInteger", "Validate canonical SMILE Integer input.");
+                AppendMasmLine(source, "    test eax, eax", "Was Integer conversion successful?");
+                AppendMasmLine(source, $"    jz {convertedLabel}", "Commit only a fully converted Int64 value.");
+                AppendMasmLine(source, "    cmp eax, 3", "Distinguish malformed text from range overflow.");
+                AppendMasmLine(source, $"    je {prefix}Error3", "Report SMILER1503.");
+                AppendMasmLine(source, $"    jmp {prefix}Error4", "The remaining parse failure is SMILER1504.");
+                AppendMasmLine(source, $"{convertedLabel}:", "The signed 64-bit INPUT value is ready.");
+                AppendMasmLine(source, "    mov rax, QWORD PTR [smileInputInteger]", "Read the converted value.");
+                AppendMasmLine(source, $"    mov QWORD PTR [{VariableIntegerLabel(variableIndex)}], rax", "Commit current Integer storage.");
+                AppendMasmLine(source, "    mov rcx, rax", "Format canonical decimal display text.");
+                AppendMasmLine(source, $"    call {IntegerFormatProcedure}", "Return canonical decimal pointer and length.");
+                AppendMasmLine(source, "    mov rsi, rax", "Copy formatter output before another value can reuse it.");
+                AppendMasmLine(source, $"    lea rdi, {InputValueLabel(ordinal)}", "Use stable storage owned by this INPUT.");
+                AppendMasmLine(source, "    mov ecx, edx", "Copy exactly the canonical decimal bytes.");
+                AppendMasmLine(source, "    rep movsb", "Preserve direct variable PRINT storage.");
+                AppendMasmLine(source, $"    lea rax, {InputValueLabel(ordinal)}", "Address of canonical Integer text.");
+                AppendMasmLine(source, $"    mov QWORD PTR [{VariablePointerLabel(variableIndex)}], rax", "Commit the Integer display pointer.");
+                AppendMasmLine(source, $"    mov DWORD PTR [{VariableLengthLabel(variableIndex)}], edx", "Commit the Integer display length.");
+                break;
+
+            case SmileType.Boolean:
+                AppendMasmLine(source, "    call smileParseInputBoolean", "Accept only TRUE or FALSE, ordinal-ignore-case.");
+                AppendMasmLine(source, "    test eax, eax", "Was Boolean conversion successful?");
+                AppendMasmLine(source, $"    jnz {prefix}Error5", "Report SMILER1505 without changing storage.");
+                AppendMasmLine(source, "    mov al, BYTE PTR [smileInputBoolean]", "Read the normalized Boolean value.");
+                AppendMasmLine(source, $"    mov BYTE PTR [{VariableBooleanLabel(variableIndex)}], al", "Commit current Boolean storage.");
+                AppendMasmLine(source, "    test al, al", "Choose canonical display text.");
+                AppendMasmLine(source, $"    jz {prefix}BooleanFalse", "Zero selects FALSE.");
+                AppendMasmLine(source, "    lea rax, smileBooleanTrue", "Address of canonical TRUE text.");
+                AppendMasmLine(source, "    mov edx, smileBooleanTrueLength", "Length of TRUE text.");
+                AppendMasmLine(source, $"    jmp {prefix}BooleanReady", "Skip the FALSE selection.");
+                AppendMasmLine(source, $"{prefix}BooleanFalse:", "Select canonical FALSE text.");
+                AppendMasmLine(source, "    lea rax, smileBooleanFalse", "Address of canonical FALSE text.");
+                AppendMasmLine(source, "    mov edx, smileBooleanFalseLength", "Length of FALSE text.");
+                AppendMasmLine(source, $"{prefix}BooleanReady:", "Boolean pointer and length are ready.");
+                AppendMasmLine(source, $"    mov QWORD PTR [{VariablePointerLabel(variableIndex)}], rax", "Commit the Boolean display pointer.");
+                AppendMasmLine(source, $"    mov DWORD PTR [{VariableLengthLabel(variableIndex)}], edx", "Commit the Boolean display length.");
+                break;
+        }
+
+        AppendMasmLine(source, $"    jmp {doneLabel}", "Skip statement-local fatal error labels.");
+        foreach (int code in InputErrorCodes(input.Variable.Type))
+        {
+            string label = InputErrorLabel(ordinal, code);
+            AppendMasmLine(source, $"{prefix}Error{code}:", $"Prepare exact SMILER15{code:00} text.");
+            AppendMasmLine(source, $"    lea rdx, {label}", "Runtime diagnostic address.");
+            AppendMasmLine(source, $"    mov r8d, {label}Length", "Runtime diagnostic byte length.");
+            AppendMasmLine(source, "    call smileFail", "Write stderr and terminate with exit code 1.");
+        }
+
+        AppendMasmLine(source, $"{doneLabel}:", "INPUT completed successfully.");
+    }
+
+    private static void AppendMasmInputProcedures(
+        StringBuilder source,
+        IReadOnlyList<BoundInputStatement> inputs)
+    {
+        AppendMasmReadByteProcedure(source);
+        source.AppendLine();
+        AppendMasmUtf8ValidationProcedure(source);
+        source.AppendLine();
+        AppendMasmReadLineProcedure(source);
+        if (inputs.Any(input => input.Variable.Type is SmileType.Integer))
+        {
+            source.AppendLine();
+            AppendMasmIntegerInputProcedure(source);
+        }
+
+        if (inputs.Any(input => input.Variable.Type is SmileType.Boolean))
+        {
+            source.AppendLine();
+            AppendMasmBooleanInputProcedure(source);
+        }
+    }
+
+    private static void AppendMasmReadByteProcedure(StringBuilder source)
+    {
+        AppendMasmLine(source, "smileReadInputByte PROC", "Return 0..255, -1 for EOF, or -2 for read failure.");
+        AppendMasmLine(source, "    sub rsp, 28h", "Reserve Win64 shadow space and align the stack.");
+        AppendMasmLine(source, "    mov rcx, QWORD PTR [stdinHandle]", "Read from cached stdin.");
+        AppendMasmLine(source, "    lea rdx, smileInputByte", "ReadFile destination byte.");
+        AppendMasmLine(source, "    mov r8d, 1", "Request exactly one byte for deterministic line boundaries.");
+        AppendMasmLine(source, "    lea r9, smileInputBytesRead", "Receive the number of bytes read.");
+        AppendMasmLine(source, "    mov QWORD PTR [rsp + 20h], 0", "No overlapped I/O.");
+        AppendMasmLine(source, "    call ReadFile", "Read redirected bytes or UTF-8 console bytes.");
+        AppendMasmLine(source, "    test eax, eax", "Did the Windows read operation succeed?");
+        AppendMasmLine(source, "    jz smileReadInputByteCheckFailure", "A closed pipe is EOF; other failures are SMILER1506.");
+        AppendMasmLine(source, "    cmp DWORD PTR [smileInputBytesRead], 0", "A successful zero-byte read is EOF.");
+        AppendMasmLine(source, "    je smileReadInputByteEof", "Return the EOF sentinel.");
+        AppendMasmLine(source, "    movzx eax, BYTE PTR [smileInputByte]", "Return the exact unsigned byte.");
+        AppendMasmLine(source, "    add rsp, 28h", "Release procedure stack space.");
+        AppendMasmLine(source, "    ret", "Return one input byte.");
+        AppendMasmLine(source, "smileReadInputByteCheckFailure:", "Classify the failed Windows read.");
+        AppendMasmLine(source, "    call GetLastError", "ReadFile reports redirected-pipe EOF as ERROR_BROKEN_PIPE.");
+        AppendMasmLine(source, "    cmp eax, 109", "ERROR_BROKEN_PIPE means the scripted writer closed normally.");
+        AppendMasmLine(source, "    je smileReadInputByteEof", "Treat a closed stdin pipe as EOF.");
+        AppendMasmLine(source, "    jmp smileReadInputByteFailure", "Every other failure is SMILER1506.");
+        AppendMasmLine(source, "smileReadInputByteEof:", "Return the EOF sentinel.");
+        AppendMasmLine(source, "    mov eax, -1", "-1 cannot collide with an unsigned byte.");
+        AppendMasmLine(source, "    add rsp, 28h", "Release procedure stack space.");
+        AppendMasmLine(source, "    ret", "Return EOF.");
+        AppendMasmLine(source, "smileReadInputByteFailure:", "Return the read-failure sentinel.");
+        AppendMasmLine(source, "    mov eax, -2", "-2 means SMILER1506.");
+        AppendMasmLine(source, "    add rsp, 28h", "Release procedure stack space.");
+        AppendMasmLine(source, "    ret", "Return read failure.");
+        AppendMasmLine(source, "smileReadInputByte ENDP", "End one-byte reader.");
+    }
+
+    private static void AppendMasmReadLineProcedure(StringBuilder source)
+    {
+        AppendMasmLine(source, "smileReadInputLine PROC", "Read LF, CRLF, standalone CR, or a final nonempty EOF line.");
+        AppendMasmLine(source, "    push rsi", "Preserve the nonvolatile input-buffer base register.");
+        AppendMasmLine(source, "    sub rsp, 20h", "Reserve Win64 shadow space while keeping calls aligned.");
+        AppendMasmLine(source, "    lea rsi, smileInputLineBuffer", "Use register-relative indexing for large-address-safe code.");
+        AppendMasmLine(source, "    mov DWORD PTR [smileInputLength], 0", "Start a new physical line.");
+        AppendMasmLine(source, "    mov BYTE PTR [smileInputFirstByte], 1", "Only the first byte may complete a prior CRLF ending.");
+        AppendMasmLine(source, "smileReadInputLineLoop:", "Read until one SMILE line boundary.");
+        AppendMasmLine(source, "    call smileReadInputByte", "Return a byte or a negative sentinel.");
+        AppendMasmLine(source, "    cmp eax, -2", "Did the byte read fail?");
+        AppendMasmLine(source, "    je smileReadInputLineReadFailure", "Report SMILER1506.");
+        AppendMasmLine(source, "    cmp eax, -1", "Did stdin end?");
+        AppendMasmLine(source, "    je smileReadInputLineEof", "Only a nonempty final line succeeds at EOF.");
+        AppendMasmLine(source, "    cmp BYTE PTR [smileInputFirstByte], 0", "Can this byte be a deferred CRLF line feed?");
+        AppendMasmLine(source, "    je smileReadInputLineHaveByte", "Only the first byte needs the deferred check.");
+        AppendMasmLine(source, "    mov BYTE PTR [smileInputFirstByte], 0", "All later bytes belong to this line.");
+        AppendMasmLine(source, "    cmp BYTE PTR [smileInputSkipLf], 0", "Did the prior INPUT stop immediately at CR?");
+        AppendMasmLine(source, "    je smileReadInputLineHaveByte", "There is no possible paired LF to skip.");
+        AppendMasmLine(source, "    mov BYTE PTR [smileInputSkipLf], 0", "Consume the one-byte deferred decision.");
+        AppendMasmLine(source, "    cmp al, 10", "LF paired with the prior CR is not this line's value.");
+        AppendMasmLine(source, "    je smileReadInputLineLoop", "Read this INPUT's actual first byte.");
+        AppendMasmLine(source, "smileReadInputLineHaveByte:", "Classify this exact input byte.");
+        AppendMasmLine(source, "    cmp al, 10", "LF terminates the physical line.");
+        AppendMasmLine(source, "    je smileReadInputLineValidate", "Do not include LF in the value.");
+        AppendMasmLine(source, "    cmp al, 13", "CR ends this INPUT without reading into the next line.");
+        AppendMasmLine(source, "    je smileReadInputLineCarriageReturn", "Defer a possible paired LF to the next INPUT.");
+        AppendMasmLine(source, "    mov ecx, DWORD PTR [smileInputLength]", "Current line length before storing this byte.");
+        AppendMasmLine(source, $"    cmp ecx, {SmileLanguage.MaximumInputLineUtf8Bytes}", "Enforce the pre-trim UTF-8 byte limit.");
+        AppendMasmLine(source, "    jae smileReadInputLineTooLong", "A 4097th data byte is SMILER1502.");
+        AppendMasmLine(source, "    mov BYTE PTR [rsi + rcx], al", "Preserve the byte exactly, including NUL.");
+        AppendMasmLine(source, "    inc ecx", "Advance the exact byte count.");
+        AppendMasmLine(source, "    mov DWORD PTR [smileInputLength], ecx", "Publish the updated line length.");
+        AppendMasmLine(source, "    jmp smileReadInputLineLoop", "Continue this physical line.");
+        AppendMasmLine(source, "smileReadInputLineCarriageReturn:", "Finish now so later input failures cannot affect this INPUT.");
+        AppendMasmLine(source, "    mov BYTE PTR [smileInputSkipLf], 1", "The next INPUT will discard one leading LF if present.");
+        AppendMasmLine(source, "    jmp smileReadInputLineValidate", "The CR completes this physical line.");
+        AppendMasmLine(source, "smileReadInputLineEof:", "Handle EOF without a line-ending byte.");
+        AppendMasmLine(source, "    cmp DWORD PTR [smileInputLength], 0", "A final nonempty physical line is valid.");
+        AppendMasmLine(source, "    jne smileReadInputLineValidate", "Validate and return the final value.");
+        AppendMasmLine(source, "    mov eax, 1", "Immediate EOF maps to SMILER1501.");
+        AppendMasmLine(source, "    jmp smileReadInputLineReturn", "Return the INPUT status.");
+        AppendMasmLine(source, "smileReadInputLineValidate:", "Validate the complete raw line as strict UTF-8.");
+        AppendMasmLine(source, "    call smileValidateInputUtf8", "EAX is one only for scalar, shortest-form UTF-8.");
+        AppendMasmLine(source, "    test eax, eax", "Was the byte sequence valid UTF-8?");
+        AppendMasmLine(source, "    jz smileReadInputLineInvalidUtf8", "Malformed input is SMILER1506.");
+        AppendMasmLine(source, "    xor eax, eax", "Zero means the line is ready for conversion.");
+        AppendMasmLine(source, "    jmp smileReadInputLineReturn", "Return success.");
+        AppendMasmLine(source, "smileReadInputLineTooLong:", "Return the over-limit status.");
+        AppendMasmLine(source, "    mov eax, 2", "SMILER1502 suffix code.");
+        AppendMasmLine(source, "    jmp smileReadInputLineReturn", "Return the INPUT status.");
+        AppendMasmLine(source, "smileReadInputLineReadFailure:", "Return strict read failure.");
+        AppendMasmLine(source, "smileReadInputLineInvalidUtf8:", "Return strict decoding failure.");
+        AppendMasmLine(source, "    mov eax, 6", "SMILER1506 suffix code.");
+        AppendMasmLine(source, "smileReadInputLineReturn:", "Return one deterministic status code.");
+        AppendMasmLine(source, "    add rsp, 20h", "Release procedure shadow space.");
+        AppendMasmLine(source, "    pop rsi", "Restore the nonvolatile input-buffer base register.");
+        AppendMasmLine(source, "    ret", "Return to this INPUT statement.");
+        AppendMasmLine(source, "smileReadInputLine ENDP", "End physical line reader.");
+    }
+
+    private static void AppendMasmUtf8ValidationProcedure(StringBuilder source)
+    {
+        AppendMasmLine(source, "smileValidateInputUtf8 PROC", "Validate strict Unicode scalar UTF-8 without decoding the bytes.");
+        AppendMasmLine(source, "    lea r10, smileInputLineBuffer", "Address of the current raw INPUT line.");
+        AppendMasmLine(source, "    xor ecx, ecx", "Start at byte index zero.");
+        AppendMasmLine(source, "    mov edx, DWORD PTR [smileInputLength]", "Exact number of bytes to validate.");
+        AppendMasmLine(source, "smileUtf8Next:", "Validate one Unicode scalar encoding.");
+        AppendMasmLine(source, "    cmp ecx, edx", "Have all bytes been consumed?");
+        AppendMasmLine(source, "    jae smileUtf8Valid", "The complete line is valid.");
+        AppendMasmLine(source, "    movzx eax, BYTE PTR [r10 + rcx]", "Read the leading byte.");
+        AppendMasmLine(source, "    cmp eax, 07Fh", "ASCII, including NUL, is a complete scalar.");
+        AppendMasmLine(source, "    jbe smileUtf8One", "Advance one byte.");
+        AppendMasmLine(source, "    cmp eax, 0C2h", "C0/C1 and stray continuation bytes are invalid.");
+        AppendMasmLine(source, "    jb smileUtf8Invalid", "Reject overlong or isolated bytes.");
+        AppendMasmLine(source, "    cmp eax, 0DFh", "C2..DF begin a two-byte scalar.");
+        AppendMasmLine(source, "    jbe smileUtf8Two", "Validate one continuation byte.");
+        AppendMasmLine(source, "    cmp eax, 0E0h", "E0 needs an A0..BF second byte.");
+        AppendMasmLine(source, "    je smileUtf8ThreeE0", "Reject three-byte overlong encodings.");
+        AppendMasmLine(source, "    cmp eax, 0EDh", "ED needs an 80..9F second byte.");
+        AppendMasmLine(source, "    je smileUtf8ThreeEd", "Reject UTF-16 surrogate scalars.");
+        AppendMasmLine(source, "    cmp eax, 0E1h", "E1..EF otherwise use ordinary continuations.");
+        AppendMasmLine(source, "    jb smileUtf8Invalid", "Reject impossible leading bytes.");
+        AppendMasmLine(source, "    cmp eax, 0EFh", "End of the three-byte leading range.");
+        AppendMasmLine(source, "    jbe smileUtf8Three", "Validate two continuation bytes.");
+        AppendMasmLine(source, "    cmp eax, 0F0h", "F0 needs a 90..BF second byte.");
+        AppendMasmLine(source, "    je smileUtf8FourF0", "Reject four-byte overlong encodings.");
+        AppendMasmLine(source, "    cmp eax, 0F4h", "F4 needs an 80..8F second byte.");
+        AppendMasmLine(source, "    je smileUtf8FourF4", "Reject values above U+10FFFF.");
+        AppendMasmLine(source, "    cmp eax, 0F1h", "F1..F3 use ordinary continuations.");
+        AppendMasmLine(source, "    jb smileUtf8Invalid", "Reject impossible leading bytes.");
+        AppendMasmLine(source, "    cmp eax, 0F3h", "End of valid ordinary four-byte leaders.");
+        AppendMasmLine(source, "    jbe smileUtf8Four", "Validate three continuation bytes.");
+        AppendMasmLine(source, "    jmp smileUtf8Invalid", "F5..FF are not Unicode scalar UTF-8.");
+
+        AppendMasmLine(source, "smileUtf8One:", "Advance past one ASCII byte.");
+        AppendMasmLine(source, "    inc ecx", "Consume the scalar.");
+        AppendMasmLine(source, "    jmp smileUtf8Next", "Validate the next scalar.");
+
+        AppendMasmLine(source, "smileUtf8Two:", "Validate a two-byte scalar.");
+        AppendMasmLine(source, "    lea r11d, [ecx + 1]", "Index of its continuation byte.");
+        AppendMasmLine(source, "    cmp r11d, edx", "Is that byte present?");
+        AppendMasmLine(source, "    jae smileUtf8Invalid", "Reject a truncated sequence.");
+        AppendMasmLine(source, "    movzx r8d, BYTE PTR [r10 + rcx + 1]", "Read the continuation byte.");
+        AppendMasmLine(source, "    and r8d, 0C0h", "Continuation bytes begin with binary 10.");
+        AppendMasmLine(source, "    cmp r8d, 080h", "Check the continuation prefix.");
+        AppendMasmLine(source, "    jne smileUtf8Invalid", "Reject malformed continuation.");
+        AppendMasmLine(source, "    add ecx, 2", "Consume the complete scalar.");
+        AppendMasmLine(source, "    jmp smileUtf8Next", "Validate the next scalar.");
+
+        AppendMasmLine(source, "smileUtf8ThreeE0:", "Validate E0's constrained second byte.");
+        AppendMasmLine(source, "    lea r11d, [ecx + 2]", "Index of the last required byte.");
+        AppendMasmLine(source, "    cmp r11d, edx", "Are both continuation bytes present?");
+        AppendMasmLine(source, "    jae smileUtf8Invalid", "Reject a truncated sequence.");
+        AppendMasmLine(source, "    movzx r8d, BYTE PTR [r10 + rcx + 1]", "Read E0's second byte.");
+        AppendMasmLine(source, "    cmp r8d, 0A0h", "Shortest-form E0 starts at A0.");
+        AppendMasmLine(source, "    jb smileUtf8Invalid", "Reject an overlong sequence.");
+        AppendMasmLine(source, "    cmp r8d, 0BFh", "Continuation bytes end at BF.");
+        AppendMasmLine(source, "    ja smileUtf8Invalid", "Reject malformed continuation.");
+        AppendMasmLine(source, "    jmp smileUtf8ThreeLast", "Validate the final continuation.");
+
+        AppendMasmLine(source, "smileUtf8ThreeEd:", "Validate ED's constrained second byte.");
+        AppendMasmLine(source, "    lea r11d, [ecx + 2]", "Index of the last required byte.");
+        AppendMasmLine(source, "    cmp r11d, edx", "Are both continuation bytes present?");
+        AppendMasmLine(source, "    jae smileUtf8Invalid", "Reject a truncated sequence.");
+        AppendMasmLine(source, "    movzx r8d, BYTE PTR [r10 + rcx + 1]", "Read ED's second byte.");
+        AppendMasmLine(source, "    cmp r8d, 080h", "Continuation bytes start at 80.");
+        AppendMasmLine(source, "    jb smileUtf8Invalid", "Reject malformed continuation.");
+        AppendMasmLine(source, "    cmp r8d, 09Fh", "ED must stay below surrogate encodings.");
+        AppendMasmLine(source, "    ja smileUtf8Invalid", "Reject UTF-16 surrogate values.");
+        AppendMasmLine(source, "    jmp smileUtf8ThreeLast", "Validate the final continuation.");
+
+        AppendMasmLine(source, "smileUtf8Three:", "Validate an ordinary three-byte scalar.");
+        AppendMasmLine(source, "    lea r11d, [ecx + 2]", "Index of the last required byte.");
+        AppendMasmLine(source, "    cmp r11d, edx", "Are both continuation bytes present?");
+        AppendMasmLine(source, "    jae smileUtf8Invalid", "Reject a truncated sequence.");
+        AppendMasmLine(source, "    movzx r8d, BYTE PTR [r10 + rcx + 1]", "Read the second byte.");
+        AppendMasmLine(source, "    and r8d, 0C0h", "Check its continuation prefix.");
+        AppendMasmLine(source, "    cmp r8d, 080h", "Continuation bytes begin with binary 10.");
+        AppendMasmLine(source, "    jne smileUtf8Invalid", "Reject malformed continuation.");
+        AppendMasmLine(source, "smileUtf8ThreeLast:", "Validate the third byte.");
+        AppendMasmLine(source, "    movzx r8d, BYTE PTR [r10 + rcx + 2]", "Read the final continuation.");
+        AppendMasmLine(source, "    and r8d, 0C0h", "Check its continuation prefix.");
+        AppendMasmLine(source, "    cmp r8d, 080h", "Continuation bytes begin with binary 10.");
+        AppendMasmLine(source, "    jne smileUtf8Invalid", "Reject malformed continuation.");
+        AppendMasmLine(source, "    add ecx, 3", "Consume the complete scalar.");
+        AppendMasmLine(source, "    jmp smileUtf8Next", "Validate the next scalar.");
+
+        AppendMasmLine(source, "smileUtf8FourF0:", "Validate F0's constrained second byte.");
+        AppendMasmLine(source, "    lea r11d, [ecx + 3]", "Index of the last required byte.");
+        AppendMasmLine(source, "    cmp r11d, edx", "Are all continuation bytes present?");
+        AppendMasmLine(source, "    jae smileUtf8Invalid", "Reject a truncated sequence.");
+        AppendMasmLine(source, "    movzx r8d, BYTE PTR [r10 + rcx + 1]", "Read F0's second byte.");
+        AppendMasmLine(source, "    cmp r8d, 090h", "Shortest-form F0 starts at 90.");
+        AppendMasmLine(source, "    jb smileUtf8Invalid", "Reject an overlong sequence.");
+        AppendMasmLine(source, "    cmp r8d, 0BFh", "Continuation bytes end at BF.");
+        AppendMasmLine(source, "    ja smileUtf8Invalid", "Reject malformed continuation.");
+        AppendMasmLine(source, "    jmp smileUtf8FourLast", "Validate the remaining continuations.");
+
+        AppendMasmLine(source, "smileUtf8FourF4:", "Validate F4's constrained second byte.");
+        AppendMasmLine(source, "    lea r11d, [ecx + 3]", "Index of the last required byte.");
+        AppendMasmLine(source, "    cmp r11d, edx", "Are all continuation bytes present?");
+        AppendMasmLine(source, "    jae smileUtf8Invalid", "Reject a truncated sequence.");
+        AppendMasmLine(source, "    movzx r8d, BYTE PTR [r10 + rcx + 1]", "Read F4's second byte.");
+        AppendMasmLine(source, "    cmp r8d, 080h", "Continuation bytes start at 80.");
+        AppendMasmLine(source, "    jb smileUtf8Invalid", "Reject malformed continuation.");
+        AppendMasmLine(source, "    cmp r8d, 08Fh", "F4 must stay at or below U+10FFFF.");
+        AppendMasmLine(source, "    ja smileUtf8Invalid", "Reject values above Unicode's limit.");
+        AppendMasmLine(source, "    jmp smileUtf8FourLast", "Validate the remaining continuations.");
+
+        AppendMasmLine(source, "smileUtf8Four:", "Validate an ordinary four-byte scalar.");
+        AppendMasmLine(source, "    lea r11d, [ecx + 3]", "Index of the last required byte.");
+        AppendMasmLine(source, "    cmp r11d, edx", "Are all continuation bytes present?");
+        AppendMasmLine(source, "    jae smileUtf8Invalid", "Reject a truncated sequence.");
+        AppendMasmLine(source, "    movzx r8d, BYTE PTR [r10 + rcx + 1]", "Read the second byte.");
+        AppendMasmLine(source, "    and r8d, 0C0h", "Check its continuation prefix.");
+        AppendMasmLine(source, "    cmp r8d, 080h", "Continuation bytes begin with binary 10.");
+        AppendMasmLine(source, "    jne smileUtf8Invalid", "Reject malformed continuation.");
+        AppendMasmLine(source, "smileUtf8FourLast:", "Validate the third and fourth bytes.");
+        AppendMasmLine(source, "    movzx r8d, BYTE PTR [r10 + rcx + 2]", "Read the third byte.");
+        AppendMasmLine(source, "    and r8d, 0C0h", "Check its continuation prefix.");
+        AppendMasmLine(source, "    cmp r8d, 080h", "Continuation bytes begin with binary 10.");
+        AppendMasmLine(source, "    jne smileUtf8Invalid", "Reject malformed continuation.");
+        AppendMasmLine(source, "    movzx r8d, BYTE PTR [r10 + rcx + 3]", "Read the fourth byte.");
+        AppendMasmLine(source, "    and r8d, 0C0h", "Check its continuation prefix.");
+        AppendMasmLine(source, "    cmp r8d, 080h", "Continuation bytes begin with binary 10.");
+        AppendMasmLine(source, "    jne smileUtf8Invalid", "Reject malformed continuation.");
+        AppendMasmLine(source, "    add ecx, 4", "Consume the complete scalar.");
+        AppendMasmLine(source, "    jmp smileUtf8Next", "Validate the next scalar.");
+
+        AppendMasmLine(source, "smileUtf8Valid:", "Return valid.");
+        AppendMasmLine(source, "    mov eax, 1", "One means valid strict UTF-8.");
+        AppendMasmLine(source, "    ret", "Return to the physical line reader.");
+        AppendMasmLine(source, "smileUtf8Invalid:", "Return invalid.");
+        AppendMasmLine(source, "    xor eax, eax", "Zero means malformed UTF-8.");
+        AppendMasmLine(source, "    ret", "Return to the physical line reader.");
+        AppendMasmLine(source, "smileValidateInputUtf8 ENDP", "End strict UTF-8 validator.");
+    }
+
+    private static void AppendMasmIntegerInputProcedure(StringBuilder source)
+    {
+        AppendMasmLine(source, "smileParseInputInteger PROC", "Parse ASCII-space/tab-trimmed [+-]?[0-9]+ into Int64.");
+        AppendMasmLine(source, "    push rsi", "Preserve the nonvolatile input-buffer base register.");
+        AppendMasmLine(source, "    lea rsi, smileInputLineBuffer", "Use register-relative indexing for large-address-safe code.");
+        AppendMasmLine(source, "    xor r10d, r10d", "Start index after leading trim.");
+        AppendMasmLine(source, "    mov r11d, DWORD PTR [smileInputLength]", "End index before trailing trim.");
+        AppendMasmLine(source, "smileInputIntegerTrimStart:", "Trim only ASCII space and tab.");
+        AppendMasmLine(source, "    cmp r10d, r11d", "Is any text left?");
+        AppendMasmLine(source, "    jae smileInputIntegerMalformed", "Whitespace-only input is malformed.");
+        AppendMasmLine(source, "    movzx eax, BYTE PTR [rsi + r10]", "Inspect the next leading byte.");
+        AppendMasmLine(source, "    cmp al, ' '", "ASCII space is trim whitespace.");
+        AppendMasmLine(source, "    je smileInputIntegerAdvanceStart", "Skip it.");
+        AppendMasmLine(source, "    cmp al, 9", "ASCII tab is trim whitespace.");
+        AppendMasmLine(source, "    jne smileInputIntegerTrimEnd", "No more leading trim.");
+        AppendMasmLine(source, "smileInputIntegerAdvanceStart:", "Advance leading trim.");
+        AppendMasmLine(source, "    inc r10d", "Skip one byte.");
+        AppendMasmLine(source, "    jmp smileInputIntegerTrimStart", "Continue leading trim.");
+        AppendMasmLine(source, "smileInputIntegerTrimEnd:", "Trim only ASCII space and tab at the end.");
+        AppendMasmLine(source, "    cmp r11d, r10d", "Is any text left?");
+        AppendMasmLine(source, "    jbe smileInputIntegerMalformed", "Whitespace-only input is malformed.");
+        AppendMasmLine(source, "    mov eax, r11d", "Address the last untrimmed byte.");
+        AppendMasmLine(source, "    dec eax", "Convert exclusive end to an index.");
+        AppendMasmLine(source, "    movzx eax, BYTE PTR [rsi + rax]", "Inspect trailing whitespace.");
+        AppendMasmLine(source, "    cmp al, ' '", "ASCII space is trim whitespace.");
+        AppendMasmLine(source, "    je smileInputIntegerRetreatEnd", "Skip it.");
+        AppendMasmLine(source, "    cmp al, 9", "ASCII tab is trim whitespace.");
+        AppendMasmLine(source, "    jne smileInputIntegerSign", "The token boundaries are ready.");
+        AppendMasmLine(source, "smileInputIntegerRetreatEnd:", "Retreat trailing trim.");
+        AppendMasmLine(source, "    dec r11d", "Drop one byte.");
+        AppendMasmLine(source, "    jmp smileInputIntegerTrimEnd", "Continue trailing trim.");
+        AppendMasmLine(source, "smileInputIntegerSign:", "Recognize one optional leading sign.");
+        AppendMasmLine(source, "    mov BYTE PTR [smileInputNegative], 0", "Default to nonnegative.");
+        AppendMasmLine(source, "    movzx eax, BYTE PTR [rsi + r10]", "Inspect the first token byte.");
+        AppendMasmLine(source, "    cmp al, '+'", "A leading plus is allowed.");
+        AppendMasmLine(source, "    je smileInputIntegerSkipSign", "Consume the sign.");
+        AppendMasmLine(source, "    cmp al, '-'", "A leading minus is allowed.");
+        AppendMasmLine(source, "    jne smileInputIntegerDigits", "Otherwise the first byte must be a digit.");
+        AppendMasmLine(source, "    mov BYTE PTR [smileInputNegative], 1", "Remember a negative magnitude.");
+        AppendMasmLine(source, "smileInputIntegerSkipSign:", "Consume the optional sign.");
+        AppendMasmLine(source, "    inc r10d", "Move to the first required digit.");
+        AppendMasmLine(source, "    cmp r10d, r11d", "A sign alone is invalid.");
+        AppendMasmLine(source, "    jae smileInputIntegerMalformed", "Require at least one digit.");
+        AppendMasmLine(source, "smileInputIntegerDigits:", "Accumulate an unsigned magnitude with explicit range checks.");
+        AppendMasmLine(source, "    xor r8d, r8d", "Magnitude starts at zero.");
+        AppendMasmLine(source, "smileInputIntegerDigitLoop:", "Consume every remaining ASCII digit.");
+        AppendMasmLine(source, "    cmp r10d, r11d", "Have all digits been consumed?");
+        AppendMasmLine(source, "    jae smileInputIntegerComplete", "Apply the sign and commit the parsed value.");
+        AppendMasmLine(source, "    movzx edx, BYTE PTR [rsi + r10]", "Read the next token byte.");
+        AppendMasmLine(source, "    cmp dl, '0'", "Digits begin at ASCII zero.");
+        AppendMasmLine(source, "    jb smileInputIntegerMalformed", "Reject non-digits.");
+        AppendMasmLine(source, "    cmp dl, '9'", "Digits end at ASCII nine.");
+        AppendMasmLine(source, "    ja smileInputIntegerMalformed", "Reject non-digits.");
+        AppendMasmLine(source, "    sub edx, '0'", "Convert this byte to a numeric digit.");
+        AppendMasmLine(source, "    mov rax, 0CCCCCCCCCCCCCCCh", "Int64 magnitude limit divided by ten.");
+        AppendMasmLine(source, "    cmp r8, rax", "Would another decimal digit exceed the quotient?");
+        AppendMasmLine(source, "    ja smileInputIntegerRange", "The token is numeric but outside Int64.");
+        AppendMasmLine(source, "    jb smileInputIntegerAccumulate", "There is room for any decimal digit.");
+        AppendMasmLine(source, "    mov r9d, 7", "Positive Int64 permits a final digit of seven.");
+        AppendMasmLine(source, "    cmp BYTE PTR [smileInputNegative], 0", "Negative Int64 has one extra magnitude value.");
+        AppendMasmLine(source, "    je smileInputIntegerCheckLast", "Keep the positive bound.");
+        AppendMasmLine(source, "    mov r9d, 8", "Int64.MinValue permits a final digit of eight.");
+        AppendMasmLine(source, "smileInputIntegerCheckLast:", "Check the boundary token's final digit.");
+        AppendMasmLine(source, "    cmp edx, r9d", "Is the final magnitude digit within range?");
+        AppendMasmLine(source, "    ja smileInputIntegerRange", "The token is numeric but outside Int64.");
+        AppendMasmLine(source, "smileInputIntegerAccumulate:", "Append one decimal digit.");
+        AppendMasmLine(source, "    imul r8, r8, 10", "Shift the magnitude one decimal place.");
+        AppendMasmLine(source, "    add r8, rdx", "Append this digit.");
+        AppendMasmLine(source, "    inc r10d", "Advance to the next byte.");
+        AppendMasmLine(source, "    jmp smileInputIntegerDigitLoop", "Continue the token.");
+        AppendMasmLine(source, "smileInputIntegerComplete:", "Apply the optional sign.");
+        AppendMasmLine(source, "    cmp BYTE PTR [smileInputNegative], 0", "Was a minus sign present?");
+        AppendMasmLine(source, "    je smileInputIntegerStore", "A positive magnitude is ready.");
+        AppendMasmLine(source, "    neg r8", "Two's-complement negation also represents Int64.MinValue.");
+        AppendMasmLine(source, "smileInputIntegerStore:", "Publish the converted value only after full validation.");
+        AppendMasmLine(source, "    mov QWORD PTR [smileInputInteger], r8", "Atomic conversion scratch storage.");
+        AppendMasmLine(source, "    xor eax, eax", "Zero means conversion success.");
+        AppendMasmLine(source, "    pop rsi", "Restore the nonvolatile input-buffer base register.");
+        AppendMasmLine(source, "    ret", "Return to INPUT.");
+        AppendMasmLine(source, "smileInputIntegerMalformed:", "Return malformed Integer status.");
+        AppendMasmLine(source, "    mov eax, 3", "SMILER1503 suffix code.");
+        AppendMasmLine(source, "    pop rsi", "Restore the nonvolatile input-buffer base register.");
+        AppendMasmLine(source, "    ret", "Return to INPUT.");
+        AppendMasmLine(source, "smileInputIntegerRange:", "Return Integer range status.");
+        AppendMasmLine(source, "    mov eax, 4", "SMILER1504 suffix code.");
+        AppendMasmLine(source, "    pop rsi", "Restore the nonvolatile input-buffer base register.");
+        AppendMasmLine(source, "    ret", "Return to INPUT.");
+        AppendMasmLine(source, "smileParseInputInteger ENDP", "End strict Integer parser.");
+    }
+
+    private static void AppendMasmBooleanInputProcedure(StringBuilder source)
+    {
+        AppendMasmLine(source, "smileParseInputBoolean PROC", "Parse ASCII-space/tab-trimmed TRUE or FALSE.");
+        AppendMasmLine(source, "    push rsi", "Preserve the nonvolatile input-buffer base register.");
+        AppendMasmLine(source, "    lea rsi, smileInputLineBuffer", "Use register-relative indexing for large-address-safe code.");
+        AppendMasmLine(source, "    xor r10d, r10d", "Start index after leading trim.");
+        AppendMasmLine(source, "    mov r11d, DWORD PTR [smileInputLength]", "End index before trailing trim.");
+        AppendMasmLine(source, "smileInputBooleanTrimStart:", "Trim only ASCII space and tab.");
+        AppendMasmLine(source, "    cmp r10d, r11d", "Is any text left?");
+        AppendMasmLine(source, "    jae smileInputBooleanMalformed", "Whitespace-only input is invalid Boolean text.");
+        AppendMasmLine(source, "    movzx eax, BYTE PTR [rsi + r10]", "Inspect leading whitespace.");
+        AppendMasmLine(source, "    cmp al, ' '", "ASCII space is trim whitespace.");
+        AppendMasmLine(source, "    je smileInputBooleanAdvanceStart", "Skip it.");
+        AppendMasmLine(source, "    cmp al, 9", "ASCII tab is trim whitespace.");
+        AppendMasmLine(source, "    jne smileInputBooleanTrimEnd", "No more leading trim.");
+        AppendMasmLine(source, "smileInputBooleanAdvanceStart:", "Advance leading trim.");
+        AppendMasmLine(source, "    inc r10d", "Skip one byte.");
+        AppendMasmLine(source, "    jmp smileInputBooleanTrimStart", "Continue leading trim.");
+        AppendMasmLine(source, "smileInputBooleanTrimEnd:", "Trim only ASCII space and tab at the end.");
+        AppendMasmLine(source, "    cmp r11d, r10d", "Is any text left?");
+        AppendMasmLine(source, "    jbe smileInputBooleanMalformed", "Whitespace-only input is invalid Boolean text.");
+        AppendMasmLine(source, "    mov eax, r11d", "Address the last untrimmed byte.");
+        AppendMasmLine(source, "    dec eax", "Convert exclusive end to an index.");
+        AppendMasmLine(source, "    movzx eax, BYTE PTR [rsi + rax]", "Inspect trailing whitespace.");
+        AppendMasmLine(source, "    cmp al, ' '", "ASCII space is trim whitespace.");
+        AppendMasmLine(source, "    je smileInputBooleanRetreatEnd", "Skip it.");
+        AppendMasmLine(source, "    cmp al, 9", "ASCII tab is trim whitespace.");
+        AppendMasmLine(source, "    jne smileInputBooleanToken", "The token boundaries are ready.");
+        AppendMasmLine(source, "smileInputBooleanRetreatEnd:", "Retreat trailing trim.");
+        AppendMasmLine(source, "    dec r11d", "Drop one byte.");
+        AppendMasmLine(source, "    jmp smileInputBooleanTrimEnd", "Continue trailing trim.");
+        AppendMasmLine(source, "smileInputBooleanToken:", "Compare ordinal-ignore-case ASCII token bytes.");
+        AppendMasmLine(source, "    mov eax, r11d", "Compute the trimmed token length.");
+        AppendMasmLine(source, "    sub eax, r10d", "EAX is the token byte count.");
+        AppendMasmLine(source, "    cmp eax, 4", "TRUE has four bytes.");
+        AppendMasmLine(source, "    je smileInputBooleanTrue", "Compare TRUE.");
+        AppendMasmLine(source, "    cmp eax, 5", "FALSE has five bytes.");
+        AppendMasmLine(source, "    jne smileInputBooleanMalformed", "No other Boolean spelling is valid.");
+        AppendMasmLine(source, "    movzx eax, BYTE PTR [rsi + r10]", "Compare F case-insensitively.");
+        AppendMasmLine(source, "    or al, 20h", "Fold ASCII uppercase to lowercase.");
+        AppendMasmLine(source, "    cmp al, 'f'", "Expected F.");
+        AppendMasmLine(source, "    jne smileInputBooleanMalformed", "Reject a different byte.");
+        AppendMasmLine(source, "    movzx eax, BYTE PTR [rsi + r10 + 1]", "Compare A case-insensitively.");
+        AppendMasmLine(source, "    or al, 20h", "Fold ASCII case.");
+        AppendMasmLine(source, "    cmp al, 'a'", "Expected A.");
+        AppendMasmLine(source, "    jne smileInputBooleanMalformed", "Reject a different byte.");
+        AppendMasmLine(source, "    movzx eax, BYTE PTR [rsi + r10 + 2]", "Compare L case-insensitively.");
+        AppendMasmLine(source, "    or al, 20h", "Fold ASCII case.");
+        AppendMasmLine(source, "    cmp al, 'l'", "Expected L.");
+        AppendMasmLine(source, "    jne smileInputBooleanMalformed", "Reject a different byte.");
+        AppendMasmLine(source, "    movzx eax, BYTE PTR [rsi + r10 + 3]", "Compare S case-insensitively.");
+        AppendMasmLine(source, "    or al, 20h", "Fold ASCII case.");
+        AppendMasmLine(source, "    cmp al, 's'", "Expected S.");
+        AppendMasmLine(source, "    jne smileInputBooleanMalformed", "Reject a different byte.");
+        AppendMasmLine(source, "    movzx eax, BYTE PTR [rsi + r10 + 4]", "Compare E case-insensitively.");
+        AppendMasmLine(source, "    or al, 20h", "Fold ASCII case.");
+        AppendMasmLine(source, "    cmp al, 'e'", "Expected E.");
+        AppendMasmLine(source, "    jne smileInputBooleanMalformed", "Reject a different byte.");
+        AppendMasmLine(source, "    mov BYTE PTR [smileInputBoolean], 0", "Publish FALSE after complete validation.");
+        AppendMasmLine(source, "    xor eax, eax", "Zero means conversion success.");
+        AppendMasmLine(source, "    pop rsi", "Restore the nonvolatile input-buffer base register.");
+        AppendMasmLine(source, "    ret", "Return to INPUT.");
+        AppendMasmLine(source, "smileInputBooleanTrue:", "Compare TRUE's four bytes.");
+        AppendMasmLine(source, "    movzx eax, BYTE PTR [rsi + r10]", "Compare T case-insensitively.");
+        AppendMasmLine(source, "    or al, 20h", "Fold ASCII case.");
+        AppendMasmLine(source, "    cmp al, 't'", "Expected T.");
+        AppendMasmLine(source, "    jne smileInputBooleanMalformed", "Reject a different byte.");
+        AppendMasmLine(source, "    movzx eax, BYTE PTR [rsi + r10 + 1]", "Compare R case-insensitively.");
+        AppendMasmLine(source, "    or al, 20h", "Fold ASCII case.");
+        AppendMasmLine(source, "    cmp al, 'r'", "Expected R.");
+        AppendMasmLine(source, "    jne smileInputBooleanMalformed", "Reject a different byte.");
+        AppendMasmLine(source, "    movzx eax, BYTE PTR [rsi + r10 + 2]", "Compare U case-insensitively.");
+        AppendMasmLine(source, "    or al, 20h", "Fold ASCII case.");
+        AppendMasmLine(source, "    cmp al, 'u'", "Expected U.");
+        AppendMasmLine(source, "    jne smileInputBooleanMalformed", "Reject a different byte.");
+        AppendMasmLine(source, "    movzx eax, BYTE PTR [rsi + r10 + 3]", "Compare E case-insensitively.");
+        AppendMasmLine(source, "    or al, 20h", "Fold ASCII case.");
+        AppendMasmLine(source, "    cmp al, 'e'", "Expected E.");
+        AppendMasmLine(source, "    jne smileInputBooleanMalformed", "Reject a different byte.");
+        AppendMasmLine(source, "    mov BYTE PTR [smileInputBoolean], 1", "Publish TRUE after complete validation.");
+        AppendMasmLine(source, "    xor eax, eax", "Zero means conversion success.");
+        AppendMasmLine(source, "    pop rsi", "Restore the nonvolatile input-buffer base register.");
+        AppendMasmLine(source, "    ret", "Return to INPUT.");
+        AppendMasmLine(source, "smileInputBooleanMalformed:", "Return invalid Boolean status.");
+        AppendMasmLine(source, "    mov eax, 5", "SMILER1505 suffix code.");
+        AppendMasmLine(source, "    pop rsi", "Restore the nonvolatile input-buffer base register.");
+        AppendMasmLine(source, "    ret", "Return to INPUT.");
+        AppendMasmLine(source, "smileParseInputBoolean ENDP", "End strict Boolean parser.");
+    }
+
+    private static void AppendMasmFailureProcedure(StringBuilder source)
+    {
+        AppendMasmLine(source, "smileFail PROC", "Write one exact runtime diagnostic to stderr, then exit 1.");
+        AppendMasmLine(source, "    sub rsp, 28h", "Reserve Win64 shadow space and align the stack.");
+        AppendMasmLine(source, "    mov rcx, QWORD PTR [stderrHandle]", "WriteFile arg 1: cached stderr handle.");
+        AppendMasmLine(source, "    lea r9, bytesWritten", "WriteFile arg 4: receive bytes written.");
+        AppendMasmLine(source, "    mov QWORD PTR [rsp + 20h], 0", "WriteFile arg 5: no overlapped I/O.");
+        AppendMasmLine(source, "    call WriteFile", "Emit the exact UTF-8 error line.");
+        AppendMasmLine(source, "    mov ecx, 1", "ExitProcess arg 1: runtime failure exit code.");
+        AppendMasmLine(source, "    call ExitProcess", "Stop immediately; stdout already produced remains intact.");
+        AppendMasmLine(source, "    int 3", "ExitProcess does not return.");
+        AppendMasmLine(source, "smileFail ENDP", "End fatal runtime reporter.");
+    }
+
     private static IReadOnlyDictionary<BoundStatement, RuntimeStringBuffer>
         CreateMasmStatementBuffers(BoundProgramAnalysis analysis)
     {
@@ -1625,6 +2395,11 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
                 BoundSetStatement set when
                     !facts.Value.IsKnown && set.Value is not BoundVariableExpression =>
                     set.Value,
+                BoundPrintStatement print when
+                    !print.IsBlankLine &&
+                    !facts.Value.IsKnown &&
+                    print.Value is not BoundVariableExpression =>
+                    print.Value,
                 _ => null
             };
             if (expression is null)
@@ -1822,6 +2597,33 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
                 runtime.Expression is not BoundVariableExpression));
     }
 
+    private static bool NeedsMasmRuntimeArithmetic(BoundProgramAnalysis analysis)
+    {
+        foreach (BoundStatement statement in analysis.EnumerateStatements())
+        {
+            BoundStatementAnalysis facts = analysis.GetStatementFacts(statement);
+            bool emitsArithmetic = statement switch
+            {
+                BoundLetStatement let when !facts.Value.IsKnown =>
+                    TargetRuntimeFacts.ContainsIntegerArithmetic(let.Initializer),
+                BoundSetStatement set when !facts.Value.IsKnown =>
+                    TargetRuntimeFacts.ContainsIntegerArithmetic(set.Value),
+                BoundPrintStatement { IsBlankLine: false } print when !facts.Value.IsKnown =>
+                    TargetRuntimeFacts.ContainsIntegerArithmetic(print.Value),
+                BoundIfStatement conditional => conditional.Clauses.Any(clause =>
+                    TargetRuntimeFacts.ContainsIntegerArithmetic(clause.Condition)),
+                _ => false
+            };
+
+            if (emitsArithmetic)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static bool NeedsMasmBooleanText(
         BoundProgramAnalysis analysis,
         IReadOnlyDictionary<BoundStatement, RuntimeStringBuffer> statementBuffers,
@@ -1907,6 +2709,11 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         "0" + unchecked((ulong)value).ToString("X16", CultureInfo.InvariantCulture) + "h";
 
     private static string SetValueLabel(int statementIndex) => $"set{statementIndex}Value";
+
+    private static string InputValueLabel(int statementIndex) => $"input{statementIndex}Value";
+
+    private static string InputErrorLabel(int statementIndex, int code) =>
+        $"input{statementIndex}Error{code}Message";
 
     private static string PrintLiteralLabel(int printIndex, int segmentIndex) =>
         $"print{printIndex}Segment{segmentIndex}";

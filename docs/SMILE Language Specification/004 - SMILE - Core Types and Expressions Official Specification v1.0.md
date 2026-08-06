@@ -1,6 +1,6 @@
 # SMILE - Core Types and Expressions Official Specification v1.0
 
-This specification was introduced in SMILE v0.4.1 and remains normative for SMILE v0.6.1 and later unless superseded by a newer official specification. IF-specific condition structure is additionally defined by the official IF statement specification.
+This specification was introduced in SMILE v0.4.1 and remains normative for SMILE v0.7.0 and later unless superseded by a newer official specification. IF-specific condition structure is additionally defined by the official IF statement specification, and runtime-unknown value introduction is defined by the [008 - INPUT Statement specification](008%20-%20SMILE%20-%20INPUT%20Statement%20Official%20Specification%20v1.0.md).
 
 ## Core Types
 
@@ -14,7 +14,9 @@ The SMILE v1.0 expression core has three value types:
 
 `Integer` is a signed 64-bit SMILE semantic type regardless of target-language storage. A target generator MAY use a narrower natural destination type for a complete program only when every possible branch value and range, bound Integer literal, operand, and intermediate result, including merged later uses, is proven to fit that type. This target-local storage choice MUST NOT change the valid SMILE range, checked overflow behavior, division semantics, or evaluator output.
 
-SMILE v0.6.0 has mutable variables through `SET` and conditional branches through `IF`, but it still has no input, loop, function, or external runtime data. Known-value analysis MUST be statement-order, mutation aware, and branch aware. An earlier value MUST NOT be propagated past a later SET, and a branch-specific value MUST NOT be propagated after IF unless every possible outgoing path proves the same value.
+SMILE v0.7.0 has mutable variables through `SET`, runtime values through `INPUT`, and conditional branches through `IF`, but it still has no loop or function. Static evaluation MUST distinguish Known, runtime-Unknown, and Invalid. Analysis MUST be statement-order, mutation aware, and branch aware. An earlier value MUST NOT be propagated past a later SET or INPUT, and a branch-specific value MUST NOT be propagated after IF unless every possible outgoing path proves the same value.
+
+After INPUT, a String is Unknown with 0 through 4096 possible UTF-8 bytes and possible NUL, an Integer is Unknown across the full signed 64-bit range, and a Boolean is Unknown with TRUE and FALSE both possible. Unknown is valid and MUST NOT be reported as a compile diagnostic.
 
 ## Lexical Tokens
 
@@ -23,7 +25,7 @@ The lexer recognizes:
 - identifiers;
 - string literals;
 - integer literals;
-- `LET`, `SET`, `PRINT`, `IF`, `THEN`, `ELSE`, `END`, `TRUE`, `FALSE`, `NOT`, `AND`, and `OR`;
+- `LET`, `SET`, `INPUT`, `PRINT`, `IF`, `THEN`, `ELSE`, `END`, `TRUE`, `FALSE`, `NOT`, `AND`, and `OR`;
 - the dedicated lexical representation for a SET Block String Literal;
 - `+`, `-`, `*`, `/`;
 - `=`, `<>`, `<`, `<=`, `>`, `>=`;
@@ -62,7 +64,7 @@ Operator precedence, from strongest to weakest:
 
 Binary operators are left-associative.
 
-The grammar above defines ordinary expressions. `SET` is an assignment statement, not an expression, and does not add an assignment operator. A SET Block String Literal is normalized before binding and is valid only as the complete value of `SET`; it is not a general expression primary.
+The grammar above defines ordinary expressions. `SET` is an expression-assignment statement and `INPUT` is a runtime-input statement; neither is an expression or adds an assignment operator. A SET Block String Literal is normalized before binding and is valid only as the complete value of `SET`; it is not a general expression primary.
 
 ## Canonical Expression Representation
 
@@ -75,7 +77,7 @@ BoundBinaryExpression
 
 The bound operator distinguishes Integer addition from `StringConcatenation`. Implementations must not maintain a second concatenation syntax or bound node in parallel with the typed binary-expression path.
 
-A variable-reference expression reads the current value associated with its `VariableSymbol` in the evaluator environment at that statement position. `LET` establishes the initial value and `SET` replaces the current value only after its complete right side has evaluated successfully. Current runtime state MUST NOT be stored permanently on `BoundLetStatement`.
+A variable-reference expression reads the current value associated with its `VariableSymbol` in the evaluator environment at that statement position. `LET` establishes the initial value, `SET` replaces it only after its complete right side evaluates successfully, and `INPUT` replaces it only after one complete line is read, validated, and converted successfully. Current runtime state MUST NOT be stored permanently on `BoundLetStatement`, and a pre-input value MUST NOT stand in for the runtime result.
 
 ## Operator Types
 
@@ -126,13 +128,15 @@ FALSE
 
 After binding succeeds, the shared simplifier may use the current known Boolean values at each statement position to make the same reachability decision in every expression position. It must decide whether the right operand is reachable before simplifying that operand. Binding still resolves and type-checks both sides first. For `SET`, the right side is simplified and evaluated using the old environment, and the known value changes only after the complete assignment succeeds. For `IF`, each branch begins from the same incoming environment and outgoing paths merge before a later statement can use a known value. Simplification MUST NOT delete IF clauses or bodies.
 
-The same failure remains an error when the right operand is reachable:
+The same source-known failure remains a compile error when the right operand is definitely reachable:
 
 ```basic
 LET Result = TRUE AND (1 / 0 = 0)
 ```
 
-This produces `SMILE1207`. Likewise, reachable signed 64-bit overflow produces `SMILE1206`.
+This produces `SMILE1207`. Likewise, definitely reached source-known signed 64-bit overflow produces `SMILE1206`.
+
+When reachability or an operand depends on INPUT, the compiler validates names and types but does not invent a value or report a conditional evaluation failure. If execution reaches a failing runtime operation, it produces `SMILER1206` or `SMILER1207`. If short-circuiting or branch selection makes that operation unreachable, no runtime error occurs.
 
 These rules remain normative when future SMILE versions add runtime expressions, functions, or other operations with observable evaluation behavior.
 
@@ -168,7 +172,7 @@ Age=49, Adult=TRUE
 
 ## Integer Semantics
 
-Integers are signed 64-bit values. `-9223372036854775808` through `9223372036854775807` are valid. Arithmetic overflow and division by zero are compile-time errors.
+Integers are signed 64-bit values. `-9223372036854775808` through `9223372036854775807` are valid. Arithmetic overflow and division by zero are compile-time errors only when source-known evaluation proves the failing operation is definitely reached. Runtime-dependent operations are checked when executed.
 
 Division uses integer division with truncation toward zero.
 
@@ -180,7 +184,7 @@ The valid signed boundaries are `-9223372036854775808` and `9223372036854775807`
 - `-9223372036854775808 - 1`;
 - `3037000500 * 3037000500`.
 
-Each produces `SMILE1206` when evaluated.
+Each produces `SMILE1206` when definitely evaluated from source-known values. The equivalent reached runtime-dependent operation produces `SMILER1206`. Reached runtime division by zero produces `SMILER1207`.
 
 ## Equality Semantics
 
@@ -207,10 +211,19 @@ LET DifferentCase = "Sin" = "sin"
 | `SMILE1208` | Unknown or invalid string escape sequence |
 | `SMILE1209` | Unterminated string escape sequence |
 
+Runtime arithmetic errors are separate from compile diagnostics:
+
+| Code | Meaning |
+|---|---|
+| `SMILER1206` | Reached runtime Integer arithmetic overflow |
+| `SMILER1207` | Reached runtime division by zero |
+
+A runtime error preserves stdout already produced, writes exactly one canonical stderr line plus its line ending, stops later statements, and exits with code 1.
+
 ## Target Generation Rule
 
-Every target generator must consume the shared bound tree and recursive branch-aware analysis produced by the lexer, parser, binder, and evaluator. A target generator must not invent its own expression semantics, reparse SMILE source text, interpret SET Block String delimiters, or delete an IF clause because current values make another branch predictable.
+Every target generator must consume the shared bound tree and recursive branch-aware analysis produced by the lexer, parser, binder, and evaluator. A target generator must not invent its own expression semantics, reparse SMILE source text, interpret SET Block String delimiters, substitute a pre-input value, or delete an INPUT or IF clause because current values make another branch predictable.
 
-C and Objective-C preserve native Integer and Boolean expression intent where the destination language has a direct equivalent. Low-level targets may use an evaluated value only when the corresponding branch-aware fact is `Known` on every possible incoming path; an `Unknown` expression must be lowered from current runtime storage. Every `SET` must still emit an actual storage update at its source position. C-family NUL-free String equality uses value comparison such as `strcmp`, not pointer equality; NUL-sensitive equality must account for the complete current length and bytes unless branch-aware analysis proves the exact Boolean result. Compiler-owned `printf` format strings use `%d`, `%lld`, `%s`, and safe literal-percent escaping as appropriate. A NUL-containing String uses length-aware byte output so `%s` cannot truncate the value.
+C and Objective-C preserve native Integer and Boolean expression intent where the destination language has a direct equivalent. Low-level targets may use an evaluated value only when the corresponding branch-aware fact is `Known` on every possible incoming path; an `Unknown` expression must be lowered from current runtime storage. Every `SET` and `INPUT` must still emit an actual storage update at its source position. An INPUT-dependent Integer uses full signed-64 storage and every dependent arithmetic operation checks overflow and division. C-family NUL-free String equality uses value comparison such as `strcmp`, not pointer equality; an INPUT String is NUL-capable and must retain its complete current bytes and length. Compiler-owned `printf` format strings use `%d`, `%lld`, `%s`, and safe literal-percent escaping only where semantically valid.
 
-Deterministic generated-expression conformance tests use a fixed seed, evaluate one larger valid SMILE program with `SmileEvaluator`, build every locally available target, normalize line endings only where explicitly allowed, and compare all remaining stdout bytes exactly without trimming control characters.
+Deterministic generated-expression conformance tests use a fixed seed, evaluate one larger valid SMILE program with `SmileEvaluator`, build every locally available target, provide identical scripted stdin when needed, normalize line endings only where explicitly allowed, and compare stdout, stderr, and exit code exactly without trimming control characters.

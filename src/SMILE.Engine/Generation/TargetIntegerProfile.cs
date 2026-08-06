@@ -65,6 +65,14 @@ internal sealed record TargetIntegerProfile(
                     Visit(set.Value);
                     break;
 
+                case BoundInputStatement input when input.Variable.Type is SmileType.Integer:
+                    // INPUT may produce any signed 64-bit value even when the
+                    // declaration used a small initializer. JavaScript must
+                    // likewise leave Number and use exact BigInt semantics.
+                    requiresSigned64 = true;
+                    requiresBigInt = true;
+                    break;
+
                 case BoundPrintStatement print when !print.IsBlankLine:
                     Visit(print.Value);
                     break;

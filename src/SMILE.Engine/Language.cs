@@ -4,6 +4,11 @@ using System.Text;
 
 namespace SMILE.Engine;
 
+public static class SmileLanguage
+{
+    public const int MaximumInputLineUtf8Bytes = 4096;
+}
+
 public enum DiagnosticSeverity
 {
     Info,
@@ -90,6 +95,12 @@ public sealed record SetStatementSyntax(
     string Name,
     TextSpan NameSpan,
     ExpressionSyntax Value,
+    TextSpan Span)
+    : StatementSyntax(Span);
+
+public sealed record InputStatementSyntax(
+    string Name,
+    TextSpan NameSpan,
     TextSpan Span)
     : StatementSyntax(Span);
 
@@ -318,6 +329,9 @@ public sealed record BoundLetStatement(
 public sealed record BoundSetStatement(
     VariableSymbol Variable,
     BoundExpression Value)
+    : BoundStatement;
+
+public sealed record BoundInputStatement(VariableSymbol Variable)
     : BoundStatement;
 
 public sealed record BoundPrintStatement(
@@ -623,189 +637,403 @@ public static class BoundStringExpression
     }
 }
 
+public enum StaticEvaluationKind
+{
+    Known,
+    Unknown,
+    Invalid
+}
+
+public enum SmileArithmeticErrorKind
+{
+    IntegerOverflow,
+    DivisionByZero
+}
+
+public readonly record struct SmileArithmeticError(
+    SmileArithmeticErrorKind Kind,
+    TextSpan Span)
+{
+    public string CompileCode =>
+        Kind is SmileArithmeticErrorKind.IntegerOverflow ? "SMILE1206" : "SMILE1207";
+
+    public string RuntimeCode =>
+        Kind is SmileArithmeticErrorKind.IntegerOverflow ? "SMILER1206" : "SMILER1207";
+
+    public string Message =>
+        Kind is SmileArithmeticErrorKind.IntegerOverflow
+            ? "Integer arithmetic overflow."
+            : "Division by zero.";
+}
+
+// Static evaluation has three semantically different outcomes. Unknown means
+// a correctly typed expression depends on runtime data; Invalid means a
+// definitely reached source-known operation cannot produce a value. The
+// runtime-failure bit prevents an otherwise-known Boolean identity from being
+// folded when evaluating its left side can still fail.
+public readonly record struct StaticEvaluationResult(
+    StaticEvaluationKind Kind,
+    SmileValue Value,
+    SmileArithmeticError? Error,
+    bool MayFailAtRuntime)
+{
+    public bool IsKnown => Kind is StaticEvaluationKind.Known;
+
+    public bool IsUnknown => Kind is StaticEvaluationKind.Unknown;
+
+    public bool IsInvalid => Kind is StaticEvaluationKind.Invalid;
+
+    public static StaticEvaluationResult Known(
+        SmileValue value,
+        bool mayFailAtRuntime = false) =>
+        new(StaticEvaluationKind.Known, value, null, mayFailAtRuntime);
+
+    public static StaticEvaluationResult Unknown(bool mayFailAtRuntime = false) =>
+        new(StaticEvaluationKind.Unknown, default, null, mayFailAtRuntime);
+
+    public static StaticEvaluationResult Invalid(SmileArithmeticError error) =>
+        new(StaticEvaluationKind.Invalid, default, error, MayFailAtRuntime: true);
+}
+
 public static class BoundExpressionEvaluator
 {
+    public static StaticEvaluationResult Evaluate(
+        BoundExpression expression,
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values) =>
+        expression switch
+        {
+            BoundStringLiteralExpression literal =>
+                StaticEvaluationResult.Known(SmileValue.FromString(literal.Value)),
+            BoundIntegerLiteralExpression literal =>
+                StaticEvaluationResult.Known(SmileValue.FromInteger(literal.Value)),
+            BoundBooleanLiteralExpression literal =>
+                StaticEvaluationResult.Known(SmileValue.FromBoolean(literal.Value)),
+            BoundVariableExpression variable when values.TryGetValue(variable.Variable, out SmileValue value) =>
+                StaticEvaluationResult.Known(value),
+            BoundVariableExpression => StaticEvaluationResult.Unknown(),
+            BoundUnaryExpression unary => EvaluateUnary(unary, values),
+            BoundBinaryExpression binary => EvaluateBinary(binary, values),
+            BoundInterpolatedStringExpression interpolated => EvaluateInterpolatedString(interpolated, values),
+            _ => StaticEvaluationResult.Unknown()
+        };
+
+    // This compatibility API remains useful for concrete-only callers. A
+    // result that is known only on successful runtime paths is deliberately not
+    // returned as a foldable value when reaching it may itself fail.
     public static bool TryEvaluate(
         BoundExpression expression,
         IReadOnlyDictionary<VariableSymbol, SmileValue> values,
         out SmileValue value,
         ICollection<Diagnostic>? diagnostics = null)
     {
-        switch (expression)
+        StaticEvaluationResult result = Evaluate(expression, values);
+        if (result.IsInvalid && result.Error is SmileArithmeticError error)
         {
-            case BoundStringLiteralExpression literal:
-                value = SmileValue.FromString(literal.Value);
-                return true;
-
-            case BoundIntegerLiteralExpression literal:
-                value = SmileValue.FromInteger(literal.Value);
-                return true;
-
-            case BoundBooleanLiteralExpression literal:
-                value = SmileValue.FromBoolean(literal.Value);
-                return true;
-
-            case BoundVariableExpression variable:
-                return values.TryGetValue(variable.Variable, out value);
-
-            case BoundUnaryExpression unary:
-                return TryEvaluateUnary(unary, values, out value, diagnostics);
-
-            case BoundBinaryExpression binary:
-                return TryEvaluateBinary(binary, values, out value, diagnostics);
-
-            case BoundInterpolatedStringExpression interpolated:
-                return TryEvaluateInterpolatedString(interpolated, values, out value, diagnostics);
-
-            default:
-                value = default;
-                return false;
+            diagnostics?.Add(new Diagnostic(
+                error.CompileCode,
+                DiagnosticSeverity.Error,
+                error.Message,
+                error.Span));
         }
+
+        if (result.IsKnown && !result.MayFailAtRuntime)
+        {
+            value = result.Value;
+            return true;
+        }
+
+        value = default;
+        return false;
     }
 
-    private static bool TryEvaluateUnary(
+    private static StaticEvaluationResult EvaluateUnary(
         BoundUnaryExpression unary,
-        IReadOnlyDictionary<VariableSymbol, SmileValue> values,
-        out SmileValue value,
-        ICollection<Diagnostic>? diagnostics)
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values)
     {
-        if (!TryEvaluate(unary.Operand, values, out SmileValue operand, diagnostics))
+        StaticEvaluationResult operand = Evaluate(unary.Operand, values);
+        if (operand.IsInvalid)
         {
-            value = default;
-            return false;
+            return operand;
+        }
+
+        if (!operand.IsKnown)
+        {
+            bool mayFail = operand.MayFailAtRuntime ||
+                unary.Operator.Kind is BoundUnaryOperatorKind.Negation;
+            return StaticEvaluationResult.Unknown(mayFail);
         }
 
         try
         {
-            value = unary.Operator.Kind switch
+            SmileValue value = unary.Operator.Kind switch
             {
-                BoundUnaryOperatorKind.Identity => operand,
-                BoundUnaryOperatorKind.Negation => SmileValue.FromInteger(checked(-operand.IntegerValue)),
-                BoundUnaryOperatorKind.LogicalNegation => SmileValue.FromBoolean(!operand.BooleanValue),
+                BoundUnaryOperatorKind.Identity => operand.Value,
+                BoundUnaryOperatorKind.Negation =>
+                    SmileValue.FromInteger(checked(-operand.Value.IntegerValue)),
+                BoundUnaryOperatorKind.LogicalNegation =>
+                    SmileValue.FromBoolean(!operand.Value.BooleanValue),
                 _ => default
             };
-            return true;
+            return StaticEvaluationResult.Known(value, operand.MayFailAtRuntime);
         }
         catch (OverflowException)
         {
-            AddDiagnostic(
-                diagnostics,
-                "SMILE1206",
-                "Integer arithmetic overflow.",
-                unary.OperatorSpan);
-            value = default;
-            return false;
+            return operand.MayFailAtRuntime
+                ? StaticEvaluationResult.Unknown(mayFailAtRuntime: true)
+                : StaticEvaluationResult.Invalid(new SmileArithmeticError(
+                    SmileArithmeticErrorKind.IntegerOverflow,
+                    unary.OperatorSpan));
         }
     }
 
-    private static bool TryEvaluateBinary(
+    private static StaticEvaluationResult EvaluateBinary(
         BoundBinaryExpression binary,
-        IReadOnlyDictionary<VariableSymbol, SmileValue> values,
-        out SmileValue value,
-        ICollection<Diagnostic>? diagnostics)
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values)
     {
-        if (!TryEvaluate(binary.Left, values, out SmileValue left, diagnostics))
+        StaticEvaluationResult left = Evaluate(binary.Left, values);
+        if (left.IsInvalid)
         {
-            value = default;
-            return false;
+            return left;
         }
 
-        // Logical operands are evaluated left to right. The binder has already
-        // resolved and type-checked both sides, but an unreachable right side
-        // must not produce evaluation-time failures such as division by zero.
-        if (binary.Operator.Kind is BoundBinaryOperatorKind.LogicalAnd && !left.BooleanValue)
+        if (binary.Operator.Kind is
+            BoundBinaryOperatorKind.LogicalAnd or
+            BoundBinaryOperatorKind.LogicalOr)
         {
-            value = SmileValue.FromBoolean(false);
-            return true;
+            return EvaluateLogical(binary, left, values);
         }
 
-        if (binary.Operator.Kind is BoundBinaryOperatorKind.LogicalOr && left.BooleanValue)
+        StaticEvaluationResult right = Evaluate(binary.Right, values);
+        if (right.IsInvalid)
         {
-            value = SmileValue.FromBoolean(true);
-            return true;
+            // Ordinary binary operands are evaluated left to right. A failure
+            // in the right operand is compile-time definite only when the left
+            // operand itself cannot terminate first at runtime.
+            return left.MayFailAtRuntime
+                ? StaticEvaluationResult.Unknown(mayFailAtRuntime: true)
+                : right;
         }
 
-        if (!TryEvaluate(binary.Right, values, out SmileValue right, diagnostics))
+        if (binary.Operator.Kind is BoundBinaryOperatorKind.Division &&
+            right.IsKnown &&
+            right.Value.IntegerValue == 0)
         {
-            value = default;
-            return false;
+            return left.MayFailAtRuntime || right.MayFailAtRuntime
+                ? StaticEvaluationResult.Unknown(mayFailAtRuntime: true)
+                : StaticEvaluationResult.Invalid(new SmileArithmeticError(
+                    SmileArithmeticErrorKind.DivisionByZero,
+                binary.OperatorSpan));
+        }
+
+        if (binary.Operator.Kind is BoundBinaryOperatorKind.Multiplication &&
+            ((left.IsKnown && left.Value.IntegerValue == 0) ||
+             (right.IsKnown && right.Value.IntegerValue == 0)))
+        {
+            // Both operands are still evaluated, so retain any earlier runtime
+            // failure possibility. On every successful path, however, the
+            // multiplication's value is exactly zero.
+            return StaticEvaluationResult.Known(
+                SmileValue.FromInteger(0),
+                left.MayFailAtRuntime || right.MayFailAtRuntime);
+        }
+
+        if (!left.IsKnown || !right.IsKnown)
+        {
+            bool operationMayFail = UnknownIntegerOperationMayFail(
+                binary.Operator.Kind,
+                left,
+                right);
+            return StaticEvaluationResult.Unknown(
+                left.MayFailAtRuntime || right.MayFailAtRuntime || operationMayFail);
         }
 
         try
         {
-            if (binary.Operator.Kind is BoundBinaryOperatorKind.Division &&
-                right.IntegerValue == 0)
+            SmileValue value = ApplyBinary(binary.Operator.Kind, left.Value, right.Value);
+            return StaticEvaluationResult.Known(
+                value,
+                left.MayFailAtRuntime || right.MayFailAtRuntime);
+        }
+        catch (DivideByZeroException)
+        {
+            return left.MayFailAtRuntime || right.MayFailAtRuntime
+                ? StaticEvaluationResult.Unknown(mayFailAtRuntime: true)
+                : StaticEvaluationResult.Invalid(new SmileArithmeticError(
+                    SmileArithmeticErrorKind.DivisionByZero,
+                    binary.OperatorSpan));
+        }
+        catch (OverflowException)
+        {
+            return left.MayFailAtRuntime || right.MayFailAtRuntime
+                ? StaticEvaluationResult.Unknown(mayFailAtRuntime: true)
+                : StaticEvaluationResult.Invalid(new SmileArithmeticError(
+                    SmileArithmeticErrorKind.IntegerOverflow,
+                    binary.OperatorSpan));
+        }
+    }
+
+    private static bool UnknownIntegerOperationMayFail(
+        BoundBinaryOperatorKind kind,
+        StaticEvaluationResult left,
+        StaticEvaluationResult right)
+    {
+        bool LeftIs(long value) => left.IsKnown && left.Value.IntegerValue == value;
+        bool RightIs(long value) => right.IsKnown && right.Value.IntegerValue == value;
+
+        return kind switch
+        {
+            // These remaining identities cannot overflow. Multiplication by
+            // zero is handled above because it also proves the result value.
+            BoundBinaryOperatorKind.Addition => !(LeftIs(0) || RightIs(0)),
+            BoundBinaryOperatorKind.Subtraction => !RightIs(0),
+            BoundBinaryOperatorKind.Multiplication =>
+                !(LeftIs(0) || RightIs(0) || LeftIs(1) || RightIs(1)),
+            BoundBinaryOperatorKind.Division =>
+                !right.IsKnown || right.Value.IntegerValue is 0 or -1,
+            _ => false
+        };
+    }
+
+    private static StaticEvaluationResult EvaluateLogical(
+        BoundBinaryExpression binary,
+        StaticEvaluationResult left,
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values)
+    {
+        bool isAnd = binary.Operator.Kind is BoundBinaryOperatorKind.LogicalAnd;
+        if (left.IsKnown)
+        {
+            bool shortCircuits = isAnd
+                ? !left.Value.BooleanValue
+                : left.Value.BooleanValue;
+            if (shortCircuits)
             {
-                AddDiagnostic(
-                    diagnostics,
-                    "SMILE1207",
-                    "Division by zero.",
-                    binary.OperatorSpan);
-                value = default;
-                return false;
+                return StaticEvaluationResult.Known(
+                    SmileValue.FromBoolean(left.Value.BooleanValue),
+                    left.MayFailAtRuntime);
             }
 
-            value = binary.Operator.Kind switch
+            StaticEvaluationResult reachedRight = Evaluate(binary.Right, values);
+            if (reachedRight.IsInvalid)
             {
-                BoundBinaryOperatorKind.Addition => SmileValue.FromInteger(checked(left.IntegerValue + right.IntegerValue)),
-                BoundBinaryOperatorKind.Subtraction => SmileValue.FromInteger(checked(left.IntegerValue - right.IntegerValue)),
-                BoundBinaryOperatorKind.Multiplication => SmileValue.FromInteger(checked(left.IntegerValue * right.IntegerValue)),
-                BoundBinaryOperatorKind.Division => SmileValue.FromInteger(checked(left.IntegerValue / right.IntegerValue)),
-                BoundBinaryOperatorKind.StringConcatenation => SmileValue.FromString(left.StringValue + right.StringValue),
-                BoundBinaryOperatorKind.Equality => SmileValue.FromBoolean(ValuesEqual(left, right)),
-                BoundBinaryOperatorKind.Inequality => SmileValue.FromBoolean(!ValuesEqual(left, right)),
-                BoundBinaryOperatorKind.Less => SmileValue.FromBoolean(left.IntegerValue < right.IntegerValue),
-                BoundBinaryOperatorKind.LessOrEquals => SmileValue.FromBoolean(left.IntegerValue <= right.IntegerValue),
-                BoundBinaryOperatorKind.Greater => SmileValue.FromBoolean(left.IntegerValue > right.IntegerValue),
-                BoundBinaryOperatorKind.GreaterOrEquals => SmileValue.FromBoolean(left.IntegerValue >= right.IntegerValue),
-                BoundBinaryOperatorKind.LogicalAnd => SmileValue.FromBoolean(left.BooleanValue && right.BooleanValue),
-                BoundBinaryOperatorKind.LogicalOr => SmileValue.FromBoolean(left.BooleanValue || right.BooleanValue),
-                _ => default
-            };
-            return value.Type is not SmileType.Error;
+                return left.MayFailAtRuntime
+                    ? StaticEvaluationResult.Unknown(mayFailAtRuntime: true)
+                    : reachedRight;
+            }
+
+            if (reachedRight.IsKnown)
+            {
+                return StaticEvaluationResult.Known(
+                    SmileValue.FromBoolean(reachedRight.Value.BooleanValue),
+                    left.MayFailAtRuntime || reachedRight.MayFailAtRuntime);
+            }
+
+            return StaticEvaluationResult.Unknown(
+                left.MayFailAtRuntime || reachedRight.MayFailAtRuntime);
         }
-        catch (OverflowException)
+
+        // With an unknown left value, the right side is only conditionally
+        // reached. Even a source-known failure there is therefore a runtime
+        // possibility rather than an unconditional compiler diagnostic.
+        StaticEvaluationResult right = Evaluate(binary.Right, values);
+        if (right.IsInvalid)
         {
-            AddDiagnostic(
-                diagnostics,
-                "SMILE1206",
-                "Integer arithmetic overflow.",
-                binary.OperatorSpan);
-            value = default;
-            return false;
+            return StaticEvaluationResult.Unknown(mayFailAtRuntime: true);
         }
+
+        bool mayFail = left.MayFailAtRuntime || right.MayFailAtRuntime;
+        if (right.IsKnown &&
+            ((isAnd && !right.Value.BooleanValue) ||
+             (!isAnd && right.Value.BooleanValue)))
+        {
+            return StaticEvaluationResult.Known(
+                SmileValue.FromBoolean(right.Value.BooleanValue),
+                mayFail);
+        }
+
+        return StaticEvaluationResult.Unknown(mayFail);
     }
 
-    private static bool TryEvaluateInterpolatedString(
+    private static StaticEvaluationResult EvaluateInterpolatedString(
         BoundInterpolatedStringExpression interpolated,
-        IReadOnlyDictionary<VariableSymbol, SmileValue> values,
-        out SmileValue value,
-        ICollection<Diagnostic>? diagnostics)
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values)
     {
         var builder = new StringBuilder();
+        bool allKnown = true;
+        bool mayFail = false;
+
         foreach (BoundInterpolatedPart part in interpolated.Parts)
         {
-            switch (part)
+            if (part is BoundInterpolatedTextPart text)
             {
-                case BoundInterpolatedTextPart text:
+                if (allKnown)
+                {
                     builder.Append(text.Text);
-                    break;
+                }
 
-                case BoundInterpolationExpressionPart interpolation:
-                    if (!TryEvaluate(interpolation.Expression, values, out SmileValue partValue, diagnostics))
-                    {
-                        value = default;
-                        return false;
-                    }
+                continue;
+            }
 
-                    builder.Append(partValue.ToDisplayText());
-                    break;
+            var interpolation = (BoundInterpolationExpressionPart)part;
+            StaticEvaluationResult value = Evaluate(interpolation.Expression, values);
+            if (value.IsInvalid)
+            {
+                return mayFail
+                    ? StaticEvaluationResult.Unknown(mayFailAtRuntime: true)
+                    : value;
+            }
+
+            mayFail |= value.MayFailAtRuntime;
+            if (!value.IsKnown)
+            {
+                allKnown = false;
+                continue;
+            }
+
+            if (allKnown)
+            {
+                builder.Append(value.Value.ToDisplayText());
             }
         }
 
-        value = SmileValue.FromString(builder.ToString());
-        return true;
+        return allKnown
+            ? StaticEvaluationResult.Known(SmileValue.FromString(builder.ToString()), mayFail)
+            : StaticEvaluationResult.Unknown(mayFail);
     }
+
+    private static SmileValue ApplyBinary(
+        BoundBinaryOperatorKind kind,
+        SmileValue left,
+        SmileValue right) =>
+        kind switch
+        {
+            BoundBinaryOperatorKind.Addition =>
+                SmileValue.FromInteger(checked(left.IntegerValue + right.IntegerValue)),
+            BoundBinaryOperatorKind.Subtraction =>
+                SmileValue.FromInteger(checked(left.IntegerValue - right.IntegerValue)),
+            BoundBinaryOperatorKind.Multiplication =>
+                SmileValue.FromInteger(checked(left.IntegerValue * right.IntegerValue)),
+            BoundBinaryOperatorKind.Division =>
+                SmileValue.FromInteger(checked(left.IntegerValue / right.IntegerValue)),
+            BoundBinaryOperatorKind.StringConcatenation =>
+                SmileValue.FromString(left.StringValue + right.StringValue),
+            BoundBinaryOperatorKind.Equality =>
+                SmileValue.FromBoolean(ValuesEqual(left, right)),
+            BoundBinaryOperatorKind.Inequality =>
+                SmileValue.FromBoolean(!ValuesEqual(left, right)),
+            BoundBinaryOperatorKind.Less =>
+                SmileValue.FromBoolean(left.IntegerValue < right.IntegerValue),
+            BoundBinaryOperatorKind.LessOrEquals =>
+                SmileValue.FromBoolean(left.IntegerValue <= right.IntegerValue),
+            BoundBinaryOperatorKind.Greater =>
+                SmileValue.FromBoolean(left.IntegerValue > right.IntegerValue),
+            BoundBinaryOperatorKind.GreaterOrEquals =>
+                SmileValue.FromBoolean(left.IntegerValue >= right.IntegerValue),
+            BoundBinaryOperatorKind.LogicalAnd =>
+                SmileValue.FromBoolean(left.BooleanValue && right.BooleanValue),
+            BoundBinaryOperatorKind.LogicalOr =>
+                SmileValue.FromBoolean(left.BooleanValue || right.BooleanValue),
+            _ => default
+        };
 
     private static bool ValuesEqual(SmileValue left, SmileValue right) =>
         left.Type switch
@@ -815,15 +1043,6 @@ public static class BoundExpressionEvaluator
             SmileType.Boolean => left.BooleanValue == right.BooleanValue,
             _ => false
         };
-
-    private static void AddDiagnostic(
-        ICollection<Diagnostic>? diagnostics,
-        string code,
-        string message,
-        TextSpan span)
-    {
-        diagnostics?.Add(new Diagnostic(code, DiagnosticSeverity.Error, message, span));
-    }
 }
 
 public enum TargetLanguage

@@ -8,7 +8,7 @@ SMILE v0.1 supported only:
 PRINT "text"
 ```
 
-SMILE v0.6.1 implements the official LET, SET, IF, Friendly PRINT, String literal, typed expression, full-line comment, and source-layout behavior defined in:
+SMILE v0.7.0 implements the official LET, SET, INPUT, IF, Friendly PRINT, String literal, typed expression, full-line comment, and source-layout behavior defined in:
 
 - [001 - SMILE - SET Statement Official Specification v1.0](SMILE%20Language%20Specification/001%20-%20SMILE%20-%20SET%20Statement%20Official%20Specification%20v1.0.md)
 - [002 - SMILE - PRINT Statement Official Specification v1.0](SMILE%20Language%20Specification/002%20-%20SMILE%20-%20PRINT%20Statement%20Official%20Specification%20v1.0.md)
@@ -17,8 +17,9 @@ SMILE v0.6.1 implements the official LET, SET, IF, Friendly PRINT, String litera
 - [005 - SMILE - LET Statement Official Specification v1.0](SMILE%20Language%20Specification/005%20-%20SMILE%20-%20LET%20Statement%20Official%20Specification%20v1.0.md)
 - [006 - SMILE - IF Statement Official Specification v1.0](SMILE%20Language%20Specification/006%20-%20SMILE%20-%20IF%20Statement%20Official%20Specification%20v1.0.md)
 - [007 - SMILE - Full-Line Comments and Source Layout Preservation Official Specification v1.0](SMILE%20Language%20Specification/007%20-%20SMILE%20-%20Full-Line%20Comments%20and%20Source%20Layout%20Preservation%20Official%20Specification%20v1.0.md)
+- [008 - SMILE - INPUT Statement Official Specification v1.0](SMILE%20Language%20Specification/008%20-%20SMILE%20-%20INPUT%20Statement%20Official%20Specification%20v1.0.md)
 
-Current v0.6.1 behavior includes:
+Current v0.7.0 behavior includes:
 
 - `LET Name = "Sin"` string variable declarations.
 - `LET Age = 49` integer variable declarations.
@@ -27,11 +28,16 @@ Current v0.6.1 behavior includes:
 - `LET FullName = FirstName + " " + LastName` concatenation initializers.
 - `LET Greeting = $"Hello {FullName}!"` interpolated string initializers.
 - Mutable runtime values declared by `LET` and changed by fixed-type, case-insensitive `SET` assignment.
+- Runtime input through case-insensitive `INPUT variable`, targeting one already-declared String, Integer, or Boolean variable at top level or inside any IF-related body.
+- One strict UTF-8 logical input line per executed INPUT, with a 4096-byte maximum, complete String preservation, invariant signed-decimal Int64 conversion, and exact TRUE/FALSE Boolean conversion.
+- Injectable scripted evaluator input plus canonical runtime stdout, stderr, exit code, and `SMILER1501` through `SMILER1506` input errors.
+- Runtime-unknown analysis after INPUT, including full signed-64 Integer range, 0-to-4096-byte NUL-capable String planning, both Boolean values, and conservative branch merging.
+- Checked runtime signed-64 arithmetic with `SMILER1206` overflow and `SMILER1207` division-by-zero errors only when a runtime-dependent operation is reached.
 - Recursive statement-order and branch-aware known-value analysis for diagnostics, mutation-aware simplification, Integer/String planning, and low-level target generation.
 - Block IF with optional same-line ELSE IF clauses, optional final ELSE, mandatory THEN, and mandatory END IF.
 - Call-free IF conditions whose complete result is Boolean and whose every atomic leaf contains an explicit comparison and right-hand operand.
 - A same-line ELSE IF clause distinct from a nested IF after a standalone ELSE line.
-- PRINT, SET, nested IF, blank lines, and SET Block String Literals in branches, with LET rejected until scopes are introduced.
+- PRINT, SET, INPUT, nested IF, blank lines, and SET Block String Literals in branches, with LET rejected until scopes are introduced.
 - First-successful-clause evaluator execution and selected-branch-only mutation.
 - Recursive Known/Unknown analysis that merges all possible outgoing paths and never leaks branch-specific values.
 - Genuine idiomatic control flow across all ten targets without deleting source clauses or bodies.
@@ -65,5 +71,7 @@ Current v0.6.1 behavior includes:
 - Stable diagnostics for malformed interpolation, duplicate variables, undefined variables, missing `PRINT` whitespace, and second `PRINT` keywords on one line.
 - Stable diagnostics for malformed SET statements, undefined targets, type mismatches, and invalid block placement or delimiters.
 - Stable `SMILE1401` through `SMILE1416` diagnostics for IF headers, terminators, condition structure, clause placement, branch restrictions, and the nesting safety limit.
+- Stable `SMILE1501` through `SMILE1505` diagnostics for malformed or undefined INPUT targets.
+- Scripted stdin conformance for all ten targets and live interactive CLI/Desktop INPUT execution without blocking the WPF UI thread.
 
 The old v0.1 `PRINT "text"` form remains valid.

@@ -216,16 +216,22 @@ public sealed class JavaRuntimeReadinessTests
         Assert.IsTrue(File.Exists(languagePath), $"Deployed language reference not found: {languagePath}");
 
         string source = await File.ReadAllTextAsync(languagePath, Encoding.UTF8);
-        await AssertJavaMatchesEvaluatorAsync("language.smile", source);
+        await AssertJavaMatchesEvaluatorAsync(
+            "language.smile",
+            source,
+            scriptedInput: InputTestData.CanonicalScriptedInput);
     }
 
     private async Task AssertJavaMatchesEvaluatorAsync(
         string programName,
         string source,
-        string? expectedHex = null)
+        string? expectedHex = null,
+        string? scriptedInput = null)
     {
         ToolchainStatus status = await RequireFullJdkAsync();
-        EvaluationResult expected = _evaluator.Evaluate(source);
+        EvaluationResult expected = scriptedInput is null
+            ? _evaluator.Evaluate(source)
+            : _evaluator.Evaluate(source, scriptedInput);
         Assert.IsTrue(expected.Success, string.Join(Environment.NewLine, expected.Diagnostics));
 
         TranspileResult transpile = _transpiler.Transpile(source, TargetLanguage.Java);
@@ -233,7 +239,8 @@ public sealed class JavaRuntimeReadinessTests
 
         BuildRunResult actual = await _java.BuildAndRunAsync(
             transpile.GeneratedProgram!,
-            CancellationToken.None);
+            CancellationToken.None,
+            scriptedInput is null ? null : BuildRunOptions.Scripted(scriptedInput));
 
         TestContext.WriteLine($"Java acceptance program: {programName}");
         TestContext.WriteLine($"javac path: {Path.Combine(status.Location!, "javac.exe")}");

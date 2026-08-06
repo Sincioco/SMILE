@@ -168,6 +168,23 @@ internal sealed class TargetIdentifierMap
             return true;
         }
 
+        // C-family INPUT statements own deterministic per-statement scratch
+        // names in main. Mapping the whole prefix keeps a learner spelling
+        // from being captured by its nested scratch declaration.
+        if (language is TargetLanguage.C or TargetLanguage.ObjectiveC &&
+            name.StartsWith("smileInput", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        // MASM data labels and procedures share one case-insensitive symbol
+        // namespace. Every compiler-owned runtime helper uses the smile prefix.
+        if (language is TargetLanguage.MasmX64 &&
+            name.StartsWith("smile", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
         // C and Objective-C retain their implementation-reserved prefix rules.
         if (language is TargetLanguage.C or TargetLanguage.ObjectiveC &&
             IsCImplementationReservedIdentifier(name))
@@ -256,7 +273,12 @@ internal sealed class TargetIdentifierMap
             "managed", "nameof", "nint", "not", "notnull", "nuint", "on", "or", "orderby",
             "partial", "record", "remove", "required", "scoped", "select", "set", "unmanaged",
             "value", "var", "when", "where", "with", "yield",
-            "Console", "Program", "Main", "String", "System", "_smile_condition"
+            "Console", "Program", "Main", "String", "System", "_smile_condition",
+            "_smile_input", "_smile_read_line", "_smile_read_byte", "_smile_fail", "_smile_add",
+            "_smile_subtract", "_smile_multiply", "_smile_negate", "_smile_divide",
+            "_smile_input_stream", "_smile_utf8", "_smile_pending_byte", "_smile_skip_lf",
+            "_smile_open_input", "_smile_input_string", "_smile_input_integer",
+            "_smile_input_boolean"
         };
 
         private static readonly string[] C = new[]
@@ -268,7 +290,12 @@ internal sealed class TargetIdentifierMap
             "_Alignof", "_Atomic", "_Bool", "_Complex", "_Generic", "_Imaginary", "_Noreturn",
             "_Static_assert", "_Thread_local",
             "bool", "fputc", "fputs", "fwrite", "int64_t", "main", "memcmp", "memcpy",
-            "printf", "size_t", "snprintf", "stdout", "strcmp", "strlen"
+            "printf", "size_t", "snprintf", "stdout", "stderr", "stdin", "EOF", "strcmp", "strlen",
+            "_smile_input", "_smile_read_line", "_smile_fail", "_smile_add",
+            "_smile_subtract", "_smile_multiply", "_smile_negate", "_smile_divide",
+            "_smile_input_string", "_smile_input_integer", "_smile_input_boolean",
+            "_smile_valid_utf8", "_smile_input_error", "_smile_arithmetic_overflow",
+            "_smile_arithmetic_left", "_smile_arithmetic_right"
         }
             .Concat(FixedWidthIntegerMacros)
             .ToArray();
@@ -279,7 +306,12 @@ internal sealed class TargetIdentifierMap
             "delete", "do", "else", "enum", "export", "extends", "false", "finally", "for",
             "function", "if", "import", "in", "instanceof", "let", "new", "null", "return",
             "super", "switch", "this", "throw", "true", "try", "typeof", "var", "void", "while",
-            "with", "yield", "arguments", "console", "eval"
+            "with", "yield", "arguments", "console", "eval", "_smile_input", "_smile_read_line",
+            "_smile_fail", "_smile_add", "_smile_subtract", "_smile_multiply",
+            "_smile_negate", "_smile_divide", "_smile_checked", "_smile_decoder",
+            "_smile_input_byte", "_smile_next_byte", "_smile_pending_byte", "_smile_skip_lf",
+            "_smile_input_string", "_smile_input_integer", "_smile_input_boolean",
+            "require", "process", "Buffer", "TextDecoder", "BigInt", "Uint8Array", "Error", "fs"
         };
 
         private static readonly string[] Java =
@@ -291,22 +323,28 @@ internal sealed class TargetIdentifierMap
             "opens", "package", "private", "protected", "provides", "public", "requires", "return",
             "record", "sealed", "permits", "short", "static", "strictfp", "super", "switch", "synchronized", "this", "throw",
             "throws", "to", "transient", "transitive", "true", "try", "uses", "var", "void",
-            "volatile", "while", "with", "yield", "_", "System", "String", "Program", "main", "args"
+            "volatile", "while", "with", "yield", "_", "System", "String", "Program", "main", "args",
+            "_smile_input", "_smile_read_line", "_smile_read_byte", "_smile_fail", "_smile_add",
+            "_smile_subtract", "_smile_multiply", "_smile_negate", "_smile_divide",
+            "_smile_pending_byte", "_smile_skip_lf", "_smile_input_string", "_smile_input_integer",
+            "_smile_input_boolean", "_smile_ascii_equals", "ByteBuffer", "CharacterCodingException",
+            "CodingErrorAction", "StandardCharsets", "IOException", "Math", "Long", "Integer"
         };
 
         private static readonly string[] Cobol =
         {
             "accept", "add", "all", "and", "any", "by", "call", "cancel", "class", "close", "compute", "configuration",
-            "copy", "count",
-            "data", "display", "divide", "division", "else", "end", "entry", "environment", "evaluate",
+            "copy", "count", "first",
+            "data", "display", "divide", "division", "else", "end", "entry", "environment", "error", "evaluate",
             "exit", "fd", "file", "from", "function", "global", "goback", "identification", "if", "in", "initialize",
             "input-output", "inspect", "into", "is", "left", "linkage", "merge", "message", "move", "multiply", "nested", "not", "number", "object",
             "negative", "of", "open", "or", "perform", "pic", "picture", "procedure", "program", "program-id", "quote", "read", "right",
-            "record", "return", "rewrite", "run", "section", "select", "self", "set", "sort", "source", "stop",
+            "record", "return", "rewrite", "run", "second", "section", "select", "self", "set", "sort", "source", "stop", "sum",
             "same", "string", "subtract", "super", "text", "then", "to", "type", "until", "using", "value", "when",
             "working-storage", "write",
             "Program", "SMILE-NEWLINE", "SMILE-RUNTIME-POINTER", "SMILE-RUNTIME-INTEGER",
-            "SMILE-RUNTIME-INTEGER-TEXT", "SPACE", "SPACES", "ZERO", "ZEROS", "ZEROES"
+            "SMILE-RUNTIME-INTEGER-TEXT", "SMILE-INPUT-STATUS", "SMILE-INPUT-BUFFER",
+            "SPACE", "SPACES", "ZERO", "ZEROS", "ZEROES"
         };
 
         private static readonly string[] ObjectiveC = C
@@ -332,8 +370,14 @@ internal sealed class TargetIdentifierMap
             "thread_local", "throw", "true", "try", "typedef", "typeid", "typename", "union",
             "unsigned", "using", "virtual", "void", "volatile", "wchar_t", "while", "xor",
             "xor_eq", "atomic_cancel", "atomic_commit", "atomic_noexcept", "synchronized",
-            "transaction_safe", "transaction_safe_dynamic", "std", "main", "cout", "string",
-            "to_string", "int64_t", "smile_text"
+            "transaction_safe", "transaction_safe_dynamic", "std", "main", "cout", "string", "stdin", "EOF",
+            "to_string", "int64_t", "smile_text", "_smile_input", "_smile_read_line",
+            "_smile_fail", "_smile_add", "_smile_subtract", "_smile_multiply",
+            "_smile_negate", "_smile_divide", "_smile_next_byte", "_smile_pending_byte", "_smile_skip_lf",
+            "_smile_input_string", "_smile_input_integer", "_smile_input_boolean",
+            "_smile_valid_utf8", "_smile_arithmetic_left_value",
+            "_smile_arithmetic_right_value", "_smile_expression_left_value",
+            "_smile_expression_right_value", "_smile_text_result"
         }
             .Concat(FixedWidthIntegerMacros)
             .ToArray();
@@ -346,7 +390,13 @@ internal sealed class TargetIdentifierMap
             "internal", "is", "let", "nil", "open", "operator", "private", "protocol", "public",
             "repeat", "return", "self", "static", "struct", "subscript", "super", "switch", "throw",
             "throws", "true", "try", "typealias", "var", "where", "while",
-            "_", "async", "await", "print", "yield", "String", "_smile_condition"
+            "_", "async", "await", "print", "yield", "String", "_smile_condition",
+            "_smile_input", "_smile_read_line", "_smile_fail", "_smile_add",
+            "_smile_subtract", "_smile_multiply", "_smile_negate", "_smile_divide",
+            "_smile_next_byte", "_smile_pending_byte", "_smile_skip_lf", "_smile_input_string",
+            "_smile_input_integer", "_smile_input_boolean", "_smile_ascii_equals",
+            "FileHandle", "Data", "Foundation", "Array", "CharacterSet", "Int", "Int64",
+            "UInt8", "UTF8", "Bool", "Never", "exit"
         };
 
         private static readonly string[] Masm =
@@ -363,7 +413,12 @@ internal sealed class TargetIdentifierMap
             "for", "from", "global", "if", "import", "in", "is", "lambda", "match",
             "nonlocal", "not", "or", "pass", "raise", "return", "try", "while", "with",
             "yield", "print", "str", "bool", "int", "abs", "isinstance", "main",
-            "_smile_text", "_smile_div", "__name__"
+            "_smile_text", "_smile_div", "_smile_input", "_smile_read_line", "_smile_fail",
+            "_smile_add", "_smile_subtract", "_smile_multiply", "_smile_negate",
+            "_smile_divide", "_smile_checked", "_smile_next_byte", "_smile_pending_byte", "_smile_skip_lf",
+            "_smile_input_string", "_smile_input_integer", "_smile_input_boolean",
+            "_smile_ascii_equals", "__name__", "sys", "SystemExit", "bytearray", "len",
+            "any", "all", "zip", "OSError", "UnicodeError"
         };
 
         public static ISet<string> For(TargetLanguage language) =>

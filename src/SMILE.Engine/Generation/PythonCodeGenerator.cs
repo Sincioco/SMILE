@@ -14,6 +14,8 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
     {
         TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
         BoundProgramAnalysis analysis = BoundProgramAnalysis.Create(program);
+        bool hasInput = TargetRuntimeFacts.HasInput(program);
+        bool checkedArithmetic = TargetRuntimeFacts.NeedsCheckedIntegerArithmetic(program);
         var knownValues = new Dictionary<BoundStatement, IReadOnlyDictionary<VariableSymbol, SmileValue>>(
             ReferenceEqualityComparer.Instance);
         foreach (BoundStatement statement in analysis.EnumerateStatements())
@@ -25,8 +27,31 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
         var source = new StringBuilder();
         bool emittedHelper = false;
 
+        if (hasInput || checkedArithmetic)
+        {
+            source.AppendLine("import sys");
+            source.AppendLine();
+            source.AppendLine();
+        }
+
+        if (hasInput)
+        {
+            source.AppendLine("sys.stdout.reconfigure(encoding=\"utf-8\", errors=\"strict\")");
+            source.AppendLine("sys.stderr.reconfigure(encoding=\"utf-8\", errors=\"strict\")");
+            source.AppendLine();
+            source.AppendLine();
+            AppendInputHelpers(source, program);
+            emittedHelper = true;
+        }
+
         if (PythonGenerationFacts.NeedsTextHelper(program))
         {
+            if (emittedHelper)
+            {
+                source.AppendLine();
+                source.AppendLine();
+            }
+
             source.AppendLine("def _smile_text(value: object) -> str:");
             source.AppendLine("    if isinstance(value, bool):");
             source.AppendLine("        return \"TRUE\" if value else \"FALSE\"");
@@ -35,7 +60,7 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
             emittedHelper = true;
         }
 
-        if (PythonGenerationFacts.NeedsDivisionHelper(program))
+        if (PythonGenerationFacts.NeedsDivisionHelper(program) && !checkedArithmetic)
         {
             if (emittedHelper)
             {
@@ -46,6 +71,18 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
             source.AppendLine("def _smile_div(left: int, right: int) -> int:");
             source.AppendLine("    quotient = abs(left) // abs(right)");
             source.AppendLine("    return -quotient if (left < 0) != (right < 0) else quotient");
+            emittedHelper = true;
+        }
+
+        if (checkedArithmetic)
+        {
+            if (emittedHelper)
+            {
+                source.AppendLine();
+                source.AppendLine();
+            }
+
+            AppendCheckedArithmeticHelpers(source);
             emittedHelper = true;
         }
 
@@ -61,7 +98,8 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
             program.SourceItems,
             "    ",
             identifiers,
-            knownValues);
+            knownValues,
+            checkedArithmetic);
         if (program.Statements.Count == 0)
         {
             source.AppendLine("    pass");
@@ -82,7 +120,8 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
         IReadOnlyList<BoundSourceItem> sourceItems,
         string indent,
         TargetIdentifierMap identifiers,
-        IReadOnlyDictionary<BoundStatement, IReadOnlyDictionary<VariableSymbol, SmileValue>> knownValues)
+        IReadOnlyDictionary<BoundStatement, IReadOnlyDictionary<VariableSymbol, SmileValue>> knownValues,
+        bool checkedArithmetic)
     {
         foreach (BoundSourceItem sourceItem in sourceItems)
         {
@@ -103,7 +142,7 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
                 knownValues.TryGetValue(statement, out var statementValues)
                     ? statementValues
                     : EmptyValues;
-            var expressions = new PythonExpressionWriter(identifiers, values);
+            var expressions = new PythonExpressionWriter(identifiers, values, checkedArithmetic);
 
             switch (statement)
             {
@@ -115,6 +154,19 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
                     source.AppendLine($"{indent}{identifiers.Get(set.Variable)} = {expressions.Write(set.Value)}");
                     break;
 
+                case BoundInputStatement input:
+                    source.Append(indent).Append(identifiers.Get(input.Variable)).Append(" = ")
+                        .Append(input.Variable.Type switch
+                        {
+                            SmileType.String => "_smile_input_string",
+                            SmileType.Integer => "_smile_input_integer",
+                            SmileType.Boolean => "_smile_input_boolean",
+                            _ => throw new InvalidOperationException("Unsupported INPUT target type.")
+                        })
+                        .Append('(').Append(TargetEscapes.PythonString(input.Variable.Name))
+                        .AppendLine(")");
+                    break;
+
                 case BoundPrintStatement print:
                     source.Append(indent).AppendLine(print.IsBlankLine
                         ? "print()"
@@ -122,7 +174,7 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
                     break;
 
                 case BoundIfStatement conditional:
-                    AppendIfStatement(source, conditional, indent, identifiers, knownValues, expressions);
+                    AppendIfStatement(source, conditional, indent, identifiers, knownValues, expressions, checkedArithmetic);
                     break;
             }
         }
@@ -134,7 +186,8 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
         string indent,
         TargetIdentifierMap identifiers,
         IReadOnlyDictionary<BoundStatement, IReadOnlyDictionary<VariableSymbol, SmileValue>> knownValues,
-        PythonExpressionWriter expressions)
+        PythonExpressionWriter expressions,
+        bool checkedArithmetic)
     {
         for (int clauseIndex = 0; clauseIndex < conditional.Clauses.Count; clauseIndex++)
         {
@@ -148,7 +201,8 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
                 clause.SourceItems,
                 indent + "    ",
                 identifiers,
-                knownValues);
+                knownValues,
+                checkedArithmetic);
             if (clause.Statements.Count == 0)
             {
                 source.Append(indent).AppendLine("    pass");
@@ -163,12 +217,134 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
                 conditional.ElseSourceItems,
                 indent + "    ",
                 identifiers,
-                knownValues);
+                knownValues,
+                checkedArithmetic);
             if (conditional.ElseStatements.Count == 0)
             {
                 source.Append(indent).AppendLine("    pass");
             }
         }
+    }
+
+    private static void AppendInputHelpers(StringBuilder source, BoundProgram program)
+    {
+        source.AppendLine("_smile_skip_lf = False");
+        source.AppendLine();
+        source.AppendLine();
+        source.AppendLine("def _smile_fail(message: str) -> None:");
+        source.AppendLine("    sys.stderr.write(message + \"\\n\")");
+        source.AppendLine("    raise SystemExit(1)");
+        source.AppendLine();
+        source.AppendLine();
+        source.AppendLine("def _smile_next_byte() -> int:");
+        source.AppendLine("    value = sys.stdin.buffer.read(1)");
+        source.AppendLine("    return -1 if value == b\"\" else value[0]");
+        source.AppendLine();
+        source.AppendLine();
+        source.AppendLine("def _smile_read_line(variable_name: str) -> str:");
+        source.AppendLine("    global _smile_skip_lf");
+        source.AppendLine("    values = bytearray()");
+        source.AppendLine("    first_byte = True");
+        source.AppendLine("    try:");
+        source.AppendLine("        while True:");
+        source.AppendLine("            value = _smile_next_byte()");
+        source.AppendLine("            if first_byte:");
+        source.AppendLine("                first_byte = False");
+        source.AppendLine("                if _smile_skip_lf:");
+        source.AppendLine("                    _smile_skip_lf = False");
+        source.AppendLine("                    if value == 10:");
+        source.AppendLine("                        continue");
+        source.AppendLine("            if value < 0:");
+        source.AppendLine("                if len(values) == 0:");
+        source.AppendLine("                    _smile_fail(f\"SMILE Runtime Error SMILER1501: Input ended before a value was received for '{variable_name}'.\")");
+        source.AppendLine("                break");
+        source.AppendLine("            if value == 10:");
+        source.AppendLine("                break");
+        source.AppendLine("            if value == 13:");
+        source.AppendLine("                _smile_skip_lf = True");
+        source.AppendLine("                break");
+        source.AppendLine("            values.append(value)");
+        source.AppendLine($"            if len(values) > {SmileLanguage.MaximumInputLineUtf8Bytes}:");
+        source.AppendLine($"                _smile_fail(f\"SMILE Runtime Error SMILER1502: Input for '{{variable_name}}' exceeds the {SmileLanguage.MaximumInputLineUtf8Bytes}-byte UTF-8 limit.\")");
+        source.AppendLine("        return values.decode(\"utf-8\", errors=\"strict\")");
+        source.AppendLine("    except (OSError, UnicodeError):");
+        source.AppendLine("        _smile_fail(f\"SMILE Runtime Error SMILER1506: Input for '{variable_name}' could not be read as valid UTF-8 text.\")");
+        source.AppendLine("        return \"\"");
+
+        if (TargetRuntimeFacts.HasInput(program, SmileType.String))
+        {
+            source.AppendLine();
+            source.AppendLine();
+            source.AppendLine("def _smile_input_string(variable_name: str) -> str:");
+            source.AppendLine("    return _smile_read_line(variable_name)");
+        }
+
+        if (TargetRuntimeFacts.HasInput(program, SmileType.Integer))
+        {
+            source.AppendLine();
+            source.AppendLine();
+            source.AppendLine("def _smile_input_integer(variable_name: str) -> int:");
+            source.AppendLine("    text = _smile_read_line(variable_name).strip(\" \\t\")");
+            source.AppendLine("    digits = text[1:] if text[:1] in (\"+\", \"-\") else text");
+            source.AppendLine("    if not digits or any(character < \"0\" or character > \"9\" for character in digits):");
+            source.AppendLine("        _smile_fail(f\"SMILE Runtime Error SMILER1503: Input for '{variable_name}' is not a valid Integer.\")");
+            source.AppendLine("    value = int(text)");
+            source.AppendLine("    if value < -9223372036854775808 or value > 9223372036854775807:");
+            source.AppendLine("        _smile_fail(f\"SMILE Runtime Error SMILER1504: Input for '{variable_name}' is outside the signed 64-bit Integer range.\")");
+            source.AppendLine("    return value");
+        }
+
+        if (TargetRuntimeFacts.HasInput(program, SmileType.Boolean))
+        {
+            source.AppendLine();
+            source.AppendLine("def _smile_ascii_equals(text: str, expected: str) -> bool:");
+            source.AppendLine("    return len(text) == len(expected) and all(");
+            source.AppendLine("        actual == upper or actual == upper.lower()");
+            source.AppendLine("        for actual, upper in zip(text, expected)");
+            source.AppendLine("    )");
+            source.AppendLine();
+            source.AppendLine("def _smile_input_boolean(variable_name: str) -> bool:");
+            source.AppendLine("    text = _smile_read_line(variable_name).strip(\" \\t\")");
+            source.AppendLine("    if _smile_ascii_equals(text, \"TRUE\"):");
+            source.AppendLine("        return True");
+            source.AppendLine("    if _smile_ascii_equals(text, \"FALSE\"):");
+            source.AppendLine("        return False");
+            source.AppendLine("    _smile_fail(f\"SMILE Runtime Error SMILER1505: Input for '{variable_name}' must be TRUE or FALSE.\")");
+            source.AppendLine("    return False");
+        }
+    }
+
+    private static void AppendCheckedArithmeticHelpers(StringBuilder source)
+    {
+        source.AppendLine("def _smile_checked(value: int) -> int:");
+        source.AppendLine("    if value < -9223372036854775808 or value > 9223372036854775807:");
+        source.AppendLine("        _smile_fail(\"SMILE Runtime Error SMILER1206: Integer arithmetic overflow.\")");
+        source.AppendLine("    return value");
+        source.AppendLine();
+        source.AppendLine();
+        source.AppendLine("def _smile_add(left: int, right: int) -> int:");
+        source.AppendLine("    return _smile_checked(left + right)");
+        source.AppendLine();
+        source.AppendLine();
+        source.AppendLine("def _smile_subtract(left: int, right: int) -> int:");
+        source.AppendLine("    return _smile_checked(left - right)");
+        source.AppendLine();
+        source.AppendLine();
+        source.AppendLine("def _smile_multiply(left: int, right: int) -> int:");
+        source.AppendLine("    return _smile_checked(left * right)");
+        source.AppendLine();
+        source.AppendLine();
+        source.AppendLine("def _smile_negate(value: int) -> int:");
+        source.AppendLine("    return _smile_checked(-value)");
+        source.AppendLine();
+        source.AppendLine();
+        source.AppendLine("def _smile_div(left: int, right: int) -> int:");
+        source.AppendLine("    if right == 0:");
+        source.AppendLine("        _smile_fail(\"SMILE Runtime Error SMILER1207: Division by zero.\")");
+        source.AppendLine("    if left == -9223372036854775808 and right == -1:");
+        source.AppendLine("        _smile_fail(\"SMILE Runtime Error SMILER1206: Integer arithmetic overflow.\")");
+        source.AppendLine("    quotient = abs(left) // abs(right)");
+        source.AppendLine("    return -quotient if (left < 0) != (right < 0) else quotient");
     }
 
 }
@@ -237,13 +413,16 @@ internal sealed class PythonExpressionWriter
 
     private readonly TargetIdentifierMap _identifiers;
     private readonly IReadOnlyDictionary<VariableSymbol, SmileValue> _values;
+    private readonly bool _checkedRuntimeArithmetic;
 
     public PythonExpressionWriter(
         TargetIdentifierMap identifiers,
-        IReadOnlyDictionary<VariableSymbol, SmileValue> values)
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values,
+        bool checkedRuntimeArithmetic = false)
     {
         _identifiers = identifiers;
         _values = values;
+        _checkedRuntimeArithmetic = checkedRuntimeArithmetic;
     }
 
     public string Write(BoundExpression expression) =>
@@ -282,6 +461,16 @@ internal sealed class PythonExpressionWriter
             return NotPrecedence < parentPrecedence ? "(" + logicalText + ")" : logicalText;
         }
 
+        if (_checkedRuntimeArithmetic &&
+            expression.Operator.Kind is BoundUnaryOperatorKind.Negation &&
+            expression.Operand.Type is SmileType.Integer)
+        {
+            string call = "_smile_negate(" +
+                WriteExpression(expression.Operand, 0, isRightChild: false, parentOperator: null) +
+                ")";
+            return CallPrecedence < parentPrecedence ? "(" + call + ")" : call;
+        }
+
         string op = expression.Operator.Kind is BoundUnaryOperatorKind.Negation ? "-" : "+";
         string value = WriteExpression(
             expression.Operand,
@@ -298,6 +487,27 @@ internal sealed class PythonExpressionWriter
         bool isRightChild,
         BoundBinaryOperatorKind? parentOperator)
     {
+        if (_checkedRuntimeArithmetic &&
+            expression.Left.Type is SmileType.Integer &&
+            expression.Operator.Kind is BoundBinaryOperatorKind.Addition or
+                BoundBinaryOperatorKind.Subtraction or
+                BoundBinaryOperatorKind.Multiplication)
+        {
+            string helper = expression.Operator.Kind switch
+            {
+                BoundBinaryOperatorKind.Addition => "_smile_add",
+                BoundBinaryOperatorKind.Subtraction => "_smile_subtract",
+                BoundBinaryOperatorKind.Multiplication => "_smile_multiply",
+                _ => throw new InvalidOperationException("Unsupported checked Python Integer operator.")
+            };
+            string call = helper + "(" +
+                WriteExpression(expression.Left, 0, isRightChild: false, parentOperator: null) +
+                ", " +
+                WriteExpression(expression.Right, 0, isRightChild: false, parentOperator: null) +
+                ")";
+            return CallPrecedence < parentPrecedence ? "(" + call + ")" : call;
+        }
+
         if (expression.Operator.Kind is BoundBinaryOperatorKind.Division)
         {
             string call =

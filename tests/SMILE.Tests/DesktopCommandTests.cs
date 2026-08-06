@@ -10,14 +10,14 @@ namespace SMILE.Tests;
 public sealed class DesktopCommandTests
 {
     [TestMethod]
-    public void Desktop_assembly_reports_the_v061_comment_and_layout_release()
+    public void Desktop_assembly_reports_the_v070_INPUT_release()
     {
         string? version = typeof(MainWindowViewModel).Assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
             .InformationalVersion;
 
         Assert.IsNotNull(version);
-        StringAssert.StartsWith(version, "0.6.1 Full-Line Comments and Source Layout Preservation");
+        StringAssert.StartsWith(version, "0.7.0 INPUT");
     }
 
     [TestMethod]
@@ -177,6 +177,14 @@ public sealed class DesktopCommandTests
             AppContext.BaseDirectory,
             MainWindowViewModel.LanguageFileName);
         Assert.IsTrue(File.Exists(runtimeLanguagePath), runtimeLanguagePath);
+        string runtimeInputExamplePath = Path.Combine(AppContext.BaseDirectory, "input.smile");
+        Assert.IsTrue(File.Exists(runtimeInputExamplePath), runtimeInputExamplePath);
+        EvaluationResult inputExample = new SmileEvaluator().Evaluate(
+            await File.ReadAllTextAsync(runtimeInputExamplePath),
+            InputTestData.CanonicalScriptedInput);
+        Assert.IsTrue(
+            inputExample.Success,
+            string.Join(Environment.NewLine, inputExample.Diagnostics) + inputExample.StandardError);
 
         var viewModel = new MainWindowViewModel(
             CreateRegistry(),
@@ -263,6 +271,11 @@ PRINT A; B; C
         StringAssert.Contains(viewModel.SourceText, "Rem Nested REM comments are valid.");
         StringAssert.Contains(viewModel.SourceText, "PRINT // This text is printed");
         StringAssert.Contains(viewModel.SourceText, "PRINT https://example.com");
+        StringAssert.Contains(viewModel.SourceText, "PRINT \"INPUT statement examples in language.smile:\"");
+        StringAssert.Contains(viewModel.SourceText, "INPUT InputName");
+        StringAssert.Contains(viewModel.SourceText, "INPUT InputAge");
+        StringAssert.Contains(viewModel.SourceText, "INPUT InputReady");
+        StringAssert.Contains(viewModel.SourceText, "IF InputAge >= 18 THEN");
         StringAssert.Contains(
             normalizedSource,
             "LET CommentLayoutMessage = \"\"\n\n\n\nIF REM = \"REM remains a valid variable name.\" THEN");
@@ -270,7 +283,9 @@ PRINT A; B; C
             normalizedSource,
             "SET CommentLayoutMessage =\"\nREM Block String data\n\n// Block String data\n# Block String data\n-- Block String data\n\"");
 
-        EvaluationResult evaluation = new SmileEvaluator().Evaluate(viewModel.SourceText);
+        EvaluationResult evaluation = new SmileEvaluator().Evaluate(
+            viewModel.SourceText,
+            InputTestData.CanonicalScriptedInput);
         Assert.IsTrue(
             evaluation.Success,
             string.Join(Environment.NewLine, evaluation.Diagnostics));
@@ -478,6 +493,66 @@ PRINT A; B; C
     }
 
     [TestMethod]
+    public async Task INPUT_build_runs_exactly_once_in_one_visible_interactive_console()
+    {
+        var csharp = new FakeToolchain(
+            TargetLanguage.CSharp,
+            workingDirectory: Environment.CurrentDirectory);
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(csharp),
+            new FakeErrorReporter(),
+            new FakeFolderOpener())
+        {
+            OpenGeneratedFolderAfterBuild = false,
+            SourceText = "LET Name = \"\"\nPRINT Name?\nINPUT Name\nPRINT {Name}"
+        };
+        await viewModel.InitializeAsync();
+        await WaitUntilAsync(() =>
+            viewModel.Pane1.HasValidSource &&
+            viewModel.Pane1.GeneratedCode.Contains("SMILER1501", StringComparison.Ordinal));
+
+        viewModel.Pane1.BuildRunCommand!.Execute(null);
+        await WaitUntilAsync(() => !viewModel.IsBusy && viewModel.OperationStatus == "Completed");
+
+        Assert.AreEqual(1, csharp.BuildRuns);
+        Assert.IsNotNull(csharp.LastGeneratedProgram);
+        Assert.IsTrue(csharp.LastGeneratedProgram.RequiresStandardInput);
+        Assert.IsNotNull(csharp.LastBuildRunOptions);
+        Assert.AreEqual(
+            ProcessInputMode.InteractiveInherited,
+            csharp.LastBuildRunOptions.ProgramStandardInput.Mode);
+        Assert.IsTrue(csharp.LastBuildRunOptions.LaunchVisibleConsole);
+        Assert.IsTrue(csharp.LastBuildRunOptions.CreatePauseLauncher);
+        StringAssert.Contains(viewModel.OutputText, "interactive console launched");
+    }
+
+    [TestMethod]
+    public async Task INPUT_launch_failure_does_not_claim_that_a_console_launched()
+    {
+        var csharp = new FakeToolchain(
+            TargetLanguage.CSharp,
+            workingDirectory: Environment.CurrentDirectory,
+            simulateLaunchFailure: true);
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(csharp),
+            new FakeErrorReporter(),
+            new FakeFolderOpener())
+        {
+            OpenGeneratedFolderAfterBuild = false,
+            SourceText = "LET Name = \"\"\nINPUT Name"
+        };
+        await viewModel.InitializeAsync();
+        await WaitUntilAsync(() => viewModel.Pane1.HasValidSource);
+
+        viewModel.Pane1.BuildRunCommand!.Execute(null);
+        await WaitUntilAsync(() => !viewModel.IsBusy && viewModel.OperationStatus == "Failed");
+
+        StringAssert.Contains(viewModel.OutputText, "Process launch failed");
+        Assert.IsFalse(
+            viewModel.OutputText.Contains("interactive console launched", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public async Task Visible_build_run_continues_after_one_target_throws()
     {
         var csharp = new FakeToolchain(TargetLanguage.CSharp);
@@ -649,22 +724,29 @@ PRINT A; B; C
         private readonly Exception? _detectException;
         private readonly Exception? _buildRunException;
         private readonly string? _workingDirectory;
+        private readonly bool _simulateLaunchFailure;
 
         public FakeToolchain(
             TargetLanguage language,
             Exception? detectException = null,
             Exception? buildRunException = null,
-            string? workingDirectory = null)
+            string? workingDirectory = null,
+            bool simulateLaunchFailure = false)
         {
             Language = language;
             _detectException = detectException;
             _buildRunException = buildRunException;
             _workingDirectory = workingDirectory;
+            _simulateLaunchFailure = simulateLaunchFailure;
         }
 
         public TargetLanguage Language { get; }
 
         public int BuildRuns { get; private set; }
+
+        public GeneratedProgram? LastGeneratedProgram { get; private set; }
+
+        public BuildRunOptions? LastBuildRunOptions { get; private set; }
 
         public Task<ToolchainStatus> DetectAsync(CancellationToken cancellationToken)
         {
@@ -683,12 +765,32 @@ PRINT A; B; C
             BuildRunOptions? options = null)
         {
             BuildRuns++;
+            LastGeneratedProgram = generatedProgram;
+            LastBuildRunOptions = options;
             if (_buildRunException is not null)
             {
                 throw _buildRunException;
             }
 
             ToolchainStatus status = await DetectAsync(cancellationToken);
+            if (_simulateLaunchFailure)
+            {
+                return new BuildRunResult(
+                    Language,
+                    Success: false,
+                    status,
+                    "Build completed.",
+                    string.Empty,
+                    "Process launch failed: Win32Exception: injected failure",
+                    null,
+                    TimeSpan.FromMilliseconds(1),
+                    TimedOut: false,
+                    Cancelled: false,
+                    _workingDirectory,
+                    null,
+                    "Running");
+            }
+
             return new BuildRunResult(
                 Language,
                 Success: true,

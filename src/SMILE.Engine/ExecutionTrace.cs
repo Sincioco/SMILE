@@ -42,6 +42,13 @@ public sealed class BoundProgramExecutionTrace
     {
         ArgumentNullException.ThrowIfNull(program);
 
+        if (BoundStatementTree.Enumerate(program).Any(statement => statement is BoundInputStatement))
+        {
+            throw new InvalidOperationException(
+                "A concrete source-only execution trace cannot evaluate INPUT. " +
+                "Use SmileEvaluator with an injected input source for runtime programs.");
+        }
+
         var builder = new BoundProgramExecutionTraceBuilder();
         foreach (BoundStatement statement in program.Statements)
         {
@@ -83,9 +90,9 @@ public sealed class BoundProgramExecutionTrace
     }
 }
 
-// The binder uses the same incremental trace logic so a failed LET does not
-// leak a declaration and a failed SET does not replace the previous value.
-// Full-program consumers call BoundProgramExecutionTrace.Create instead.
+// This builder retains the concrete source-only trace used by educational and
+// regression consumers. Binder and BoundProgramAnalysis use their separate
+// Known/Unknown/Invalid models once INPUT can introduce runtime values.
 internal sealed class BoundProgramExecutionTraceBuilder
 {
     private readonly Dictionary<VariableSymbol, SmileValue> _values = new();

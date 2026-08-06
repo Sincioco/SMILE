@@ -162,6 +162,101 @@ PRINT $"Hello {Name}; age={Age}"
     }
 
     [TestMethod]
+    public void Smile_highlighting_colors_INPUT_case_insensitively_without_taking_String_or_comment_text()
+    {
+        const string source = """
+INPUT Name
+input Age
+Input Ready
+INPUTAge
+REM INPUT remains comment text
+// INPUT remains comment text
+LET Text = "INPUT"
+LET Message = $"INPUT {Text}"
+SET Text ="
+INPUT remains Block String data
+"
+INPUT Text
+""";
+        var document = new TextDocument(source);
+        IHighlightingDefinition definition = SyntaxHighlightingCatalog.GetDefinition("smile")!;
+        var highlighter = new DocumentHighlighter(document, definition);
+        HighlightingColor keyword = definition.GetNamedColor("Keyword")!;
+        HighlightingColor stringColor = definition.GetNamedColor("String")!;
+        HighlightingColor comment = definition.GetNamedColor("Comment")!;
+
+        HighlightedLine[] lines = Enumerable.Range(1, document.LineCount)
+            .Select(highlighter.HighlightLine)
+            .ToArray();
+
+        AssertKeyword(document, lines[0], document.GetLineByNumber(1), "INPUT", keyword);
+        AssertKeyword(document, lines[1], document.GetLineByNumber(2), "input", keyword);
+        AssertKeyword(document, lines[2], document.GetLineByNumber(3), "Input", keyword);
+
+        DocumentLine nearMiss = document.GetLineByNumber(4);
+        AssertRangeDoesNotHaveColor(
+            lines[3],
+            nearMiss.Offset,
+            5,
+            keyword,
+            "INPUTAge must remain one ordinary identifier");
+
+        foreach (int lineNumber in new[] { 5, 6 })
+        {
+            DocumentLine line = document.GetLineByNumber(lineNumber);
+            string lineText = document.GetText(line);
+            int inputOffset = lineText.IndexOf("INPUT", StringComparison.Ordinal);
+            AssertRangeHasColor(
+                lines[lineNumber - 1],
+                line.Offset,
+                line.Length,
+                comment,
+                $"comment line {lineNumber}");
+            AssertRangeDoesNotHaveColor(
+                lines[lineNumber - 1],
+                line.Offset + inputOffset,
+                5,
+                keyword,
+                $"INPUT inside comment line {lineNumber}");
+        }
+
+        foreach (int lineNumber in new[] { 7, 8 })
+        {
+            DocumentLine line = document.GetLineByNumber(lineNumber);
+            string lineText = document.GetText(line);
+            int inputOffset = lineText.IndexOf("INPUT", StringComparison.Ordinal);
+            AssertRangeHasColor(
+                lines[lineNumber - 1],
+                line.Offset + inputOffset,
+                5,
+                stringColor,
+                $"INPUT inside String line {lineNumber}");
+            AssertRangeDoesNotHaveColor(
+                lines[lineNumber - 1],
+                line.Offset + inputOffset,
+                5,
+                keyword,
+                $"INPUT inside String line {lineNumber}");
+        }
+
+        DocumentLine blockContent = document.GetLineByNumber(10);
+        AssertRangeHasColor(
+            lines[9],
+            blockContent.Offset,
+            blockContent.Length,
+            stringColor,
+            "INPUT inside Block String content");
+        AssertRangeDoesNotHaveColor(
+            lines[9],
+            blockContent.Offset,
+            5,
+            keyword,
+            "INPUT inside Block String content");
+
+        AssertKeyword(document, lines[11], document.GetLineByNumber(12), "INPUT", keyword);
+    }
+
+    [TestMethod]
     public void Smile_highlighting_colors_SET_and_a_complete_multiline_block_then_resumes()
     {
         const string source = """

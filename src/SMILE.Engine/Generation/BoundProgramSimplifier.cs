@@ -42,6 +42,13 @@ internal static class BoundProgramSimplifier
                     UpdateKnownValue(values, set.Variable, value);
                     break;
 
+                case BoundInputStatement input:
+                    // INPUT preserves the variable's declared type but replaces
+                    // every source-known value with runtime data.
+                    simplifiedItems.Add(input);
+                    values.Remove(input.Variable);
+                    break;
+
                 case BoundPrintStatement print:
                     simplifiedItems.Add(print with
                     {
@@ -239,8 +246,13 @@ internal static class BoundProgramSimplifier
         // behavior, including the language's left-to-right short circuiting.
         if (expression.Operator.Kind is BoundBinaryOperatorKind.LogicalAnd)
         {
-            if (left is BoundBooleanLiteralExpression { Value: false } ||
-                right is BoundBooleanLiteralExpression { Value: false })
+            if (left is BoundBooleanLiteralExpression { Value: false })
+            {
+                return new BoundBooleanLiteralExpression(false);
+            }
+
+            if (right is BoundBooleanLiteralExpression { Value: false } &&
+                CanEvaluateWithoutRuntimeFailure(left, values))
             {
                 return new BoundBooleanLiteralExpression(false);
             }
@@ -258,8 +270,13 @@ internal static class BoundProgramSimplifier
 
         if (expression.Operator.Kind is BoundBinaryOperatorKind.LogicalOr)
         {
-            if (left is BoundBooleanLiteralExpression { Value: true } ||
-                right is BoundBooleanLiteralExpression { Value: true })
+            if (left is BoundBooleanLiteralExpression { Value: true })
+            {
+                return new BoundBooleanLiteralExpression(true);
+            }
+
+            if (right is BoundBooleanLiteralExpression { Value: true } &&
+                CanEvaluateWithoutRuntimeFailure(left, values))
             {
                 return new BoundBooleanLiteralExpression(true);
             }
@@ -293,5 +310,13 @@ internal static class BoundProgramSimplifier
         }
 
         return expression with { Left = left, Right = right };
+    }
+
+    private static bool CanEvaluateWithoutRuntimeFailure(
+        BoundExpression expression,
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values)
+    {
+        StaticEvaluationResult result = BoundExpressionEvaluator.Evaluate(expression, values);
+        return !result.IsInvalid && !result.MayFailAtRuntime;
     }
 }

@@ -31,6 +31,35 @@ public sealed record BuildRunResult(
 public sealed record BuildRunOptions(bool CreatePauseLauncher = false)
 {
     public static BuildRunOptions Default { get; } = new();
+
+    public ProcessInput ProgramStandardInput { get; init; } = ProcessInput.Closed;
+
+    public bool LaunchVisibleConsole { get; init; }
+
+    public static BuildRunOptions Scripted(string standardInput) =>
+        new()
+        {
+            ProgramStandardInput = ProcessInput.Scripted(standardInput)
+        };
+
+    public static BuildRunOptions ScriptedBytes(ReadOnlySpan<byte> standardInput) =>
+        new()
+        {
+            ProgramStandardInput = ProcessInput.ScriptedBytes(standardInput)
+        };
+
+    public static BuildRunOptions InteractiveInherited { get; } =
+        new()
+        {
+            ProgramStandardInput = ProcessInput.InteractiveInherited
+        };
+
+    public static BuildRunOptions VisibleInteractiveConsole { get; } =
+        new(CreatePauseLauncher: true)
+        {
+            ProgramStandardInput = ProcessInput.InteractiveInherited,
+            LaunchVisibleConsole = true
+        };
 }
 
 public interface IToolchain
@@ -241,6 +270,11 @@ public abstract class ToolchainBase : IToolchain
         var lines = new List<string>
         {
             "@echo off",
+            // INPUT is defined as strict UTF-8. A fresh Windows console may
+            // otherwise expose an OEM code page to native and managed target
+            // runtimes, making interactive non-ASCII input disagree with the
+            // exact scripted-input path.
+            "chcp 65001 >nul",
             "cd /d \"%~dp0\""
         };
         if (setupLines is not null)
@@ -249,9 +283,11 @@ public abstract class ToolchainBase : IToolchain
         }
 
         lines.AddRange(programCommandLines);
+        lines.Add("set \"SMILE_PROGRAM_EXIT=%ERRORLEVEL%\"");
         lines.Add("echo.");
         lines.Add("echo Press any key to exit...");
         lines.Add("pause >nul");
+        lines.Add("exit /b %SMILE_PROGRAM_EXIT%");
 
         return await WriteCommandScriptAsync(
             workspace,
@@ -303,6 +339,43 @@ public abstract class ToolchainBase : IToolchain
             pauseLauncherPath,
             stage);
     }
+
+    protected static ProcessCommand ConfigureProgramCommand(
+        ProcessCommand command,
+        BuildRunOptions? options,
+        string? pauseLauncherPath = null)
+    {
+        BuildRunOptions effectiveOptions = options ?? BuildRunOptions.Default;
+        ProcessCommand effectiveCommand = command;
+        if (effectiveOptions.LaunchVisibleConsole)
+        {
+            if (string.IsNullOrWhiteSpace(pauseLauncherPath))
+            {
+                throw new InvalidOperationException(
+                    "Visible interactive execution requires a generated console launcher.");
+            }
+
+            // The launcher keeps the dedicated console visible after success
+            // or failure, while its saved ERRORLEVEL still lets SMILE report
+            // the generated program's real exit code when the window closes.
+            effectiveCommand = new ProcessCommand(
+                "cmd.exe",
+                new[] { "/c", pauseLauncherPath },
+                command.WorkingDirectory);
+        }
+
+        return effectiveCommand with
+        {
+            StandardInput = effectiveOptions.ProgramStandardInput,
+            CreateVisibleConsole = effectiveOptions.LaunchVisibleConsole
+        };
+    }
+
+    protected static TimeSpan GetProgramTimeout(BuildRunOptions? options) =>
+        (options ?? BuildRunOptions.Default).ProgramStandardInput.Mode is
+            ProcessInputMode.InteractiveInherited
+                ? Timeout.InfiniteTimeSpan
+                : ProgramTimeout;
 
     protected static string Combine(ProcessResult result) =>
         JoinNonEmpty(result.StandardOutput, result.StandardError);
@@ -508,11 +581,14 @@ public sealed class DotNetToolchain : ToolchainBase
 
         string executablePath = Path.Combine(workspace, "bin", "Debug", "net10.0", "GeneratedProgram.exe");
         ProcessResult run = await Runner.RunAsync(
-            new ProcessCommand(
-                executablePath,
-                Array.Empty<string>(),
-                workspace),
-            ProgramTimeout,
+            ConfigureProgramCommand(
+                new ProcessCommand(
+                    executablePath,
+                    Array.Empty<string>(),
+                    workspace),
+                options,
+                pauseLauncherPath),
+            GetProgramTimeout(options),
             cancellationToken).ConfigureAwait(false);
 
         return FromProcessResults(
@@ -592,8 +668,11 @@ public sealed class MsvcCToolchain : ToolchainBase
             cancellationToken).ConfigureAwait(false);
 
         ProcessResult run = await Runner.RunAsync(
-            ProcessCommand.ForCmd("Program.exe", workspace),
-            ProgramTimeout,
+            ConfigureProgramCommand(
+                ProcessCommand.ForCmd("Program.exe", workspace),
+                options,
+                pauseLauncherPath),
+            GetProgramTimeout(options),
             cancellationToken).ConfigureAwait(false);
 
         return FromProcessResults(
@@ -673,8 +752,11 @@ public sealed class MsvcCppToolchain : ToolchainBase
             cancellationToken).ConfigureAwait(false);
 
         ProcessResult run = await Runner.RunAsync(
-            ProcessCommand.ForCmd("Program.exe", workspace),
-            ProgramTimeout,
+            ConfigureProgramCommand(
+                ProcessCommand.ForCmd("Program.exe", workspace),
+                options,
+                pauseLauncherPath),
+            GetProgramTimeout(options),
             cancellationToken).ConfigureAwait(false);
 
         return FromProcessResults(
@@ -784,8 +866,11 @@ public sealed class MasmX64Toolchain : ToolchainBase
             cancellationToken).ConfigureAwait(false);
 
         ProcessResult run = await Runner.RunAsync(
-            ProcessCommand.ForCmd("Program.exe", workspace),
-            ProgramTimeout,
+            ConfigureProgramCommand(
+                ProcessCommand.ForCmd("Program.exe", workspace),
+                options,
+                pauseLauncherPath),
+            GetProgramTimeout(options),
             cancellationToken).ConfigureAwait(false);
 
         return FromProcessResults(
@@ -844,6 +929,15 @@ public sealed class CobolToolchain : ToolchainBase
 
         string pathSetup = SetPathForCmd(detection.Commands.PathEntries);
         string configSetup = SetCobolConfigForCmd(detection.Commands.ConfigDirectory);
+        string ancillarySources = string.Join(
+            " ",
+            generatedProgram.Files
+                .Where(file => !file.IsPrimary &&
+                    Path.GetExtension(file.RelativePath).Equals(".c", StringComparison.OrdinalIgnoreCase))
+                .Select(file => QuoteForCmd(file.RelativePath)));
+        string buildSources = string.IsNullOrEmpty(ancillarySources)
+            ? "Program.cob"
+            : "Program.cob " + ancillarySources;
         await WriteCommandScriptAsync(
             workspace,
             "build-cobol.cmd",
@@ -853,7 +947,7 @@ public sealed class CobolToolchain : ToolchainBase
                 "cd /d \"%~dp0\"",
                 pathSetup,
                 configSetup,
-                $"{QuoteForCmd(detection.Commands.Cobc)} -x -free Program.cob -o Program.exe"
+                $"{QuoteForCmd(detection.Commands.Cobc)} -x -free {buildSources} -o Program.exe"
             },
             cancellationToken).ConfigureAwait(false);
 
@@ -889,8 +983,11 @@ public sealed class CobolToolchain : ToolchainBase
             setupLines: new[] { pathSetup, configSetup }).ConfigureAwait(false);
 
         ProcessResult run = await Runner.RunAsync(
-            ProcessCommand.ForCmd("run-cobol.cmd", workspace),
-            ProgramTimeout,
+            ConfigureProgramCommand(
+                ProcessCommand.ForCmd("run-cobol.cmd", workspace),
+                options,
+                pauseLauncherPath),
+            GetProgramTimeout(options),
             cancellationToken).ConfigureAwait(false);
 
         return FromProcessResults(
@@ -1053,8 +1150,11 @@ public sealed class NodeToolchain : ToolchainBase
             cancellationToken).ConfigureAwait(false);
 
         ProcessResult run = await Runner.RunAsync(
-            new ProcessCommand("node", new[] { "Program.js" }, workspace),
-            ProgramTimeout,
+            ConfigureProgramCommand(
+                new ProcessCommand("node", new[] { "Program.js" }, workspace),
+                options,
+                pauseLauncherPath),
+            GetProgramTimeout(options),
             cancellationToken).ConfigureAwait(false);
 
         return FromProcessResults(status, string.Empty, run, workspace, "Running", pauseLauncherPath: pauseLauncherPath);
@@ -1124,8 +1224,11 @@ public sealed class PythonToolchain : ToolchainBase
             cancellationToken).ConfigureAwait(false);
 
         ProcessResult run = await Runner.RunAsync(
-            new ProcessCommand(detection.Command.Executable, arguments, workspace),
-            ProgramTimeout,
+            ConfigureProgramCommand(
+                new ProcessCommand(detection.Command.Executable, arguments, workspace),
+                options,
+                pauseLauncherPath),
+            GetProgramTimeout(options),
             cancellationToken).ConfigureAwait(false);
 
         return FromProcessResults(
@@ -1327,8 +1430,11 @@ public sealed class JavaToolchain : ToolchainBase
             cancellationToken).ConfigureAwait(false);
 
         ProcessResult run = await Runner.RunAsync(
-            new ProcessCommand(commands.Java, new[] { "Program" }, workspace),
-            ProgramTimeout,
+            ConfigureProgramCommand(
+                new ProcessCommand(commands.Java, new[] { "Program" }, workspace),
+                options,
+                pauseLauncherPath),
+            GetProgramTimeout(options),
             cancellationToken).ConfigureAwait(false);
 
         return FromProcessResults(
@@ -1636,8 +1742,11 @@ public sealed class ObjectiveCToolchain : ToolchainBase
             setupLines: new[] { pathSetup }).ConfigureAwait(false);
 
         ProcessResult run = await Runner.RunAsync(
-            ProcessCommand.ForCmd("run-objective-c.cmd", workspace),
-            ProgramTimeout,
+            ConfigureProgramCommand(
+                ProcessCommand.ForCmd("run-objective-c.cmd", workspace),
+                options,
+                pauseLauncherPath),
+            GetProgramTimeout(options),
             cancellationToken).ConfigureAwait(false);
 
         return FromProcessResults(
@@ -1825,8 +1934,11 @@ public sealed class SwiftToolchain : ToolchainBase
             setupLines: new[] { pathSetup }).ConfigureAwait(false);
 
         ProcessResult run = await Runner.RunAsync(
-            ProcessCommand.ForCmd("run-swift.cmd", workspace),
-            ProgramTimeout,
+            ConfigureProgramCommand(
+                ProcessCommand.ForCmd("run-swift.cmd", workspace),
+                options,
+                pauseLauncherPath),
+            GetProgramTimeout(options),
             cancellationToken).ConfigureAwait(false);
 
         return FromProcessResults(

@@ -153,6 +153,11 @@ internal sealed class Parser
             return ParseSetStatement(line, keyword, ref lineIndex);
         }
 
+        if (keyword.Text.Equals("INPUT", StringComparison.OrdinalIgnoreCase))
+        {
+            return ParseInputStatement(line, keyword);
+        }
+
         if (keyword.Text.Equals("IF", StringComparison.OrdinalIgnoreCase))
         {
             if (ifNestingDepth >= MaximumIfNestingDepth)
@@ -982,6 +987,66 @@ internal sealed class Parser
             line.Span(setKeyword.Start, line.Text.Length - setKeyword.Start));
     }
 
+    private StatementSyntax? ParseInputStatement(
+        SourceLine line,
+        IdentifierRead inputKeyword)
+    {
+        int afterKeyword = inputKeyword.End;
+        if (afterKeyword >= line.Text.Length)
+        {
+            AddDiagnostic(
+                "SMILE1502",
+                "INPUT requires a target variable.",
+                line.Span(afterKeyword, 0));
+            return null;
+        }
+
+        if (!SyntaxFacts.IsHorizontalWhitespace(line.Text[afterKeyword]))
+        {
+            AddDiagnostic(
+                "SMILE1501",
+                "INPUT must be followed by a space or tab.",
+                line.Span(afterKeyword, 0));
+            return null;
+        }
+
+        int position = SkipHorizontalWhitespace(line.Text, afterKeyword);
+        if (position >= line.Text.Length)
+        {
+            AddDiagnostic(
+                "SMILE1502",
+                "INPUT requires a target variable.",
+                line.Span(position, 0));
+            return null;
+        }
+
+        if (!SyntaxFacts.IsIdentifierStart(line.Text[position]))
+        {
+            int targetEnd = TrimTrailingHorizontalWhitespace(line.Text);
+            AddDiagnostic(
+                "SMILE1503",
+                "INPUT target must be one identifier.",
+                line.Span(position, Math.Max(1, targetEnd - position)));
+            return null;
+        }
+
+        IdentifierRead name = ReadIdentifier(line, position);
+        int trailing = SkipHorizontalWhitespace(line.Text, name.End);
+        if (trailing < line.Text.Length)
+        {
+            AddDiagnostic(
+                "SMILE1504",
+                "Unexpected content follows the INPUT target.",
+                line.Span(trailing, line.Text.Length - trailing));
+            return null;
+        }
+
+        return new InputStatementSyntax(
+            name.Text,
+            name.Span,
+            line.Span(inputKeyword.Start, line.Text.Length - inputKeyword.Start));
+    }
+
     private SetBlockStringScanResult ConsumeBlock(int openingLineIndex, int openingQuoteColumn) =>
         SetBlockStringScanner.Scan(
             _source,
@@ -1626,6 +1691,7 @@ internal static class SyntaxFacts
         {
             "LET" => SyntaxKind.LetKeyword,
             "SET" => SyntaxKind.SetKeyword,
+            "INPUT" => SyntaxKind.InputKeyword,
             "PRINT" => SyntaxKind.PrintKeyword,
             "IF" => SyntaxKind.IfKeyword,
             "THEN" => SyntaxKind.ThenKeyword,

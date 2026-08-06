@@ -37,9 +37,16 @@
 - The official LET syntax is defined by `docs/SMILE Language Specification/005 - SMILE - LET Statement Official Specification v1.0.md`.
 - The official IF syntax is defined by `docs/SMILE Language Specification/006 - SMILE - IF Statement Official Specification v1.0.md`.
 - Official full-line comment and source-layout behavior is defined by `docs/SMILE Language Specification/007 - SMILE - Full-Line Comments and Source Layout Preservation Official Specification v1.0.md`.
-- LET declares and initializes a variable. SET remains the only assignment statement in v0.6.1 and changes an existing variable without changing its type.
+- The official INPUT syntax is defined by `docs/SMILE Language Specification/008 - SMILE - INPUT Statement Official Specification v1.0.md`.
+- LET declares and initializes a variable. SET changes an existing variable from a SMILE expression. INPUT changes an existing variable from one runtime input line. SET and INPUT never change the type established by LET.
+- INPUT is a statement, not an expression. It accepts exactly one existing identifier, is permitted at top level and in every IF-related body, and has no built-in prompt, multiple-target, declaration, or retry form in v1.0.
+- Each executed INPUT consumes one CRLF-, LF-, CR-, or final-EOF-terminated logical line. Redirected input is strict UTF-8, and the shared maximum is 4096 UTF-8 bytes after removing the terminator and before Integer or Boolean trimming.
+- String INPUT preserves the complete line, including spaces, tabs, an empty line, Unicode, and embedded NUL. Integer and Boolean INPUT trim only ASCII spaces and tabs; Integer accepts strict signed decimal Int64 text, and Boolean accepts only TRUE or FALSE ordinal case-insensitively.
+- After INPUT, the target type remains known but its value is runtime-unknown. String analysis must allow 0 through 4096 UTF-8 bytes and NUL, Integer analysis must allow the full signed 64-bit range, and Boolean analysis must allow both values.
+- Runtime-dependent Integer arithmetic is checked in the evaluator and every target. Reached overflow and division failures use `SMILER1206` and `SMILER1207`; source-known definitely evaluated failures retain compile diagnostics `SMILE1206` and `SMILE1207`.
+- The evaluator receives input through an injectable source. Automated target tests provide scripted stdin and compare exact stdout, stderr, and exit code; normal CLI and Desktop execution must show prompts live and accept interactive input without blocking the WPF UI thread.
 - Current runtime state belongs to the evaluator environment, not permanently to `BoundLetStatement`.
-- Compile-time propagation must be statement-order, mutation aware, and branch aware. Never reuse an old known value after SET or propagate a branch-specific value unless every outgoing path merges to the same known value.
+- Compile-time propagation must be statement-order, mutation aware, and branch aware. Never reuse an old known value after SET or INPUT, or propagate a branch-specific value unless every outgoing path merges to the same known value.
 - Every expression feature must be defined once in the official core expression specification and implemented through the shared lexer, parser, binder, evaluator, and bound tree.
 - SMILE `AND` and `OR` use left-to-right short-circuit evaluation. Binding and type checking still examine both operands, but evaluation-time failures in an unreachable operand are not produced.
 - Each expression concept must have one canonical syntax and bound representation. Remove obsolete parallel representations rather than maintaining duplicate compiler paths.
@@ -72,7 +79,7 @@
 - IF conditions are call-free. Every value used by a condition must already exist without invoking a function or procedure during condition evaluation.
 - Every atomic IF condition must contain an explicit comparison and right-hand operand. Standalone Boolean variables and literals are invalid.
 - ELSE IF consists of ELSE and IF on the same logical header line. An IF after a standalone ELSE line is nested and requires its own END IF.
-- IF v1.0 permits PRINT, SET, nested IF, blank lines, and SET Block String Literals in branches. LET is not permitted until scopes are formally introduced.
+- IF v1.0 permits PRINT, SET, INPUT, nested IF, blank lines, and SET Block String Literals in branches. LET is not permitted until scopes are formally introduced.
 - Every target must preserve genuine branch structure. Do not delete unselected source branches merely because current values are known.
 - Branch-aware known-value analysis may propagate a value after IF only when outgoing-path merge proves it known.
 - The maximum supported IF nesting depth is 128. Entering depth 129 must report `SMILE1416` at that IF keyword and recover without recursing into the over-limit body or interpreting SET Block String content as control-flow headers.

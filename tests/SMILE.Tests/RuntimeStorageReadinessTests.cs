@@ -309,7 +309,10 @@ PRINT {Text}
         StringAssert.Contains(generated, "DISPLAY X\"0A\" WITH NO ADVANCING");
         StringAssert.Contains(
             generated,
-            "DISPLAY SMILE-Text(1:SMILE-SET-LENGTH-0) WITH NO ADVANCING");
+            "DISPLAY SMILE-Text WITH NO ADVANCING");
+        Assert.IsFalse(
+            generated.Contains("DISPLAY SMILE-Text(1:", StringComparison.Ordinal),
+            "A one-byte PIC X should avoid warning-prone reference modification.");
         StringAssert.Contains(generated, "END-IF.");
     }
 
@@ -409,12 +412,20 @@ PRINT {Text}
         Assert.IsTrue(File.Exists(languagePath), languagePath);
         string source = await File.ReadAllTextAsync(languagePath, Encoding.UTF8);
 
-        await AssertAvailableTargetsMatchEvaluator(source, "deployed language.smile");
+        await AssertAvailableTargetsMatchEvaluator(
+            source,
+            "deployed language.smile",
+            InputTestData.CanonicalScriptedInput);
     }
 
-    private async Task AssertAvailableTargetsMatchEvaluator(string source, string programName)
+    private async Task AssertAvailableTargetsMatchEvaluator(
+        string source,
+        string programName,
+        string? scriptedInput = null)
     {
-        EvaluationResult reference = _evaluator.Evaluate(source);
+        EvaluationResult reference = scriptedInput is null
+            ? _evaluator.Evaluate(source)
+            : _evaluator.Evaluate(source, scriptedInput);
         Assert.IsTrue(reference.Success, JoinDiagnostics(reference.Diagnostics));
         string expected = NormalizePhysicalNewlines(reference.Output);
         var failures = new List<string>();
@@ -441,7 +452,8 @@ PRINT {Text}
 
             BuildRunResult result = await toolchain.BuildAndRunAsync(
                 Generate(source, language),
-                CancellationToken.None);
+                CancellationToken.None,
+                scriptedInput is null ? null : BuildRunOptions.Scripted(scriptedInput));
 
             if (!result.Success || result.ExitCode != 0)
             {

@@ -11,8 +11,42 @@ public sealed record ProcessCommand(
     IReadOnlyList<string> Arguments,
     string WorkingDirectory)
 {
+    public ProcessInput StandardInput { get; init; } = ProcessInput.Closed;
+
+    public bool CreateVisibleConsole { get; init; }
+
     public static ProcessCommand ForCmd(string command, string workingDirectory) =>
         new("cmd.exe", new[] { "/c", command }, workingDirectory);
+}
+
+public enum ProcessInputMode
+{
+    Closed,
+    ScriptedText,
+    InteractiveInherited
+}
+
+public sealed record ProcessInput(
+    ProcessInputMode Mode,
+    string? ScriptedText = null,
+    byte[]? ScriptedBytesValue = null)
+{
+    public static ProcessInput Closed { get; } = new(ProcessInputMode.Closed);
+
+    public static ProcessInput InteractiveInherited { get; } =
+        new(ProcessInputMode.InteractiveInherited);
+
+    public static ProcessInput Scripted(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        return new ProcessInput(ProcessInputMode.ScriptedText, text);
+    }
+
+    public static ProcessInput ScriptedBytes(ReadOnlySpan<byte> bytes) =>
+        new(
+            ProcessInputMode.ScriptedText,
+            ScriptedText: null,
+            ScriptedBytesValue: bytes.ToArray());
 }
 
 public sealed record ProcessResult(
@@ -53,10 +87,14 @@ public sealed class ProcessRunner : IProcessRunner
             return Failure(validationError, stopwatch.Elapsed, cancellationToken.IsCancellationRequested);
         }
 
-        using var timeoutSource = new CancellationTokenSource(timeout);
-        using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken,
-            timeoutSource.Token);
+        using CancellationTokenSource? timeoutSource = timeout == Timeout.InfiniteTimeSpan
+            ? null
+            : new CancellationTokenSource(timeout);
+        using CancellationTokenSource linkedSource = timeoutSource is null
+            ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
+            : CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                timeoutSource.Token);
 
         Process? process = null;
         try
@@ -81,13 +119,17 @@ public sealed class ProcessRunner : IProcessRunner
 
         using (process)
         {
-            CloseStandardInput(process);
-
-            // The stream drainers keep reading even after the display cap is
-            // reached. That prevents child-process pipe deadlocks while also
-            // protecting the desktop process from unbounded output growth.
-            Task<CapturedStream> outputTask = DrainStreamAsync(process.StandardOutput, "stdout");
-            Task<CapturedStream> errorTask = DrainStreamAsync(process.StandardError, "stderr");
+            bool capturesOutput = command.StandardInput.Mode is not ProcessInputMode.InteractiveInherited;
+            Task<CapturedStream> outputTask = capturesOutput
+                ? DrainStreamAsync(process.StandardOutput, "stdout")
+                : Task.FromResult(new CapturedStream(string.Empty, null));
+            Task<CapturedStream> errorTask = capturesOutput
+                ? DrainStreamAsync(process.StandardError, "stderr")
+                : Task.FromResult(new CapturedStream(string.Empty, null));
+            Task<string?> inputTask = PrepareStandardInputAsync(
+                process,
+                command.StandardInput,
+                linkedSource.Token);
 
             bool timedOut = false;
             bool cancelled = false;
@@ -100,7 +142,8 @@ public sealed class ProcessRunner : IProcessRunner
             }
             catch (OperationCanceledException)
             {
-                timedOut = timeoutSource.IsCancellationRequested && !cancellationToken.IsCancellationRequested;
+                timedOut = timeoutSource?.IsCancellationRequested == true &&
+                    !cancellationToken.IsCancellationRequested;
                 cancelled = cancellationToken.IsCancellationRequested;
 
                 killWarning = TryKillProcessTree(process);
@@ -113,14 +156,16 @@ public sealed class ProcessRunner : IProcessRunner
 
             CapturedStream output = await CompleteStreamAsync(outputTask, "stdout").ConfigureAwait(false);
             CapturedStream error = await CompleteStreamAsync(errorTask, "stderr").ConfigureAwait(false);
+            string? inputWarning = await CompleteInputAsync(inputTask).ConfigureAwait(false);
 
             stopwatch.Stop();
 
             int? exitCode = SafeExitCode(process, out string? exitWarning);
-            string standardError = JoinNonEmpty(
+            string standardError = AppendDiagnosticsToCapturedError(
                 error.Text,
                 output.Error,
                 error.Error,
+                inputWarning,
                 killWarning,
                 waitWarning,
                 exitWarning);
@@ -147,14 +192,20 @@ public sealed class ProcessRunner : IProcessRunner
             return "Process filename was blank.";
         }
 
-        if (timeout <= TimeSpan.Zero)
+        if (timeout <= TimeSpan.Zero && timeout != Timeout.InfiniteTimeSpan)
         {
-            return "Process timeout must be positive.";
+            return "Process timeout must be positive or infinite.";
         }
 
         if (string.IsNullOrWhiteSpace(command.WorkingDirectory))
         {
             return "Process working directory was blank.";
+        }
+
+        if (command.CreateVisibleConsole &&
+            command.StandardInput.Mode is not ProcessInputMode.InteractiveInherited)
+        {
+            return "A visible console requires interactive inherited standard streams.";
         }
 
         try
@@ -184,17 +235,28 @@ public sealed class ProcessRunner : IProcessRunner
 
     private static ProcessStartInfo CreateStartInfo(ProcessCommand command)
     {
+        bool interactive = command.StandardInput.Mode is ProcessInputMode.InteractiveInherited;
         var startInfo = new ProcessStartInfo(command.FileName)
         {
             WorkingDirectory = Path.GetFullPath(command.WorkingDirectory),
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            RedirectStandardInput = true,
-            CreateNoWindow = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8
+            UseShellExecute = command.CreateVisibleConsole,
+            RedirectStandardOutput = !interactive,
+            RedirectStandardError = !interactive,
+            RedirectStandardInput = !interactive,
+            CreateNoWindow = !interactive,
+            WindowStyle = interactive
+                ? ProcessWindowStyle.Normal
+                : ProcessWindowStyle.Hidden
         };
+
+        if (!interactive)
+        {
+            startInfo.StandardInputEncoding = new UTF8Encoding(
+                encoderShouldEmitUTF8Identifier: false,
+                throwOnInvalidBytes: true);
+            startInfo.StandardOutputEncoding = Encoding.UTF8;
+            startInfo.StandardErrorEncoding = Encoding.UTF8;
+        }
 
         foreach (string argument in command.Arguments ?? Array.Empty<string>())
         {
@@ -204,17 +266,75 @@ public sealed class ProcessRunner : IProcessRunner
         return startInfo;
     }
 
-    private static void CloseStandardInput(Process process)
+    private static async Task<string?> PrepareStandardInputAsync(
+        Process process,
+        ProcessInput input,
+        CancellationToken cancellationToken)
     {
+        if (input.Mode is ProcessInputMode.InteractiveInherited)
+        {
+            return null;
+        }
+
         try
         {
-            // SMILE-run programs are captured by the app, not interacted with
-            // directly. Closing stdin makes accidental reads finish or fail
-            // instead of waiting forever inside an invisible console.
+            if (input.Mode is ProcessInputMode.ScriptedText)
+            {
+                if (input.ScriptedBytesValue is byte[] scriptedBytes)
+                {
+                    // Raw scripted bytes let conformance tests exercise
+                    // malformed UTF-8 without a shell or text encoder silently
+                    // repairing the learner's input first.
+                    await process.StandardInput.BaseStream.WriteAsync(
+                            scriptedBytes.AsMemory(),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    await process.StandardInput.BaseStream.FlushAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    await process.StandardInput.WriteAsync(
+                            (input.ScriptedText ?? string.Empty).AsMemory(),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    await process.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
+                }
+            }
+
+            // Closed compiler processes and completed scripted runs receive a
+            // real EOF. Interactive programs inherit the learner's terminal
+            // instead and never pass through this captured-stream path.
             process.StandardInput.Close();
+            return null;
+        }
+        catch (Exception exception) when (exception is IOException or ObjectDisposedException)
+        {
+            // A generated program may intentionally stop after one invalid
+            // line or simply leave extra scripted lines unread. Its closed
+            // pipe is normal process behavior; the real exit code and exact
+            // child stderr remain authoritative.
+            return null;
         }
         catch (Exception ex) when (IsExpectedProcessException(ex) || ex is IOException)
         {
+            return $"[SMILE could not finish writing stdin: {ex.GetType().Name}: {ex.Message}]";
+        }
+    }
+
+    private static async Task<string?> CompleteInputAsync(Task<string?> task)
+    {
+        try
+        {
+            return await task.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch (Exception ex) when (IsExpectedStreamException(ex))
+        {
+            return $"[SMILE could not finish writing stdin: {ex.GetType().Name}: {ex.Message}]";
         }
     }
 
@@ -358,12 +478,34 @@ public sealed class ProcessRunner : IProcessRunner
         return builder.ToString();
     }
 
-    private static string JoinNonEmpty(params string?[] values) =>
-        string.Join(
+    private static string AppendDiagnosticsToCapturedError(
+        string capturedError,
+        params string?[] diagnostics)
+    {
+        string diagnosticText = string.Join(
             Environment.NewLine,
-            values
+            diagnostics
                 .Where(value => !string.IsNullOrWhiteSpace(value))
                 .Select(value => value!.TrimEnd()));
+
+        if (diagnosticText.Length == 0)
+        {
+            // Runtime conformance compares stderr exactly, including its final
+            // line ending. Keep the child's bytes-as-text untouched when the
+            // runner itself has nothing to report.
+            return capturedError;
+        }
+
+        if (capturedError.Length == 0)
+        {
+            return diagnosticText;
+        }
+
+        string separator = capturedError[^1] is '\r' or '\n'
+            ? string.Empty
+            : Environment.NewLine;
+        return capturedError + separator + diagnosticText;
+    }
 
     private static bool IsExpectedProcessException(Exception exception) =>
         exception is Win32Exception or

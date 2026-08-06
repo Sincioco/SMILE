@@ -57,3 +57,21 @@ If this can be implemented with no issues to the long-term plan of making SMILE 
 7.) Update SMILE's mission statement as follows:
 
 SMILE is a modern programming language inspired by BASIC, designed to help newcomers learn not only how to write code, but also how programming languages work at a fundamental level. Building on BASIC’s simplicity and accessibility, SMILE allows students to transpile their code into multiple programming languages and compile the resulting programs. This enables learners to see how the same logic and concepts are expressed using different languages and syntaxes. Through this comparative approach, students can recognize an essential principle: despite their surface-level differences, all programming languages share the same core fundamentals. The primary goal is therefore not to memorize the syntax of a particular language, but to develop logical thinking, problem-solving skills, and a strong understanding of programming concepts. By combining simplicity, experimentation, and cross-language learning, SMILE provides a fun and educational environment that teaches students how to think like programmers.
+
+
+INPUT Statement
+---------------
+8.) For reference, the INPUT language specification for SMILE is located at "D:\SMILE\docs\SMILE Language Specification\008 - SMILE - INPUT Statement Official Specification v1.0.md".
+9.) The implementation of the INPUT statement in CODEX is located at "D:\SMILE\Requirements\2026-08-06 2139 - SMILE Codex Instructions v0.7.0 INPUT.md".
+10.) Commit all and push when all your tests are green.
+
+Editor Color Coding
+-------------------
+11.) Can you update SMILE's editor so that across all the languages, the color-coding for comments are universally green?  And don't use the color green for any other purpose.  I want green to be just for comments.  If green is currently being used for a different purpose, just substitute it for blue.  And don't use purple in any of the languages.  Default to blue for all language keywords (except for comments).  And use black for all user named elements such as variables, class/function/method names, etc.
+
+Target Language Editor
+----------------------
+12.) Unlock the other language's editor so the user can make changes to it.  Keep the current behavior in that when the code in the SMILE editor is edited, it continues to update the relevant target languages.  So, no changes other than unlock the the other target editor.  So the user can make changes to the target language's editor and play with it in real-time (by compiling that is).  The SMILE editor will still transpile to the target languages as before--no changes to existing behaviors.
+13.) Add a "Maximize" button on each of the target language's quadrant so that when it is clicked, it takes up the content area so the user can see the code in "full screen" and compile it.  Leave the output window as it is.  Basically, the maximize button will temporarily take up all the 4 quadrants.  Obviously, give the user the ablity to "Restore".
+14.) Update the "New" button of SMILE's editor so it actually clears the SMILE editor and all the target language editors.  Keep the existing behavior of when it launches it loads the language.smile file (for now).
+15.) Commit all and push when all your tests are green.

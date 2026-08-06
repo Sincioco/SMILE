@@ -20,6 +20,7 @@ This specification works together with:
 - [005 - SMILE - LET Statement Official Specification v1.0](005%20-%20SMILE%20-%20LET%20Statement%20Official%20Specification%20v1.0.md)
 - [006 - SMILE - IF Statement Official Specification v1.0](006%20-%20SMILE%20-%20IF%20Statement%20Official%20Specification%20v1.0.md)
 - [007 - SMILE - Full-Line Comments and Source Layout Preservation Official Specification v1.0](007%20-%20SMILE%20-%20Full-Line%20Comments%20and%20Source%20Layout%20Preservation%20Official%20Specification%20v1.0.md)
+- [008 - SMILE - INPUT Statement Official Specification v1.0](008%20-%20SMILE%20-%20INPUT%20Statement%20Official%20Specification%20v1.0.md)
 
 In SMILE v0.6.1, comment and blank-line recognition is suspended from a block's opening delimiter through its structural closing delimiter. Marker-looking lines and blank physical content lines remain exact String data and never become separate source-layout items.
 
@@ -27,7 +28,8 @@ When this specification is implemented, the official LET specification must be u
 
 ```text
 LET declares a variable and gives it its initial value.
-SET changes the current value of an existing variable.
+SET changes the current value of an existing variable from a SMILE expression.
+INPUT changes the current value of an existing variable from one runtime input line.
 The variable's SMILE type never changes.
 ```
 
@@ -333,7 +335,7 @@ The target variable is not changed while its new value is still being evaluated.
 
 If evaluation fails, the previous value remains unchanged.
 
-SMILE v0.6.0 adds branching through IF but still has no runtime input, looping, function call, or external runtime data. A SET right side is evaluated only when its containing branch executes. Binding and whole-program target planning still inspect SET expressions in every source branch.
+SMILE v0.7.0 adds runtime input through the separate INPUT statement but still has no loop, function call, or other external runtime operation. A SET right side is evaluated only when its containing branch executes. Binding and whole-program target planning still inspect SET expressions in every source branch. An earlier INPUT may make a later SET expression runtime-unknown, so the generator must evaluate that expression from current target storage and preserve checked runtime Integer semantics.
 
 ---
 
@@ -1680,7 +1682,7 @@ The expression grammar does not gain an assignment operator.
 
 Expressions remain pure in v0.5.0.
 
-`SET` is the only assignment statement.
+`SET` is the only statement that assigns from a SMILE expression. `INPUT` is the separate statement that updates an existing variable from one runtime input line.
 
 A SET Block String Literal is a SET-only source form, not a general expression feature.
 
@@ -1693,6 +1695,12 @@ SET is permitted in IF, ELSE IF, ELSE, and nested IF bodies. The complete right 
 All branches are nevertheless parsed, bound, type-checked, and inspected for Integer width, maximum String byte length, embedded NUL, mutation, and target facilities. A target must retain every branch and emit a real storage update at each SET position. Branch-aware analysis may propagate a value after IF only when every possible outgoing path proves the same value.
 
 A SET Block String Literal remains one normalized SET value inside a branch. Its internal physical lines are content and MUST NOT be interpreted as ELSE, ELSE IF, or END IF terminators.
+
+## Compatibility with INPUT in SMILE v0.7.0
+
+SET and INPUT both update an existing variable without changing the type established by LET, but their value sources remain distinct. SET evaluates one SMILE expression; INPUT reads and converts one runtime line. SET after INPUT reads the current entered value. INPUT after SET replaces the SET value only after input reading and conversion succeed.
+
+After INPUT, compile-time analysis MUST NOT reuse a pre-input LET or SET value. A String may contain 0 through 4096 UTF-8 bytes and NUL, an Integer may contain any signed 64-bit value, and a Boolean may contain either value. These facts apply to every later SET expression and target-storage plan.
 
 ---
 
@@ -1763,11 +1771,10 @@ The `{Name}` text is literal because block Strings do not interpolate.
 
 # 57. Future evolution
 
-`SET` establishes mutable runtime state.
+`SET` establishes mutable runtime state. SMILE v0.7.0 realizes INPUT using that existing fixed-type storage model.
 
-It prepares SMILE for:
+It continues to prepare SMILE for:
 
-- `INPUT`;
 - loops;
 - functions;
 - scopes.
@@ -1779,3 +1786,5 @@ A future general-purpose multiline String feature may use another explicitly spe
 Optimizations may use known values only when they preserve statement order, mutation, and left-to-right evaluation.
 
 SMILE v0.6.0 realizes the IF milestone. Optimizations must additionally preserve every IF clause and body and must not propagate branch-specific state after END IF.
+
+SMILE v0.7.0 realizes INPUT. Optimizations must preserve every INPUT at its source position, remove the target's previous known value, and never bake a scripted input value into generated source.

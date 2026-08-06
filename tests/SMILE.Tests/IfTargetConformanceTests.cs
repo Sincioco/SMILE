@@ -745,9 +745,34 @@ PRINT {StableValue}
         StringAssert.Contains(masm, "mov rax, QWORD PTR [variable3Integer]");
         StringAssert.Contains(masm, "imul rax, r9");
         StringAssert.Contains(masm, "idiv r9");
+        StringAssert.Contains(masm, "smileRuntimeOverflowMessage BYTE");
+        StringAssert.Contains(masm, "smileRuntimeDivisionByZeroMessage BYTE");
+        StringAssert.Contains(masm, "smileRuntimeOverflow:");
+        StringAssert.Contains(masm, "smileRuntimeDivisionByZero:");
+        StringAssert.Contains(masm, "smileFail PROC");
         StringAssert.Contains(masm, "sete al");
         StringAssert.Contains(masm, "cmp r8b, BYTE PTR [r11]");
         StringAssert.Contains(masm, "ifCondition3Comparison0Right BYTE \"A\", 0, \"B\"");
+        Assert.AreEqual(
+            -1,
+            masm.IndexOf("smileReadInputByte PROC", StringComparison.Ordinal),
+            "Runtime IF arithmetic must not pull INPUT readers into a no-INPUT program.");
+        Assert.AreEqual(
+            -1,
+            masm.IndexOf("stdinHandle", StringComparison.Ordinal),
+            "Runtime IF arithmetic must not allocate INPUT state.");
+
+        string minimalMasm = Generate(
+            "LET Value = 1\nPRINT {Value}",
+            TargetLanguage.MasmX64).PrimaryFile.Content;
+        Assert.AreEqual(
+            -1,
+            minimalMasm.IndexOf("smileRuntimeOverflowMessage", StringComparison.Ordinal),
+            "A source-known no-INPUT program does not need runtime arithmetic errors.");
+        Assert.AreEqual(
+            -1,
+            minimalMasm.IndexOf("smileReadInputByte PROC", StringComparison.Ordinal),
+            "A source-known no-INPUT program does not need INPUT readers.");
     }
 
     [TestMethod]

@@ -271,7 +271,6 @@ PRINT {Message}
     [DataRow("IF TRUE = TRUE THEN\nENDIF", "SMILE1413")]
     [DataRow("IF TRUE = TRUE THEN\nEND", "SMILE1413")]
     [DataRow("IF TRUE = TRUE THEN\nEND IF extra", "SMILE1413")]
-    [DataRow("IF TRUE = TRUE THEN\n    INPUT\nEND IF", "SMILE1415")]
     [DataRow("IF THEN\nEND IF", "SMILE1401")]
     [DataRow("IF TRUE = TRUE THEN\nELSE IF THEN\nEND IF", "SMILE1408")]
     [DataRow("IF Age >= THEN\nEND IF", "SMILE1201")]

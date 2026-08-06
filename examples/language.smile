@@ -230,3 +230,34 @@ PRINT -- This text is printed
 PRINT REM This text is printed
 PRINT https://example.com
 PRINT {CommentLayoutMessage}
+
+PRINT
+PRINT "INPUT statement examples in language.smile:"
+
+LET InputName = ""
+LET InputAge = 0
+LET InputReady = FALSE
+
+// Each INPUT reads one complete line into an existing fixed-type variable.
+PRINT Enter your name:
+INPUT InputName
+
+PRINT Enter your age:
+INPUT InputAge
+
+PRINT Enter TRUE or FALSE:
+INPUT InputReady
+
+PRINT Name=[{InputName}]
+
+IF InputAge >= 18 THEN
+    PRINT INPUT age group=Adult
+ELSE
+    PRINT INPUT age group=Minor
+END IF
+
+IF InputReady = TRUE THEN
+    PRINT INPUT ready=TRUE
+ELSE
+    PRINT INPUT ready=FALSE
+END IF

@@ -10,7 +10,7 @@ The language definition was introduced in:
 
 The current implementation baseline is:
 
-> **SMILE v0.6.1 — Full-Line Comments and Source Layout Preservation**
+> **SMILE v0.7.0 — INPUT**
 
 This specification defines three permanent SMILE rules:
 
@@ -23,7 +23,7 @@ This specification defines three permanent SMILE rules:
 3. **ELSE IF clause rule**
    When `ELSE` is immediately followed by `IF` on the same logical statement line, the two keywords form an `ELSE IF` clause belonging to the current IF statement.
 
-This specification works together with the numbered official SMILE specifications for LET, SET, PRINT, String literals, core expressions, and [007 - Full-Line Comments and Source Layout Preservation](007%20-%20SMILE%20-%20Full-Line%20Comments%20and%20Source%20Layout%20Preservation%20Official%20Specification%20v1.0.md).
+This specification works together with the numbered official SMILE specifications for LET, SET, PRINT, String literals, core expressions, [007 - Full-Line Comments and Source Layout Preservation](007%20-%20SMILE%20-%20Full-Line%20Comments%20and%20Source%20Layout%20Preservation%20Official%20Specification%20v1.0.md), and [008 - INPUT](008%20-%20SMILE%20-%20INPUT%20Statement%20Official%20Specification%20v1.0.md).
 
 ---
 
@@ -626,12 +626,15 @@ Permitted:
 
 - PRINT;
 - SET;
+- INPUT;
 - nested IF;
 - full-line `REM`, `//`, `#`, and `--` comments;
 - blank lines;
 - SET Block String Literals within SET.
 
 Comments and blank lines are ordered non-semantic source items. Comment payloads that spell `IF`, `ELSE`, `ELSE IF`, `END IF`, malformed terminators, or Block String delimiters have no control-flow meaning. Marker-looking and blank physical lines inside a SET Block String remain String data rather than branch layout.
+
+INPUT targets an existing variable declared outside the IF. Only the selected branch executes its INPUT statements and consumes lines. An unselected INPUT still participates in binding, mutation analysis, full-range Integer/String planning, and target generation, but consumes no input at runtime.
 
 Example:
 
@@ -650,7 +653,7 @@ END IF
 
 # 24. LET is not permitted inside IF v1.0
 
-v0.6.1 does not introduce block-local declarations or scopes.
+v0.7.0 does not introduce block-local declarations or scopes.
 
 Valid:
 
@@ -672,7 +675,7 @@ END IF
 
 ---
 
-# 25. SET changes survive the selected branch
+# 25. SET and INPUT changes survive the selected branch
 
 ```smile
 LET Result = ""
@@ -687,6 +690,8 @@ PRINT {Result}
 ```
 
 At evaluator runtime, later statements see the selected branch's current value. For target generation, a value after IF may be propagated statically only when every possible outgoing path merges to the same branch-aware `Known` value. A selected concrete reference trace never authorizes static lowering of an `Unknown` later LET, SET, PRINT, interpolation, or IF condition; those expressions must read and compute from current generated runtime storage.
+
+An INPUT in the selected branch reads and atomically updates its target before later statements. An INPUT in every unselected clause consumes no line. After merging a path that executes INPUT with a path that does not, the target value is Unknown unless every outgoing path later proves the same known value.
 
 ---
 
@@ -712,7 +717,7 @@ A generator must not delete unselected branches or replace the whole IF with onl
 
 # 29. Source order
 
-Conditions observe current values produced by earlier LET and SET statements.
+Conditions observe current values produced by earlier LET, SET, and INPUT statements.
 
 ```smile
 LET Value = 1
@@ -903,7 +908,7 @@ if none succeeded:
     execute ELSE statements
 ```
 
-Only the selected branch updates runtime state.
+Only the selected branch updates runtime state or consumes input.
 
 ---
 
@@ -914,7 +919,7 @@ Only the selected branch updates runtime state.
 - COBOL: valid `IF / ELSE / END-IF`
 - MASM x64: deterministic compare/jump labels
 
-All ten current targets remain supported.
+All ten current targets remain supported. Each retains every branch-local INPUT at its source position, evaluates runtime-dependent conditions from current storage, and reports reached input or arithmetic errors only from the selected execution path.
 
 ---
 
@@ -975,7 +980,7 @@ Future function syntax must preserve the call-free condition rule.
 
 Future Boolean functions must assign their results before explicit comparison.
 
-Future INPUT introduces runtime-unknown values.
+SMILE v0.7.0 INPUT introduces runtime-unknown values. IF analysis must merge every possible outgoing path conservatively, and only an executed branch consumes input or produces a reached runtime error.
 
 Future scopes may permit LET in IF, but v1.0 does not.
 

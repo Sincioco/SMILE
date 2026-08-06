@@ -14,6 +14,12 @@ internal sealed class CCodeGenerator : ICodeGenerator
         TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
         BoundProgramAnalysis analysis = BoundProgramAnalysis.Create(program);
         TargetIntegerProfile integers = TargetIntegerProfile.Analyze(program, analysis);
+        bool hasInput = TargetRuntimeFacts.HasInput(program);
+        bool checkedArithmetic = TargetRuntimeFacts.NeedsCheckedIntegerArithmetic(program);
+        if (TargetRuntimeFacts.HasInput(program, SmileType.Integer) || checkedArithmetic)
+        {
+            integers = new TargetIntegerProfile(RequiresSigned64Storage: true, RequiresJavaScriptBigInt: true);
+        }
         IReadOnlyDictionary<BoundStatement, RuntimeStringBuffer> runtimeStringBuffers =
             CreateRuntimeStringBuffers(program, identifiers, analysis);
         IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> runtimeExpressionBuffers =
@@ -24,19 +30,22 @@ internal sealed class CCodeGenerator : ICodeGenerator
                 identifiers,
                 analysis,
                 runtimeStringBuffers.Keys.Select(statement => statement switch
-                {
-                    BoundLetStatement let => let.Variable,
-                    BoundSetStatement set => set.Variable,
-                    _ => throw new InvalidOperationException("Unexpected C runtime String statement.")
-                }));
+                    {
+                        BoundLetStatement let => let.Variable,
+                        BoundSetStatement set => set.Variable,
+                        _ => throw new InvalidOperationException("Unexpected C runtime String statement.")
+                    })
+                    .Concat(TargetRuntimeFacts.Inputs(program)
+                        .Where(input => input.Variable.Type is SmileType.String)
+                        .Select(input => input.Variable)));
         var source = new StringBuilder();
         source.AppendLine("#include <stdio.h>");
-        if (integers.RequiresSigned64Storage)
+        if (integers.RequiresSigned64Storage || hasInput)
         {
             source.AppendLine("#include <stdint.h>");
         }
 
-        if (CGenerationFacts.NeedsBooleanHeader(program))
+        if (CGenerationFacts.NeedsBooleanHeader(program) || hasInput)
         {
             source.AppendLine("#include <stdbool.h>");
         }
@@ -47,7 +56,21 @@ internal sealed class CCodeGenerator : ICodeGenerator
             source.AppendLine("#include <string.h>");
         }
 
+        if (hasInput || checkedArithmetic)
+        {
+            source.AppendLine("#include <stdlib.h>");
+        }
+
+        if (hasInput)
+        {
+            source.AppendLine("#ifdef _WIN32");
+            source.AppendLine("#include <fcntl.h>");
+            source.AppendLine("#include <io.h>");
+            source.AppendLine("#endif");
+        }
+
         source.AppendLine();
+        CGeneratedRuntime.Append(source, program, checkedArithmetic);
         source.AppendLine("int main(void)");
         source.AppendLine("{");
 
@@ -77,6 +100,7 @@ internal sealed class CCodeGenerator : ICodeGenerator
             exactStringLengths,
             runtimeStringBuffers,
             runtimeExpressionBuffers,
+            checkedArithmetic,
             ref emittedDeclaration,
             ref emittedExecutable,
             ref emittedBodyStatement);
@@ -104,6 +128,7 @@ internal sealed class CCodeGenerator : ICodeGenerator
         IReadOnlyDictionary<VariableSymbol, string> exactStringLengths,
         IReadOnlyDictionary<BoundStatement, RuntimeStringBuffer> runtimeStringBuffers,
         IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> runtimeExpressionBuffers,
+        bool checkedArithmetic,
         ref bool emittedDeclaration,
         ref bool emittedExecutable,
         ref bool emittedBodyStatement)
@@ -162,7 +187,8 @@ internal sealed class CCodeGenerator : ICodeGenerator
                                 integers,
                                 exactStringLengths,
                                 runtimeExpressionBuffers,
-                                declareBuffer: false);
+                                declareBuffer: false,
+                                checkedArithmetic);
                         }
                     }
                     else
@@ -178,7 +204,8 @@ internal sealed class CCodeGenerator : ICodeGenerator
                                 integers,
                                 GeneratorConditionFacts.KnownValues(facts.ValuesBefore),
                                 exactStringLengths,
-                                runtimeExpressionBuffers);
+                                runtimeExpressionBuffers,
+                                checkedArithmetic);
                         source.AppendLine($"{indent}{TargetTypes.CDeclaration(let.Variable.Type, identifiers.Get(let.Variable), integers)} = {initializer};");
                         if (exactStringLengths.TryGetValue(let.Variable, out string? letLengthName))
                         {
@@ -218,9 +245,10 @@ internal sealed class CCodeGenerator : ICodeGenerator
                             runtimeStringBuffers[set],
                             identifiers,
                             integers,
-                            exactStringLengths,
-                            runtimeExpressionBuffers,
-                            declareBuffer: true);
+                                exactStringLengths,
+                                runtimeExpressionBuffers,
+                                declareBuffer: true,
+                                checkedArithmetic);
                     }
                     else
                     {
@@ -235,7 +263,8 @@ internal sealed class CCodeGenerator : ICodeGenerator
                                 integers,
                                 GeneratorConditionFacts.KnownValues(facts.ValuesBefore),
                                 exactStringLengths,
-                                runtimeExpressionBuffers);
+                                runtimeExpressionBuffers,
+                                checkedArithmetic);
                         source.AppendLine($"{indent}{identifiers.Get(set.Variable)} = {value};");
                         if (exactStringLengths.TryGetValue(set.Variable, out string? setLengthName))
                         {
@@ -243,6 +272,23 @@ internal sealed class CCodeGenerator : ICodeGenerator
                         }
                     }
 
+                    emittedExecutable = true;
+                    emittedBodyStatement = true;
+                    break;
+
+                case BoundInputStatement input:
+                    if (!emittedExecutable && emittedDeclaration)
+                    {
+                        source.AppendLine();
+                    }
+
+                    CGeneratedRuntime.AppendInputStatement(
+                        source,
+                        indent,
+                        input,
+                        facts.Ordinal,
+                        identifiers,
+                        exactStringLengths);
                     emittedExecutable = true;
                     emittedBodyStatement = true;
                     break;
@@ -262,7 +308,8 @@ internal sealed class CCodeGenerator : ICodeGenerator
                         facts.Value.IsKnown,
                         GeneratorConditionFacts.KnownValues(facts.ValuesBefore),
                         exactStringLengths,
-                        runtimeExpressionBuffers);
+                        runtimeExpressionBuffers,
+                        checkedArithmetic);
                     emittedExecutable = true;
                     emittedBodyStatement = true;
                     break;
@@ -283,6 +330,7 @@ internal sealed class CCodeGenerator : ICodeGenerator
                         exactStringLengths,
                         runtimeStringBuffers,
                         runtimeExpressionBuffers,
+                        checkedArithmetic,
                         ref emittedDeclaration,
                         ref emittedExecutable,
                         ref emittedBodyStatement);
@@ -303,6 +351,7 @@ internal sealed class CCodeGenerator : ICodeGenerator
         IReadOnlyDictionary<VariableSymbol, string> exactStringLengths,
         IReadOnlyDictionary<BoundStatement, RuntimeStringBuffer> runtimeStringBuffers,
         IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> runtimeExpressionBuffers,
+        bool checkedArithmetic,
         ref bool emittedDeclaration,
         ref bool emittedExecutable,
         ref bool emittedBodyStatement)
@@ -319,7 +368,8 @@ internal sealed class CCodeGenerator : ICodeGenerator
                     integers,
                     GeneratorConditionFacts.KnownValues(clauseFacts.ValuesBefore),
                     exactStringLengths,
-                    runtimeExpressionBuffers))
+                    runtimeExpressionBuffers,
+                    checkedArithmetic))
                 .AppendLine(")");
             source.Append(indent).AppendLine("{");
             AppendSourceItems(
@@ -332,6 +382,7 @@ internal sealed class CCodeGenerator : ICodeGenerator
                 exactStringLengths,
                 runtimeStringBuffers,
                 runtimeExpressionBuffers,
+                checkedArithmetic,
                 ref emittedDeclaration,
                 ref emittedExecutable,
                 ref emittedBodyStatement);
@@ -352,6 +403,7 @@ internal sealed class CCodeGenerator : ICodeGenerator
                 exactStringLengths,
                 runtimeStringBuffers,
                 runtimeExpressionBuffers,
+                checkedArithmetic,
                 ref emittedDeclaration,
                 ref emittedExecutable,
                 ref emittedBodyStatement);
@@ -368,7 +420,8 @@ internal sealed class CCodeGenerator : ICodeGenerator
         bool valueIsKnown,
         IReadOnlyDictionary<VariableSymbol, SmileValue> values,
         IReadOnlyDictionary<VariableSymbol, string> exactStringLengths,
-        IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> runtimeExpressionBuffers)
+        IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> runtimeExpressionBuffers,
+        bool checkedArithmetic)
     {
         if (TryAppendDirectStringVariablePrint(
             source,
@@ -376,6 +429,19 @@ internal sealed class CCodeGenerator : ICodeGenerator
             print,
             identifiers,
             exactStringLengths))
+        {
+            return;
+        }
+
+        if (!valueIsKnown && TryAppendAtomicRuntimeStringPrint(
+                source,
+                indent,
+                print,
+                identifiers,
+                integers,
+                exactStringLengths,
+                runtimeExpressionBuffers,
+                checkedArithmetic))
         {
             return;
         }
@@ -389,7 +455,9 @@ internal sealed class CCodeGenerator : ICodeGenerator
                 values,
                 exactStringLengths,
                 runtimeExpressionBuffers,
-                TargetLanguage.C))
+                TargetLanguage.C,
+                checkedArithmetic,
+                forceSequential: checkedArithmetic))
         {
             return;
         }
@@ -407,9 +475,48 @@ internal sealed class CCodeGenerator : ICodeGenerator
                 integers,
                 values,
                 exactStringLengths,
-                runtimeExpressionBuffers),
+                runtimeExpressionBuffers,
+                checkedArithmetic),
             integers.RequiresSigned64Storage);
         AppendPrintfCall(source, indent, plan);
+    }
+
+    internal static bool TryAppendAtomicRuntimeStringPrint(
+        StringBuilder source,
+        string indent,
+        BoundPrintStatement print,
+        TargetIdentifierMap identifiers,
+        TargetIntegerProfile integers,
+        IReadOnlyDictionary<VariableSymbol, string> exactStringLengths,
+        IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> runtimeExpressionBuffers,
+        bool checkedArithmetic)
+    {
+        if (print.IsBlankLine ||
+            print.Value.Type is not SmileType.String ||
+            !runtimeExpressionBuffers.TryGetValue(print.Value, out RuntimeStringBuffer? buffer))
+        {
+            return false;
+        }
+
+        string workLength = buffer.Name + "Used";
+        source.Append(indent).Append(workLength).AppendLine(" = 0;");
+        AppendCRuntimeTextSegments(
+            source,
+            indent,
+            print.Value,
+            buffer,
+            workLength,
+            identifiers,
+            integers,
+            exactStringLengths,
+            runtimeExpressionBuffers,
+            checkedArithmetic);
+        source.Append(indent).Append(buffer.Name).Append('[')
+            .Append(workLength).AppendLine("] = '\\0';");
+        source.Append(indent).Append("fwrite(").Append(buffer.Name).Append(", 1, ")
+            .Append(workLength).AppendLine(", stdout);");
+        source.Append(indent).AppendLine("fputc('\\n', stdout);");
+        return true;
     }
 
     internal static bool TryAppendRuntimeStringSegments(
@@ -421,7 +528,9 @@ internal sealed class CCodeGenerator : ICodeGenerator
         IReadOnlyDictionary<VariableSymbol, SmileValue> values,
         IReadOnlyDictionary<VariableSymbol, string> exactStringLengths,
         IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> runtimeExpressionBuffers,
-        TargetLanguage language)
+        TargetLanguage language,
+        bool checkedArithmetic = false,
+        bool forceSequential = false)
     {
         if (print.IsBlankLine ||
             print.Value.Type is not SmileType.String ||
@@ -439,7 +548,7 @@ internal sealed class CCodeGenerator : ICodeGenerator
                 exactStringLengths.ContainsKey(variable.Variable),
             _ => false
         });
-        if (!needsExactStreaming)
+        if (!needsExactStreaming && !forceSequential)
         {
             return false;
         }
@@ -484,14 +593,16 @@ internal sealed class CCodeGenerator : ICodeGenerator
                             integers,
                             values,
                             exactStringLengths,
-                            runtimeExpressionBuffers)
+                            runtimeExpressionBuffers,
+                            checkedArithmetic)
                         : TargetExpression.C(
                             expression.Expression,
                             identifiers,
                             integers,
-                            values,
-                            exactStringLengths,
-                            runtimeExpressionBuffers);
+                        values,
+                        exactStringLengths,
+                        runtimeExpressionBuffers,
+                        checkedArithmetic);
                     CPrintfPlan typedPlan = CPrintfPlan.FromPrint(
                         new BoundPrintStatement(expression.Expression, IsBlankLine: false),
                         _ => rendered,
@@ -709,6 +820,12 @@ internal sealed class CCodeGenerator : ICodeGenerator
                     break;
 
                 case BoundPrintStatement { IsBlankLine: false } print:
+                    if (!facts.Value.IsKnown &&
+                        TargetRuntimeFacts.ContainsIntegerArithmetic(print.Value))
+                    {
+                        Add(print.Value, facts.ValuesBefore);
+                    }
+
                     Collect(print.Value, facts.ValuesBefore);
                     break;
 
@@ -806,7 +923,8 @@ internal sealed class CCodeGenerator : ICodeGenerator
         TargetIntegerProfile integers,
         IReadOnlyDictionary<VariableSymbol, string> exactStringLengths,
         IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> runtimeExpressionBuffers,
-        bool declareBuffer)
+        bool declareBuffer,
+        bool checkedArithmetic = false)
     {
         string workLength = buffer.Name + "Used";
         source.Append(indent).AppendLine("{");
@@ -827,7 +945,8 @@ internal sealed class CCodeGenerator : ICodeGenerator
             identifiers,
             integers,
             exactStringLengths,
-            runtimeExpressionBuffers);
+            runtimeExpressionBuffers,
+            checkedArithmetic);
         source.Append(indent).Append("    ").Append(buffer.Name).Append('[')
             .Append(workLength).AppendLine("] = '\\0';");
         source.Append(indent).Append("    ").Append(identifiers.Get(destination))
@@ -846,7 +965,8 @@ internal sealed class CCodeGenerator : ICodeGenerator
         TargetIdentifierMap identifiers,
         TargetIntegerProfile integers,
         IReadOnlyDictionary<VariableSymbol, string> exactStringLengths,
-        IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> runtimeExpressionBuffers)
+        IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> runtimeExpressionBuffers,
+        bool checkedArithmetic)
     {
         foreach (RuntimeTextSegment segment in RuntimeTextPlan.Flatten(expression))
         {
@@ -890,7 +1010,8 @@ internal sealed class CCodeGenerator : ICodeGenerator
                         integers,
                         new Dictionary<VariableSymbol, SmileValue>(),
                         exactStringLengths,
-                        runtimeExpressionBuffers);
+                        runtimeExpressionBuffers,
+                        checkedArithmetic);
                     string integerFormat = integers.RequiresSigned64Storage ? "%lld" : "%d";
                     string integerArgument = integers.RequiresSigned64Storage
                         ? $"(long long)({integer})"
@@ -911,7 +1032,8 @@ internal sealed class CCodeGenerator : ICodeGenerator
                         integers,
                         new Dictionary<VariableSymbol, SmileValue>(),
                         exactStringLengths,
-                        runtimeExpressionBuffers);
+                        runtimeExpressionBuffers,
+                        checkedArithmetic);
                     source.Append(indent).Append("if (").Append(boolean).AppendLine(")");
                     source.Append(indent).AppendLine("{");
                     AppendCFixedRuntimeText(source, indent + "    ", buffer, workLength, "TRUE");

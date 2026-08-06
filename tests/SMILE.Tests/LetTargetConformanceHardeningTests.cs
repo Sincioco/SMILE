@@ -181,7 +181,10 @@ PRINT {Middle}
         StringAssert.Contains(cobol, "DISPLAY X\"0A\" WITH NO ADVANCING");
         StringAssert.Contains(
             cobol,
-            "DISPLAY Empty(1:SMILE-SET-LENGTH-0) WITH NO ADVANCING");
+            "DISPLAY Empty WITH NO ADVANCING");
+        Assert.IsFalse(
+            cobol.Contains("DISPLAY Empty(1:", StringComparison.Ordinal),
+            "A one-byte PIC X should avoid warning-prone reference modification.");
         Assert.IsFalse(cobol.Contains("DISPLAY Empty.", StringComparison.Ordinal));
     }
 

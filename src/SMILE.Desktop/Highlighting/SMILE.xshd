@@ -21,6 +21,7 @@
       <Word>LET</Word>
       <Word>PRINT</Word>
       <Word>SET</Word>
+      <Word>INPUT</Word>
       <Word>TRUE</Word>
       <Word>FALSE</Word>
       <Word>NOT</Word>

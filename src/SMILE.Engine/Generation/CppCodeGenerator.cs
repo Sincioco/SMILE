@@ -12,12 +12,19 @@ internal sealed class CppCodeGenerator : ICodeGenerator
         TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
         BoundProgramAnalysis analysis = BoundProgramAnalysis.Create(program);
         TargetIntegerProfile integers = TargetIntegerProfile.Analyze(program, analysis);
-        var expressions = new CppExpressionWriter(identifiers, integers);
+        bool hasInput = TargetRuntimeFacts.HasInput(program);
+        bool hasIntegerInput = TargetRuntimeFacts.HasInput(program, SmileType.Integer);
+        bool checkedArithmetic = TargetRuntimeFacts.NeedsCheckedIntegerArithmetic(program);
+        if (hasIntegerInput || checkedArithmetic)
+        {
+            integers = new TargetIntegerProfile(RequiresSigned64Storage: true, RequiresJavaScriptBigInt: true);
+        }
+        var expressions = new CppExpressionWriter(identifiers, integers, checkedArithmetic);
         var source = new StringBuilder();
 
-        bool needsIostream = BoundStatementTree.Enumerate(program)
+        bool needsIostream = hasInput || BoundStatementTree.Enumerate(program)
             .Any(statement => statement is BoundPrintStatement);
-        bool needsString = CppGenerationFacts.NeedsStringHeader(program);
+        bool needsString = CppGenerationFacts.NeedsStringHeader(program) || hasInput;
 
         if (needsIostream)
         {
@@ -34,8 +41,35 @@ internal sealed class CppCodeGenerator : ICodeGenerator
             source.AppendLine("#include <cstdint>");
         }
 
-        if (needsIostream || needsString || integers.RequiresSigned64Storage)
+        if (hasInput)
         {
+            source.AppendLine("#include <cstdlib>");
+            if (hasIntegerInput)
+            {
+                source.AppendLine("#include <charconv>");
+                source.AppendLine("#include <system_error>");
+            }
+
+            source.AppendLine("#ifdef _WIN32");
+            source.AppendLine("#include <fcntl.h>");
+            source.AppendLine("#include <io.h>");
+            source.AppendLine("#endif");
+        }
+
+        if (needsIostream || needsString || integers.RequiresSigned64Storage || hasInput)
+        {
+            source.AppendLine();
+        }
+
+        if (hasInput)
+        {
+            AppendInputHelpers(source, program);
+            source.AppendLine();
+        }
+
+        if (checkedArithmetic)
+        {
+            AppendCheckedArithmeticHelpers(source);
             source.AppendLine();
         }
 
@@ -108,6 +142,25 @@ internal sealed class CppCodeGenerator : ICodeGenerator
                     }
 
                     source.AppendLine($"{indent}{identifiers.Get(set.Variable)} = {expressions.Write(set.Value)};");
+                    emittedExecutable = true;
+                    break;
+
+                case BoundInputStatement input:
+                    if (!emittedExecutable && emittedDeclaration)
+                    {
+                        source.AppendLine();
+                    }
+
+                    source.Append(indent).Append(identifiers.Get(input.Variable)).Append(" = ")
+                        .Append(input.Variable.Type switch
+                        {
+                            SmileType.String => "_smile_input_string",
+                            SmileType.Integer => "_smile_input_integer",
+                            SmileType.Boolean => "_smile_input_boolean",
+                            _ => throw new InvalidOperationException("Unsupported INPUT target type.")
+                        })
+                        .Append('(').Append(TargetEscapes.CString(input.Variable.Name))
+                        .AppendLine(");");
                     emittedExecutable = true;
                     break;
 
@@ -198,7 +251,15 @@ internal sealed class CppCodeGenerator : ICodeGenerator
             return;
         }
 
-        if (print.Value is BoundInterpolatedStringExpression interpolated)
+        if (print.Value is BoundInterpolatedStringExpression &&
+            TargetRuntimeFacts.ContainsIntegerArithmetic(print.Value))
+        {
+            // Build the complete value before the first stream insertion. If a
+            // later hole fails, this PRINT remains atomic just like the evaluator.
+            source.Append(" << ");
+            source.Append(expressions.Write(print.Value));
+        }
+        else if (print.Value is BoundInterpolatedStringExpression interpolated)
         {
             bool emittedPart = false;
             foreach (BoundInterpolatedPart part in interpolated.Parts)
@@ -231,6 +292,173 @@ internal sealed class CppCodeGenerator : ICodeGenerator
         }
 
         source.AppendLine(" << '\\n';");
+    }
+
+    private static void AppendInputHelpers(StringBuilder source, BoundProgram program)
+    {
+        source.AppendLine("[[noreturn]] void _smile_fail(const std::string& message)");
+        source.AppendLine("{");
+        source.AppendLine("    std::cout.flush();");
+        source.AppendLine("    std::cerr << message << '\\n';");
+        source.AppendLine("    std::exit(1);");
+        source.AppendLine("}");
+        source.AppendLine();
+        source.AppendLine("bool _smile_skip_lf = false;");
+        source.AppendLine();
+        source.AppendLine("int _smile_next_byte()");
+        source.AppendLine("{");
+        source.AppendLine("    return std::cin.get();");
+        source.AppendLine("}");
+        source.AppendLine();
+        source.AppendLine("bool _smile_valid_utf8(const std::string& text)");
+        source.AppendLine("{");
+        source.AppendLine("    const auto* bytes = reinterpret_cast<const unsigned char*>(text.data());");
+        source.AppendLine("    std::size_t index = 0;");
+        source.AppendLine("    while (index < text.size())");
+        source.AppendLine("    {");
+        source.AppendLine("        const unsigned char first = bytes[index++];");
+        source.AppendLine("        if (first <= 0x7f) continue;");
+        source.AppendLine("        int continuationCount;");
+        source.AppendLine("        unsigned int scalar;");
+        source.AppendLine("        unsigned int minimum;");
+        source.AppendLine("        if ((first & 0xe0) == 0xc0) { continuationCount = 1; scalar = first & 0x1f; minimum = 0x80; }");
+        source.AppendLine("        else if ((first & 0xf0) == 0xe0) { continuationCount = 2; scalar = first & 0x0f; minimum = 0x800; }");
+        source.AppendLine("        else if ((first & 0xf8) == 0xf0) { continuationCount = 3; scalar = first & 0x07; minimum = 0x10000; }");
+        source.AppendLine("        else return false;");
+        source.AppendLine("        if (index + static_cast<std::size_t>(continuationCount) > text.size()) return false;");
+        source.AppendLine("        for (int count = 0; count < continuationCount; ++count)");
+        source.AppendLine("        {");
+        source.AppendLine("            const unsigned char next = bytes[index++];");
+        source.AppendLine("            if ((next & 0xc0) != 0x80) return false;");
+        source.AppendLine("            scalar = (scalar << 6) | (next & 0x3f);");
+        source.AppendLine("        }");
+        source.AppendLine("        if (scalar < minimum || scalar > 0x10ffff || (scalar >= 0xd800 && scalar <= 0xdfff)) return false;");
+        source.AppendLine("    }");
+        source.AppendLine("    return true;");
+        source.AppendLine("}");
+        source.AppendLine();
+        source.AppendLine("std::string _smile_read_line(const std::string& variableName)");
+        source.AppendLine("{");
+        source.AppendLine("#ifdef _WIN32");
+        source.AppendLine("    static bool binaryInputConfigured = false;");
+        source.AppendLine("    if (!binaryInputConfigured)");
+        source.AppendLine("    {");
+        source.AppendLine("        if (_setmode(_fileno(stdin), _O_BINARY) == -1) _smile_fail(\"SMILE Runtime Error SMILER1506: Input for '\" + variableName + \"' could not be read as valid UTF-8 text.\");");
+        source.AppendLine("        binaryInputConfigured = true;");
+        source.AppendLine("    }");
+        source.AppendLine("#endif");
+        source.AppendLine("    std::string value;");
+        source.AppendLine("    bool firstByte = true;");
+        source.AppendLine("    while (true)");
+        source.AppendLine("    {");
+        source.AppendLine("        const int next = _smile_next_byte();");
+        source.AppendLine("        if (firstByte)");
+        source.AppendLine("        {");
+        source.AppendLine("            firstByte = false;");
+        source.AppendLine("            if (_smile_skip_lf)");
+        source.AppendLine("            {");
+        source.AppendLine("                _smile_skip_lf = false;");
+        source.AppendLine("                if (next == '\\n') continue;");
+        source.AppendLine("            }");
+        source.AppendLine("        }");
+        source.AppendLine("        if (next == std::char_traits<char>::eof())");
+        source.AppendLine("        {");
+        source.AppendLine("            if (std::cin.bad()) _smile_fail(\"SMILE Runtime Error SMILER1506: Input for '\" + variableName + \"' could not be read as valid UTF-8 text.\");");
+        source.AppendLine("            if (value.empty()) _smile_fail(\"SMILE Runtime Error SMILER1501: Input ended before a value was received for '\" + variableName + \"'.\");");
+        source.AppendLine("            break;");
+        source.AppendLine("        }");
+        source.AppendLine("        if (next == '\\n') break;");
+        source.AppendLine("        if (next == '\\r')");
+        source.AppendLine("        {");
+        source.AppendLine("            _smile_skip_lf = true;");
+        source.AppendLine("            break;");
+        source.AppendLine("        }");
+        source.AppendLine("        value.push_back(static_cast<char>(next));");
+        source.AppendLine($"        if (value.size() > {SmileLanguage.MaximumInputLineUtf8Bytes}) _smile_fail(\"SMILE Runtime Error SMILER1502: Input for '\" + variableName + \"' exceeds the {SmileLanguage.MaximumInputLineUtf8Bytes}-byte UTF-8 limit.\");");
+        source.AppendLine("    }");
+        source.AppendLine("    if (!_smile_valid_utf8(value)) _smile_fail(\"SMILE Runtime Error SMILER1506: Input for '\" + variableName + \"' could not be read as valid UTF-8 text.\");");
+        source.AppendLine("    return value;");
+        source.AppendLine("}");
+
+        if (TargetRuntimeFacts.HasInput(program, SmileType.String))
+        {
+            source.AppendLine();
+            source.AppendLine("std::string _smile_input_string(const std::string& variableName)");
+            source.AppendLine("{");
+            source.AppendLine("    return _smile_read_line(variableName);");
+            source.AppendLine("}");
+        }
+
+        if (TargetRuntimeFacts.HasInput(program, SmileType.Integer))
+        {
+            source.AppendLine();
+            source.AppendLine("std::int64_t _smile_input_integer(const std::string& variableName)");
+            source.AppendLine("{");
+            source.AppendLine("    std::string text = _smile_read_line(variableName);");
+            source.AppendLine("    const std::size_t first = text.find_first_not_of(\" \\t\");");
+            source.AppendLine("    const std::size_t last = text.find_last_not_of(\" \\t\");");
+            source.AppendLine("    text = first == std::string::npos ? std::string{} : text.substr(first, last - first + 1);");
+            source.AppendLine("    std::size_t digitStart = !text.empty() && (text[0] == '+' || text[0] == '-') ? 1 : 0;");
+            source.AppendLine("    bool valid = digitStart < text.size();");
+            source.AppendLine("    for (std::size_t index = digitStart; valid && index < text.size(); ++index) valid = text[index] >= '0' && text[index] <= '9';");
+            source.AppendLine("    if (!valid) _smile_fail(\"SMILE Runtime Error SMILER1503: Input for '\" + variableName + \"' is not a valid Integer.\");");
+            source.AppendLine("    std::int64_t value = 0;");
+            source.AppendLine("    const char* begin = text.data();");
+            source.AppendLine("    if (*begin == '+') ++begin;");
+            source.AppendLine("    const auto result = std::from_chars(begin, text.data() + text.size(), value, 10);");
+            source.AppendLine("    if (result.ec == std::errc::result_out_of_range) _smile_fail(\"SMILE Runtime Error SMILER1504: Input for '\" + variableName + \"' is outside the signed 64-bit Integer range.\");");
+            source.AppendLine("    if (result.ec != std::errc{} || result.ptr != text.data() + text.size()) _smile_fail(\"SMILE Runtime Error SMILER1503: Input for '\" + variableName + \"' is not a valid Integer.\");");
+            source.AppendLine("    return value;");
+            source.AppendLine("}");
+        }
+
+        if (TargetRuntimeFacts.HasInput(program, SmileType.Boolean))
+        {
+            source.AppendLine();
+            source.AppendLine("bool _smile_input_boolean(const std::string& variableName)");
+            source.AppendLine("{");
+            source.AppendLine("    std::string text = _smile_read_line(variableName);");
+            source.AppendLine("    const std::size_t first = text.find_first_not_of(\" \\t\");");
+            source.AppendLine("    const std::size_t last = text.find_last_not_of(\" \\t\");");
+            source.AppendLine("    text = first == std::string::npos ? std::string{} : text.substr(first, last - first + 1);");
+            source.AppendLine("    for (char& value : text) if (value >= 'a' && value <= 'z') value = static_cast<char>(value - 'a' + 'A');");
+            source.AppendLine("    if (text == \"TRUE\") return true;");
+            source.AppendLine("    if (text == \"FALSE\") return false;");
+            source.AppendLine("    _smile_fail(\"SMILE Runtime Error SMILER1505: Input for '\" + variableName + \"' must be TRUE or FALSE.\");");
+            source.AppendLine("}");
+        }
+    }
+
+    private static void AppendCheckedArithmeticHelpers(StringBuilder source)
+    {
+        source.AppendLine("std::int64_t _smile_add(std::int64_t left, std::int64_t right)");
+        source.AppendLine("{");
+        source.AppendLine("    if ((right > 0 && left > INT64_MAX - right) || (right < 0 && left < INT64_MIN - right)) _smile_fail(\"SMILE Runtime Error SMILER1206: Integer arithmetic overflow.\");");
+        source.AppendLine("    return left + right;");
+        source.AppendLine("}");
+        source.AppendLine("std::int64_t _smile_subtract(std::int64_t left, std::int64_t right)");
+        source.AppendLine("{");
+        source.AppendLine("    if ((right < 0 && left > INT64_MAX + right) || (right > 0 && left < INT64_MIN + right)) _smile_fail(\"SMILE Runtime Error SMILER1206: Integer arithmetic overflow.\");");
+        source.AppendLine("    return left - right;");
+        source.AppendLine("}");
+        source.AppendLine("std::int64_t _smile_multiply(std::int64_t left, std::int64_t right)");
+        source.AppendLine("{");
+        source.AppendLine("    if (left == 0 || right == 0) return 0;");
+        source.AppendLine("    if ((left == -1 && right == INT64_MIN) || (right == -1 && left == INT64_MIN)) _smile_fail(\"SMILE Runtime Error SMILER1206: Integer arithmetic overflow.\");");
+        source.AppendLine("    if (left > 0 ? (right > 0 ? left > INT64_MAX / right : right < INT64_MIN / left) : (right > 0 ? left < INT64_MIN / right : left != 0 && right < INT64_MAX / left)) _smile_fail(\"SMILE Runtime Error SMILER1206: Integer arithmetic overflow.\");");
+        source.AppendLine("    return left * right;");
+        source.AppendLine("}");
+        source.AppendLine("std::int64_t _smile_negate(std::int64_t value)");
+        source.AppendLine("{");
+        source.AppendLine("    if (value == INT64_MIN) _smile_fail(\"SMILE Runtime Error SMILER1206: Integer arithmetic overflow.\");");
+        source.AppendLine("    return -value;");
+        source.AppendLine("}");
+        source.AppendLine("std::int64_t _smile_divide(std::int64_t left, std::int64_t right)");
+        source.AppendLine("{");
+        source.AppendLine("    if (right == 0) _smile_fail(\"SMILE Runtime Error SMILER1207: Division by zero.\");");
+        source.AppendLine("    if (left == INT64_MIN && right == -1) _smile_fail(\"SMILE Runtime Error SMILER1206: Integer arithmetic overflow.\");");
+        source.AppendLine("    return left / right;");
+        source.AppendLine("}");
     }
 }
 
@@ -280,13 +508,16 @@ internal sealed class CppExpressionWriter
 {
     private readonly TargetIdentifierMap _identifiers;
     private readonly TargetIntegerProfile _integers;
+    private readonly bool _checkedRuntimeArithmetic;
 
     public CppExpressionWriter(
         TargetIdentifierMap identifiers,
-        TargetIntegerProfile integers)
+        TargetIntegerProfile integers,
+        bool checkedRuntimeArithmetic = false)
     {
         _identifiers = identifiers;
         _integers = integers;
+        _checkedRuntimeArithmetic = checkedRuntimeArithmetic;
     }
 
     public string Write(BoundExpression expression) =>
@@ -321,6 +552,16 @@ internal sealed class CppExpressionWriter
 
     private string WriteUnary(BoundUnaryExpression expression, int parentPrecedence)
     {
+        if (_checkedRuntimeArithmetic &&
+            expression.Operator.Kind is BoundUnaryOperatorKind.Negation &&
+            expression.Operand.Type is SmileType.Integer)
+        {
+            string call = "_smile_negate(" +
+                WriteExpression(expression.Operand, 0, isRightChild: false, parentOperator: null) +
+                ")";
+            return parentPrecedence > 7 ? "(" + call + ")" : call;
+        }
+
         const int precedence = 7;
         string op = expression.Operator.Kind switch
         {
@@ -340,6 +581,73 @@ internal sealed class CppExpressionWriter
         bool isRightChild,
         BoundBinaryOperatorKind? parentOperator)
     {
+        if (_checkedRuntimeArithmetic &&
+            expression.Left.Type is SmileType.Integer &&
+            expression.Operator.Kind is BoundBinaryOperatorKind.Addition or
+                BoundBinaryOperatorKind.Subtraction or
+                BoundBinaryOperatorKind.Multiplication or
+                BoundBinaryOperatorKind.Division)
+        {
+            string helper = expression.Operator.Kind switch
+            {
+                BoundBinaryOperatorKind.Addition => "_smile_add",
+                BoundBinaryOperatorKind.Subtraction => "_smile_subtract",
+                BoundBinaryOperatorKind.Multiplication => "_smile_multiply",
+                BoundBinaryOperatorKind.Division => "_smile_divide",
+                _ => throw new InvalidOperationException("Unsupported checked C++ Integer operator.")
+            };
+            string leftValue = WriteExpression(
+                expression.Left,
+                0,
+                isRightChild: false,
+                parentOperator: null);
+            string rightValue = WriteExpression(
+                expression.Right,
+                0,
+                isRightChild: false,
+                parentOperator: null);
+            // C++ does not promise which function argument is evaluated first.
+            // A tiny immediately-invoked lambda turns the two operand reads
+            // into sequenced statements so the first reached SMILE runtime
+            // failure is always the source-left failure.
+            string call = "([&]() { const std::int64_t _smile_arithmetic_left_value = " +
+                leftValue + "; const std::int64_t _smile_arithmetic_right_value = " +
+                rightValue + "; return " + helper + "(_smile_arithmetic_left_value, " +
+                "_smile_arithmetic_right_value); }())";
+            return parentPrecedence > 7 ? "(" + call + ")" : call;
+        }
+
+        if (_checkedRuntimeArithmetic &&
+            expression.Operator.Kind is not (
+                BoundBinaryOperatorKind.LogicalAnd or BoundBinaryOperatorKind.LogicalOr) &&
+            (ContainsCheckedArithmetic(expression.Left) || ContainsCheckedArithmetic(expression.Right)))
+        {
+            string valueType = expression.Left.Type switch
+            {
+                SmileType.Integer => "std::int64_t",
+                SmileType.Boolean => "bool",
+                SmileType.String => "std::string",
+                _ => "auto"
+            };
+            string sequencedLeft = WriteExpression(
+                expression.Left,
+                0,
+                isRightChild: false,
+                parentOperator: null);
+            string sequencedRight = WriteExpression(
+                expression.Right,
+                0,
+                isRightChild: false,
+                parentOperator: null);
+            string sequenced = "([&]() { const " + valueType +
+                " _smile_expression_left_value = " + sequencedLeft + "; const " +
+                valueType + " _smile_expression_right_value = " + sequencedRight +
+                "; return _smile_expression_left_value " +
+                OperatorText(expression.Operator.Kind) +
+                " _smile_expression_right_value; }())";
+            return parentPrecedence > 7 ? "(" + sequenced + ")" : sequenced;
+        }
+
         int precedence = Precedence(expression.Operator.Kind);
         string left = WriteExpression(expression.Left, precedence, isRightChild: false, expression.Operator.Kind);
         string right = WriteExpression(expression.Right, precedence, isRightChild: true, expression.Operator.Kind);
@@ -399,6 +707,16 @@ internal sealed class CppExpressionWriter
             return "std::string{}";
         }
 
+        if (_checkedRuntimeArithmetic && expression.Parts
+                .OfType<BoundInterpolationExpressionPart>()
+                .Any(part => ContainsCheckedArithmetic(part.Expression)))
+        {
+            return "([&]() { std::string _smile_text_result{}; " +
+                string.Concat(segments.Select(segment =>
+                    "_smile_text_result += " + segment.Text + "; ")) +
+                "return _smile_text_result; }())";
+        }
+
         if (!segments[0].IsOwned)
         {
             segments[0] = ("std::string{" + segments[0].Text + "}", true);
@@ -431,6 +749,27 @@ internal sealed class CppExpressionWriter
             BoundVariableExpression variable => variable.Variable.Type is SmileType.String,
             BoundBinaryExpression binary => binary.Operator.Kind is BoundBinaryOperatorKind.StringConcatenation,
             BoundInterpolatedStringExpression => true,
+            _ => false
+        };
+
+    private static bool ContainsCheckedArithmetic(BoundExpression expression) =>
+        expression switch
+        {
+            BoundUnaryExpression unary =>
+                (unary.Operator.Kind is BoundUnaryOperatorKind.Negation &&
+                 unary.Operand.Type is SmileType.Integer) ||
+                ContainsCheckedArithmetic(unary.Operand),
+            BoundBinaryExpression binary =>
+                (binary.Left.Type is SmileType.Integer &&
+                 binary.Operator.Kind is BoundBinaryOperatorKind.Addition or
+                     BoundBinaryOperatorKind.Subtraction or
+                     BoundBinaryOperatorKind.Multiplication or
+                     BoundBinaryOperatorKind.Division) ||
+                ContainsCheckedArithmetic(binary.Left) ||
+                ContainsCheckedArithmetic(binary.Right),
+            BoundInterpolatedStringExpression interpolated => interpolated.Parts
+                .OfType<BoundInterpolationExpressionPart>()
+                .Any(part => ContainsCheckedArithmetic(part.Expression)),
             _ => false
         };
 

@@ -1,12 +1,14 @@
 # SMILE - String Literals Official Specification v1.0
 
-This specification was introduced in SMILE v0.4.1 and remains normative for SMILE v0.5.0 and later unless superseded by a newer official specification.
+This specification was introduced in SMILE v0.4.1 and remains normative for SMILE v0.7.0 and later unless superseded by a newer official specification.
 
 ## Purpose
 
 Ordinary String literals are the one-line source form for fixed text values. They are used by `LET`, ordinary `SET` expressions, `PRINT`, and interpolation text.
 
 SMILE v0.5.0 also defines one deliberately separate multiline source form: the [SET Block String Literal — The SMILE Way](001%20-%20SMILE%20-%20SET%20Statement%20Official%20Specification%20v1.0.md). It is valid only as the complete value of `SET`. It does not make ordinary String expressions multiline-capable.
+
+SMILE v0.7.0 [INPUT](008%20-%20SMILE%20-%20INPUT%20Statement%20Official%20Specification%20v1.0.md) reads a runtime String value rather than a String literal. The complete entered line becomes the value; source escape syntax is not decoded during INPUT.
 
 ## Source Form
 
@@ -49,6 +51,8 @@ PRINT C:\SMILE\n
 
 prints the backslash and `n` literally, followed by the normal `PRINT` line ending.
 
+String INPUT follows the same principle for runtime text: entering the two characters `\` and `n` stores those two characters. It does not create a line feed. Leading and trailing spaces, tabs, Unicode, an empty line, and embedded NUL remain part of the entered String, subject to the INPUT specification's 4096-byte UTF-8 line limit.
+
 ## Diagnostics
 
 | Code | Meaning |
@@ -61,8 +65,8 @@ SET-only placement and delimiter diagnostics `SMILE1306` through `SMILE1308` are
 
 ## Target Generation
 
-Target generators must emit destination-language string syntax that preserves the complete SMILE String value. Generators may choose each target language's normal escape spelling as long as the runtime text is identical to the reference evaluator. Destination representations that normally terminate at NUL must carry an exact length whenever the value contains `\0`. Generators receive only the normalized value and must never inspect block delimiters, source indentation, or physical line endings.
+Target generators must emit destination-language string syntax and runtime input storage that preserve the complete SMILE String value. Generators may choose each target language's normal escape spelling as long as the runtime text is identical to the reference evaluator. Destination representations that normally terminate at NUL must carry an exact length whenever a source or INPUT value may contain NUL. An INPUT-targeted String must allow 0 through 4096 UTF-8 bytes and keep stable storage across repeated INPUT and later SET. Generators receive only normalized source values and must never inspect block delimiters, source indentation, or physical line endings.
 
 Conformance tests must compare exact values or captured bytes for NUL, backspace, form feed, tab, carriage return, and line feed. Tests must not trim control characters. Line-ending normalization is allowed only when a test is specifically comparing platform line endings.
 
-C and Objective-C may use ordinary `%s` output and `strcmp` equality only for values proven to contain no embedded NUL. A NUL-containing value is emitted through compiler-owned UTF-8 byte data plus an exact byte length. A NUL-sensitive equality may be lowered to a static Boolean result only when branch-aware analysis proves that result on every possible incoming path; otherwise the target must compare current runtime lengths and bytes. This keeps bytes after NUL observable and remains correct after `SET` or an IF merge changes the current value.
+C and Objective-C may use ordinary `%s` output and `strcmp` equality only for values proven to contain no embedded NUL. A NUL-containing value is emitted through compiler-owned UTF-8 byte data plus an exact byte length. A NUL-sensitive equality may be lowered to a static Boolean result only when branch-aware analysis proves that result on every possible incoming path; otherwise the target must compare current runtime lengths and bytes. This keeps bytes after NUL observable and remains correct after `SET`, `INPUT`, or an IF merge changes the current value.
