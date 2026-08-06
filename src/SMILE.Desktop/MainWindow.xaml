@@ -41,6 +41,7 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="{Binding Title}" FontWeight="SemiBold" VerticalAlignment="Center" />
                         <ComboBox Grid.Column="1"
@@ -49,6 +50,12 @@
                                   SelectedItem="{Binding SelectedLanguageOption}"
                                   DisplayMemberPath="DisplayName"
                                   IsEnabled="{Binding CanChangeLanguage}" />
+                        <Button Grid.Column="2"
+                                Content="{Binding MaximizeButtonText}"
+                                Margin="6,0,0,0"
+                                Padding="10,3"
+                                Click="TargetPaneMaximize_Click"
+                                AutomationProperties.Name="{Binding MaximizeButtonText}" />
                     </Grid>
 
                     <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,6,0,6">
@@ -58,9 +65,9 @@
                     </StackPanel>
 
                     <controls:SmileCodeEditor Grid.Row="2"
-                                              DocumentText="{Binding GeneratedCode, Mode=OneWay}"
+                                              DocumentText="{Binding GeneratedCode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                               LanguageId="{Binding HighlightingId}"
-                                              IsReadOnly="True"
+                                              IsReadOnly="{Binding IsBusy}"
                                               AutomationProperties.Name="{Binding Title}" />
 
                     <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,8,0,0">
@@ -130,7 +137,7 @@
                        VerticalAlignment="Center" />
         </DockPanel>
 
-        <Grid Grid.Row="2">
+        <Grid x:Name="EditorQuadrantGrid" Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" MinWidth="320" />
                 <ColumnDefinition Width="6" />
@@ -142,7 +149,12 @@
                 <RowDefinition Height="*" MinHeight="210" />
             </Grid.RowDefinitions>
 
-            <Border Grid.Row="0" Grid.Column="0" BorderBrush="#CFCFCF" BorderThickness="1" Padding="8">
+            <Border x:Name="SourcePaneHost"
+                    Grid.Row="0"
+                    Grid.Column="0"
+                    BorderBrush="#CFCFCF"
+                    BorderThickness="1"
+                    Padding="8">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -157,23 +169,25 @@
                 </Grid>
             </Border>
 
-            <GridSplitter Grid.Row="0"
+            <GridSplitter x:Name="VerticalEditorSplitter"
+                          Grid.Row="0"
                           Grid.RowSpan="3"
                           Grid.Column="1"
                           Width="6"
                           HorizontalAlignment="Stretch"
                           VerticalAlignment="Stretch" />
 
-            <GridSplitter Grid.Row="1"
+            <GridSplitter x:Name="HorizontalEditorSplitter"
+                          Grid.Row="1"
                           Grid.Column="0"
                           Grid.ColumnSpan="3"
                           Height="6"
                           HorizontalAlignment="Stretch"
                           VerticalAlignment="Stretch" />
 
-            <ContentControl Grid.Row="0" Grid.Column="2" Content="{Binding Pane1}" />
-            <ContentControl Grid.Row="2" Grid.Column="0" Content="{Binding Pane2}" />
-            <ContentControl Grid.Row="2" Grid.Column="2" Content="{Binding Pane3}" />
+            <ContentControl x:Name="Pane1Host" Grid.Row="0" Grid.Column="2" Content="{Binding Pane1}" />
+            <ContentControl x:Name="Pane2Host" Grid.Row="2" Grid.Column="0" Content="{Binding Pane2}" />
+            <ContentControl x:Name="Pane3Host" Grid.Row="2" Grid.Column="2" Content="{Binding Pane3}" />
         </Grid>
 
         <GridSplitter Grid.Row="3"

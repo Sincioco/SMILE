@@ -10,24 +10,35 @@ public static class SyntaxHighlightingCatalog
 {
     private const string ResourcePrefix = "SMILE.Desktop.Highlighting.";
 
+    private static readonly Lazy<IHighlightingDefinition> CSharpDefinition =
+        BuiltIn("C#", "csharp");
+    private static readonly Lazy<IHighlightingDefinition> CFamilyDefinition =
+        BuiltIn("C++", "c-family");
+    private static readonly Lazy<IHighlightingDefinition> JavaScriptDefinition =
+        BuiltIn("JavaScript", "javascript");
+    private static readonly Lazy<IHighlightingDefinition> JavaDefinition =
+        BuiltIn("Java", "java");
+    private static readonly Lazy<IHighlightingDefinition> PythonDefinition =
+        BuiltIn("Python", "python");
+
     private static readonly IReadOnlyDictionary<string, Lazy<IHighlightingDefinition>> Definitions =
         new Dictionary<string, Lazy<IHighlightingDefinition>>(StringComparer.OrdinalIgnoreCase)
         {
-            ["smile"] = Embedded("SMILE.xshd"),
-            ["csharp"] = BuiltIn("C#", "csharp"),
-            ["c"] = BuiltIn("C++", "c"),
-            ["masm-x64"] = Embedded("MasmX64.xshd"),
-            ["javascript"] = BuiltIn("JavaScript", "javascript"),
-            ["java"] = BuiltIn("Java", "java"),
-            ["cobol"] = Embedded("Cobol.xshd"),
+            ["smile"] = Embedded("SMILE.xshd", "smile"),
+            ["csharp"] = CSharpDefinition,
+            ["c"] = CFamilyDefinition,
+            ["masm-x64"] = Embedded("MasmX64.xshd", "masm-x64"),
+            ["javascript"] = JavaScriptDefinition,
+            ["java"] = JavaDefinition,
+            ["cobol"] = Embedded("Cobol.xshd", "cobol"),
             // SMILE's current Objective-C output is a Foundation-free console
             // profile built from C-compatible syntax, so AvalonEdit's mature
             // C/C++ highlighter gives learners useful colors without putting a
             // custom Objective-C regex set on the UI-thread language switch path.
-            ["objective-c"] = BuiltIn("C++", "objective-c"),
-            ["swift"] = Embedded("Swift.xshd"),
-            ["python"] = BuiltIn("Python", "python"),
-            ["cpp"] = BuiltIn("C++", "cpp")
+            ["objective-c"] = CFamilyDefinition,
+            ["swift"] = Embedded("Swift.xshd", "swift"),
+            ["python"] = PythonDefinition,
+            ["cpp"] = CFamilyDefinition
         };
 
     public static IHighlightingDefinition? GetDefinition(string? languageId)
@@ -44,13 +55,16 @@ public static class SyntaxHighlightingCatalog
     }
 
     private static Lazy<IHighlightingDefinition> BuiltIn(string builtInName, string languageId) =>
-        new(() =>
+        new(() => HighlightingPalette.Apply(
+            languageId,
             HighlightingManager.Instance.GetDefinition(builtInName) ??
-            throw new InvalidOperationException(
-                $"Built-in AvalonEdit highlighting '{builtInName}' for '{languageId}' was not found."));
+                throw new InvalidOperationException(
+                    $"Built-in AvalonEdit highlighting '{builtInName}' for '{languageId}' was not found.")));
 
-    private static Lazy<IHighlightingDefinition> Embedded(string fileName) =>
-        new(() => LoadEmbedded(ResourcePrefix + fileName));
+    private static Lazy<IHighlightingDefinition> Embedded(string fileName, string languageId) =>
+        new(() => HighlightingPalette.Apply(
+            languageId,
+            LoadEmbedded(ResourcePrefix + fileName)));
 
     private static IHighlightingDefinition LoadEmbedded(string resourceName)
     {

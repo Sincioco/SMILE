@@ -25,10 +25,13 @@ public sealed class TargetPaneViewModel : ViewModelBase
     private string _generatedCode = string.Empty;
     private string _status = "Ready";
     private string _toolchainStatusText = "Toolchain not detected.";
+    private bool _hasUserEdits;
     private bool _hasToolchain;
     private bool _hasValidSource;
     private bool _hasSyntaxError;
     private bool _isBusy;
+    private bool _isMaximized;
+    private bool _isApplyingGeneratedCode;
 
     public TargetPaneViewModel(string title, TargetLanguage defaultLanguage)
     {
@@ -41,6 +44,8 @@ public sealed class TargetPaneViewModel : ViewModelBase
 
     public event EventHandler? SelectedLanguageChanged;
 
+    public event EventHandler? UserSourceChanged;
+
     public string Title => $"{_baseTitle} - {SelectedLanguageOption.DisplayName}";
 
     public IReadOnlyList<TargetLanguageOption> LanguageOptions { get; }
@@ -52,6 +57,10 @@ public sealed class TargetPaneViewModel : ViewModelBase
         {
             if (SetProperty(ref _selectedLanguageOption, value))
             {
+                // A language switch changes the meaning of every character in
+                // this pane. The selected target's generated snapshot will
+                // replace the old text through the normal refresh path.
+                MarkGeneratedCodeStale();
                 OnPropertyChanged(nameof(Language));
                 OnPropertyChanged(nameof(Title));
                 OnPropertyChanged(nameof(BuildButtonText));
@@ -68,8 +77,38 @@ public sealed class TargetPaneViewModel : ViewModelBase
     public string GeneratedCode
     {
         get => _generatedCode;
-        set => SetProperty(ref _generatedCode, value);
+        set
+        {
+            if (!SetProperty(ref _generatedCode, value ?? string.Empty))
+            {
+                return;
+            }
+
+            bool isUserEdit = !_isApplyingGeneratedCode;
+            if (isUserEdit)
+            {
+                // AvalonEdit's two-way binding reaches this setter only for a
+                // learner edit. Generated snapshots use ApplyGeneratedCode so
+                // Build & Run can distinguish the editable primary file from
+                // the compiler-owned cache and companion files.
+                SetProperty(ref _hasUserEdits, true, nameof(HasUserEdits));
+                HasValidSource = !string.IsNullOrWhiteSpace(_generatedCode);
+                // The syntax flag describes the SMILE snapshot that failed to
+                // generate this pane, not source the learner writes directly
+                // in the destination language.
+                HasSyntaxError = false;
+                Status = "Edited";
+            }
+
+            RaiseCommandStateChanged();
+            if (isUserEdit)
+            {
+                UserSourceChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
     }
+
+    public bool HasUserEdits => _hasUserEdits;
 
     public string Status
     {
@@ -132,6 +171,20 @@ public sealed class TargetPaneViewModel : ViewModelBase
         }
     }
 
+    public bool IsMaximized
+    {
+        get => _isMaximized;
+        set
+        {
+            if (SetProperty(ref _isMaximized, value))
+            {
+                OnPropertyChanged(nameof(MaximizeButtonText));
+            }
+        }
+    }
+
+    public string MaximizeButtonText => IsMaximized ? "Restore" : "Maximize";
+
     public string BuildButtonText =>
         Language switch
         {
@@ -143,7 +196,7 @@ public sealed class TargetPaneViewModel : ViewModelBase
         HasValidSource && !string.IsNullOrWhiteSpace(GeneratedCode);
 
     public bool CanBuild =>
-        HasToolchain && !HasSyntaxError && !IsBusy;
+        HasToolchain && CanUseSource && !HasSyntaxError && !IsBusy;
 
     public bool CanChangeLanguage => !IsBusy;
 
@@ -152,6 +205,29 @@ public sealed class TargetPaneViewModel : ViewModelBase
     public ICommand? SaveSourceCommand { get; set; }
 
     public ICommand? BuildRunCommand { get; set; }
+
+    public void ApplyGeneratedCode(string code)
+    {
+        _isApplyingGeneratedCode = true;
+        try
+        {
+            GeneratedCode = code;
+        }
+        finally
+        {
+            _isApplyingGeneratedCode = false;
+        }
+
+        SetProperty(ref _hasUserEdits, false, nameof(HasUserEdits));
+        RaiseCommandStateChanged();
+    }
+
+    public void MarkGeneratedCodeStale()
+    {
+        SetProperty(ref _hasUserEdits, false, nameof(HasUserEdits));
+        HasValidSource = false;
+        RaiseCommandStateChanged();
+    }
 
     public void RaiseCommandStateChanged()
     {

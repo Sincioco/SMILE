@@ -38,6 +38,7 @@ public sealed class SmileCodeEditor : TextEditor
     {
         FontFamily = new FontFamily("Consolas");
         FontSize = DefaultEditorFontSize;
+        Foreground = Brushes.Black;
         ShowLineNumbers = true;
         WordWrap = false;
         HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;

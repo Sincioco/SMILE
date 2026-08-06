@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <SyntaxDefinition name="MASM x64" extensions=".asm" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
   <Color name="Instruction" foreground="#0000FF" fontWeight="bold" />
-  <Color name="Directive" foreground="#AF00DB" fontWeight="bold" />
-  <Color name="Register" foreground="#267F99" />
+  <Color name="Directive" foreground="#0000FF" fontWeight="bold" />
+  <Color name="Register" foreground="#000000" />
   <Color name="String" foreground="#A31515" />
   <Color name="Comment" foreground="#008000" />
-  <Color name="Number" foreground="#098658" />
+  <Color name="Number" foreground="#00008B" />
   <Color name="Operator" foreground="#1F1F1F" />
 
   <RuleSet ignoreCase="true">
@@ -13,37 +13,104 @@
     <Span color="String" begin="&quot;" end="&quot;" />
 
     <Keywords color="Instruction">
+      <Word>adc</Word>
+      <Word>add</Word>
+      <Word>and</Word>
       <Word>call</Word>
+      <Word>cld</Word>
+      <Word>cmp</Word>
+      <Word>cqo</Word>
+      <Word>dec</Word>
+      <Word>div</Word>
+      <Word>idiv</Word>
+      <Word>imul</Word>
+      <Word>inc</Word>
+      <Word>int</Word>
+      <Word>ja</Word>
+      <Word>jae</Word>
+      <Word>jb</Word>
+      <Word>jbe</Word>
+      <Word>je</Word>
+      <Word>jge</Word>
+      <Word>jmp</Word>
+      <Word>jne</Word>
+      <Word>jnz</Word>
+      <Word>jo</Word>
+      <Word>jz</Word>
       <Word>lea</Word>
+      <Word>loop</Word>
       <Word>mov</Word>
+      <Word>movsb</Word>
+      <Word>movzx</Word>
+      <Word>neg</Word>
+      <Word>nop</Word>
+      <Word>not</Word>
+      <Word>or</Word>
+      <Word>pop</Word>
+      <Word>push</Word>
+      <Word>rep</Word>
+      <Word>ret</Word>
+      <Word>rol</Word>
+      <Word>ror</Word>
+      <Word>sal</Word>
+      <Word>sar</Word>
+      <Word>sbb</Word>
+      <Word>sete</Word>
+      <Word>setg</Word>
+      <Word>setge</Word>
+      <Word>setl</Word>
+      <Word>setle</Word>
+      <Word>setne</Word>
+      <Word>shl</Word>
+      <Word>shr</Word>
       <Word>sub</Word>
+      <Word>test</Word>
+      <Word>xchg</Word>
       <Word>xor</Word>
     </Keywords>
 
     <Keywords color="Directive">
-      <Word>PROC</Word>
-      <Word>ENDP</Word>
-      <Word>END</Word>
-      <Word>EXTERN</Word>
-      <Word>EQU</Word>
+      <Word>ALIGN</Word>
       <Word>BYTE</Word>
-      <Word>DWORD</Word>
-      <Word>QWORD</Word>
-      <Word>PTR</Word>
-      <Word>option</Word>
       <Word>casemap</Word>
+      <Word>DWORD</Word>
+      <Word>DUP</Word>
+      <Word>END</Word>
+      <Word>ENDP</Word>
+      <Word>EQU</Word>
+      <Word>EXTERN</Word>
+      <Word>INCLUDE</Word>
+      <Word>INVOKE</Word>
+      <Word>option</Word>
+      <Word>PROC</Word>
+      <Word>PROTO</Word>
+      <Word>PTR</Word>
+      <Word>PUBLIC</Word>
+      <Word>QWORD</Word>
+      <Word>STRUCT</Word>
     </Keywords>
 
     <Keywords color="Register">
+      <Word>al</Word>
+      <Word>dl</Word>
+      <Word>eax</Word>
+      <Word>ecx</Word>
+      <Word>edx</Word>
       <Word>rax</Word>
       <Word>rcx</Word>
       <Word>rdx</Word>
       <Word>r8</Word>
-      <Word>r9</Word>
-      <Word>rsp</Word>
-      <Word>ecx</Word>
+      <Word>r8b</Word>
       <Word>r8d</Word>
+      <Word>r9</Word>
       <Word>r9d</Word>
+      <Word>r10</Word>
+      <Word>r10d</Word>
+      <Word>r11</Word>
+      <Word>r11d</Word>
+      <Word>rdi</Word>
+      <Word>rsi</Word>
+      <Word>rsp</Word>
     </Keywords>
 
     <Rule color="Directive">\.(data|code)\b</Rule>

@@ -3,7 +3,7 @@
   <Color name="Keyword" foreground="#0000FF" fontWeight="bold" />
   <Color name="String" foreground="#A31515" />
   <Color name="Comment" foreground="#008000" />
-  <Color name="Number" foreground="#098658" />
+  <Color name="Number" foreground="#00008B" />
   <Color name="Operator" foreground="#1F1F1F" />
 
   <RuleSet ignoreCase="true">
@@ -12,23 +12,96 @@
     <Span color="String" begin="X&quot;" end="&quot;" />
 
     <Keywords color="Keyword">
+      <Word>ACCEPT</Word>
+      <Word>ADD</Word>
+      <Word>ADVANCING</Word>
+      <Word>AND</Word>
+      <Word>BY</Word>
+      <Word>CALL</Word>
+      <Word>CLOSE</Word>
+      <Word>COMP-5</Word>
+      <Word>COMPUTE</Word>
+      <Word>CONTINUE</Word>
+      <Word>COPY</Word>
+      <Word>DATA</Word>
+      <Word>DELETE</Word>
+      <Word>DELIMITED</Word>
       <Word>IDENTIFICATION</Word>
       <Word>DIVISION</Word>
-      <Word>PROGRAM-ID</Word>
-      <Word>DATA</Word>
-      <Word>WORKING-STORAGE</Word>
-      <Word>SECTION</Word>
-      <Word>PROCEDURE</Word>
-      <Word>DISPLAY</Word>
-      <Word>WITH</Word>
+      <Word>ELSE</Word>
+      <Word>END-EVALUATE</Word>
+      <Word>END-IF</Word>
+      <Word>END-PERFORM</Word>
+      <Word>END-READ</Word>
+      <Word>END-STRING</Word>
+      <Word>END-WRITE</Word>
+      <Word>ENVIRONMENT</Word>
+      <Word>EVALUATE</Word>
+      <Word>EXIT</Word>
+      <Word>FD</Word>
+      <Word>FILE-CONTROL</Word>
+      <Word>FORMAT</Word>
+      <Word>FREE</Word>
+      <Word>FUNCTION</Word>
+      <Word>GIVING</Word>
+      <Word>GO</Word>
+      <Word>GOBACK</Word>
+      <Word>IF</Word>
+      <Word>INPUT-OUTPUT</Word>
+      <Word>INSPECT</Word>
+      <Word>INTEGER-PART</Word>
+      <Word>INTO</Word>
+      <Word>IS</Word>
+      <Word>LENGTH</Word>
+      <Word>MOVE</Word>
+      <Word>MULTIPLY</Word>
       <Word>NO</Word>
-      <Word>ADVANCING</Word>
-      <Word>STOP</Word>
-      <Word>RUN</Word>
+      <Word>NOT</Word>
+      <Word>NUMVAL</Word>
+      <Word>OCCURS</Word>
+      <Word>OPEN</Word>
+      <Word>OR</Word>
+      <Word>OTHER</Word>
+      <Word>PERFORM</Word>
+      <Word>DISPLAY</Word>
       <Word>PIC</Word>
       <Word>PICTURE</Word>
-      <Word>VALUE</Word>
+      <Word>POINTER</Word>
+      <Word>PROCEDURE</Word>
+      <Word>PROGRAM-ID</Word>
+      <Word>READ</Word>
+      <Word>REDEFINES</Word>
+      <Word>REFERENCE</Word>
+      <Word>REPLACING</Word>
+      <Word>RETURN-CODE</Word>
+      <Word>RETURNING</Word>
+      <Word>RUN</Word>
+      <Word>SEARCH</Word>
+      <Word>SECTION</Word>
+      <Word>SELECT</Word>
+      <Word>SIZE</Word>
+      <Word>SOURCE</Word>
       <Word>SPACE</Word>
+      <Word>SPACES</Word>
+      <Word>STDERR</Word>
+      <Word>STOP</Word>
+      <Word>STRING</Word>
+      <Word>SUBTRACT</Word>
+      <Word>THEN</Word>
+      <Word>THRU</Word>
+      <Word>TIMES</Word>
+      <Word>TO</Word>
+      <Word>TRIM</Word>
+      <Word>UNTIL</Word>
+      <Word>UPON</Word>
+      <Word>USING</Word>
+      <Word>VALUE</Word>
+      <Word>VARYING</Word>
+      <Word>WHEN</Word>
+      <Word>WITH</Word>
+      <Word>WORKING-STORAGE</Word>
+      <Word>WRITE</Word>
+      <Word>ZERO</Word>
     </Keywords>
 
     <Rule color="Number">\b\d+(\.\d+)?\b</Rule>

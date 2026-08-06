@@ -142,7 +142,12 @@ public sealed class DesktopCommandTests
 
         pane.HasToolchain = true;
 
+        Assert.IsFalse(pane.CanBuild);
+
+        pane.GeneratedCode = "console.log('learner edit');";
+
         Assert.IsTrue(pane.CanBuild);
+        Assert.IsTrue(pane.HasUserEdits);
 
         pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Cpp);
 
@@ -153,6 +158,23 @@ public sealed class DesktopCommandTests
 
         Assert.IsFalse(pane.CanBuild);
         Assert.IsFalse(pane.CanChangeLanguage);
+    }
+
+    [TestMethod]
+    public void Target_pane_reports_Maximize_and_Restore_state()
+    {
+        var pane = new TargetPaneViewModel("Pane", TargetLanguage.CSharp);
+
+        Assert.IsFalse(pane.IsMaximized);
+        Assert.AreEqual("Maximize", pane.MaximizeButtonText);
+
+        pane.IsMaximized = true;
+
+        Assert.AreEqual("Restore", pane.MaximizeButtonText);
+
+        pane.IsMaximized = false;
+
+        Assert.AreEqual("Maximize", pane.MaximizeButtonText);
     }
 
     [TestMethod]
@@ -353,7 +375,7 @@ PRINT A; B; C
     }
 
     [TestMethod]
-    public async Task New_command_reloads_the_packaged_language_reference_as_an_unassociated_document()
+    public async Task New_command_clears_the_SMILE_and_target_editors_and_keeps_them_blank()
     {
         var viewModel = new MainWindowViewModel(
             CreateRegistry(),
@@ -361,14 +383,52 @@ PRINT A; B; C
             new FakeFolderOpener());
         await viewModel.InitializeAsync();
         viewModel.SourceText = "PRINT temporary edit";
+        await WaitUntilAsync(() => viewModel.Panes.All(pane => pane.GeneratedCode.Contains("temporary edit", StringComparison.Ordinal)));
+        foreach (TargetPaneViewModel pane in viewModel.Panes)
+        {
+            pane.GeneratedCode += Environment.NewLine + "// learner target edit";
+        }
 
         viewModel.NewCommand.Execute(null);
-        await WaitUntilAsync(() => viewModel.NewCommand.CanExecute(null));
 
-        StringAssert.Contains(viewModel.SourceText, "LET FirstName = \"Sin\"");
-        StringAssert.Contains(viewModel.SourceText, "PRINT \"SET, PRINT, and LET together:\"");
-        StringAssert.Contains(viewModel.SourceText, "PRINT \"IF, ELSE IF, and ELSE statement examples:\"");
-        Assert.AreEqual("Language reference loaded", viewModel.OperationStatus);
+        Assert.AreEqual(string.Empty, viewModel.SourceText);
+        Assert.IsTrue(viewModel.Panes.All(pane => string.IsNullOrEmpty(pane.GeneratedCode)));
+        Assert.IsTrue(viewModel.Panes.All(pane => !pane.HasValidSource && !pane.HasSyntaxError));
+        Assert.IsTrue(viewModel.Panes.All(pane => !pane.HasUserEdits));
+        Assert.IsTrue(viewModel.Panes.All(pane => pane.CopyCommand?.CanExecute(null) == false));
+        Assert.IsTrue(viewModel.Panes.All(pane => pane.SaveSourceCommand?.CanExecute(null) == false));
+        Assert.IsTrue(viewModel.Panes.All(pane => pane.BuildRunCommand?.CanExecute(null) == false));
+        Assert.IsFalse(viewModel.BuildRunVisibleCommand.CanExecute(null));
+        Assert.AreEqual("Ready", viewModel.OperationStatus);
+
+        await Task.Delay(400);
+        viewModel.Pane3.SelectedLanguageOption = viewModel.Pane3.LanguageOptions.Single(
+            option => option.Language == TargetLanguage.Python);
+        await Task.Delay(50);
+
+        Assert.AreEqual(string.Empty, viewModel.SourceText);
+        Assert.IsTrue(viewModel.Panes.All(pane => string.IsNullOrEmpty(pane.GeneratedCode)));
+    }
+
+    [TestMethod]
+    public async Task New_cancels_a_pending_live_transpilation_and_keeps_every_editor_blank()
+    {
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(),
+            new FakeErrorReporter(),
+            new FakeFolderOpener());
+        await viewModel.InitializeAsync();
+
+        viewModel.SourceText = "PRINT this debounce must not win";
+        viewModel.NewCommand.Execute(null);
+
+        await Task.Delay(400);
+
+        Assert.AreEqual(string.Empty, viewModel.SourceText);
+        Assert.IsTrue(viewModel.Panes.All(pane => string.IsNullOrEmpty(pane.GeneratedCode)));
+        Assert.IsTrue(viewModel.Panes.All(pane => !pane.HasUserEdits && !pane.HasValidSource));
+        Assert.IsTrue(viewModel.Panes.All(pane => pane.Status == "Ready"));
+        Assert.IsFalse(viewModel.BuildRunVisibleCommand.CanExecute(null));
     }
 
     [TestMethod]
@@ -392,27 +452,101 @@ PRINT A; B; C
     }
 
     [TestMethod]
-    public async Task New_preserves_the_current_document_when_the_language_reference_cannot_be_loaded()
+    public void New_command_does_not_read_the_packaged_language_reference()
     {
-        string missingLanguagePath = Path.Combine(
-            Path.GetTempPath(),
-            "SMILE-Missing-" + Guid.NewGuid().ToString("N") + ".smile");
+        int reads = 0;
         var viewModel = new MainWindowViewModel(
             CreateRegistry(),
             new FakeErrorReporter(),
             new FakeFolderOpener(),
-            missingLanguagePath)
+            languageFilePath: null,
+            _ =>
+            {
+                reads++;
+                throw new IOException("New must not read language.smile.");
+            })
         {
-            SourceText = "PRINT Keep this work"
+            SourceText = "PRINT Clear this work"
         };
 
         viewModel.NewCommand.Execute(null);
-        await WaitUntilAsync(() => viewModel.NewCommand.CanExecute(null));
 
-        Assert.AreEqual("PRINT Keep this work", viewModel.SourceText);
-        Assert.AreEqual("Failed", viewModel.OperationStatus);
-        StringAssert.Contains(viewModel.OutputText, "Load language reference Error");
-        StringAssert.Contains(viewModel.OutputText, "SMILE remains open");
+        Assert.AreEqual(0, reads);
+        Assert.AreEqual(string.Empty, viewModel.SourceText);
+        Assert.IsTrue(viewModel.Panes.All(pane => string.IsNullOrEmpty(pane.GeneratedCode)));
+        Assert.AreEqual("Ready", viewModel.OperationStatus);
+    }
+
+    [TestMethod]
+    public async Task New_wins_when_the_startup_language_reference_read_is_still_pending()
+    {
+        var delayedRead = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(),
+            new FakeErrorReporter(),
+            new FakeFolderOpener(),
+            languageFilePath: null,
+            _ => delayedRead.Task);
+
+        Task initialization = viewModel.InitializeAsync();
+        viewModel.NewCommand.Execute(null);
+        delayedRead.SetResult("PRINT Packaged reference");
+
+        await initialization;
+        await Task.Delay(400);
+
+        Assert.AreEqual(string.Empty, viewModel.SourceText);
+        Assert.IsTrue(viewModel.Panes.All(pane => string.IsNullOrEmpty(pane.GeneratedCode)));
+        Assert.IsTrue(viewModel.Panes.All(pane => !pane.HasValidSource && !pane.HasSyntaxError));
+        Assert.IsTrue(viewModel.Panes.All(pane => pane.Status == "Ready"));
+        Assert.AreEqual("Ready", viewModel.OperationStatus);
+    }
+
+    [TestMethod]
+    public async Task New_wins_even_when_it_runs_before_startup_initialization_begins()
+    {
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(),
+            new FakeErrorReporter(),
+            new FakeFolderOpener(),
+            languageFilePath: null,
+            _ => Task.FromResult("PRINT Packaged reference"));
+
+        viewModel.NewCommand.Execute(null);
+        await viewModel.InitializeAsync();
+
+        Assert.AreEqual(string.Empty, viewModel.SourceText);
+        Assert.IsTrue(viewModel.Panes.All(pane => string.IsNullOrEmpty(pane.GeneratedCode)));
+        Assert.IsTrue(viewModel.Panes.All(pane => !pane.HasUserEdits && !pane.HasValidSource));
+        Assert.IsTrue(viewModel.Panes.All(pane => pane.Status == "Ready"));
+        Assert.AreEqual("Ready", viewModel.OperationStatus);
+    }
+
+    [TestMethod]
+    public async Task Target_edit_after_New_survives_pending_startup_detection()
+    {
+        var delayedRead = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(),
+            new FakeErrorReporter(),
+            new FakeFolderOpener(),
+            languageFilePath: null,
+            _ => delayedRead.Task);
+
+        Task initialization = viewModel.InitializeAsync();
+        viewModel.NewCommand.Execute(null);
+        viewModel.Pane1.GeneratedCode = "Console.WriteLine(\"learner target edit\");";
+        delayedRead.SetResult("PRINT Packaged reference");
+
+        await initialization;
+
+        Assert.AreEqual(string.Empty, viewModel.SourceText);
+        Assert.AreEqual("Console.WriteLine(\"learner target edit\");", viewModel.Pane1.GeneratedCode);
+        Assert.IsTrue(viewModel.Pane1.HasUserEdits);
+        Assert.IsTrue(viewModel.Pane1.HasValidSource);
+        Assert.IsTrue(viewModel.Pane1.CanBuild);
+        Assert.IsTrue(viewModel.Panes.Skip(1).All(pane => string.IsNullOrEmpty(pane.GeneratedCode)));
+        Assert.IsTrue(viewModel.Panes.All(pane => pane.Status == "Ready"));
     }
 
     [TestMethod]
@@ -446,6 +580,257 @@ PRINT A; B; C
         Assert.IsTrue(pane.HasValidSource);
         Assert.AreEqual("Ready", viewModel.OperationStatus);
         Assert.AreEqual("Ready", pane.Status);
+    }
+
+    [TestMethod]
+    public async Task Target_build_uses_the_edited_primary_source_and_preserves_generated_companions()
+    {
+        var csharp = new FakeToolchain(TargetLanguage.CSharp);
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(csharp),
+            new FakeErrorReporter(),
+            new FakeFolderOpener())
+        {
+            OpenGeneratedFolderAfterBuild = false
+        };
+        await viewModel.InitializeAsync();
+        viewModel.SourceText = "LET Name = \"\"\nINPUT Name\nPRINT {Name}";
+        await WaitUntilAsync(() =>
+            viewModel.Pane1.HasValidSource &&
+            viewModel.Pane1.GeneratedCode.Contains("SMILER1501", StringComparison.Ordinal));
+
+        GeneratedProgram generated = new SmileTranspiler()
+            .Transpile(viewModel.SourceText, TargetLanguage.CSharp)
+            .GeneratedProgram!;
+        string editedSource = viewModel.Pane1.GeneratedCode + "// learner target edit\n";
+        viewModel.Pane1.GeneratedCode = editedSource;
+
+        Assert.IsTrue(viewModel.Pane1.HasUserEdits);
+        Assert.IsTrue(viewModel.Pane1.CanBuild);
+
+        viewModel.Pane1.BuildRunCommand!.Execute(null);
+        await WaitUntilAsync(() => !viewModel.IsBusy && viewModel.OperationStatus == "Completed");
+
+        Assert.IsNotNull(csharp.LastGeneratedProgram);
+        Assert.AreEqual(editedSource, csharp.LastGeneratedProgram.PrimaryFile.Content);
+        Assert.IsTrue(csharp.LastGeneratedProgram.RequiresStandardInput);
+
+        GeneratedFile[] expectedCompanions = generated.Files.Where(file => !file.IsPrimary).ToArray();
+        GeneratedFile[] actualCompanions = csharp.LastGeneratedProgram.Files.Where(file => !file.IsPrimary).ToArray();
+        CollectionAssert.AreEqual(expectedCompanions, actualCompanions);
+    }
+
+    [TestMethod]
+    public async Task Target_build_before_live_debounce_uses_the_current_SMILE_metadata()
+    {
+        var csharp = new FakeToolchain(TargetLanguage.CSharp);
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(csharp),
+            new FakeErrorReporter(),
+            new FakeFolderOpener())
+        {
+            OpenGeneratedFolderAfterBuild = false
+        };
+        await viewModel.InitializeAsync();
+
+        viewModel.SourceText = "LET Name = \"\"\nINPUT Name\nPRINT {Name}";
+        const string editedSource = "Console.WriteLine(\"edited before debounce\");";
+        viewModel.Pane1.GeneratedCode = editedSource;
+
+        viewModel.Pane1.BuildRunCommand!.Execute(null);
+        await WaitUntilAsync(() => !viewModel.IsBusy && csharp.BuildRuns == 1);
+
+        Assert.IsNotNull(csharp.LastGeneratedProgram);
+        Assert.AreEqual(editedSource, csharp.LastGeneratedProgram.PrimaryFile.Content);
+        Assert.IsTrue(csharp.LastGeneratedProgram.RequiresStandardInput);
+        Assert.IsTrue(csharp.LastGeneratedProgram.Files.Any(file => file.RelativePath == "GeneratedProgram.csproj"));
+
+        TranspileResult expectedMasm = new SmileTranspiler().Transpile(
+            viewModel.SourceText,
+            TargetLanguage.MasmX64);
+        TranspileResult expectedC = new SmileTranspiler().Transpile(
+            viewModel.SourceText,
+            TargetLanguage.C);
+        await WaitUntilAsync(() =>
+            viewModel.Pane2.Status == "Ready" &&
+            viewModel.Pane3.Status == "Ready");
+
+        Assert.AreEqual(expectedMasm.GeneratedProgram!.PrimaryFile.Content, viewModel.Pane2.GeneratedCode);
+        Assert.AreEqual(expectedC.GeneratedProgram!.PrimaryFile.Content, viewModel.Pane3.GeneratedCode);
+        Assert.AreEqual(editedSource, viewModel.Pane1.GeneratedCode);
+        Assert.AreEqual("Completed", viewModel.Pane1.Status);
+        Assert.AreEqual("Completed", viewModel.OperationStatus);
+    }
+
+    [TestMethod]
+    public async Task Resumed_preview_preserves_an_unedited_panes_failed_build_status()
+    {
+        var csharp = new FakeToolchain(
+            TargetLanguage.CSharp,
+            buildRunException: new InvalidOperationException("injected build failure"));
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(csharp),
+            new FakeErrorReporter(),
+            new FakeFolderOpener())
+        {
+            OpenGeneratedFolderAfterBuild = false
+        };
+        await viewModel.InitializeAsync();
+
+        viewModel.Pane3.SelectedLanguageOption = viewModel.Pane3.LanguageOptions.Single(
+            option => option.Language == TargetLanguage.Python);
+        viewModel.Pane1.BuildRunCommand!.Execute(null);
+
+        await WaitUntilAsync(() =>
+            viewModel.Pane3.Status == "Ready" &&
+            viewModel.Pane3.GeneratedCode.Contains("def main() -> None:", StringComparison.Ordinal));
+
+        Assert.AreEqual(1, csharp.BuildRuns);
+        Assert.IsFalse(viewModel.Pane1.HasUserEdits);
+        Assert.AreEqual("Failed", viewModel.Pane1.Status);
+        Assert.AreEqual("Failed", viewModel.OperationStatus);
+    }
+
+    [TestMethod]
+    public async Task Manual_target_edit_survives_an_unrelated_pane_language_switch()
+    {
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(),
+            new FakeErrorReporter(),
+            new FakeFolderOpener());
+        await viewModel.InitializeAsync();
+
+        string editedSource = viewModel.Pane1.GeneratedCode + "// keep this learner edit\n";
+        viewModel.Pane1.GeneratedCode = editedSource;
+        viewModel.Pane3.SelectedLanguageOption = viewModel.Pane3.LanguageOptions.Single(
+            option => option.Language == TargetLanguage.Python);
+
+        await WaitUntilAsync(() =>
+            viewModel.Pane3.Status == "Ready" &&
+            viewModel.Pane3.GeneratedCode.Contains("def main() -> None:", StringComparison.Ordinal));
+
+        Assert.AreEqual(editedSource, viewModel.Pane1.GeneratedCode);
+        Assert.IsTrue(viewModel.Pane1.HasUserEdits);
+        Assert.AreEqual("Edited", viewModel.Pane1.Status);
+    }
+
+    [TestMethod]
+    public async Task Manual_target_edit_survives_delayed_startup_toolchain_detection()
+    {
+        var detectionGate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var csharp = new FakeToolchain(TargetLanguage.CSharp, detectGate: detectionGate.Task);
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(csharp),
+            new FakeErrorReporter(),
+            new FakeFolderOpener());
+
+        Task initialization = viewModel.InitializeAsync();
+        await WaitUntilAsync(() => viewModel.Pane1.HasValidSource);
+        string editedSource = viewModel.Pane1.GeneratedCode + "// keep this startup edit\n";
+        viewModel.Pane1.GeneratedCode = editedSource;
+        detectionGate.SetResult(true);
+
+        await initialization;
+
+        Assert.AreEqual(editedSource, viewModel.Pane1.GeneratedCode);
+        Assert.IsTrue(viewModel.Pane1.HasUserEdits);
+        Assert.AreEqual("Edited", viewModel.Pane1.Status);
+        Assert.IsTrue(viewModel.Pane1.CanBuild);
+    }
+
+    [TestMethod]
+    public async Task Later_SMILE_edits_replace_manual_target_edits_through_live_transpilation()
+    {
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(),
+            new FakeErrorReporter(),
+            new FakeFolderOpener());
+        await viewModel.InitializeAsync();
+
+        viewModel.Pane1.GeneratedCode = "// temporary learner target edit";
+        Assert.IsTrue(viewModel.Pane1.HasUserEdits);
+
+        viewModel.SourceText = "PRINT SMILE replacement wins";
+        await WaitUntilAsync(() =>
+            viewModel.Pane1.HasValidSource &&
+            viewModel.Pane1.GeneratedCode.Contains("SMILE replacement wins", StringComparison.Ordinal));
+
+        Assert.IsFalse(viewModel.Pane1.HasUserEdits);
+        Assert.IsFalse(
+            viewModel.Pane1.GeneratedCode.Contains("temporary learner target edit", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task Blank_New_document_can_build_code_written_directly_in_a_target_editor()
+    {
+        var csharp = new FakeToolchain(TargetLanguage.CSharp);
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(csharp),
+            new FakeErrorReporter(),
+            new FakeFolderOpener())
+        {
+            OpenGeneratedFolderAfterBuild = false
+        };
+        await viewModel.InitializeAsync();
+        viewModel.NewCommand.Execute(null);
+
+        const string editedSource = "using System;\nConsole.WriteLine(\"target-only edit\");\n";
+        int globalCommandChanges = 0;
+        viewModel.BuildRunVisibleCommand.CanExecuteChanged += (_, _) => globalCommandChanges++;
+        viewModel.Pane1.GeneratedCode = editedSource;
+
+        Assert.IsTrue(viewModel.Pane1.CanBuild);
+        Assert.IsTrue(viewModel.BuildRunVisibleCommand.CanExecute(null));
+        Assert.IsGreaterThan(0, globalCommandChanges);
+        viewModel.Pane1.BuildRunCommand!.Execute(null);
+        await WaitUntilAsync(() => !viewModel.IsBusy && viewModel.OperationStatus == "Completed");
+
+        Assert.IsNotNull(csharp.LastGeneratedProgram);
+        Assert.AreEqual(editedSource, csharp.LastGeneratedProgram.PrimaryFile.Content);
+        Assert.IsTrue(csharp.LastGeneratedProgram.Files.Any(file => file.RelativePath == "GeneratedProgram.csproj"));
+        Assert.IsFalse(csharp.LastGeneratedProgram.RequiresStandardInput);
+        Assert.AreEqual(string.Empty, viewModel.SourceText);
+    }
+
+    [TestMethod]
+    public async Task Direct_target_edit_can_build_after_the_SMILE_source_has_a_syntax_error()
+    {
+        var csharp = new FakeToolchain(TargetLanguage.CSharp);
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(csharp),
+            new FakeErrorReporter(),
+            new FakeFolderOpener())
+        {
+            OpenGeneratedFolderAfterBuild = false
+        };
+        await viewModel.InitializeAsync();
+        viewModel.SourceText = "LET MissingValue =";
+        await WaitUntilAsync(() => viewModel.Panes.All(pane => pane.HasSyntaxError));
+
+        const string editedSource = "Console.WriteLine(\"target source is independent\");";
+        viewModel.Pane1.GeneratedCode = editedSource;
+
+        Assert.IsFalse(viewModel.Pane1.HasSyntaxError);
+        Assert.AreEqual("Edited", viewModel.Pane1.Status);
+        Assert.IsTrue(viewModel.Pane1.CanBuild);
+        Assert.IsTrue(viewModel.BuildRunVisibleCommand.CanExecute(null));
+
+        viewModel.BuildRunVisibleCommand.Execute(null);
+        await WaitUntilAsync(() => !viewModel.IsBusy && viewModel.OperationStatus == "Completed");
+
+        Assert.AreEqual(1, csharp.BuildRuns);
+        Assert.IsNotNull(csharp.LastGeneratedProgram);
+        Assert.AreEqual(editedSource, csharp.LastGeneratedProgram.PrimaryFile.Content);
+        Assert.AreEqual(editedSource, viewModel.Pane1.GeneratedCode);
+        Assert.IsTrue(viewModel.Panes.Skip(1).All(pane => pane.HasSyntaxError));
+        StringAssert.Contains(viewModel.OutputText, "Program output.");
+
+        viewModel.SourceText = "PRINT SMILE is valid again";
+        await WaitUntilAsync(() =>
+            viewModel.Pane1.HasValidSource &&
+            viewModel.Pane1.GeneratedCode.Contains("SMILE is valid again", StringComparison.Ordinal));
+
+        StringAssert.Contains(viewModel.OutputText, "Program output.");
     }
 
     [TestMethod]
@@ -725,19 +1110,22 @@ PRINT A; B; C
         private readonly Exception? _buildRunException;
         private readonly string? _workingDirectory;
         private readonly bool _simulateLaunchFailure;
+        private readonly Task? _detectGate;
 
         public FakeToolchain(
             TargetLanguage language,
             Exception? detectException = null,
             Exception? buildRunException = null,
             string? workingDirectory = null,
-            bool simulateLaunchFailure = false)
+            bool simulateLaunchFailure = false,
+            Task? detectGate = null)
         {
             Language = language;
             _detectException = detectException;
             _buildRunException = buildRunException;
             _workingDirectory = workingDirectory;
             _simulateLaunchFailure = simulateLaunchFailure;
+            _detectGate = detectGate;
         }
 
         public TargetLanguage Language { get; }
@@ -748,15 +1136,20 @@ PRINT A; B; C
 
         public BuildRunOptions? LastBuildRunOptions { get; private set; }
 
-        public Task<ToolchainStatus> DetectAsync(CancellationToken cancellationToken)
+        public async Task<ToolchainStatus> DetectAsync(CancellationToken cancellationToken)
         {
             if (_detectException is not null)
             {
                 throw _detectException;
             }
 
+            if (_detectGate is not null)
+            {
+                await _detectGate.WaitAsync(cancellationToken);
+            }
+
             string name = TargetLanguageInfo.GetDisplayName(Language);
-            return Task.FromResult(new ToolchainStatus(Language, true, name, "test", "test", $"{name} detected."));
+            return new ToolchainStatus(Language, true, name, "test", "test", $"{name} detected.");
         }
 
         public async Task<BuildRunResult> BuildAndRunAsync(

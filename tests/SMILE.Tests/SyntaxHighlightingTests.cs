@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Text;
+using System.Windows.Media;
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Highlighting;
+using SMILE.Desktop.Controls;
 using SMILE.Desktop.Highlighting;
 using SMILE.Engine;
 
@@ -10,6 +12,151 @@ namespace SMILE.Tests;
 [TestClass]
 public sealed class SyntaxHighlightingTests
 {
+    private static readonly PaletteContract[] PaletteContracts =
+    [
+        new(
+            "smile",
+            Comments: ["Comment"],
+            Keywords: ["Keyword"],
+            Identifiers: [],
+            Strings: ["String"],
+            Numbers: ["Number"],
+            Operators: ["Operator"]),
+        new(
+            "csharp",
+            Comments: ["Comment"],
+            Keywords:
+            [
+                "Preprocessor",
+                "ValueTypeKeywords",
+                "ReferenceTypeKeywords",
+                "ThisOrBaseReference",
+                "NullOrValueKeywords",
+                "Keywords",
+                "GotoKeywords",
+                "ContextKeywords",
+                "ExceptionKeywords",
+                "CheckedKeyword",
+                "UnsafeKeywords",
+                "OperatorKeywords",
+                "ParameterModifiers",
+                "Modifiers",
+                "Visibility",
+                "NamespaceKeywords",
+                "GetSetAddRemove",
+                "TrueFalse",
+                "TypeKeywords",
+                "SemanticKeywords"
+            ],
+            Identifiers: ["StringInterpolation", "MethodCall"],
+            Strings: ["String", "Char"],
+            Numbers: ["NumberLiteral"],
+            Operators: ["Punctuation"]),
+        CreateCFamilyContract("c"),
+        new(
+            "masm-x64",
+            Comments: ["Comment"],
+            Keywords: ["Instruction", "Directive"],
+            Identifiers: ["Register"],
+            Strings: ["String"],
+            Numbers: ["Number"],
+            Operators: ["Operator"]),
+        new(
+            "javascript",
+            Comments: ["Comment"],
+            Keywords:
+            [
+                "JavaScriptKeyWords",
+                "JavaScriptIntrinsics",
+                "JavaScriptLiterals",
+                "JavaScriptGlobalFunctions"
+            ],
+            Identifiers: [],
+            Strings: ["String", "Character", "Regex"],
+            Numbers: ["Digits"],
+            Operators: []),
+        new(
+            "java",
+            Comments: ["Comment", "CommentTags", "JavaDocTags"],
+            Keywords:
+            [
+                "AccessKeywords",
+                "OperatorKeywords",
+                "SelectionStatements",
+                "IterationStatements",
+                "ExceptionHandlingStatements",
+                "ValueTypes",
+                "ReferenceTypes",
+                "Void",
+                "JumpStatements",
+                "Modifiers",
+                "AccessModifiers",
+                "Package",
+                "Literals"
+            ],
+            Identifiers: ["MethodName"],
+            Strings: ["String", "Character"],
+            Numbers: ["Digits"],
+            Operators: ["Punctuation"]),
+        new(
+            "cobol",
+            Comments: ["Comment"],
+            Keywords: ["Keyword"],
+            Identifiers: [],
+            Strings: ["String"],
+            Numbers: ["Number"],
+            Operators: ["Operator"]),
+        CreateCFamilyContract("objective-c"),
+        new(
+            "swift",
+            Comments: ["Comment"],
+            Keywords: ["Keyword"],
+            Identifiers: [],
+            Strings: ["String"],
+            Numbers: ["Number"],
+            Operators: ["Operator"]),
+        new(
+            "python",
+            Comments: ["Comment"],
+            Keywords: ["Keywords"],
+            Identifiers: ["MethodCall"],
+            Strings: ["String"],
+            Numbers: ["NumberLiteral"],
+            Operators: []),
+        CreateCFamilyContract("cpp")
+    ];
+
+    private static readonly HighlightingSample[] PaletteSamples =
+    [
+        new("smile", "LET LearnerName = 1\nREM palette comment", "LET", "LearnerName"),
+        new("csharp", "LearnerName();\nint Value = 1;\n// palette comment", "int", "LearnerName"),
+        new("c", "LearnerName();\nint Value = 1;\n// palette comment", "int", "LearnerName"),
+        new(
+            "masm-x64",
+            "LearnerName PROC\n    mov rax, 1\n    ; palette comment\nLearnerName ENDP",
+            "PROC",
+            "LearnerName"),
+        new(
+            "javascript",
+            "LearnerName();\nfunction Value() {}\n// palette comment",
+            "function",
+            "LearnerName"),
+        new("java", "LearnerName();\nint Value = 1;\n// palette comment", "int", "LearnerName"),
+        new(
+            "cobol",
+            "PROGRAM-ID. LearnerName.\n*> palette comment",
+            "PROGRAM-ID",
+            "LearnerName"),
+        new(
+            "objective-c",
+            "LearnerName();\nint Value = 1;\n// palette comment",
+            "int",
+            "LearnerName"),
+        new("swift", "LearnerName()\nlet Value = 1\n// palette comment", "let", "LearnerName"),
+        new("python", "LearnerName()\nif True:\n    pass\n# palette comment", "if", "LearnerName"),
+        new("cpp", "LearnerName();\nint Value = 1;\n// palette comment", "int", "LearnerName")
+    ];
+
     [TestMethod]
     public void Syntax_highlighting_catalog_resolves_every_supported_language()
     {
@@ -76,6 +223,217 @@ public sealed class SyntaxHighlightingTests
         Assert.AreSame(
             SyntaxHighlightingCatalog.GetDefinition("c"),
             SyntaxHighlightingCatalog.GetDefinition("objective-c"));
+        Assert.AreSame(
+            SyntaxHighlightingCatalog.GetDefinition("c"),
+            SyntaxHighlightingCatalog.GetDefinition("cpp"));
+    }
+
+    [TestMethod]
+    public void Every_named_color_obeys_the_shared_palette_for_all_languages()
+    {
+        foreach (PaletteContract contract in PaletteContracts)
+        {
+            IHighlightingDefinition definition =
+                SyntaxHighlightingCatalog.GetDefinition(contract.LanguageId)!;
+            string[] actualNames = definition.NamedHighlightingColors
+                .Select(color => color.Name)
+                .ToArray();
+
+            CollectionAssert.AreEquivalent(
+                contract.AllColorNames,
+                actualNames,
+                $"{contract.LanguageId} color categories changed without a palette classification.");
+            AssertColorGroup(definition, contract.Comments, HighlightingPalette.CommentGreen);
+            AssertColorGroup(definition, contract.Keywords, HighlightingPalette.KeywordBlue);
+            AssertColorGroup(definition, contract.Identifiers, HighlightingPalette.IdentifierBlack);
+            AssertColorGroup(definition, contract.Strings, HighlightingPalette.StringRed);
+            AssertColorGroup(definition, contract.Numbers, HighlightingPalette.NumberDarkBlue);
+            AssertColorGroup(definition, contract.Operators, HighlightingPalette.OperatorBlack);
+        }
+    }
+
+    [TestMethod]
+    public void Every_language_renders_comments_keywords_and_user_names_with_the_required_colors()
+    {
+        foreach (HighlightingSample sample in PaletteSamples)
+        {
+            IHighlightingDefinition definition =
+                SyntaxHighlightingCatalog.GetDefinition(sample.LanguageId)!;
+            var document = new TextDocument(sample.Source);
+            var highlighter = new DocumentHighlighter(document, definition);
+
+            AssertTokenForeground(
+                document,
+                highlighter,
+                sample.Keyword,
+                HighlightingPalette.KeywordBlue,
+                $"{sample.LanguageId} keyword");
+            AssertTokenForeground(
+                document,
+                highlighter,
+                sample.Identifier,
+                HighlightingPalette.IdentifierBlack,
+                $"{sample.LanguageId} user name");
+            AssertTokenForeground(
+                document,
+                highlighter,
+                "palette comment",
+                HighlightingPalette.CommentGreen,
+                $"{sample.LanguageId} comment");
+        }
+    }
+
+    [TestMethod]
+    [DataRow("csharp", "/// <summary name=\"LearnerName\">palette comment</summary>")]
+    [DataRow("csharp", "// TODO FIXME HACK UNDONE palette comment")]
+    [DataRow("python", "# TODO FIXME HACK UNDONE palette comment")]
+    [DataRow("java", "/** @param LearnerName palette comment */")]
+    [DataRow("java", "// TODO 49 @param palette comment")]
+    public void Nested_documentation_comment_sections_remain_exact_green(
+        string languageId,
+        string source)
+    {
+        IHighlightingDefinition definition = SyntaxHighlightingCatalog.GetDefinition(languageId)!;
+        var document = new TextDocument(source);
+        var highlighter = new DocumentHighlighter(document, definition);
+        HighlightedLine line = highlighter.HighlightLine(1);
+
+        for (int offset = 0; offset < source.Length; offset++)
+        {
+            Assert.AreEqual(
+                HighlightingPalette.CommentGreen,
+                EffectiveForeground(line, offset),
+                $"{languageId} documentation comment offset {offset}");
+        }
+    }
+
+    [TestMethod]
+    [DataRow("c", "#define Value 49 // palette comment")]
+    [DataRow("c", "#define Value 49 /* palette comment */")]
+    [DataRow("objective-c", "#define Value 49 // palette comment")]
+    [DataRow("objective-c", "#define Value 49 /* palette comment */")]
+    [DataRow("cpp", "#define Value 49 // palette comment")]
+    [DataRow("cpp", "#define Value 49 /* palette comment */")]
+    public void C_family_comments_override_the_blue_preprocessor_span(
+        string languageId,
+        string source)
+    {
+        IHighlightingDefinition definition = SyntaxHighlightingCatalog.GetDefinition(languageId)!;
+        var document = new TextDocument(source);
+        var highlighter = new DocumentHighlighter(document, definition);
+
+        AssertTokenForeground(
+            document,
+            highlighter,
+            "define",
+            HighlightingPalette.KeywordBlue,
+            $"{languageId} preprocessor directive");
+        AssertTokenForeground(
+            document,
+            highlighter,
+            "palette comment",
+            HighlightingPalette.CommentGreen,
+            $"{languageId} preprocessor comment");
+    }
+
+    [TestMethod]
+    public void C_family_preprocessor_strings_keep_comment_markers_as_String_data()
+    {
+        const string source = "#define Text \"// not a comment\" // palette comment";
+        IHighlightingDefinition definition = SyntaxHighlightingCatalog.GetDefinition("cpp")!;
+        var document = new TextDocument(source);
+        var highlighter = new DocumentHighlighter(document, definition);
+
+        AssertTokenForeground(
+            document,
+            highlighter,
+            "// not a comment",
+            HighlightingPalette.StringRed,
+            "C-family preprocessor String");
+        AssertTokenForeground(
+            document,
+            highlighter,
+            "palette comment",
+            HighlightingPalette.CommentGreen,
+            "C-family trailing preprocessor comment");
+    }
+
+    [TestMethod]
+    public void Embedded_target_keyword_and_instruction_inventories_render_blue()
+    {
+        var inventories = new[]
+        {
+            new KeywordInventory(
+                "swift",
+                "actor as associatedtype async await break case catch class continue default defer deinit do else enum extension false fileprivate for func guard if import in init inline inout internal is let nil open operator precedencegroup print private protocol public repeat return rethrows self static struct subscript super switch throw throws true try typealias var where while"),
+            new KeywordInventory(
+                "cobol",
+                "ACCEPT ADD ADVANCING AND BY CALL CLOSE COMP-5 COMPUTE CONTINUE COPY DATA DELETE DELIMITED IDENTIFICATION DIVISION ELSE END-EVALUATE END-IF END-PERFORM END-READ END-STRING END-WRITE ENVIRONMENT EVALUATE EXIT FD FILE-CONTROL FORMAT FREE FUNCTION GIVING GO GOBACK IF INPUT-OUTPUT INSPECT INTEGER-PART INTO IS LENGTH MOVE MULTIPLY NO NOT NUMVAL OCCURS OPEN OR OTHER PERFORM DISPLAY PIC PICTURE POINTER PROCEDURE PROGRAM-ID READ REDEFINES REFERENCE REPLACING RETURN-CODE RETURNING RUN SEARCH SECTION SELECT SIZE SOURCE SPACE SPACES STDERR STOP STRING SUBTRACT THEN THRU TIMES TO TRIM UNTIL UPON USING VALUE VARYING WHEN WITH WORKING-STORAGE WRITE ZERO"),
+            new KeywordInventory(
+                "masm-x64",
+                "adc add and call cld cmp cqo dec div idiv imul inc int ja jae jb jbe je jge jmp jne jnz jo jz lea loop mov movsb movzx neg nop not or pop push rep ret rol ror sal sar sbb sete setg setge setl setle setne shl shr sub test xchg xor ALIGN BYTE casemap DWORD DUP END ENDP EQU EXTERN INCLUDE INVOKE option PROC PROTO PTR PUBLIC QWORD STRUCT")
+        };
+
+        foreach (KeywordInventory inventory in inventories)
+        {
+            foreach (string token in inventory.Source.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var document = new TextDocument(token);
+                var highlighter = new DocumentHighlighter(
+                    document,
+                    SyntaxHighlightingCatalog.GetDefinition(inventory.LanguageId)!);
+                AssertTokenForeground(
+                    document,
+                    highlighter,
+                    token,
+                    HighlightingPalette.KeywordBlue,
+                    $"{inventory.LanguageId} keyword/instruction {token}");
+            }
+        }
+    }
+
+    [TestMethod]
+    public void Every_MASM_register_emitted_by_the_generator_renders_black()
+    {
+        const string source = "al dl eax ecx edx rax rcx rdx r8 r8b r8d r9 r9d r10 r10d r11 r11d rdi rsi rsp";
+        foreach (string register in source.Split(' '))
+        {
+            var document = new TextDocument(register);
+            var highlighter = new DocumentHighlighter(
+                document,
+                SyntaxHighlightingCatalog.GetDefinition("masm-x64")!);
+            AssertTokenForeground(
+                document,
+                highlighter,
+                register,
+                HighlightingPalette.IdentifierBlack,
+                $"MASM register {register}");
+        }
+    }
+
+    [TestMethod]
+    public void CSharp_XML_documentation_palette_contains_only_exact_comment_green()
+    {
+        _ = SyntaxHighlightingCatalog.GetDefinition("csharp");
+        IHighlightingDefinition xmlDocumentation =
+            HighlightingManager.Instance.GetDefinition("XmlDoc")!;
+        string[] expectedNames = ["XmlString", "DocComment", "XmlPunctuation", "KnownDocTags"];
+
+        CollectionAssert.AreEquivalent(
+            expectedNames,
+            xmlDocumentation.NamedHighlightingColors.Select(color => color.Name).ToArray());
+        AssertColorGroup(
+            xmlDocumentation,
+            expectedNames,
+            HighlightingPalette.CommentGreen);
+    }
+
+    [STATestMethod]
+    public void Smile_code_editor_makes_the_unhighlighted_identifier_foreground_explicitly_black()
+    {
+        var editor = new SmileCodeEditor();
+
+        Assert.AreEqual(Brushes.Black, editor.Foreground);
     }
 
     [TestMethod]
@@ -562,6 +920,116 @@ Still inside the block
             stopwatch.ElapsedMilliseconds,
             $"SMILE block highlighting took {stopwatch.ElapsedMilliseconds} ms for {document.LineCount} lines.");
     }
+
+    private static PaletteContract CreateCFamilyContract(string languageId) =>
+        new(
+            languageId,
+            Comments: ["Comment"],
+            Keywords:
+            [
+                "Preprocessor",
+                "CompoundKeywords",
+                "This",
+                "Namespace",
+                "Friend",
+                "Modifiers",
+                "TypeKeywords",
+                "BooleanConstants",
+                "Keywords",
+                "LoopKeywords",
+                "JumpKeywords",
+                "ExceptionHandling",
+                "ControlFlow"
+            ],
+            Identifiers: ["MethodName"],
+            Strings: ["Character", "String"],
+            Numbers: ["Digits"],
+            Operators: ["Punctuation", "Operators"]);
+
+    private static void AssertColorGroup(
+        IHighlightingDefinition definition,
+        IEnumerable<string> colorNames,
+        Color expected)
+    {
+        foreach (string colorName in colorNames)
+        {
+            HighlightingColor color = definition.GetNamedColor(colorName)!;
+            Assert.IsNotNull(color, $"{definition.Name}/{colorName}");
+            Color? actual = color.Foreground?.GetColor(null!);
+            Assert.IsTrue(actual.HasValue, $"{definition.Name}/{colorName} has no foreground.");
+            Assert.AreEqual(expected, actual.Value, $"{definition.Name}/{colorName}");
+        }
+    }
+
+    private static void AssertTokenForeground(
+        TextDocument document,
+        DocumentHighlighter highlighter,
+        string token,
+        Color expected,
+        string description)
+    {
+        int offset = document.Text.IndexOf(token, StringComparison.Ordinal);
+        Assert.IsGreaterThanOrEqualTo(0, offset, description);
+        DocumentLine documentLine = document.GetLineByOffset(offset);
+        HighlightedLine? highlightedLine = null;
+        for (int lineNumber = 1; lineNumber <= documentLine.LineNumber; lineNumber++)
+        {
+            highlightedLine = highlighter.HighlightLine(lineNumber);
+        }
+
+        Assert.IsNotNull(highlightedLine, description);
+        for (int index = 0; index < token.Length; index++)
+        {
+            Assert.AreEqual(
+                expected,
+                EffectiveForeground(highlightedLine, offset + index),
+                $"{description} offset {index}");
+        }
+    }
+
+    private static Color EffectiveForeground(HighlightedLine line, int offset)
+    {
+        Color effective = HighlightingPalette.IdentifierBlack;
+        foreach (HighlightedSection section in line.Sections.Where(section =>
+                     section.Offset <= offset &&
+                     section.Offset + section.Length > offset))
+        {
+            Color? foreground = section.Color.Foreground?.GetColor(null!);
+            if (foreground.HasValue)
+            {
+                effective = foreground.Value;
+            }
+        }
+
+        return effective;
+    }
+
+    private sealed record PaletteContract(
+        string LanguageId,
+        string[] Comments,
+        string[] Keywords,
+        string[] Identifiers,
+        string[] Strings,
+        string[] Numbers,
+        string[] Operators)
+    {
+        public string[] AllColorNames =>
+            Comments
+                .Concat(Keywords)
+                .Concat(Identifiers)
+                .Concat(Strings)
+                .Concat(Numbers)
+                .Concat(Operators)
+                .ToArray();
+    }
+
+    private sealed record HighlightingSample(
+        string LanguageId,
+        string Source,
+        string Keyword,
+        string Identifier);
+
+    private sealed record KeywordInventory(string LanguageId, string Source);
 
     private static void AssertRangeHasColor(
         HighlightedLine line,

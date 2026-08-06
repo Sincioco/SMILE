@@ -3,7 +3,7 @@
   <Color name="Keyword" foreground="#0000FF" fontWeight="bold" />
   <Color name="String" foreground="#A31515" />
   <Color name="Comment" foreground="#008000" />
-  <Color name="Number" foreground="#098658" />
+  <Color name="Number" foreground="#00008B" />
   <Color name="Operator" foreground="#1F1F1F" />
 
   <RuleSet>
@@ -12,14 +12,62 @@
     <Span color="String" begin="&quot;" end="&quot;" />
 
     <Keywords color="Keyword">
-      <Word>let</Word>
-      <Word>var</Word>
-      <Word>func</Word>
-      <Word>print</Word>
-      <Word>import</Word>
-      <Word>return</Word>
-      <Word>if</Word>
+      <Word>actor</Word>
+      <Word>as</Word>
+      <Word>associatedtype</Word>
+      <Word>async</Word>
+      <Word>await</Word>
+      <Word>break</Word>
+      <Word>case</Word>
+      <Word>catch</Word>
+      <Word>class</Word>
+      <Word>continue</Word>
+      <Word>default</Word>
+      <Word>defer</Word>
+      <Word>deinit</Word>
+      <Word>do</Word>
       <Word>else</Word>
+      <Word>enum</Word>
+      <Word>extension</Word>
+      <Word>false</Word>
+      <Word>fileprivate</Word>
+      <Word>for</Word>
+      <Word>func</Word>
+      <Word>guard</Word>
+      <Word>if</Word>
+      <Word>import</Word>
+      <Word>in</Word>
+      <Word>init</Word>
+      <Word>inline</Word>
+      <Word>inout</Word>
+      <Word>internal</Word>
+      <Word>is</Word>
+      <Word>let</Word>
+      <Word>nil</Word>
+      <Word>open</Word>
+      <Word>operator</Word>
+      <Word>precedencegroup</Word>
+      <Word>print</Word>
+      <Word>private</Word>
+      <Word>protocol</Word>
+      <Word>public</Word>
+      <Word>repeat</Word>
+      <Word>return</Word>
+      <Word>rethrows</Word>
+      <Word>self</Word>
+      <Word>static</Word>
+      <Word>struct</Word>
+      <Word>subscript</Word>
+      <Word>super</Word>
+      <Word>switch</Word>
+      <Word>throw</Word>
+      <Word>throws</Word>
+      <Word>true</Word>
+      <Word>try</Word>
+      <Word>typealias</Word>
+      <Word>var</Word>
+      <Word>where</Word>
+      <Word>while</Word>
     </Keywords>
 
     <Rule color="Number">\b\d+(\.\d+)?\b</Rule>

@@ -3,7 +3,7 @@
   <Color name="Keyword" foreground="#0000FF" fontWeight="bold" />
   <Color name="String" foreground="#A31515" />
   <Color name="Comment" foreground="#008000" fontStyle="italic" />
-  <Color name="Number" foreground="#098658" />
+  <Color name="Number" foreground="#00008B" />
   <Color name="Operator" foreground="#1F1F1F" />
 
   <RuleSet ignoreCase="true">

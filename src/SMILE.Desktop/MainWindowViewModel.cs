@@ -78,7 +78,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         Pane2 = CreatePane("Generated target 2", TargetLanguage.MasmX64);
         Pane3 = CreatePane("Generated target 3", TargetLanguage.C);
 
-        NewCommand = new AsyncRelayCommand(NewDocumentAsync, CanStartWork, HandleCommandException);
+        NewCommand = new RelayCommand(NewDocument, CanStartWork, HandleCommandException);
         OpenCommand = new AsyncRelayCommand(OpenAsync, CanStartWork, HandleCommandException);
         SaveCommand = new AsyncRelayCommand(SaveAsync, CanStartWork, HandleCommandException);
         SaveAsCommand = new AsyncRelayCommand(SaveAsAsync, CanStartWork, HandleCommandException);
@@ -99,7 +99,7 @@ public sealed class MainWindowViewModel : ViewModelBase
 
     public IReadOnlyList<TargetPaneViewModel> Panes => new[] { Pane1, Pane2, Pane3 };
 
-    public AsyncRelayCommand NewCommand { get; }
+    public RelayCommand NewCommand { get; }
 
     public AsyncRelayCommand OpenCommand { get; }
 
@@ -125,7 +125,14 @@ public sealed class MainWindowViewModel : ViewModelBase
             if (SetProperty(ref _sourceText, value) && Pane1 is not null)
             {
                 _sourceRevision++;
-                ScheduleLiveTranspilation();
+                if (_sourceText.Length == 0)
+                {
+                    ResetGeneratedTargetsForEmptySource();
+                }
+                else
+                {
+                    ScheduleLiveTranspilation();
+                }
             }
         }
     }
@@ -180,6 +187,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             long revisionBeforeLoad = _sourceRevision;
             string? languageSource = await LoadLanguageSourceAsync(CancellationToken.None).ConfigureAwait(true);
             if (languageSource is not null &&
+                revisionBeforeLoad == 0 &&
                 revisionBeforeLoad == _sourceRevision &&
                 _currentFilePath is null)
             {
@@ -203,8 +211,9 @@ public sealed class MainWindowViewModel : ViewModelBase
         var pane = new TargetPaneViewModel(title, defaultLanguage);
         pane.SelectedLanguageChanged += (_, _) =>
         {
-            RefreshVisiblePanesAfterLanguageChange();
+            RefreshVisiblePaneAfterLanguageChange(pane);
         };
+        pane.UserSourceChanged += (_, _) => RaiseCommandStateChanged();
         pane.CopyCommand = new RelayCommand(
             () => Clipboard.SetText(pane.GeneratedCode),
             () => pane.CanUseSource,
@@ -260,18 +269,23 @@ public sealed class MainWindowViewModel : ViewModelBase
         RaiseCommandStateChanged();
     }
 
-    private async Task NewDocumentAsync()
+    private void NewDocument()
     {
-        string? languageSource = await LoadLanguageSourceAsync(CancellationToken.None).ConfigureAwait(true);
-        if (languageSource is null)
+        CancelLiveTranspilation();
+
+        // New is an editor reset, not a second request for the packaged
+        // language reference. Advancing the revision even when the editor was
+        // already empty prevents a pending startup read from winning the race
+        // and putting language.smile back into the new document.
+        _sourceRevision++;
+        if (_sourceText.Length != 0)
         {
-            OperationStatus = "Failed";
-            return;
+            _sourceText = string.Empty;
+            OnPropertyChanged(nameof(SourceText));
         }
 
-        SourceText = languageSource;
         _currentFilePath = null;
-        OperationStatus = "Language reference loaded";
+        ResetGeneratedTargetsForEmptySource();
     }
 
     private async Task<string?> LoadLanguageSourceAsync(CancellationToken cancellationToken)
@@ -352,6 +366,17 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
         CancelLiveTranspilation();
 
+        if (SourceText.Length == 0)
+        {
+            ResetGeneratedTargetsForEmptySource();
+            if (isManual)
+            {
+                OperationStatus = "Completed";
+            }
+
+            return;
+        }
+
         string sourceSnapshot = SourceText;
         long revision = _sourceRevision;
         IReadOnlyList<TranspileResult> results = await GenerateAsync(
@@ -361,13 +386,23 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         if (revision == _sourceRevision)
         {
-            ApplyTranspileResults(results, revision, isLive: false, reportSuccess: isManual);
+            ApplyTranspileResults(
+                results,
+                revision,
+                isLive: false,
+                reportSuccess: isManual,
+                preserveUserEdits: false);
         }
     }
 
     private async Task TranspileVisibleCurrentSourceAsync(CancellationToken cancellationToken)
     {
         CancelLiveTranspilation();
+
+        if (SourceText.Length == 0)
+        {
+            return;
+        }
 
         string sourceSnapshot = SourceText;
         long revision = _sourceRevision;
@@ -385,7 +420,12 @@ public sealed class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        ApplyTranspileResults(results, revision, isLive: true, reportSuccess: false);
+        ApplyTranspileResults(
+            results,
+            revision,
+            isLive: true,
+            reportSuccess: false,
+            preserveUserEdits: true);
         if (results.All(result => result.Success))
         {
             OperationStatus = "Ready";
@@ -397,12 +437,28 @@ public sealed class MainWindowViewModel : ViewModelBase
         RefreshVisiblePanesAndScheduleLiveTranspilation(clearExistingSyntaxErrors: true);
     }
 
-    private void RefreshVisiblePanesAfterLanguageChange()
+    private void RefreshVisiblePaneAfterLanguageChange(TargetPaneViewModel changedPane)
     {
+        if (SourceText.Length == 0)
+        {
+            CancelLiveTranspilation();
+            UpdateToolchainStatus(changedPane);
+            changedPane.ApplyGeneratedCode(string.Empty);
+            changedPane.HasValidSource = false;
+            changedPane.HasSyntaxError = false;
+            changedPane.Status = GetReadyStatus(changedPane);
+            OperationStatus = "Ready";
+            RaiseCommandStateChanged();
+            return;
+        }
+
         RefreshVisiblePanesAndScheduleLiveTranspilation(clearExistingSyntaxErrors: false);
     }
 
-    private void RefreshVisiblePanesAndScheduleLiveTranspilation(bool clearExistingSyntaxErrors)
+    private void RefreshVisiblePanesAndScheduleLiveTranspilation(
+        bool clearExistingSyntaxErrors,
+        TargetPaneViewModel? preservedPane = null,
+        string? operationStatusAfterCompletion = null)
     {
         if (IsBusy)
         {
@@ -411,16 +467,29 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         CancelLiveTranspilation();
 
+        if (SourceText.Length == 0)
+        {
+            ResetGeneratedTargetsForEmptySource();
+            return;
+        }
+
         var missingLanguages = new List<TargetLanguage>();
         foreach (TargetPaneViewModel pane in Panes)
         {
+            if (ReferenceEquals(pane, preservedPane))
+            {
+                continue;
+            }
+
             if (clearExistingSyntaxErrors)
             {
                 pane.HasSyntaxError = false;
             }
 
             UpdateToolchainStatus(pane);
-            if (TryApplyCurrentGeneratedProgram(pane))
+            if (TryApplyCurrentGeneratedProgram(
+                    pane,
+                    preserveUserEdits: !clearExistingSyntaxErrors))
             {
                 pane.RaiseCommandStateChanged();
                 continue;
@@ -433,7 +502,7 @@ public sealed class MainWindowViewModel : ViewModelBase
                 // the last live transpile. In both cases, only missing visible
                 // targets need compiler work. Cached targets stay ready, which
                 // keeps rapid ComboBox changes from flooding the UI thread.
-                pane.HasValidSource = false;
+                pane.MarkGeneratedCodeStale();
                 pane.Status = "Updating";
                 missingLanguages.Add(pane.Language);
             }
@@ -444,7 +513,8 @@ public sealed class MainWindowViewModel : ViewModelBase
         TargetLanguage[] languages = missingLanguages.Distinct().ToArray();
         if (languages.Length == 0)
         {
-            OperationStatus = Panes.Any(pane => pane.HasSyntaxError) ? "Syntax Error" : "Ready";
+            OperationStatus = operationStatusAfterCompletion ??
+                (Panes.Any(pane => pane.HasSyntaxError) ? "Syntax Error" : "Ready");
             RaiseCommandStateChanged();
             return;
         }
@@ -462,7 +532,10 @@ public sealed class MainWindowViewModel : ViewModelBase
             revision,
             languages,
             cancellation,
-            LiveTranspileDelay);
+            LiveTranspileDelay,
+            preserveUserEdits: !clearExistingSyntaxErrors,
+            preservedPane,
+            operationStatusAfterCompletion);
     }
 
     private async Task RunLiveTranspilationAsync(
@@ -470,7 +543,10 @@ public sealed class MainWindowViewModel : ViewModelBase
         long revision,
         IReadOnlyList<TargetLanguage> languages,
         CancellationTokenSource cancellation,
-        TimeSpan delay)
+        TimeSpan delay,
+        bool preserveUserEdits,
+        TargetPaneViewModel? preservedPane,
+        string? operationStatusAfterCompletion)
     {
         try
         {
@@ -486,8 +562,21 @@ public sealed class MainWindowViewModel : ViewModelBase
                 return;
             }
 
-            ApplyTranspileResults(results, revision, isLive: true, reportSuccess: false);
-            OperationStatus = "Ready";
+            ApplyTranspileResults(
+                results,
+                revision,
+                isLive: true,
+                reportSuccess: false,
+                preserveUserEdits,
+                preservedPane);
+            if (operationStatusAfterCompletion is not null)
+            {
+                OperationStatus = operationStatusAfterCompletion;
+            }
+            else if (results.All(result => result.Success))
+            {
+                OperationStatus = "Ready";
+            }
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
@@ -526,7 +615,9 @@ public sealed class MainWindowViewModel : ViewModelBase
         IReadOnlyList<TranspileResult> results,
         long revision,
         bool isLive,
-        bool reportSuccess)
+        bool reportSuccess,
+        bool preserveUserEdits,
+        TargetPaneViewModel? preservedPane = null)
     {
         IReadOnlyList<Diagnostic> diagnostics = results
             .SelectMany(result => result.Diagnostics)
@@ -550,9 +641,11 @@ public sealed class MainWindowViewModel : ViewModelBase
             HashSet<TargetLanguage> generatedLanguages = results
                 .Select(result => result.Language)
                 .ToHashSet();
-            foreach (TargetPaneViewModel pane in Panes.Where(pane => generatedLanguages.Contains(pane.Language)))
+            foreach (TargetPaneViewModel pane in Panes.Where(pane =>
+                         !ReferenceEquals(pane, preservedPane) &&
+                         generatedLanguages.Contains(pane.Language)))
             {
-                UpdatePaneForLanguage(pane);
+                UpdatePaneForLanguage(pane, preserveUserEdits);
             }
 
             if (reportSuccess)
@@ -576,7 +669,18 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         foreach (TargetPaneViewModel pane in Panes)
         {
-            pane.GeneratedCode = string.Empty;
+            if (ReferenceEquals(pane, preservedPane))
+            {
+                continue;
+            }
+
+            if (preserveUserEdits && pane.HasUserEdits)
+            {
+                pane.RaiseCommandStateChanged();
+                continue;
+            }
+
+            pane.ApplyGeneratedCode(string.Empty);
             pane.HasValidSource = false;
             pane.HasSyntaxError = true;
             pane.Status = "Syntax Error";
@@ -589,6 +693,30 @@ public sealed class MainWindowViewModel : ViewModelBase
         RaiseCommandStateChanged();
     }
 
+    private void ResetGeneratedTargetsForEmptySource()
+    {
+        CancelLiveTranspilation();
+        _generatedPrograms.Clear();
+
+        foreach (TargetPaneViewModel pane in Panes)
+        {
+            pane.ApplyGeneratedCode(string.Empty);
+            pane.HasValidSource = false;
+            pane.HasSyntaxError = false;
+            pane.Status = GetReadyStatus(pane);
+            pane.RaiseCommandStateChanged();
+        }
+
+        if (_outputShowsLiveDiagnostics)
+        {
+            OutputText = string.Empty;
+            _outputShowsLiveDiagnostics = false;
+        }
+
+        OperationStatus = "Ready";
+        RaiseCommandStateChanged();
+    }
+
     private async Task BuildRunVisibleAsync()
     {
         var results = new List<BuildRunResult>();
@@ -598,6 +726,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             async cancellationToken =>
             {
                 foreach (TargetPaneViewModel pane in Panes
+                    .Where(CanPreparePaneSource)
                     .GroupBy(pane => pane.Language)
                     .Select(group => group.First()))
                 {
@@ -624,6 +753,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private async Task BuildRunPaneAsync(TargetPaneViewModel pane)
     {
         BuildRunResult? result = null;
+        bool resumePendingVisibleTranspilation = _liveTranspileTask is not null;
 
         await RunOperationAsync(
             $"{TargetLanguageInfo.GetDisplayName(pane.Language)} {pane.BuildButtonText}",
@@ -639,6 +769,17 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         await OpenGeneratedFolderForResultsAsync(result is null ? Array.Empty<BuildRunResult>() : new[] { result })
             .ConfigureAwait(true);
+
+        if (resumePendingVisibleTranspilation && SourceText.Length > 0)
+        {
+            // Building this pane intentionally cancelled the shared debounce.
+            // Resume only previews still missing for the same source revision;
+            // preserve the learner-edited pane and its build result.
+            RefreshVisiblePanesAndScheduleLiveTranspilation(
+                clearExistingSyntaxErrors: false,
+                preservedPane: pane,
+                operationStatusAfterCompletion: OperationStatus);
+        }
     }
 
     private async Task<BuildRunResult?> BuildRunPaneCoreAsync(
@@ -648,6 +789,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         var stopwatch = Stopwatch.StartNew();
         TargetLanguage language = pane.Language;
         string languageName = TargetLanguageInfo.GetDisplayName(language);
+        _outputShowsLiveDiagnostics = false;
 
         try
         {
@@ -660,7 +802,7 @@ public sealed class MainWindowViewModel : ViewModelBase
                 return null;
             }
 
-            GeneratedProgram? generatedProgram = await EnsureCurrentGeneratedProgramAsync(language, cancellationToken)
+            GeneratedProgram? generatedProgram = await GetProgramForPaneAsync(pane, cancellationToken)
                 .ConfigureAwait(true);
             if (generatedProgram is null)
             {
@@ -668,17 +810,21 @@ public sealed class MainWindowViewModel : ViewModelBase
                 return null;
             }
 
+            GeneratedProgram runnableProgram = WithCurrentPrimarySource(
+                generatedProgram,
+                pane.GeneratedCode);
+
             pane.Status = GetInitialBuildStatus(language);
             AppendOutput($"=== {languageName} ===");
 
-            BuildRunOptions options = generatedProgram.RequiresStandardInput
+            BuildRunOptions options = runnableProgram.RequiresStandardInput
                 ? BuildRunOptions.VisibleInteractiveConsole
                 : new BuildRunOptions(CreatePauseLauncher: CreatePauseLauncherAfterBuild);
             BuildRunResult result = await _toolchains.Get(language)
-                .BuildAndRunAsync(generatedProgram, cancellationToken, options)
+                .BuildAndRunAsync(runnableProgram, cancellationToken, options)
                 .ConfigureAwait(true);
 
-            if (generatedProgram.RequiresStandardInput &&
+            if (runnableProgram.RequiresStandardInput &&
                 result.WorkingDirectory is not null &&
                 result.Stage.Equals("Running", StringComparison.OrdinalIgnoreCase) &&
                 (result.ExitCode.HasValue || result.TimedOut || result.Cancelled))
@@ -738,12 +884,96 @@ public sealed class MainWindowViewModel : ViewModelBase
             return null;
         }
 
-        ApplyTranspileResults(results, revision, isLive: false, reportSuccess: false);
+        ApplyTranspileResults(
+            results,
+            revision,
+            isLive: false,
+            reportSuccess: false,
+            preserveUserEdits: true);
         return _generatedPrograms.TryGetValue(language, out GeneratedSnapshot? currentSnapshot) &&
             currentSnapshot.SourceRevision == revision
             ? currentSnapshot.Program
             : null;
     }
+
+    private async Task<GeneratedProgram?> GetProgramForPaneAsync(
+        TargetPaneViewModel pane,
+        CancellationToken cancellationToken)
+    {
+        TargetLanguage language = pane.Language;
+        long revision = _sourceRevision;
+        string sourceSnapshot = SourceText;
+
+        if (_generatedPrograms.TryGetValue(language, out GeneratedSnapshot? snapshot) &&
+            snapshot.SourceRevision == revision)
+        {
+            return snapshot.Program;
+        }
+
+        if (!pane.HasUserEdits)
+        {
+            GeneratedProgram? generatedProgram = await EnsureCurrentGeneratedProgramAsync(
+                language,
+                cancellationToken).ConfigureAwait(true);
+            return revision == _sourceRevision && pane.Language == language
+                ? generatedProgram
+                : null;
+        }
+
+        // Generate the current SMILE snapshot only to recover target-owned
+        // metadata and companion files. The learner's primary target source
+        // stays visible and authoritative. A blank or currently invalid SMILE
+        // document falls back to the target's minimal empty-program container.
+        IReadOnlyList<TranspileResult> results = await GenerateAsync(
+            sourceSnapshot,
+            new[] { language },
+            cancellationToken).ConfigureAwait(true);
+        TranspileResult result = results.Single();
+        bool representsCurrentSource = result.Success && result.GeneratedProgram is not null;
+
+        if (!representsCurrentSource && sourceSnapshot.Length > 0)
+        {
+            results = await GenerateAsync(
+                string.Empty,
+                new[] { language },
+                cancellationToken).ConfigureAwait(true);
+            result = results.Single();
+        }
+
+        if (revision != _sourceRevision || pane.Language != language)
+        {
+            return null;
+        }
+
+        if (!result.Success || result.GeneratedProgram is null)
+        {
+            return null;
+        }
+
+        // An empty fallback is build metadata, not generated source for an
+        // invalid nonempty SMILE revision, so never expose it through the live
+        // preview cache.
+        if (representsCurrentSource)
+        {
+            _generatedPrograms[language] = new GeneratedSnapshot(
+                revision,
+                result.GeneratedProgram);
+        }
+
+        return result.GeneratedProgram;
+    }
+
+    private static GeneratedProgram WithCurrentPrimarySource(
+        GeneratedProgram generatedProgram,
+        string primarySource) =>
+        generatedProgram with
+        {
+            Files = generatedProgram.Files
+                .Select(file => file.IsPrimary
+                    ? file with { Content = primarySource }
+                    : file)
+                .ToArray()
+        };
 
     private async Task RunOperationAsync(string title, Func<CancellationToken, Task> operation)
     {
@@ -802,8 +1032,8 @@ public sealed class MainWindowViewModel : ViewModelBase
 
     private async Task SaveGeneratedSourceAsync(TargetPaneViewModel pane)
     {
-        GeneratedProgram? generatedProgram = await EnsureCurrentGeneratedProgramAsync(
-            pane.Language,
+        GeneratedProgram? generatedProgram = await GetProgramForPaneAsync(
+            pane,
             CancellationToken.None).ConfigureAwait(true);
         if (generatedProgram is null)
         {
@@ -822,15 +1052,34 @@ public sealed class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        await File.WriteAllTextAsync(dialog.FileName, generatedProgram.PrimaryFile.Content).ConfigureAwait(true);
+        await File.WriteAllTextAsync(dialog.FileName, pane.GeneratedCode).ConfigureAwait(true);
         OperationStatus = $"Saved {Path.GetFileName(dialog.FileName)}";
     }
 
-    private void UpdatePaneForLanguage(TargetPaneViewModel pane)
+    private void UpdatePaneForLanguage(
+        TargetPaneViewModel pane,
+        bool preserveUserEdits = true)
     {
         UpdateToolchainStatus(pane);
 
-        if (!TryApplyCurrentGeneratedProgram(pane) && !pane.HasSyntaxError)
+        if (SourceText.Length == 0)
+        {
+            // Toolchain detection can finish after New. Preserve any target
+            // source the learner has typed since that reset while still
+            // settling untouched blank panes into their ready state.
+            if (!pane.HasUserEdits)
+            {
+                pane.ApplyGeneratedCode(string.Empty);
+                pane.HasValidSource = false;
+                pane.HasSyntaxError = false;
+            }
+
+            pane.Status = GetReadyStatus(pane);
+            pane.RaiseCommandStateChanged();
+            return;
+        }
+
+        if (!TryApplyCurrentGeneratedProgram(pane, preserveUserEdits) && !pane.HasSyntaxError)
         {
             pane.HasValidSource = false;
             pane.Status = "Updating";
@@ -839,15 +1088,22 @@ public sealed class MainWindowViewModel : ViewModelBase
         pane.RaiseCommandStateChanged();
     }
 
-    private bool TryApplyCurrentGeneratedProgram(TargetPaneViewModel pane)
+    private bool TryApplyCurrentGeneratedProgram(
+        TargetPaneViewModel pane,
+        bool preserveUserEdits = false)
     {
+        if (preserveUserEdits && pane.HasUserEdits)
+        {
+            return true;
+        }
+
         if (!_generatedPrograms.TryGetValue(pane.Language, out GeneratedSnapshot? snapshot) ||
             snapshot.SourceRevision != _sourceRevision)
         {
             return false;
         }
 
-        pane.GeneratedCode = snapshot.Program.PrimaryFile.Content;
+        pane.ApplyGeneratedCode(snapshot.Program.PrimaryFile.Content);
         pane.HasValidSource = true;
         pane.HasSyntaxError = false;
         pane.Status = GetReadyStatus(pane);
@@ -937,7 +1193,14 @@ public sealed class MainWindowViewModel : ViewModelBase
 
     private bool CanBuildVisible() =>
         !IsBusy &&
-        Panes.Any(pane => !pane.HasSyntaxError && pane.HasToolchain);
+        Panes.Any(pane =>
+            pane.HasToolchain &&
+            CanPreparePaneSource(pane));
+
+    private bool CanPreparePaneSource(TargetPaneViewModel pane) =>
+        !pane.HasSyntaxError &&
+        (pane.CanUseSource ||
+         (SourceText.Length > 0 && !pane.HasUserEdits));
 
     private void RaiseCommandStateChanged()
     {
