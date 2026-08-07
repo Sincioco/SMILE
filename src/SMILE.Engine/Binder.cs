@@ -17,7 +17,8 @@ internal sealed class Binder
         IReadOnlyList<BoundSourceItem> sourceItems = BindSourceItems(
             program.SourceItems,
             appendExecution: true,
-            isIfBody: false);
+            isIfBody: false,
+            isWhileBody: false);
 
         return new BindResult(
             new BoundProgram(sourceItems, _declaredVariables.ToArray()),
@@ -27,7 +28,8 @@ internal sealed class Binder
     private IReadOnlyList<BoundSourceItem> BindSourceItems(
         IReadOnlyList<SourceItemSyntax> sourceItems,
         bool appendExecution,
-        bool isIfBody)
+        bool isIfBody,
+        bool isWhileBody)
     {
         var boundItems = new List<BoundSourceItem>(sourceItems.Count);
         foreach (SourceItemSyntax sourceItem in sourceItems)
@@ -46,7 +48,8 @@ internal sealed class Binder
                     BoundStatement? bound = BindStatement(
                         statement,
                         appendExecution,
-                        isIfBody);
+                        isIfBody,
+                        isWhileBody);
                     if (bound is not null)
                     {
                         boundItems.Add(bound);
@@ -62,15 +65,24 @@ internal sealed class Binder
     private BoundStatement? BindStatement(
         StatementSyntax statement,
         bool appendExecution,
-        bool isIfBody) =>
+        bool isIfBody,
+        bool isWhileBody) =>
         statement switch
         {
+            LetStatementSyntax let when isWhileBody => RejectWhileLet(let),
             LetStatementSyntax let when isIfBody => RejectBranchLet(let),
             LetStatementSyntax let => BindLetStatement(let, appendExecution),
             SetStatementSyntax set => BindSetStatement(set, appendExecution),
             InputStatementSyntax input => BindInputStatement(input, appendExecution),
             PrintStatementSyntax print => BindPrintStatement(print, appendExecution),
-            IfStatementSyntax conditional => BindIfStatement(conditional, appendExecution),
+            IfStatementSyntax conditional => BindIfStatement(
+                conditional,
+                appendExecution,
+                isWhileBody),
+            WhileStatementSyntax loop => BindWhileStatement(
+                loop,
+                appendExecution,
+                isIfBody),
             _ => null
         };
 
@@ -81,6 +93,16 @@ internal sealed class Binder
             DiagnosticSeverity.Error,
             "LET is not permitted inside IF v1.0.",
             syntax.Span));
+        return null;
+    }
+
+    private BoundStatement? RejectWhileLet(LetStatementSyntax syntax)
+    {
+        _diagnostics.Add(new Diagnostic(
+            "SMILE1610",
+            DiagnosticSeverity.Error,
+            "LET is not permitted inside WHILE v1.0.",
+            syntax.Span with { Length = "LET".Length }));
         return null;
     }
 
@@ -199,30 +221,26 @@ internal sealed class Binder
 
     private BoundStatement? BindIfStatement(
         IfStatementSyntax syntax,
-        bool appendExecution)
+        bool appendExecution,
+        bool isWhileBody)
     {
         int diagnosticsBefore = _diagnostics.Count;
         var clauses = new List<BoundConditionalClause>(syntax.Clauses.Count);
 
         foreach (ConditionalClauseSyntax clause in syntax.Clauses)
         {
-            ValidateIfCondition(clause.Condition);
-            BoundExpression condition = BindExpression(clause.Condition);
-            if (condition.Type is not (SmileType.Boolean or SmileType.Error))
-            {
-                _diagnostics.Add(new Diagnostic(
-                    "SMILE1403",
-                    DiagnosticSeverity.Error,
-                    "The complete IF condition must have type Boolean.",
-                    clause.Condition.Span));
-            }
+            BoundExpression condition = BindControlFlowCondition(
+                clause.Condition,
+                IfConditionDiagnostics);
 
             clauses.Add(new BoundConditionalClause(
                 condition,
-                BindIfBody(clause.SourceItems)));
+                BindIfBody(clause.SourceItems, isWhileBody)));
         }
 
-        IReadOnlyList<BoundSourceItem> elseSourceItems = BindIfBody(syntax.ElseSourceItems);
+        IReadOnlyList<BoundSourceItem> elseSourceItems = BindIfBody(
+            syntax.ElseSourceItems,
+            isWhileBody);
         if (_diagnostics.Count != diagnosticsBefore ||
             clauses.Any(clause => clause.Condition.Type is SmileType.Error))
         {
@@ -233,6 +251,36 @@ internal sealed class Binder
             clauses,
             elseSourceItems,
             syntax.HasElseClause);
+        return !appendExecution || TryApplyTopLevelStatement(statement)
+            ? statement
+            : null;
+    }
+
+    private BoundStatement? BindWhileStatement(
+        WhileStatementSyntax syntax,
+        bool appendExecution,
+        bool isIfBody)
+    {
+        int diagnosticsBefore = _diagnostics.Count;
+        BoundExpression condition = BindControlFlowCondition(
+            syntax.Condition,
+            WhileConditionDiagnostics);
+
+        IReadOnlyList<BoundSourceItem> sourceItems = BindSourceItems(
+            syntax.SourceItems,
+            appendExecution: false,
+            isIfBody: isIfBody,
+            isWhileBody: true);
+        if (_diagnostics.Count != diagnosticsBefore ||
+            condition.Type is SmileType.Error)
+        {
+            return null;
+        }
+
+        var statement = new BoundWhileStatement(
+            condition,
+            sourceItems,
+            syntax.KeywordSpan);
         return !appendExecution || TryApplyTopLevelStatement(statement)
             ? statement
             : null;
@@ -315,10 +363,141 @@ internal sealed class Binder
                     out canContinue,
                     out definitelyContinues);
 
+            case BoundWhileStatement loop:
+                return TryApplyStaticWhile(
+                    loop,
+                    knownValues,
+                    reportInvalid,
+                    out canContinue,
+                    out definitelyContinues);
+
             default:
                 canContinue = true;
                 definitelyContinues = true;
                 return true;
+        }
+    }
+
+    private bool TryApplyStaticWhile(
+        BoundWhileStatement loop,
+        Dictionary<VariableSymbol, SmileValue> knownValues,
+        bool reportInvalid,
+        out bool canContinue,
+        out bool definitelyContinues)
+    {
+        StaticEvaluationResult condition = BoundExpressionEvaluator.Evaluate(
+            loop.Condition,
+            knownValues);
+        if (!HandleStaticResult(
+                condition,
+                reportInvalid,
+                out canContinue,
+                out definitelyContinues))
+        {
+            return false;
+        }
+
+        if (!canContinue)
+        {
+            return true;
+        }
+
+        if (condition.IsKnown &&
+            !condition.MayFailAtRuntime &&
+            !condition.Value.BooleanValue)
+        {
+            // The condition is evaluated, but the body is unreachable. Binding
+            // already validated the complete body independently of execution.
+            return true;
+        }
+
+        // One abstract body transfer is enough for binding-time reachability:
+        // it can report a source-known failure in a definitely reached first
+        // iteration, but it never re-evaluates the back edge or invents a trip
+        // count. BoundProgramAnalysis owns the full fixed-point calculation.
+        var bodyValues = new Dictionary<VariableSymbol, SmileValue>(knownValues);
+        bool bodyIsDefinitelyReached =
+            reportInvalid &&
+            condition.IsKnown &&
+            condition.Value.BooleanValue &&
+            !condition.MayFailAtRuntime;
+        if (!TryApplyStaticStatementList(
+                loop.Statements,
+                bodyValues,
+                bodyIsDefinitelyReached,
+                out bool bodyCanContinue,
+                out _))
+        {
+            canContinue = false;
+            definitelyContinues = false;
+            return false;
+        }
+
+        if (bodyIsDefinitelyReached && !bodyCanContinue)
+        {
+            canContinue = false;
+            definitelyContinues = false;
+            return true;
+        }
+
+        foreach (VariableSymbol variable in EnumerateMutatedVariables(loop.Statements))
+        {
+            if (!knownValues.TryGetValue(variable, out SmileValue incoming) ||
+                !bodyValues.TryGetValue(variable, out SmileValue afterBody) ||
+                incoming != afterBody)
+            {
+                knownValues.Remove(variable);
+            }
+        }
+
+        // A loop may execute zero times, fail, run forever, or eventually
+        // leave. Its successful exit is possible, but not guaranteed, unless
+        // the known-false special case above proved that the body is skipped.
+        canContinue = true;
+        definitelyContinues = false;
+        return true;
+    }
+
+    private static IEnumerable<VariableSymbol> EnumerateMutatedVariables(
+        IReadOnlyList<BoundStatement> statements)
+    {
+        foreach (BoundStatement statement in statements)
+        {
+            switch (statement)
+            {
+                case BoundSetStatement set:
+                    yield return set.Variable;
+                    break;
+
+                case BoundInputStatement input:
+                    yield return input.Variable;
+                    break;
+
+                case BoundIfStatement conditional:
+                    foreach (BoundConditionalClause clause in conditional.Clauses)
+                    {
+                        foreach (VariableSymbol variable in EnumerateMutatedVariables(clause.Statements))
+                        {
+                            yield return variable;
+                        }
+                    }
+
+                    foreach (VariableSymbol variable in EnumerateMutatedVariables(
+                                 conditional.ElseStatements))
+                    {
+                        yield return variable;
+                    }
+
+                    break;
+
+                case BoundWhileStatement nested:
+                    foreach (VariableSymbol variable in EnumerateMutatedVariables(nested.Statements))
+                    {
+                        yield return variable;
+                    }
+
+                    break;
+            }
         }
     }
 
@@ -601,10 +780,17 @@ internal sealed class Binder
     }
 
     private IReadOnlyList<BoundSourceItem> BindIfBody(
-        IReadOnlyList<SourceItemSyntax> sourceItems) =>
-        BindSourceItems(sourceItems, appendExecution: false, isIfBody: true);
+        IReadOnlyList<SourceItemSyntax> sourceItems,
+        bool isWhileBody) =>
+        BindSourceItems(
+            sourceItems,
+            appendExecution: false,
+            isIfBody: true,
+            isWhileBody: isWhileBody);
 
-    private void ValidateIfCondition(ExpressionSyntax expression)
+    private void ValidateCondition(
+        ExpressionSyntax expression,
+        ConditionDiagnosticProfile diagnostics)
     {
         switch (expression)
         {
@@ -612,26 +798,26 @@ internal sealed class Binder
                 return;
 
             case ParenthesizedExpressionSyntax parenthesized:
-                ValidateIfCondition(parenthesized.Expression);
+                ValidateCondition(parenthesized.Expression, diagnostics);
                 return;
 
             case UnaryExpressionSyntax { OperatorToken.Kind: SyntaxKind.NotKeyword } unary:
-                ValidateIfCondition(unary.Operand);
+                ValidateCondition(unary.Operand, diagnostics);
                 return;
 
             case BinaryExpressionSyntax binary
                 when binary.OperatorToken.Kind is SyntaxKind.AndKeyword or SyntaxKind.OrKeyword:
-                ValidateIfCondition(binary.Left);
-                ValidateIfCondition(binary.Right);
+                ValidateCondition(binary.Left, diagnostics);
+                ValidateCondition(binary.Right, diagnostics);
                 return;
 
             case BinaryExpressionSyntax binary when IsComparison(binary.OperatorToken.Kind):
                 if (ContainsInvocation(binary.Left) || ContainsInvocation(binary.Right))
                 {
                     _diagnostics.Add(new Diagnostic(
-                        "SMILE1404",
+                        diagnostics.InvocationCode,
                         DiagnosticSeverity.Error,
-                        "An IF condition cannot invoke a function or procedure.",
+                        diagnostics.InvocationMessage,
                         binary.Span));
                 }
 
@@ -641,20 +827,64 @@ internal sealed class Binder
                 if (ContainsInvocation(expression))
                 {
                     _diagnostics.Add(new Diagnostic(
-                        "SMILE1404",
+                        diagnostics.InvocationCode,
                         DiagnosticSeverity.Error,
-                        "An IF condition cannot invoke a function or procedure.",
+                        diagnostics.InvocationMessage,
                         expression.Span));
                 }
 
                 _diagnostics.Add(new Diagnostic(
-                    "SMILE1402",
+                    diagnostics.ExplicitComparisonCode,
                     DiagnosticSeverity.Error,
-                    "Every atomic IF condition must be an explicit comparison.",
+                    diagnostics.ExplicitComparisonMessage,
                     expression.Span));
                 return;
         }
     }
+
+    private BoundExpression BindControlFlowCondition(
+        ExpressionSyntax syntax,
+        ConditionDiagnosticProfile diagnostics)
+    {
+        // Structural validation deliberately sees the unsimplified syntax tree
+        // so a Boolean identity can never hide an implicit condition leaf.
+        ValidateCondition(syntax, diagnostics);
+        BoundExpression condition = BindExpression(syntax);
+        if (condition.Type is not (SmileType.Boolean or SmileType.Error))
+        {
+            _diagnostics.Add(new Diagnostic(
+                diagnostics.TypeCode,
+                DiagnosticSeverity.Error,
+                diagnostics.TypeMessage,
+                syntax.Span));
+        }
+
+        return condition;
+    }
+
+    private static readonly ConditionDiagnosticProfile IfConditionDiagnostics = new(
+        ExplicitComparisonCode: "SMILE1402",
+        ExplicitComparisonMessage: "Every atomic IF condition must be an explicit comparison.",
+        TypeCode: "SMILE1403",
+        TypeMessage: "The complete IF condition must have type Boolean.",
+        InvocationCode: "SMILE1404",
+        InvocationMessage: "An IF condition cannot invoke a function or procedure.");
+
+    private static readonly ConditionDiagnosticProfile WhileConditionDiagnostics = new(
+        ExplicitComparisonCode: "SMILE1603",
+        ExplicitComparisonMessage: "Every atomic WHILE condition must be an explicit comparison.",
+        TypeCode: "SMILE1604",
+        TypeMessage: "The complete WHILE condition must have type Boolean.",
+        InvocationCode: "SMILE1605",
+        InvocationMessage: "A WHILE condition cannot invoke a function or procedure.");
+
+    private readonly record struct ConditionDiagnosticProfile(
+        string ExplicitComparisonCode,
+        string ExplicitComparisonMessage,
+        string TypeCode,
+        string TypeMessage,
+        string InvocationCode,
+        string InvocationMessage);
 
     private static bool IsComparison(SyntaxKind kind) =>
         kind is SyntaxKind.EqualsToken or

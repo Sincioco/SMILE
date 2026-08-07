@@ -1,9 +1,9 @@
 namespace SMILE.Engine;
 
-// INPUT is the boundary between source-known programs and programs whose
-// expressions can fail only when a runtime path is reached.  Keeping these
-// small tree queries shared prevents ten generators from drifting on when
-// input and checked-arithmetic support is required.
+// INPUT and loop back-edges are the boundaries between source-known programs
+// and programs whose expressions can fail only when a runtime path is reached.
+// Keeping these small tree queries shared prevents ten generators from
+// drifting on when input and checked-arithmetic support is required.
 internal static class TargetRuntimeFacts
 {
     public static IReadOnlyList<BoundInputStatement> Inputs(BoundProgram program) =>
@@ -17,7 +17,9 @@ internal static class TargetRuntimeFacts
             statement is BoundInputStatement input && input.Variable.Type == type);
 
     public static bool NeedsCheckedIntegerArithmetic(BoundProgram program) =>
-        HasInput(program) && BoundStatementTree.EnumerateExpressions(program).Any(ContainsIntegerArithmetic);
+        (HasInput(program) ||
+         BoundStatementTree.Enumerate(program).Any(statement => statement is BoundWhileStatement)) &&
+        BoundStatementTree.EnumerateExpressions(program).Any(ContainsIntegerArithmetic);
 
     public static bool ContainsIntegerArithmetic(BoundExpression expression) =>
         expression switch

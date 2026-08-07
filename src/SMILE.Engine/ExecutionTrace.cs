@@ -49,6 +49,17 @@ public sealed class BoundProgramExecutionTrace
                 "Use SmileEvaluator with an injected input source for runtime programs.");
         }
 
+        if (BoundStatementTree.Enumerate(program).Any(statement => statement is BoundWhileStatement))
+        {
+            // A concrete compiler trace must never discover loop results by
+            // running arbitrary learner code: a valid WHILE may be infinite or
+            // INPUT-dependent. BoundProgramAnalysis provides structural
+            // zero-or-more facts, while SmileEvaluator owns actual execution.
+            throw new InvalidOperationException(
+                "A concrete source-only execution trace cannot execute WHILE. " +
+                "Use BoundProgramAnalysis for compiler facts or SmileEvaluator for runtime execution.");
+        }
+
         var builder = new BoundProgramExecutionTraceBuilder();
         foreach (BoundStatement statement in program.Statements)
         {
@@ -109,6 +120,11 @@ internal sealed class BoundProgramExecutionTraceBuilder
         if (statement is BoundIfStatement conditional)
         {
             return TryAppendIf(conditional, diagnostics);
+        }
+
+        if (statement is BoundWhileStatement)
+        {
+            return false;
         }
 
         BoundExpression expression = statement switch

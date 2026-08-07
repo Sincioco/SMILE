@@ -150,6 +150,30 @@ public sealed record IfStatementSyntax : StatementSyntax
     public bool HasElseClause { get; }
 }
 
+public sealed record WhileStatementSyntax : StatementSyntax
+{
+    public WhileStatementSyntax(
+        ExpressionSyntax condition,
+        IReadOnlyList<SourceItemSyntax> sourceItems,
+        TextSpan keywordSpan,
+        TextSpan span)
+        : base(span)
+    {
+        Condition = condition;
+        SourceItems = sourceItems;
+        KeywordSpan = keywordSpan;
+        Statements = sourceItems.OfType<StatementSyntax>().ToArray();
+    }
+
+    public ExpressionSyntax Condition { get; }
+
+    public IReadOnlyList<SourceItemSyntax> SourceItems { get; }
+
+    public IReadOnlyList<StatementSyntax> Statements { get; }
+
+    public TextSpan KeywordSpan { get; }
+}
+
 public abstract record ExpressionSyntax(TextSpan Span)
     : SyntaxNode(Span);
 
@@ -377,6 +401,28 @@ public sealed record BoundIfStatement : BoundStatement
     public IReadOnlyList<BoundStatement> ElseStatements { get; }
 
     public bool HasElseClause { get; }
+}
+
+public sealed record BoundWhileStatement : BoundStatement
+{
+    public BoundWhileStatement(
+        BoundExpression condition,
+        IReadOnlyList<BoundSourceItem> sourceItems,
+        TextSpan keywordSpan)
+    {
+        Condition = condition;
+        SourceItems = sourceItems;
+        KeywordSpan = keywordSpan;
+        Statements = sourceItems.OfType<BoundStatement>().ToArray();
+    }
+
+    public BoundExpression Condition { get; }
+
+    public IReadOnlyList<BoundSourceItem> SourceItems { get; }
+
+    public IReadOnlyList<BoundStatement> Statements { get; }
+
+    public TextSpan KeywordSpan { get; }
 }
 
 public abstract record BoundExpression(SmileType Type);

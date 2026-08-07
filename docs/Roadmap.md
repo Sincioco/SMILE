@@ -217,15 +217,25 @@
 - Prevent an older generation result from replacing a still-newer target edit while allowing untouched and same-language siblings to update; retain later-SMILE, same-pane-switch, Transpile All, and New authority.
 - Append `*` when a target pane differs from generated SMILE output, preserve it across Save Source, Build & Run, toolchain refresh, unrelated pane work, and Maximize/Restore, and clear it only through authoritative replacement or reset.
 
+## Implemented In v0.8.0
+
+- Add canonical case-insensitive, block-only, pre-test `WHILE condition` / `END WHILE` with the same explicit-comparison and call-free condition rules as IF, zero-or-more execution, and no THEN, DO, WEND, BREAK, or CONTINUE aliases.
+- Permit PRINT, SET, INPUT, IF, nested WHILE, comments, blank lines, and SET Block String Literals in loop bodies while rejecting LET recursively until scopes are introduced.
+- Share one 128-level IF/WHILE control-flow nesting limit, add opener-specific depth diagnostics and bounded mixed-block recovery, and keep comments plus Block Strings authoritative over structural-looking text.
+- Add one canonical syntax and bound WHILE node, cancellation-aware evaluator execution, deterministic loop ordinals, and structural execution-trace handling that never runs a loop during compilation.
+- Solve zero-or-more loop facts with a terminating two-phase fixed point, conservative post-loop merging, deterministic Integer widening, current-storage condition facts, and portable finite String-bound validation through `SMILE1612`.
+- Emit genuine warning-free pre-test loops for all ten destinations, including Python empty-body `pass`, structured COBOL `PERFORM`, deterministic MASM labels/back-edges, checked runtime arithmetic, exact INPUT, and preserved comments and blank lines.
+- Extend and package the cumulative `examples/language.smile`, add focused `examples/while.smile`, highlight WHILE and both END/WHILE terminator keywords, and align public documentation and About SMILE at `0.8.0 WHILE Loops`.
+- Preserve every v0.7.0.1 target-editor ownership rule, first-paint responsiveness, process-tree cancellation, strict all-ten-target evaluator conformance, generated-warning gates, and exact-SHA post-push CI completion.
+
 ## Final Destination-Language Freeze
 
-C++ is SMILE's tenth and final planned destination language. Target-language expansion is frozen so development can focus on input, loops, functions, scopes, debugging, and teaching tools. Do not add another destination language unless Sin explicitly reopens target expansion. Rust, Zig, and Go remain intentionally deferred and are not active targets.
+C++ is SMILE's tenth and final planned destination language. Target-language expansion is frozen so development can deepen loops, functions, scopes, debugging, and teaching tools. Do not add another destination language unless Sin explicitly reopens target expansion. Rust, Zig, and Go remain intentionally deferred and are not active targets.
 
 ## Active Language-Depth Milestones
 
-These are not implemented in v0.7.0.1:
+These are not implemented in v0.8.0:
 
-1. v0.8.0 - Loops
-2. v0.9.0 - Functions and scopes
+1. v0.9.0 - Functions and scopes
 
 Later teaching-depth ideas include floating-point and decimal numeric types, debugging and source mapping, semantic highlighting, autocomplete, diagnostic squiggles, and a reusable web interface.

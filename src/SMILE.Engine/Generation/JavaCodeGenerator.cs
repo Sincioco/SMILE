@@ -17,6 +17,9 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
         {
             integers = new TargetIntegerProfile(RequiresSigned64Storage: true, RequiresJavaScriptBigInt: true);
         }
+        bool needsConditionHelper = BoundStatementTree.Enumerate(program)
+            .OfType<BoundWhileStatement>()
+            .Any(loop => GeneratorConditionFacts.RequiresWarningSafeWrapper(loop.Condition));
         var source = new StringBuilder();
         if (hasInput)
         {
@@ -48,9 +51,20 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
         AppendSourceItems(source, program.SourceItems, "        ", identifiers, integers, checkedArithmetic);
 
         source.AppendLine("    }");
+        if (needsConditionHelper)
+        {
+            source.AppendLine();
+            source.AppendLine("    // Keep source-constant WHILE conditions genuine and reachable to javac.");
+            source.AppendLine("    private static boolean _smile_condition(boolean value) { return value; }");
+        }
+
         if (hasInput)
         {
             AppendInputHelpers(source, program);
+        }
+        else if (checkedArithmetic)
+        {
+            AppendFailureHelper(source);
         }
 
         if (checkedArithmetic)
@@ -116,6 +130,16 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
                 case BoundIfStatement conditional:
                     AppendIfStatement(source, conditional, indent, identifiers, integers, checkedArithmetic);
                     break;
+
+                case BoundWhileStatement loop:
+                    AppendWhileStatement(
+                        source,
+                        loop,
+                        indent,
+                        identifiers,
+                        integers,
+                        checkedArithmetic);
+                    break;
             }
         }
     }
@@ -147,6 +171,39 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
             AppendSourceItems(source, conditional.ElseSourceItems, indent + "    ", identifiers, integers, checkedArithmetic);
             source.Append(indent).AppendLine("}");
         }
+    }
+
+    private static void AppendWhileStatement(
+        StringBuilder source,
+        BoundWhileStatement loop,
+        string indent,
+        TargetIdentifierMap identifiers,
+        TargetIntegerProfile integers,
+        bool checkedArithmetic)
+    {
+        string condition = TargetExpression.Java(
+            loop.Condition,
+            identifiers,
+            integers,
+            checkedArithmetic);
+        if (GeneratorConditionFacts.RequiresWarningSafeWrapper(loop.Condition))
+        {
+            // A javac constant-false WHILE body is an error, and a
+            // constant-true loop can make following source unreachable. A
+            // normal method call preserves runtime truth without either issue.
+            condition = $"_smile_condition({condition})";
+        }
+
+        source.Append(indent).Append("while (").Append(condition).AppendLine(")");
+        source.Append(indent).AppendLine("{");
+        AppendSourceItems(
+            source,
+            loop.SourceItems,
+            indent + "    ",
+            identifiers,
+            integers,
+            checkedArithmetic);
+        source.Append(indent).AppendLine("}");
     }
 
     private static void AppendInputHelpers(StringBuilder source, BoundProgram program)
@@ -281,6 +338,11 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
             source.AppendLine("    }");
         }
 
+        AppendFailureHelper(source);
+    }
+
+    private static void AppendFailureHelper(StringBuilder source)
+    {
         source.AppendLine();
         source.AppendLine("    private static void _smile_fail(String message)");
         source.AppendLine("    {");

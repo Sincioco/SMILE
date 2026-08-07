@@ -865,6 +865,94 @@ END IF trailing
     }
 
     [TestMethod]
+    public void Smile_highlighting_colors_WHILE_and_END_WHILE_without_taking_comment_or_String_text()
+    {
+        const string source = """
+WHILE Count < 3
+    SET Count = Count + 1
+END WHILE
+while Count < 4
+end while
+While Count < 5
+EnD WhIlE
+REM WHILE and END WHILE remain comment text
+LET Ordinary = "WHILE END WHILE"
+SET Ordinary ="
+WHILE and END WHILE remain Block String data
+"
+WHILE
+END WHILE trailing
+""";
+        var document = new TextDocument(source);
+        IHighlightingDefinition definition = SyntaxHighlightingCatalog.GetDefinition("smile")!;
+        var highlighter = new DocumentHighlighter(document, definition);
+        HighlightingColor keyword = definition.GetNamedColor("Keyword")!;
+        HighlightingColor comment = definition.GetNamedColor("Comment")!;
+        HighlightingColor stringColor = definition.GetNamedColor("String")!;
+
+        HighlightedLine[] lines = Enumerable.Range(1, document.LineCount)
+            .Select(highlighter.HighlightLine)
+            .ToArray();
+
+        AssertKeyword(document, lines[0], document.GetLineByNumber(1), "WHILE", keyword);
+        AssertKeyword(document, lines[2], document.GetLineByNumber(3), "END", keyword);
+        AssertKeyword(document, lines[2], document.GetLineByNumber(3), "WHILE", keyword);
+        AssertKeyword(document, lines[3], document.GetLineByNumber(4), "while", keyword);
+        AssertKeyword(document, lines[4], document.GetLineByNumber(5), "end", keyword);
+        AssertKeyword(document, lines[4], document.GetLineByNumber(5), "while", keyword);
+        AssertKeyword(document, lines[5], document.GetLineByNumber(6), "While", keyword);
+        AssertKeyword(document, lines[6], document.GetLineByNumber(7), "EnD", keyword);
+        AssertKeyword(document, lines[6], document.GetLineByNumber(7), "WhIlE", keyword);
+
+        DocumentLine commentLine = document.GetLineByNumber(8);
+        AssertRangeHasColor(
+            lines[7],
+            commentLine.Offset,
+            commentLine.Length,
+            comment,
+            "WHILE comment text");
+        AssertRangeDoesNotHaveColor(
+            lines[7],
+            commentLine.Offset + document.GetText(commentLine).IndexOf("WHILE", StringComparison.Ordinal),
+            5,
+            keyword,
+            "WHILE inside a comment");
+
+        DocumentLine ordinaryString = document.GetLineByNumber(9);
+        int ordinaryWhile = document.GetText(ordinaryString).IndexOf("WHILE", StringComparison.Ordinal);
+        AssertRangeHasColor(
+            lines[8],
+            ordinaryString.Offset + ordinaryWhile,
+            5,
+            stringColor,
+            "WHILE inside an ordinary String");
+        AssertRangeDoesNotHaveColor(
+            lines[8],
+            ordinaryString.Offset + ordinaryWhile,
+            5,
+            keyword,
+            "WHILE inside an ordinary String");
+
+        DocumentLine blockString = document.GetLineByNumber(11);
+        AssertRangeHasColor(
+            lines[10],
+            blockString.Offset,
+            blockString.Length,
+            stringColor,
+            "WHILE inside a Block String");
+        AssertRangeDoesNotHaveColor(
+            lines[10],
+            blockString.Offset,
+            5,
+            keyword,
+            "WHILE inside a Block String");
+
+        AssertKeyword(document, lines[12], document.GetLineByNumber(13), "WHILE", keyword);
+        AssertKeyword(document, lines[13], document.GetLineByNumber(14), "END", keyword);
+        AssertKeyword(document, lines[13], document.GetLineByNumber(14), "WHILE", keyword);
+    }
+
+    [TestMethod]
     public void Smile_highlighting_keeps_an_unterminated_block_safe_and_multiline()
     {
         const string source = """

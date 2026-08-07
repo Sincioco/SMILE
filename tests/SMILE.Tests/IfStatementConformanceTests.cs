@@ -155,7 +155,9 @@ PRINT {Message}
 
         Assert.IsFalse(result.Success);
         Diagnostic diagnostic = result.Diagnostics.Single(diagnostic => diagnostic.Code == "SMILE1416");
-        Assert.AreEqual("Maximum IF nesting depth of 128 exceeded.", diagnostic.Message);
+        Assert.AreEqual(
+            "Maximum combined IF/WHILE nesting depth of 128 exceeded at IF.",
+            diagnostic.Message);
         Assert.AreEqual(DiagnosticSeverity.Error, diagnostic.Severity);
         Assert.AreEqual(129, diagnostic.Span.Line);
         Assert.AreEqual(1, diagnostic.Span.Column);

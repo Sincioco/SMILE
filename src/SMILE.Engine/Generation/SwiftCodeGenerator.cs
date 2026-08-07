@@ -28,16 +28,31 @@ internal sealed class SwiftCodeGenerator : ICodeGenerator
             .Where(variable => variable is not null)
             .Select(variable => variable!)
             .ToHashSet();
-        bool needsConditionHelper = BoundStatementTree.Enumerate(program)
-            .OfType<BoundIfStatement>()
-            .SelectMany(conditional => conditional.Clauses)
-            .Any(clause => GeneratorConditionFacts.RequiresWarningSafeWrapper(clause.Condition));
+        bool needsConditionHelper = BoundStatementTree.Enumerate(program).Any(statement =>
+            statement switch
+            {
+                BoundIfStatement conditional => conditional.Clauses.Any(clause =>
+                    GeneratorConditionFacts.RequiresWarningSafeWrapper(clause.Condition)),
+                BoundWhileStatement loop =>
+                    GeneratorConditionFacts.RequiresWarningSafeWrapper(loop.Condition),
+                _ => false
+            });
 
-        if (hasInput)
+        if (hasInput || checkedArithmetic)
         {
             source.AppendLine("import Foundation");
             source.AppendLine();
+        }
+
+        if (hasInput)
+        {
             AppendInputHelpers(source, program);
+            source.AppendLine();
+            source.AppendLine();
+        }
+        else if (checkedArithmetic)
+        {
+            AppendFailureHelper(source);
             source.AppendLine();
             source.AppendLine();
         }
@@ -51,7 +66,7 @@ internal sealed class SwiftCodeGenerator : ICodeGenerator
 
         if (needsConditionHelper)
         {
-            source.AppendLine("// Keep a valid source-constant IF as genuine control flow without warnings.");
+            source.AppendLine("// Keep valid source-constant control flow genuine without warnings.");
             source.AppendLine("@inline(never)");
             source.AppendLine("func _smile_condition(_ value: Bool) -> Bool {");
             source.AppendLine("    value");
@@ -154,6 +169,18 @@ internal sealed class SwiftCodeGenerator : ICodeGenerator
                         hasConditionHelper,
                         checkedArithmetic);
                     break;
+
+                case BoundWhileStatement loop:
+                    AppendWhileStatement(
+                        source,
+                        loop,
+                        indent,
+                        identifiers,
+                        integers,
+                        mutatedVariables,
+                        hasConditionHelper,
+                        checkedArithmetic);
+                    break;
             }
         }
     }
@@ -207,6 +234,39 @@ internal sealed class SwiftCodeGenerator : ICodeGenerator
                 checkedArithmetic);
             source.Append(indent).AppendLine("}");
         }
+    }
+
+    private static void AppendWhileStatement(
+        StringBuilder source,
+        BoundWhileStatement loop,
+        string indent,
+        TargetIdentifierMap identifiers,
+        TargetIntegerProfile integers,
+        IReadOnlySet<VariableSymbol> mutatedVariables,
+        bool hasConditionHelper,
+        bool checkedArithmetic)
+    {
+        string condition = TargetExpression.Swift(
+            loop.Condition,
+            identifiers,
+            integers,
+            checkedArithmetic);
+        if (GeneratorConditionFacts.RequiresWarningSafeWrapper(loop.Condition))
+        {
+            condition = $"_smile_condition({condition})";
+        }
+
+        source.Append(indent).Append("while ").Append(condition).AppendLine(" {");
+        AppendSourceItems(
+            source,
+            loop.SourceItems,
+            indent + "    ",
+            identifiers,
+            integers,
+            mutatedVariables,
+            hasConditionHelper,
+            checkedArithmetic);
+        source.Append(indent).AppendLine("}");
     }
 
     private static void AppendInputHelpers(StringBuilder source, BoundProgram program)
@@ -302,6 +362,14 @@ internal sealed class SwiftCodeGenerator : ICodeGenerator
             source.AppendLine("    _smile_fail(\"SMILE Runtime Error SMILER1505: Input for '\\(variableName)' must be TRUE or FALSE.\")");
             source.AppendLine("}");
         }
+    }
+
+    private static void AppendFailureHelper(StringBuilder source)
+    {
+        source.AppendLine("func _smile_fail(_ message: String) -> Never {");
+        source.AppendLine("    FileHandle.standardError.write((message + \"\\n\").data(using: .utf8)!)");
+        source.AppendLine("    exit(1)");
+        source.AppendLine("}");
     }
 
     private static void AppendCheckedArithmeticHelpers(StringBuilder source, TargetIntegerProfile integers)

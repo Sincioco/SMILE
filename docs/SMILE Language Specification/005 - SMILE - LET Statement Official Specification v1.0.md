@@ -4,8 +4,8 @@
 **Status:** Official
 **Applies to:** SMILE language
 **Primary statement:** `LET`
-**Companion statements:** `PRINT`, `SET`, `INPUT`, `IF`
-**Companion specifications:** the numbered official PRINT, SET, INPUT, IF, String literal, core expression, and full-line comment/source-layout specifications in this directory
+**Companion statements:** `PRINT`, `SET`, `INPUT`, `IF`, `WHILE`
+**Companion specifications:** the numbered official PRINT, SET, INPUT, IF, String literal, core expression, and full-line comment/source-layout specifications in this directory, plus [009 - SMILE - WHILE Statement Official Specification v1.0](009%20-%20SMILE%20-%20WHILE%20Statement%20Official%20Specification%20v1.0.md)
 **Repository destination:** `docs/SMILE Language Specification/005 - SMILE - LET Statement Official Specification v1.0.md`
 
 ---
@@ -14,7 +14,7 @@
 
 `LET` declares a named SMILE variable and assigns its initial value.
 
-The official SMILE statements through v0.7.0 are:
+The official SMILE statements through v0.8.0 are:
 
 | Keyword | Purpose |
 |---|---|
@@ -23,6 +23,7 @@ The official SMILE statements through v0.7.0 are:
 | `SET` | Changes the current value of an existing variable without changing its type |
 | `INPUT` | Reads one runtime line into an existing variable without changing its type |
 | `IF` | Selects one block from an IF / ELSE IF / ELSE chain |
+| `WHILE` | Repeats one pre-test block zero or more times while its explicit condition remains true |
 
 Together, these statements support the first useful SMILE programs:
 
@@ -163,7 +164,7 @@ The two values are different strings.
 
 ## 5. Reserved keywords
 
-`LET`, `PRINT`, `SET`, `INPUT`, `IF`, `THEN`, `ELSE`, and `END` are official reserved SMILE keywords.
+`LET`, `PRINT`, `SET`, `INPUT`, `IF`, `WHILE`, `THEN`, `ELSE`, and `END` are official reserved SMILE keywords.
 
 They cannot be used as variable names in any case combination.
 
@@ -191,7 +192,7 @@ LET Printable = "Yes"
 LET LetValue = "Value"
 ```
 
-`ELSEIF` and `ENDIF` are not combined keywords. Longer identifiers that merely contain keyword text remain valid under the normal identifier rules.
+`ELSEIF`, `ENDIF`, and `ENDWHILE` are not combined keywords. Longer identifiers that merely contain keyword text remain valid under the normal identifier rules.
 
 Future SMILE specifications may add additional reserved keywords.
 
@@ -995,7 +996,7 @@ A semantic binding phase SHOULD:
 
 Target-language generators MUST consume the language-neutral semantic representation rather than reparsing SMILE source.
 
-`BoundLetStatement` carries the variable symbol and its bound initializer. It MUST NOT permanently own the variable's current value. The evaluator environment is the source of truth for current runtime state, while a separate recursive statement-list analysis records statement-order, mutation-aware, and branch-aware known values for diagnostics, simplification, Integer profiling, and low-level target planning. Every IF branch begins with the same incoming environment, and later statements receive a known value only when outgoing-path merge proves it. `AND` and `OR` evaluation follows the normative left-to-right short-circuit rules in the core expression specification even though binding and type checking still examine both operands.
+`BoundLetStatement` carries the variable symbol and its bound initializer. It MUST NOT permanently own the variable's current value. The evaluator environment is the source of truth for current runtime state, while a separate recursive statement-list analysis records statement-order, mutation-aware, branch-aware, and loop-fixed-point known values for diagnostics, simplification, Integer profiling, and low-level target planning. Every IF branch begins with the same incoming environment, and later statements receive a known value only when outgoing-path merge proves it. Every WHILE head joins the zero-iteration path with possible body back-edges until conservative facts stabilize; a pre-loop LET value is not reused after a possible loop mutation. `AND` and `OR` evaluation follows the normative left-to-right short-circuit rules in the core expression specification even though binding and type checking still examine both operands.
 
 ---
 
@@ -1119,11 +1120,11 @@ This ensures `PRINT {Empty}` writes only the normal `PRINT` newline and does not
 
 ---
 
-## 28. Compatibility contract with PRINT, SET, INPUT, and IF version 1.0
+## 28. Compatibility contract with PRINT, SET, INPUT, IF, and WHILE version 1.0
 
-The official `LET`, `PRINT`, `SET`, `INPUT`, and `IF` specifications are jointly consistent under these rules:
+The official `LET`, `PRINT`, `SET`, `INPUT`, `IF`, and `WHILE` specifications are jointly consistent under these rules:
 
-1. `LET`, `PRINT`, `SET`, `INPUT`, `IF`, `THEN`, `ELSE`, and `END` are case-insensitive keywords.
+1. `LET`, `PRINT`, `SET`, `INPUT`, `IF`, `WHILE`, `THEN`, `ELSE`, and `END` are case-insensitive keywords.
 2. Identifiers referenced by any of these statements are case-insensitive.
 3. All ordinary expression positions use the same ordinary string-literal rules.
 4. All ordinary expression positions use the same `$"..."` interpolation rules.
@@ -1142,10 +1143,11 @@ The official `LET`, `PRINT`, `SET`, `INPUT`, and `IF` specifications are jointly
 17. `INPUT` reads one runtime line into the current variable storage without changing the type established by `LET`.
 18. A SET Block String Literal is a complete SET value only; it is not legal in LET, INPUT, or PRINT.
 19. Adding or removing a `LET` declaration does not change how bare `PRINT` text is parsed.
-20. LET, SET, PRINT, and IF expression positions use the same language-neutral expression model; INPUT has no expression child.
+20. LET, SET, PRINT, IF, and WHILE expression positions use the same language-neutral expression model; INPUT has no expression child.
 21. IF v1.0 permits PRINT, SET, INPUT, nested IF, blank lines, and SET Block String Literals in branches, but rejects LET until scopes are introduced.
 22. Every atomic IF condition is an explicit comparison, and IF conditions cannot invoke functions, procedures, or input operations.
-23. Target generators do not independently reinterpret statement source text, IF structure, INPUT, or block delimiters.
+23. WHILE uses the same explicit-comparison and call-free condition rules, re-evaluates current storage before every iteration, and permits no LET recursively in its body until scopes exist.
+24. Target generators do not independently reinterpret statement source text, IF/WHILE structure, INPUT, or block delimiters.
 
 An implementation that violates any of these rules does not conform to the combined specifications.
 
@@ -1414,7 +1416,7 @@ Future specifications MUST preserve these version 1.0 rules:
 - The initializer uses the normal expression grammar.
 - A declaration does not change the meaning of bare `PRINT` text.
 - One statement normally occupies one line.
-- LET remains a declaration. SMILE v0.7.0 does not permit LET inside IF bodies because it has no block scopes; a future scope specification may deliberately expand that placement rule.
+- LET remains a declaration. SMILE v0.8.0 does not permit LET inside IF bodies or recursively inside WHILE bodies because it has no block scopes; a future scope specification may deliberately expand that placement rule.
 
 ---
 
@@ -1422,7 +1424,7 @@ Future specifications MUST preserve these version 1.0 rules:
 
 The official SMILE `LET` rules are:
 
-1. `LET`, `PRINT`, `SET`, `INPUT`, `IF`, `THEN`, `ELSE`, and `END` are official SMILE keywords.
+1. `LET`, `PRINT`, `SET`, `INPUT`, `IF`, `WHILE`, `THEN`, `ELSE`, and `END` are official SMILE keywords.
 2. SMILE keywords and identifiers are case-insensitive.
 3. `LET` declares and initializes a new variable.
 4. Version 1.0 originally introduced string variables; SMILE v0.4.1 supports official `LET` initializers for `String`, `Integer`, and `Boolean` through the core expression specification.
@@ -1441,10 +1443,10 @@ The official SMILE `LET` rules are:
 17. `PRINT {Name}` evaluates the variable's current value.
 18. A newline normally terminates one statement; a SET Block String Literal is one explicit logical multiline exception.
 19. Semicolons do not separate statements.
-20. Target generators consume the shared lexer/parser/binder/evaluator semantic representation and recursive statement-order, mutation-aware, branch-aware analysis.
+20. Target generators consume the shared lexer/parser/binder/evaluator semantic representation and recursive statement-order, mutation-aware, branch-aware, loop-fixed-point analysis.
 21. After INPUT, the type established by LET remains known but the current value is runtime-unknown and the pre-input value cannot be propagated.
-21. `LET`, `SET`, `PRINT`, and `IF` MUST preserve identical expression and identifier behavior when used together.
-22. LET is not permitted inside an IF v1.0 body until scopes are formally introduced.
+22. `LET`, `SET`, `PRINT`, `IF`, and `WHILE` MUST preserve identical expression and identifier behavior when used together.
+23. LET is not permitted inside an IF v1.0 body or recursively inside a WHILE v1.0 body until scopes are formally introduced.
 
 ---
 

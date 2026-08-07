@@ -18,10 +18,15 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
         {
             integers = new TargetIntegerProfile(RequiresSigned64Storage: true, RequiresJavaScriptBigInt: true);
         }
-        bool needsConditionHelper = BoundStatementTree.Enumerate(program)
-            .OfType<BoundIfStatement>()
-            .SelectMany(conditional => conditional.Clauses)
-            .Any(clause => GeneratorConditionFacts.RequiresWarningSafeWrapper(clause.Condition));
+        bool needsConditionHelper = BoundStatementTree.Enumerate(program).Any(statement =>
+            statement switch
+            {
+                BoundIfStatement conditional => conditional.Clauses.Any(clause =>
+                    GeneratorConditionFacts.RequiresWarningSafeWrapper(clause.Condition)),
+                BoundWhileStatement loop =>
+                    GeneratorConditionFacts.RequiresWarningSafeWrapper(loop.Condition),
+                _ => false
+            });
         var source = new StringBuilder();
         source.AppendLine("using System;");
         if (CSharpGenerationFacts.NeedsInvariantCulture(program) ||
@@ -59,13 +64,17 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
         if (needsConditionHelper)
         {
             source.AppendLine();
-            source.AppendLine("    // Keep a valid source-constant IF as genuine control flow without CS0162.");
+            source.AppendLine("    // Keep valid source-constant control flow genuine without CS0162.");
             source.AppendLine("    private static bool _smile_condition(bool value) => value;");
         }
 
         if (hasInput)
         {
             AppendInputHelpers(source, program);
+        }
+        else if (checkedArithmetic)
+        {
+            AppendFailureHelper(source);
         }
 
         if (checkedArithmetic)
@@ -178,6 +187,17 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
                         hasConditionHelper,
                         checkedArithmetic);
                     break;
+
+                case BoundWhileStatement loop:
+                    AppendWhileStatement(
+                        source,
+                        loop,
+                        indent,
+                        identifiers,
+                        integers,
+                        hasConditionHelper,
+                        checkedArithmetic);
+                    break;
             }
         }
     }
@@ -230,6 +250,38 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
                 checkedArithmetic);
             source.Append(indent).AppendLine("}");
         }
+    }
+
+    private static void AppendWhileStatement(
+        StringBuilder source,
+        BoundWhileStatement loop,
+        string indent,
+        TargetIdentifierMap identifiers,
+        TargetIntegerProfile integers,
+        bool hasConditionHelper,
+        bool checkedArithmetic)
+    {
+        string condition = TargetExpression.CSharp(
+            loop.Condition,
+            identifiers,
+            integers,
+            checkedArithmetic);
+        if (GeneratorConditionFacts.RequiresWarningSafeWrapper(loop.Condition))
+        {
+            condition = $"_smile_condition({condition})";
+        }
+
+        source.Append(indent).Append("while (").Append(condition).AppendLine(")");
+        source.Append(indent).AppendLine("{");
+        AppendSourceItems(
+            source,
+            loop.SourceItems,
+            indent + "    ",
+            identifiers,
+            integers,
+            hasConditionHelper,
+            checkedArithmetic);
+        source.Append(indent).AppendLine("}");
     }
 
     private static void AppendInputHelpers(StringBuilder source, BoundProgram program)
@@ -357,6 +409,11 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
             source.AppendLine("    }");
         }
 
+        AppendFailureHelper(source);
+    }
+
+    private static void AppendFailureHelper(StringBuilder source)
+    {
         source.AppendLine();
         source.AppendLine("    private static void _smile_fail(string message)");
         source.AppendLine("    {");
@@ -414,6 +471,8 @@ internal static class CSharpGenerationFacts
             BoundPrintStatement print => !print.IsBlankLine && NeedsInvariantCulture(print.Value, displayContext: true),
             BoundIfStatement conditional => conditional.Clauses.Any(clause =>
                 NeedsInvariantCulture(clause.Condition, displayContext: false)),
+            BoundWhileStatement loop =>
+                NeedsInvariantCulture(loop.Condition, displayContext: false),
             _ => false
         });
 

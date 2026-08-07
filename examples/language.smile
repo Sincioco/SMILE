@@ -261,3 +261,16 @@ IF InputReady = TRUE THEN
 ELSE
     PRINT INPUT ready=FALSE
 END IF
+
+PRINT
+PRINT "WHILE statement examples in language.smile:"
+
+LET LoopCount = 1
+
+// WHILE tests its condition before every iteration.
+WHILE LoopCount <= 3
+    PRINT LoopCount={LoopCount}
+    SET LoopCount = LoopCount + 1
+END WHILE
+
+PRINT WHILE finished at LoopCount={LoopCount}.

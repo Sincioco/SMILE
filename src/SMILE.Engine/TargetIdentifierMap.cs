@@ -156,6 +156,7 @@ internal sealed class TargetIdentifierMap
 
     private static bool IsCobolCompilerOwnedIdentifier(string name) =>
         name.StartsWith("SMILE-IF-", StringComparison.OrdinalIgnoreCase) ||
+        name.StartsWith("SMILE-WHILE-", StringComparison.OrdinalIgnoreCase) ||
         name.StartsWith("SMILE-RUNTIME-", StringComparison.OrdinalIgnoreCase) ||
         name.StartsWith("SMILE-STATEMENT-", StringComparison.OrdinalIgnoreCase) ||
         name.StartsWith("SMILE-EXPRESSION-", StringComparison.OrdinalIgnoreCase) ||
@@ -324,7 +325,7 @@ internal sealed class TargetIdentifierMap
             "record", "sealed", "permits", "short", "static", "strictfp", "super", "switch", "synchronized", "this", "throw",
             "throws", "to", "transient", "transitive", "true", "try", "uses", "var", "void",
             "volatile", "while", "with", "yield", "_", "System", "String", "Program", "main", "args",
-            "_smile_input", "_smile_read_line", "_smile_read_byte", "_smile_fail", "_smile_add",
+            "_smile_condition", "_smile_input", "_smile_read_line", "_smile_read_byte", "_smile_fail", "_smile_add",
             "_smile_subtract", "_smile_multiply", "_smile_negate", "_smile_divide",
             "_smile_pending_byte", "_smile_skip_lf", "_smile_input_string", "_smile_input_integer",
             "_smile_input_boolean", "_smile_ascii_equals", "ByteBuffer", "CharacterCodingException",
@@ -334,7 +335,7 @@ internal sealed class TargetIdentifierMap
         private static readonly string[] Cobol =
         {
             "accept", "add", "all", "and", "any", "by", "call", "cancel", "class", "close", "compute", "configuration",
-            "copy", "count", "first",
+            "copy", "column", "count", "first",
             "data", "display", "divide", "division", "else", "end", "entry", "environment", "error", "evaluate",
             "exit", "fd", "file", "from", "function", "global", "goback", "identification", "if", "in", "initialize",
             "input-output", "inspect", "into", "is", "left", "linkage", "merge", "message", "move", "multiply", "nested", "not", "number", "object",

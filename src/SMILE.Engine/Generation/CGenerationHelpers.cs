@@ -167,6 +167,7 @@ internal static class CGenerationFacts
                     ContainsStringComparison(print.Value),
                 BoundIfStatement conditional => conditional.Clauses.Any(clause =>
                     ContainsStringComparison(clause.Condition)),
+                BoundWhileStatement loop => ContainsStringComparison(loop.Condition),
                 _ => false
             };
 
@@ -203,6 +204,10 @@ internal static class CGenerationFacts
                         yield return clause.Condition;
                     }
 
+                    break;
+
+                case BoundWhileStatement loop:
+                    yield return loop.Condition;
                     break;
             }
         }

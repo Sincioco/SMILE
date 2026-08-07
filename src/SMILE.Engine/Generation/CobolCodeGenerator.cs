@@ -44,6 +44,9 @@ internal sealed class CobolCodeGenerator : ICodeGenerator
             .OfType<BoundIfStatement>()
             .SelectMany(conditional => conditional.Clauses)
             .ToArray();
+        BoundWhileStatement[] loops = analysis.EnumerateStatements()
+            .OfType<BoundWhileStatement>()
+            .ToArray();
         IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> runtimeStringBuffers =
             CreateRuntimeStringBuffers(program, analysis);
         CobolRuntimePlan runtime = CreateRuntimePlan(program);
@@ -55,7 +58,7 @@ internal sealed class CobolCodeGenerator : ICodeGenerator
         source.AppendLine("IDENTIFICATION DIVISION.");
         source.AppendLine("PROGRAM-ID. Program.");
 
-        if (lets.Length > 0 || clauses.Length > 0)
+        if (lets.Length > 0 || clauses.Length > 0 || loops.Length > 0)
         {
             source.AppendLine();
             source.AppendLine("DATA DIVISION.");
@@ -78,6 +81,15 @@ internal sealed class CobolCodeGenerator : ICodeGenerator
             {
                 source.Append("01 ")
                     .Append(ConditionName(analysis.GetClauseFacts(clause).Ordinal))
+                    .AppendLine(" PIC 9 COMP-5 VALUE 0.");
+            }
+
+            foreach (BoundWhileStatement loop in loops)
+            {
+                int ordinal = analysis.GetWhileOrdinal(loop);
+                source.Append("01 ").Append(WhileConditionName(ordinal))
+                    .AppendLine(" PIC 9 COMP-5 VALUE 0.");
+                source.Append("01 ").Append(WhileExitName(ordinal))
                     .AppendLine(" PIC 9 COMP-5 VALUE 0.");
             }
 
@@ -145,7 +157,7 @@ internal sealed class CobolCodeGenerator : ICodeGenerator
                 TextOutput.EnsureOneTrailingNewLine(source.ToString()),
                 IsPrimary: true)
         };
-        if (runtime.HasInput)
+        if (runtime.HasInput || runtime.NeedsCheckedIntegerArithmetic)
         {
             files.Add(new GeneratedFile(
                 "SmileRuntime.c",
@@ -742,6 +754,20 @@ internal sealed class CobolCodeGenerator : ICodeGenerator
                         runtime,
                         terminateSentence: !insideConditional);
                     break;
+
+                case BoundWhileStatement loop:
+                    AppendCobolWhile(
+                        source,
+                        loop,
+                        indent,
+                        analysis,
+                        identifiers,
+                        logicalLengths,
+                        storageLengths,
+                        runtimeStringBuffers,
+                        runtime,
+                        terminateSentence: !insideConditional);
+                    break;
             }
         }
     }
@@ -828,6 +854,62 @@ internal sealed class CobolCodeGenerator : ICodeGenerator
                 indent = indent[..^4];
             }
         }
+    }
+
+    private static void AppendCobolWhile(
+        StringBuilder source,
+        BoundWhileStatement loop,
+        string indent,
+        BoundProgramAnalysis analysis,
+        TargetIdentifierMap identifiers,
+        IReadOnlyDictionary<VariableSymbol, string> logicalLengths,
+        IReadOnlyDictionary<VariableSymbol, int> storageLengths,
+        IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> runtimeStringBuffers,
+        CobolRuntimePlan runtime,
+        bool terminateSentence)
+    {
+        int ordinal = analysis.GetWhileOrdinal(loop);
+        string conditionName = WhileConditionName(ordinal);
+        string exitName = WhileExitName(ordinal);
+
+        // Reset on every reached invocation because a nested loop can itself
+        // be executed repeatedly by an enclosing WHILE. The condition is then
+        // recomputed at the top of every PERFORM iteration before the learner
+        // body can run.
+        source.Append(indent).Append("MOVE 0 TO ").AppendLine(exitName);
+        source.Append(indent).Append("PERFORM UNTIL ").Append(exitName).AppendLine(" = 1");
+        AppendCobolConditionEvaluation(
+            source,
+            indent + "    ",
+            conditionName,
+            loop.Condition,
+            identifiers,
+            logicalLengths,
+            storageLengths,
+            runtimeStringBuffers,
+            runtime);
+        source.Append(indent).Append("    IF ").Append(conditionName).AppendLine(" = 0");
+        source.Append(indent).Append("        MOVE 1 TO ").AppendLine(exitName);
+        source.Append(indent).AppendLine("    ELSE");
+        AppendSourceItems(
+            source,
+            loop.SourceItems,
+            indent + "        ",
+            analysis,
+            identifiers,
+            logicalLengths,
+            storageLengths,
+            runtimeStringBuffers,
+            runtime,
+            insideConditional: true);
+        if (loop.Statements.Count == 0)
+        {
+            source.Append(indent).AppendLine("        CONTINUE");
+        }
+
+        source.Append(indent).AppendLine("    END-IF");
+        source.Append(indent).Append("END-PERFORM")
+            .AppendLine(terminateSentence ? "." : string.Empty);
     }
 
     private static void AppendCobolDirectVariablePrint(
@@ -1603,6 +1685,10 @@ internal sealed class CobolCodeGenerator : ICodeGenerator
                     }
 
                     break;
+
+                case BoundWhileStatement loop:
+                    Collect(loop.Condition);
+                    break;
             }
         }
 
@@ -2044,7 +2130,7 @@ internal sealed class CobolCodeGenerator : ICodeGenerator
         BoundProgramAnalysis analysis)
     {
         bool hasConditionalControlFlow = analysis.EnumerateStatements()
-            .Any(statement => statement is BoundIfStatement);
+            .Any(statement => statement is BoundIfStatement or BoundWhileStatement);
         var inputVariables = TargetRuntimeFacts.Inputs(program)
             .Select(input => input.Variable)
             .ToHashSet();
@@ -2123,4 +2209,8 @@ internal sealed class CobolCodeGenerator : ICodeGenerator
     }
 
     private static string ConditionName(int ordinal) => $"SMILE-IF-CONDITION-{ordinal}";
+
+    private static string WhileConditionName(int ordinal) => $"SMILE-WHILE-CONDITION-{ordinal}";
+
+    private static string WhileExitName(int ordinal) => $"SMILE-WHILE-EXIT-{ordinal}";
 }

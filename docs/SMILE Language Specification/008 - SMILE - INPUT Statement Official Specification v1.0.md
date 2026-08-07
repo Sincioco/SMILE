@@ -17,6 +17,7 @@ This specification works together with:
 - `005 - SMILE - LET Statement Official Specification v1.0.md`
 - `006 - SMILE - IF Statement Official Specification v1.0.md`
 - `007 - SMILE - Full-Line Comments and Source Layout Preservation Official Specification v1.0.md`
+- `009 - SMILE - WHILE Statement Official Specification v1.0.md`
 
 When this specification introduces runtime-value behavior that did not exist before `INPUT`, this specification is normative for SMILE v0.7.0 and later.
 
@@ -101,7 +102,7 @@ INPUT GetName()
 
 # 4. `INPUT` is a statement, not an expression
 
-`INPUT` cannot appear inside an expression, interpolation, assignment expression, or IF condition.
+`INPUT` cannot appear inside an expression, interpolation, assignment expression, IF condition, or WHILE condition.
 
 Invalid:
 
@@ -204,7 +205,8 @@ INPUT REM
 - inside an `IF` body;
 - inside an `ELSE IF` body;
 - inside an `ELSE` body;
-- inside a nested `IF`.
+- inside a nested `IF`;
+- inside a `WHILE` body, including a WHILE nested in IF or another WHILE.
 
 Example:
 
@@ -218,7 +220,7 @@ IF HasAccount = TRUE THEN
 END IF
 ```
 
-Only an executed branch consumes input.
+Only an executed branch or reached loop iteration consumes input.
 
 `INPUT` does not introduce a block scope.
 
@@ -1112,7 +1114,7 @@ The introduction of runtime-unknown values must not weaken:
 
 # 41. Future compatibility
 
-Future loops, functions, scopes, and error handling must preserve these v1.0 rules unless an explicit later specification supersedes them:
+WHILE loops and future functions, scopes, and error handling must preserve these v1.0 rules unless an explicit later specification supersedes them:
 
 - INPUT reads one line;
 - the target must already exist;

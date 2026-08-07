@@ -50,9 +50,23 @@ public sealed class SmileTranspiler
         }
 
         BindResult bindResult = new Binder().Bind(parseResult.Program);
+        IReadOnlyList<Diagnostic> diagnostics = parseResult.Diagnostics
+            .Concat(bindResult.Diagnostics)
+            .ToArray();
+        if (bindResult.Success && bindResult.Program is not null)
+        {
+            // Some whole-program rules, such as WHILE's portable bounded-String
+            // requirement, can only be decided after the binder has built the
+            // complete control-flow tree. Keep that validation at the shared
+            // analysis boundary so every evaluator and target sees one answer.
+            diagnostics = diagnostics
+                .Concat(BoundProgramAnalysis.Create(bindResult.Program).Diagnostics)
+                .ToArray();
+        }
+
         return new BindResult(
             bindResult.Program,
-            parseResult.Diagnostics.Concat(bindResult.Diagnostics).ToArray());
+            diagnostics);
     }
 
     public TranspileResult Transpile(string source, TargetLanguage targetLanguage) =>

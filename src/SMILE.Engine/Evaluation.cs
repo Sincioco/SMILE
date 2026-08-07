@@ -32,26 +32,50 @@ public sealed class SmileEvaluator
     private readonly SmileTranspiler _transpiler = new();
 
     public EvaluationResult Evaluate(string source) =>
-        Evaluate(source, TextReader.Null);
+        Evaluate(source, TextReader.Null, CancellationToken.None);
+
+    public EvaluationResult Evaluate(
+        string source,
+        CancellationToken cancellationToken) =>
+        Evaluate(source, TextReader.Null, cancellationToken);
 
     public EvaluationResult Evaluate(string source, string scriptedStandardInput)
+        => Evaluate(source, scriptedStandardInput, CancellationToken.None);
+
+    public EvaluationResult Evaluate(
+        string source,
+        string scriptedStandardInput,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(scriptedStandardInput);
         using var input = new StringReader(scriptedStandardInput);
-        return Evaluate(source, input);
+        return Evaluate(source, input, cancellationToken);
     }
 
     public EvaluationResult Evaluate(string source, Stream utf8StandardInput)
+        => Evaluate(source, utf8StandardInput, CancellationToken.None);
+
+    public EvaluationResult Evaluate(
+        string source,
+        Stream utf8StandardInput,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(utf8StandardInput);
         using var input = new Utf8StreamLineReader(utf8StandardInput);
-        return Evaluate(source, input);
+        return Evaluate(source, input, cancellationToken);
     }
 
     public EvaluationResult Evaluate(string source, TextReader input)
+        => Evaluate(source, input, CancellationToken.None);
+
+    public EvaluationResult Evaluate(
+        string source,
+        TextReader input,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(input);
+        cancellationToken.ThrowIfCancellationRequested();
 
         BindResult bindResult = _transpiler.Bind(source);
         if (!bindResult.Success || bindResult.Program is null)
@@ -70,7 +94,8 @@ public sealed class SmileEvaluator
             bindResult.Program.Statements,
             values,
             output,
-            input);
+            input,
+            cancellationToken);
 
         if (runtimeError is not null)
         {
@@ -95,10 +120,12 @@ public sealed class SmileEvaluator
         IReadOnlyList<BoundStatement> statements,
         Dictionary<VariableSymbol, SmileValue> values,
         StringBuilder output,
-        TextReader input)
+        TextReader input,
+        CancellationToken cancellationToken)
     {
         foreach (BoundStatement statement in statements)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             switch (statement)
             {
                 case BoundLetStatement let:
@@ -168,10 +195,25 @@ public sealed class SmileEvaluator
                         conditional,
                         values,
                         output,
-                        input);
+                        input,
+                        cancellationToken);
                     if (ifError is not null)
                     {
                         return ifError;
+                    }
+
+                    break;
+
+                case BoundWhileStatement loop:
+                    SmileRuntimeError? whileError = ExecuteWhile(
+                        loop,
+                        values,
+                        output,
+                        input,
+                        cancellationToken);
+                    if (whileError is not null)
+                    {
+                        return whileError;
                     }
 
                     break;
@@ -185,10 +227,12 @@ public sealed class SmileEvaluator
         BoundIfStatement conditional,
         Dictionary<VariableSymbol, SmileValue> values,
         StringBuilder output,
-        TextReader input)
+        TextReader input,
+        CancellationToken cancellationToken)
     {
         foreach (BoundConditionalClause clause in conditional.Clauses)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (!TryEvaluateExpression(
                     clause.Condition,
                     values,
@@ -203,12 +247,62 @@ public sealed class SmileEvaluator
                 continue;
             }
 
-            return ExecuteStatements(clause.Statements, values, output, input);
+            return ExecuteStatements(
+                clause.Statements,
+                values,
+                output,
+                input,
+                cancellationToken);
         }
 
         return conditional.HasElseClause
-            ? ExecuteStatements(conditional.ElseStatements, values, output, input)
+            ? ExecuteStatements(
+                conditional.ElseStatements,
+                values,
+                output,
+                input,
+                cancellationToken)
             : null;
+    }
+
+    private static SmileRuntimeError? ExecuteWhile(
+        BoundWhileStatement loop,
+        Dictionary<VariableSymbol, SmileValue> values,
+        StringBuilder output,
+        TextReader input,
+        CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            // The host cancellation check is deliberately outside SMILE's
+            // runtime-error model. Infinite loops retain their language
+            // semantics while Desktop, CLI, and tests can still stop them.
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!TryEvaluateExpression(
+                    loop.Condition,
+                    values,
+                    out SmileValue condition,
+                    out SmileRuntimeError? conditionError))
+            {
+                return conditionError;
+            }
+
+            if (!condition.BooleanValue)
+            {
+                return null;
+            }
+
+            SmileRuntimeError? bodyError = ExecuteStatements(
+                loop.Statements,
+                values,
+                output,
+                input,
+                cancellationToken);
+            if (bodyError is not null)
+            {
+                return bodyError;
+            }
+        }
     }
 
     private static bool TryEvaluateExpression(

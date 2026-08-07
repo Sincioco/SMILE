@@ -20,8 +20,11 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
             ReferenceEqualityComparer.Instance);
         foreach (BoundStatement statement in analysis.EnumerateStatements())
         {
-            knownValues[statement] = GeneratorConditionFacts.KnownValues(
-                analysis.GetStatementFacts(statement).ValuesBefore);
+            IReadOnlyDictionary<VariableSymbol, AnalyzedValue> values =
+                statement is BoundWhileStatement loop
+                    ? analysis.GetWhileFacts(loop).ValuesAtHead
+                    : analysis.GetStatementFacts(statement).ValuesBefore;
+            knownValues[statement] = GeneratorConditionFacts.KnownValues(values);
         }
 
         var source = new StringBuilder();
@@ -41,6 +44,11 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
             source.AppendLine();
             source.AppendLine();
             AppendInputHelpers(source, program);
+            emittedHelper = true;
+        }
+        else if (checkedArithmetic)
+        {
+            AppendFailureHelper(source);
             emittedHelper = true;
         }
 
@@ -176,6 +184,17 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
                 case BoundIfStatement conditional:
                     AppendIfStatement(source, conditional, indent, identifiers, knownValues, expressions, checkedArithmetic);
                     break;
+
+                case BoundWhileStatement loop:
+                    AppendWhileStatement(
+                        source,
+                        loop,
+                        indent,
+                        identifiers,
+                        knownValues,
+                        expressions,
+                        checkedArithmetic);
+                    break;
             }
         }
     }
@@ -226,14 +245,36 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
         }
     }
 
+    private static void AppendWhileStatement(
+        StringBuilder source,
+        BoundWhileStatement loop,
+        string indent,
+        TargetIdentifierMap identifiers,
+        IReadOnlyDictionary<BoundStatement, IReadOnlyDictionary<VariableSymbol, SmileValue>> knownValues,
+        PythonExpressionWriter expressions,
+        bool checkedArithmetic)
+    {
+        source.Append(indent).Append("while ")
+            .Append(expressions.Write(loop.Condition)).AppendLine(":");
+        AppendSourceItems(
+            source,
+            loop.SourceItems,
+            indent + "    ",
+            identifiers,
+            knownValues,
+            checkedArithmetic);
+        if (loop.Statements.Count == 0)
+        {
+            source.Append(indent).AppendLine("    pass");
+        }
+    }
+
     private static void AppendInputHelpers(StringBuilder source, BoundProgram program)
     {
         source.AppendLine("_smile_skip_lf = False");
         source.AppendLine();
         source.AppendLine();
-        source.AppendLine("def _smile_fail(message: str) -> None:");
-        source.AppendLine("    sys.stderr.write(message + \"\\n\")");
-        source.AppendLine("    raise SystemExit(1)");
+        AppendFailureHelper(source);
         source.AppendLine();
         source.AppendLine();
         source.AppendLine("def _smile_next_byte() -> int:");
@@ -314,6 +355,13 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
         }
     }
 
+    private static void AppendFailureHelper(StringBuilder source)
+    {
+        source.AppendLine("def _smile_fail(message: str) -> None:");
+        source.AppendLine("    sys.stderr.write(message + \"\\n\")");
+        source.AppendLine("    raise SystemExit(1)");
+    }
+
     private static void AppendCheckedArithmeticHelpers(StringBuilder source)
     {
         source.AppendLine("def _smile_checked(value: int) -> int:");
@@ -360,6 +408,7 @@ internal static class PythonGenerationFacts
                 print.Value.Type is not SmileType.String || ContainsTextConversion(print.Value),
             BoundIfStatement conditional => conditional.Clauses.Any(clause =>
                 ContainsTextConversion(clause.Condition)),
+            BoundWhileStatement loop => ContainsTextConversion(loop.Condition),
             _ => false
         });
 
@@ -371,6 +420,7 @@ internal static class PythonGenerationFacts
             BoundPrintStatement print when !print.IsBlankLine => ContainsDivision(print.Value),
             BoundIfStatement conditional => conditional.Clauses.Any(clause =>
                 ContainsDivision(clause.Condition)),
+            BoundWhileStatement loop => ContainsDivision(loop.Condition),
             _ => false
         });
 

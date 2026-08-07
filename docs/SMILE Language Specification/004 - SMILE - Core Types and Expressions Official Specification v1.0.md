@@ -1,6 +1,6 @@
 # SMILE - Core Types and Expressions Official Specification v1.0
 
-This specification was introduced in SMILE v0.4.1 and remains normative for SMILE v0.7.0 and later unless superseded by a newer official specification. IF-specific condition structure is additionally defined by the official IF statement specification, and runtime-unknown value introduction is defined by the [008 - INPUT Statement specification](008%20-%20SMILE%20-%20INPUT%20Statement%20Official%20Specification%20v1.0.md).
+This specification was introduced in SMILE v0.4.1 and remains normative for SMILE v0.8.0 and later unless superseded by a newer official specification. IF- and WHILE-specific condition structure is additionally defined by the official [006 - IF Statement specification](006%20-%20SMILE%20-%20IF%20Statement%20Official%20Specification%20v1.0.md) and [009 - WHILE Statement specification](009%20-%20SMILE%20-%20WHILE%20Statement%20Official%20Specification%20v1.0.md), while runtime-unknown value introduction is defined by the [008 - INPUT Statement specification](008%20-%20SMILE%20-%20INPUT%20Statement%20Official%20Specification%20v1.0.md).
 
 ## Core Types
 
@@ -14,7 +14,7 @@ The SMILE v1.0 expression core has three value types:
 
 `Integer` is a signed 64-bit SMILE semantic type regardless of target-language storage. A target generator MAY use a narrower natural destination type for a complete program only when every possible branch value and range, bound Integer literal, operand, and intermediate result, including merged later uses, is proven to fit that type. This target-local storage choice MUST NOT change the valid SMILE range, checked overflow behavior, division semantics, or evaluator output.
 
-SMILE v0.7.0 has mutable variables through `SET`, runtime values through `INPUT`, and conditional branches through `IF`, but it still has no loop or function. Static evaluation MUST distinguish Known, runtime-Unknown, and Invalid. Analysis MUST be statement-order, mutation aware, and branch aware. An earlier value MUST NOT be propagated past a later SET or INPUT, and a branch-specific value MUST NOT be propagated after IF unless every possible outgoing path proves the same value.
+SMILE v0.8.0 has mutable variables through `SET`, runtime values through `INPUT`, conditional branches through `IF`, and pre-test loops through `WHILE`, but it still has no function. Static evaluation MUST distinguish Known, runtime-Unknown, and Invalid. Analysis MUST be statement-order, mutation aware, branch aware, and loop-fixed-point aware. An earlier value MUST NOT be propagated past a later SET or INPUT, a branch-specific value MUST NOT be propagated after IF unless every possible outgoing path proves the same value, and a pre-loop value MUST NOT be reused at a WHILE head after a possible body mutation. WHILE is analyzed structurally as zero or more iterations; the compiler MUST NOT execute or unroll learner loops to obtain expression facts.
 
 After INPUT, a String is Unknown with 0 through 4096 possible UTF-8 bytes and possible NUL, an Integer is Unknown across the full signed 64-bit range, and a Boolean is Unknown with TRUE and FALSE both possible. Unknown is valid and MUST NOT be reported as a compile diagnostic.
 
@@ -25,7 +25,7 @@ The lexer recognizes:
 - identifiers;
 - string literals;
 - integer literals;
-- `LET`, `SET`, `INPUT`, `PRINT`, `IF`, `THEN`, `ELSE`, `END`, `TRUE`, `FALSE`, `NOT`, `AND`, and `OR`;
+- `LET`, `SET`, `INPUT`, `PRINT`, `IF`, `WHILE`, `THEN`, `ELSE`, `END`, `TRUE`, `FALSE`, `NOT`, `AND`, and `OR`;
 - the dedicated lexical representation for a SET Block String Literal;
 - `+`, `-`, `*`, `/`;
 - `=`, `<>`, `<`, `<=`, `>`, `>=`;
@@ -126,7 +126,7 @@ Output:
 FALSE
 ```
 
-After binding succeeds, the shared simplifier may use the current known Boolean values at each statement position to make the same reachability decision in every expression position. It must decide whether the right operand is reachable before simplifying that operand. Binding still resolves and type-checks both sides first. For `SET`, the right side is simplified and evaluated using the old environment, and the known value changes only after the complete assignment succeeds. For `IF`, each branch begins from the same incoming environment and outgoing paths merge before a later statement can use a known value. Simplification MUST NOT delete IF clauses or bodies.
+After binding succeeds, the shared simplifier may use the current known Boolean values at each statement position to make the same reachability decision in every expression position. It must decide whether the right operand is reachable before simplifying that operand. Binding still resolves and type-checks both sides first. For `SET`, the right side is simplified and evaluated using the old environment, and the known value changes only after the complete assignment succeeds. For `IF`, each branch begins from the same incoming environment and outgoing paths merge before a later statement can use a known value. For `WHILE`, the condition and body may use only stable loop-head facts valid for every possible iteration. Simplification MUST NOT delete an IF clause/body or a WHILE condition/body, execute or unroll a loop, duplicate INPUT, hoist SET, or replace a current loop-carried read with its stale pre-loop value.
 
 The same source-known failure remains a compile error when the right operand is definitely reachable:
 
@@ -136,21 +136,21 @@ LET Result = TRUE AND (1 / 0 = 0)
 
 This produces `SMILE1207`. Likewise, definitely reached source-known signed 64-bit overflow produces `SMILE1206`.
 
-When reachability or an operand depends on INPUT, the compiler validates names and types but does not invent a value or report a conditional evaluation failure. If execution reaches a failing runtime operation, it produces `SMILER1206` or `SMILER1207`. If short-circuiting or branch selection makes that operation unreachable, no runtime error occurs.
+When reachability or an operand depends on INPUT or loop-carried storage, the compiler validates names and types but does not invent a value or report a conditional evaluation failure. If execution reaches a failing runtime operation, it produces `SMILER1206` or `SMILER1207`. If short-circuiting, branch selection, or a false WHILE condition makes that operation unreachable, no runtime error occurs.
 
 These rules remain normative when future SMILE versions add runtime expressions, functions, or other operations with observable evaluation behavior.
 
-## IF Condition Context
+## IF And WHILE Condition Context
 
-The official ordinary expression grammar is reused inside IF and ELSE IF headers, but IF adds permanent structural restrictions:
+The official ordinary expression grammar is reused inside IF, ELSE IF, and WHILE headers. IF and WHILE add the same permanent structural restrictions:
 
 - the complete condition result MUST have type Boolean;
 - every atomic Boolean leaf MUST be an explicit comparison using `=`, `<>`, `<`, `<=`, `>`, or `>=` and a right-hand operand;
-- a standalone Boolean variable or literal, including one wrapped in parentheses or NOT, is not an IF condition;
+- a standalone Boolean variable or literal, including one wrapped in parentheses or NOT, is not an IF or WHILE condition;
 - a compound AND/OR/NOT condition is valid only when every leaf is an explicit comparison;
-- an IF condition MUST NOT invoke a function or procedure.
+- an IF or WHILE condition MUST NOT invoke a function or procedure.
 
-These restrictions are validated on the unsimplified bound expression so simplification cannot erase an explicit `= TRUE` comparison. Binding and type checking still examine both sides of a short-circuit operator and every source branch. The complete syntax, diagnostics, and future call-prohibition contract are defined by [006 - SMILE - IF Statement Official Specification v1.0](006%20-%20SMILE%20-%20IF%20Statement%20Official%20Specification%20v1.0.md).
+These restrictions are validated on the unsimplified bound expression so simplification cannot erase an explicit `= TRUE` comparison. Binding and type checking still examine both sides of a short-circuit operator and every source branch or loop body. The complete statement syntax, diagnostics, and future call-prohibition contracts are defined by [006 - SMILE - IF Statement Official Specification v1.0](006%20-%20SMILE%20-%20IF%20Statement%20Official%20Specification%20v1.0.md) and [009 - SMILE - WHILE Statement Official Specification v1.0](009%20-%20SMILE%20-%20WHILE%20Statement%20Official%20Specification%20v1.0.md).
 
 ## Interpolation
 
@@ -222,8 +222,8 @@ A runtime error preserves stdout already produced, writes exactly one canonical 
 
 ## Target Generation Rule
 
-Every target generator must consume the shared bound tree and recursive branch-aware analysis produced by the lexer, parser, binder, and evaluator. A target generator must not invent its own expression semantics, reparse SMILE source text, interpret SET Block String delimiters, substitute a pre-input value, or delete an INPUT or IF clause because current values make another branch predictable.
+Every target generator must consume the shared bound tree and recursive branch/loop-aware analysis produced by the lexer, parser, binder, and evaluator. A target generator must not invent its own expression semantics, reparse SMILE source text, interpret SET Block String delimiters, substitute a pre-input or pre-loop value, delete an INPUT or IF clause because current values make another branch predictable, or delete/unroll a WHILE because its incoming condition is known.
 
-C and Objective-C preserve native Integer and Boolean expression intent where the destination language has a direct equivalent. Low-level targets may use an evaluated value only when the corresponding branch-aware fact is `Known` on every possible incoming path; an `Unknown` expression must be lowered from current runtime storage. Every `SET` and `INPUT` must still emit an actual storage update at its source position. An INPUT-dependent Integer uses full signed-64 storage and every dependent arithmetic operation checks overflow and division. C-family NUL-free String equality uses value comparison such as `strcmp`, not pointer equality; an INPUT String is NUL-capable and must retain its complete current bytes and length. Compiler-owned `printf` format strings use `%d`, `%lld`, `%s`, and safe literal-percent escaping only where semantically valid.
+C and Objective-C preserve native Integer and Boolean expression intent where the destination language has a direct equivalent. Low-level targets may use an evaluated value only when the corresponding stable branch/loop-aware fact is `Known` on every possible incoming path; an `Unknown` expression must be lowered from current runtime storage. Every `SET` and `INPUT` must still emit an actual storage update at its source position. An INPUT- or loop-dependent Integer uses the required signed-64 storage and every dependent arithmetic operation checks overflow and division. A WHILE condition is re-evaluated before every possible body execution. C-family NUL-free String equality uses value comparison such as `strcmp`, not pointer equality; an INPUT String is NUL-capable and must retain its complete current bytes and length. Compiler-owned `printf` format strings use `%d`, `%lld`, `%s`, and safe literal-percent escaping only where semantically valid.
 
 Deterministic generated-expression conformance tests use a fixed seed, evaluate one larger valid SMILE program with `SmileEvaluator`, build every locally available target, provide identical scripted stdin when needed, normalize line endings only where explicitly allowed, and compare stdout, stderr, and exit code exactly without trimming control characters.

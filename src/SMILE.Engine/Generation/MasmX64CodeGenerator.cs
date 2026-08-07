@@ -30,7 +30,7 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
             .ToDictionary(item => item.Variable, item => item.index);
         IReadOnlyDictionary<BoundStatement, RuntimeStringBuffer> statementBuffers =
             CreateMasmStatementBuffers(analysis);
-        IReadOnlyDictionary<BoundConditionalClause, IReadOnlyList<RuntimeStringBuffer>>
+        IReadOnlyDictionary<BoundExpression, IReadOnlyList<RuntimeStringBuffer>>
             conditionBuffers = CreateMasmConditionBuffers(analysis);
         IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> booleanStringBuffers =
             CreateMasmBooleanStringBuffers(analysis);
@@ -105,7 +105,7 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         IReadOnlyList<BoundInputStatement> inputs,
         bool checkedArithmetic,
         IReadOnlyDictionary<BoundStatement, RuntimeStringBuffer> statementBuffers,
-        IReadOnlyDictionary<BoundConditionalClause, IReadOnlyList<RuntimeStringBuffer>> conditionBuffers,
+        IReadOnlyDictionary<BoundExpression, IReadOnlyList<RuntimeStringBuffer>> conditionBuffers,
         IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> booleanStringBuffers,
         bool needsIntegerFormatter,
         bool needsBooleanText)
@@ -205,14 +205,26 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
                     foreach (BoundConditionalClause clause in conditional.Clauses)
                     {
                         int comparisonIndex = 0;
+                        int ordinal = analysis.GetClauseFacts(clause).Ordinal;
                         AppendMasmConditionData(
                             source,
                             clause.Condition,
-                            analysis.GetClauseFacts(clause),
-                            conditionBuffers[clause],
+                            IfConditionPrefix(ordinal),
+                            conditionBuffers[clause.Condition],
                             ref comparisonIndex);
                     }
 
+                    break;
+
+                case BoundWhileStatement loop:
+                    int whileComparisonIndex = 0;
+                    int whileOrdinal = analysis.GetWhileOrdinal(loop);
+                    AppendMasmConditionData(
+                        source,
+                        loop.Condition,
+                        WhileConditionPrefix(whileOrdinal),
+                        conditionBuffers[loop.Condition],
+                        ref whileComparisonIndex);
                     break;
             }
         }
@@ -447,7 +459,7 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
     private static void AppendMasmConditionData(
         StringBuilder source,
         BoundExpression expression,
-        BoundConditionalClauseAnalysis clauseFacts,
+        string conditionPrefix,
         IReadOnlyList<RuntimeStringBuffer> runtimeBuffers,
         ref int comparisonIndex)
     {
@@ -456,7 +468,7 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
             AppendMasmConditionData(
                 source,
                 unary.Operand,
-                clauseFacts,
+                conditionPrefix,
                 runtimeBuffers,
                 ref comparisonIndex);
             return;
@@ -473,13 +485,13 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
             AppendMasmConditionData(
                 source,
                 binary.Left,
-                clauseFacts,
+                conditionPrefix,
                 runtimeBuffers,
                 ref comparisonIndex);
             AppendMasmConditionData(
                 source,
                 binary.Right,
-                clauseFacts,
+                conditionPrefix,
                 runtimeBuffers,
                 ref comparisonIndex);
             return;
@@ -494,21 +506,18 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         AppendMasmConditionOperandData(
             source,
             binary.Left,
-            clauseFacts,
             runtimeBuffers,
-            MasmConditionOperandLabel(clauseFacts.Ordinal, currentComparison, "Left"));
+            MasmConditionOperandLabel(conditionPrefix, currentComparison, "Left"));
         AppendMasmConditionOperandData(
             source,
             binary.Right,
-            clauseFacts,
             runtimeBuffers,
-            MasmConditionOperandLabel(clauseFacts.Ordinal, currentComparison, "Right"));
+            MasmConditionOperandLabel(conditionPrefix, currentComparison, "Right"));
     }
 
     private static void AppendMasmConditionOperandData(
         StringBuilder source,
         BoundExpression expression,
-        BoundConditionalClauseAnalysis clauseFacts,
         IReadOnlyList<RuntimeStringBuffer> runtimeBuffers,
         string label)
     {
@@ -544,7 +553,7 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         bool hasInput,
         bool checkedArithmetic,
         IReadOnlyDictionary<BoundStatement, RuntimeStringBuffer> statementBuffers,
-        IReadOnlyDictionary<BoundConditionalClause, IReadOnlyList<RuntimeStringBuffer>> conditionBuffers,
+        IReadOnlyDictionary<BoundExpression, IReadOnlyList<RuntimeStringBuffer>> conditionBuffers,
         IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> booleanStringBuffers,
         bool needsIntegerFormatter)
     {
@@ -633,7 +642,7 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         BoundProgramAnalysis analysis,
         IReadOnlyDictionary<VariableSymbol, int> variableIndexes,
         IReadOnlyDictionary<BoundStatement, RuntimeStringBuffer> statementBuffers,
-        IReadOnlyDictionary<BoundConditionalClause, IReadOnlyList<RuntimeStringBuffer>> conditionBuffers,
+        IReadOnlyDictionary<BoundExpression, IReadOnlyList<RuntimeStringBuffer>> conditionBuffers,
         IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> booleanStringBuffers,
         ref int printIndex)
     {
@@ -761,6 +770,18 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
                         booleanStringBuffers,
                         ref printIndex);
                     break;
+
+                case BoundWhileStatement loop:
+                    AppendMasmWhile(
+                        source,
+                        loop,
+                        analysis,
+                        variableIndexes,
+                        statementBuffers,
+                        conditionBuffers,
+                        booleanStringBuffers,
+                        ref printIndex);
+                    break;
             }
         }
     }
@@ -771,7 +792,7 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         BoundProgramAnalysis analysis,
         IReadOnlyDictionary<VariableSymbol, int> variableIndexes,
         IReadOnlyDictionary<BoundStatement, RuntimeStringBuffer> statementBuffers,
-        IReadOnlyDictionary<BoundConditionalClause, IReadOnlyList<RuntimeStringBuffer>> conditionBuffers,
+        IReadOnlyDictionary<BoundExpression, IReadOnlyList<RuntimeStringBuffer>> conditionBuffers,
         IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> booleanStringBuffers,
         ref int printIndex)
     {
@@ -798,7 +819,7 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
             int partIndex = 0;
             var runtimeBufferMap = new Dictionary<BoundExpression, RuntimeStringBuffer>(
                 ReferenceEqualityComparer.Instance);
-            foreach (RuntimeStringBuffer buffer in conditionBuffers[clause])
+            foreach (RuntimeStringBuffer buffer in conditionBuffers[clause.Condition])
             {
                 runtimeBufferMap.Add(buffer.Expression, buffer);
             }
@@ -806,7 +827,8 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
             AppendMasmCondition(
                 source,
                 clause.Condition,
-                clauseFacts,
+                IfConditionPrefix(clauseFacts.Ordinal),
+                clauseFacts.ValuesBefore,
                 variableIndexes,
                 runtimeBufferMap,
                 booleanStringBuffers,
@@ -843,10 +865,67 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         AppendMasmLine(source, $"{endLabel}:", "Continue after the complete IF.");
     }
 
+    private static void AppendMasmWhile(
+        StringBuilder source,
+        BoundWhileStatement loop,
+        BoundProgramAnalysis analysis,
+        IReadOnlyDictionary<VariableSymbol, int> variableIndexes,
+        IReadOnlyDictionary<BoundStatement, RuntimeStringBuffer> statementBuffers,
+        IReadOnlyDictionary<BoundExpression, IReadOnlyList<RuntimeStringBuffer>> conditionBuffers,
+        IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> booleanStringBuffers,
+        ref int printIndex)
+    {
+        BoundWhileStatementAnalysis loopFacts = analysis.GetWhileFacts(loop);
+        int ordinal = loopFacts.Ordinal;
+        string conditionLabel = WhileConditionLabel(ordinal);
+        string bodyLabel = WhileBodyLabel(ordinal);
+        string endLabel = WhileEndLabel(ordinal);
+        string conditionPrefix = WhileConditionPrefix(ordinal);
+
+        source.AppendLine();
+        AppendMasmLine(source, $"; WHILE #{ordinal + 1}", "Re-evaluate the condition before every body iteration.");
+        AppendMasmLine(source, $"{conditionLabel}:", "WHILE condition and back-edge target.");
+
+        int comparisonIndex = 0;
+        int partIndex = 0;
+        var runtimeBufferMap = new Dictionary<BoundExpression, RuntimeStringBuffer>(
+            ReferenceEqualityComparer.Instance);
+        foreach (RuntimeStringBuffer buffer in conditionBuffers[loop.Condition])
+        {
+            runtimeBufferMap.Add(buffer.Expression, buffer);
+        }
+
+        AppendMasmCondition(
+            source,
+            loop.Condition,
+            conditionPrefix,
+            loopFacts.ValuesAtHead,
+            variableIndexes,
+            runtimeBufferMap,
+            booleanStringBuffers,
+            ref comparisonIndex,
+            ref partIndex);
+        AppendMasmLine(source, "    test eax, eax", "Zero exits this pre-test loop.");
+        AppendMasmLine(source, $"    jz {endLabel}", "Skip the body when the condition is false.");
+        AppendMasmLine(source, $"{bodyLabel}:", "Execute the complete learner-authored body.");
+        AppendMasmSourceItems(
+            source,
+            loop.SourceItems,
+            analysis,
+            variableIndexes,
+            statementBuffers,
+            conditionBuffers,
+            booleanStringBuffers,
+            ref printIndex);
+        AppendMasmLine(source, $"    jmp {conditionLabel}", "Re-evaluate current storage after this iteration.");
+        AppendMasmLine(source, $"{endLabel}:", "Continue after the complete WHILE.");
+    }
+
     private static void AppendMasmCondition(
         StringBuilder source,
         BoundExpression expression,
-        BoundConditionalClauseAnalysis clauseFacts,
+        string conditionPrefix,
+        IReadOnlyDictionary<VariableSymbol, AnalyzedValue> valuesAtCondition,
         IReadOnlyDictionary<VariableSymbol, int> variableIndexes,
         IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> runtimeBuffers,
         IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> booleanStringBuffers,
@@ -861,7 +940,8 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
             AppendMasmCondition(
                 source,
                 unary.Operand,
-                clauseFacts,
+                conditionPrefix,
+                valuesAtCondition,
                 variableIndexes,
                 runtimeBuffers,
                 booleanStringBuffers,
@@ -878,14 +958,15 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
             AppendMasmCondition(
                 source,
                 binary.Left,
-                clauseFacts,
+                conditionPrefix,
+                valuesAtCondition,
                 variableIndexes,
                 runtimeBuffers,
                 booleanStringBuffers,
                 ref comparisonIndex,
                 ref partIndex);
             string endLabel = MasmConditionPartLabel(
-                clauseFacts.Ordinal,
+                conditionPrefix,
                 partIndex++,
                 binary.Operator.Kind is BoundBinaryOperatorKind.LogicalAnd ? "AndEnd" : "OrEnd");
             AppendMasmLine(source, "    test eax, eax", "Honor SMILE's left-to-right short circuit.");
@@ -898,7 +979,8 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
             AppendMasmCondition(
                 source,
                 binary.Right,
-                clauseFacts,
+                conditionPrefix,
+                valuesAtCondition,
                 variableIndexes,
                 runtimeBuffers,
                 booleanStringBuffers,
@@ -927,7 +1009,7 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
                 source,
                 booleanComparison,
                 variableIndexes,
-                $"ifCondition{clauseFacts.Ordinal}",
+                conditionPrefix,
                 booleanStringBuffers,
                 ref partIndex);
             return;
@@ -943,9 +1025,9 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
                     AppendMasmRuntimeTextMaterialization(
                         source,
                         operand,
-                        buffer,
-                        variableIndexes,
-                        $"ifCondition{clauseFacts.Ordinal}Part{partIndex}",
+                            buffer,
+                            variableIndexes,
+                            $"{conditionPrefix}Part{partIndex}",
                         booleanStringBuffers,
                         ref partIndex);
                 }
@@ -954,7 +1036,7 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
             AppendMasmDirectEquality(
                 source,
                 comparison,
-                clauseFacts,
+                conditionPrefix,
                 variableIndexes,
                 runtimeBuffers,
                 comparisonIndex++,
@@ -964,11 +1046,11 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
 
         if (!GeneratorConditionFacts.TryEvaluateFromAnalyzedValues(
                 expression,
-                clauseFacts.ValuesBefore,
+                valuesAtCondition,
                 out SmileValue provenCondition))
         {
             throw new InvalidOperationException(
-                "MASM requires runtime lowering for an abstract-unknown IF condition.");
+                "MASM requires runtime lowering for an abstract-unknown control-flow condition.");
         }
 
         AppendMasmLine(
@@ -1136,22 +1218,22 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
     private static void AppendMasmDirectEquality(
         StringBuilder source,
         BoundBinaryExpression expression,
-        BoundConditionalClauseAnalysis clauseFacts,
+        string conditionPrefix,
         IReadOnlyDictionary<VariableSymbol, int> variableIndexes,
         IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> runtimeBuffers,
         int comparisonIndex,
         ref int partIndex)
     {
-        string loopLabel = MasmConditionPartLabel(clauseFacts.Ordinal, partIndex++, "Compare");
-        string differentLabel = MasmConditionPartLabel(clauseFacts.Ordinal, partIndex++, "Different");
-        string doneLabel = MasmConditionPartLabel(clauseFacts.Ordinal, partIndex++, "Done");
+        string loopLabel = MasmConditionPartLabel(conditionPrefix, partIndex++, "Compare");
+        string differentLabel = MasmConditionPartLabel(conditionPrefix, partIndex++, "Different");
+        string doneLabel = MasmConditionPartLabel(conditionPrefix, partIndex++, "Done");
 
         AppendMasmLoadConditionOperand(
             source,
             expression.Left,
             variableIndexes,
             runtimeBuffers,
-            MasmConditionOperandLabel(clauseFacts.Ordinal, comparisonIndex, "Left"),
+            MasmConditionOperandLabel(conditionPrefix, comparisonIndex, "Left"),
             "r10",
             "ecx");
         AppendMasmLoadConditionOperand(
@@ -1159,7 +1241,7 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
             expression.Right,
             variableIndexes,
             runtimeBuffers,
-            MasmConditionOperandLabel(clauseFacts.Ordinal, comparisonIndex, "Right"),
+            MasmConditionOperandLabel(conditionPrefix, comparisonIndex, "Right"),
             "r11",
             "edx");
         AppendMasmLine(source, "    mov eax, 1", "Assume equal until a length or byte differs.");
@@ -1443,6 +1525,22 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
                 source,
                 $"    mov QWORD PTR [{VariableIntegerLabel(destinationIndex)}], rax",
                 $"Update current signed Integer storage for {destination.Name}.");
+            AppendMasmLine(source, "    mov rcx, rax", "Format the value that was evaluated exactly once.");
+            AppendMasmLine(source, $"    call {IntegerFormatProcedure}", "Return canonical decimal text in RAX/EDX.");
+            AppendMasmLine(source, "    mov rsi, rax", "Copy from the shared Integer formatter buffer.");
+            AppendMasmLine(source, $"    lea rdi, {buffer.Label}", "Use stable storage owned by this assignment.");
+            AppendMasmLine(source, "    mov ecx, edx", "Copy the exact canonical decimal byte length.");
+            AppendMasmLine(source, "    rep movsb", "Keep direct variable PRINT synchronized with numeric storage.");
+            AppendMasmLine(source, $"    lea rax, {buffer.Label}", $"Address of current {destination.Name} display text.");
+            AppendMasmLine(
+                source,
+                $"    mov QWORD PTR [{VariablePointerLabel(destinationIndex)}], rax",
+                "Store the current Integer display pointer.");
+            AppendMasmLine(
+                source,
+                $"    mov DWORD PTR [{VariableLengthLabel(destinationIndex)}], edx",
+                "Store the current Integer display length.");
+            return;
         }
         else if (destination.Type is SmileType.Boolean)
         {
@@ -2419,34 +2517,47 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         return buffers;
     }
 
-    private static IReadOnlyDictionary<BoundConditionalClause, IReadOnlyList<RuntimeStringBuffer>>
+    private static IReadOnlyDictionary<BoundExpression, IReadOnlyList<RuntimeStringBuffer>>
         CreateMasmConditionBuffers(BoundProgramAnalysis analysis)
     {
-        var plans = new Dictionary<BoundConditionalClause, IReadOnlyList<RuntimeStringBuffer>>(
+        var plans = new Dictionary<BoundExpression, IReadOnlyList<RuntimeStringBuffer>>(
             ReferenceEqualityComparer.Instance);
-        foreach (BoundIfStatement conditional in analysis.EnumerateStatements().OfType<BoundIfStatement>())
+        foreach (BoundStatement statement in analysis.EnumerateStatements())
         {
-            foreach (BoundConditionalClause clause in conditional.Clauses)
+            if (statement is BoundIfStatement conditional)
             {
-                int ordinal = analysis.GetClauseFacts(clause).Ordinal;
-                var buffers = new List<RuntimeStringBuffer>();
-                CollectMasmConditionBuffers(clause.Condition, ordinal, analysis, buffers);
-                plans.Add(clause, buffers);
+                foreach (BoundConditionalClause clause in conditional.Clauses)
+                {
+                    Add(
+                        clause.Condition,
+                        IfConditionPrefix(analysis.GetClauseFacts(clause).Ordinal));
+                }
+            }
+            else if (statement is BoundWhileStatement loop)
+            {
+                Add(loop.Condition, WhileConditionPrefix(analysis.GetWhileOrdinal(loop)));
             }
         }
 
         return plans;
+
+        void Add(BoundExpression condition, string conditionPrefix)
+        {
+            var buffers = new List<RuntimeStringBuffer>();
+            CollectMasmConditionBuffers(condition, conditionPrefix, analysis, buffers);
+            plans.Add(condition, buffers);
+        }
     }
 
     private static void CollectMasmConditionBuffers(
         BoundExpression expression,
-        int clauseOrdinal,
+        string conditionPrefix,
         BoundProgramAnalysis analysis,
         List<RuntimeStringBuffer> buffers)
     {
         if (expression is BoundUnaryExpression unary)
         {
-            CollectMasmConditionBuffers(unary.Operand, clauseOrdinal, analysis, buffers);
+            CollectMasmConditionBuffers(unary.Operand, conditionPrefix, analysis, buffers);
             return;
         }
 
@@ -2458,8 +2569,8 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
         if (binary.Operator.Kind is BoundBinaryOperatorKind.LogicalAnd or
             BoundBinaryOperatorKind.LogicalOr)
         {
-            CollectMasmConditionBuffers(binary.Left, clauseOrdinal, analysis, buffers);
-            CollectMasmConditionBuffers(binary.Right, clauseOrdinal, analysis, buffers);
+            CollectMasmConditionBuffers(binary.Left, conditionPrefix, analysis, buffers);
+            CollectMasmConditionBuffers(binary.Right, conditionPrefix, analysis, buffers);
             return;
         }
 
@@ -2480,7 +2591,7 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
                 return;
             }
 
-            string label = $"ifCondition{clauseOrdinal}Runtime{buffers.Count}";
+            string label = $"{conditionPrefix}Runtime{buffers.Count}";
             buffers.Add(new RuntimeStringBuffer(
                 operand,
                 label,
@@ -2515,6 +2626,10 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
                         Collect(clause.Condition);
                     }
 
+                    break;
+
+                case BoundWhileStatement loop:
+                    Collect(loop.Condition);
                     break;
             }
         }
@@ -2574,7 +2689,7 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
     private static bool NeedsMasmIntegerFormatter(
         BoundProgramAnalysis analysis,
         IReadOnlyDictionary<BoundStatement, RuntimeStringBuffer> statementBuffers,
-        IReadOnlyDictionary<BoundConditionalClause, IReadOnlyList<RuntimeStringBuffer>> conditionBuffers,
+        IReadOnlyDictionary<BoundExpression, IReadOnlyList<RuntimeStringBuffer>> conditionBuffers,
         IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> booleanStringBuffers)
     {
         if (statementBuffers.Values
@@ -2612,6 +2727,8 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
                     TargetRuntimeFacts.ContainsIntegerArithmetic(print.Value),
                 BoundIfStatement conditional => conditional.Clauses.Any(clause =>
                     TargetRuntimeFacts.ContainsIntegerArithmetic(clause.Condition)),
+                BoundWhileStatement loop =>
+                    TargetRuntimeFacts.ContainsIntegerArithmetic(loop.Condition),
                 _ => false
             };
 
@@ -2627,7 +2744,7 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
     private static bool NeedsMasmBooleanText(
         BoundProgramAnalysis analysis,
         IReadOnlyDictionary<BoundStatement, RuntimeStringBuffer> statementBuffers,
-        IReadOnlyDictionary<BoundConditionalClause, IReadOnlyList<RuntimeStringBuffer>> conditionBuffers,
+        IReadOnlyDictionary<BoundExpression, IReadOnlyList<RuntimeStringBuffer>> conditionBuffers,
         IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> booleanStringBuffers)
     {
         if (statementBuffers.Values
@@ -2725,16 +2842,31 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
 
     private static string IfEndLabel(int ifOrdinal) => $"if{ifOrdinal}End";
 
+    private static string IfConditionPrefix(int clauseOrdinal) =>
+        $"ifCondition{clauseOrdinal}";
+
+    private static string WhileConditionPrefix(int whileOrdinal) =>
+        $"while{whileOrdinal}ConditionValue";
+
+    private static string WhileConditionLabel(int whileOrdinal) =>
+        $"while{whileOrdinal}Condition";
+
+    private static string WhileBodyLabel(int whileOrdinal) =>
+        $"while{whileOrdinal}Body";
+
+    private static string WhileEndLabel(int whileOrdinal) =>
+        $"while{whileOrdinal}End";
+
     private static string MasmConditionOperandLabel(
-        int clauseOrdinal,
+        string conditionPrefix,
         int comparisonIndex,
         string side) =>
-        $"ifCondition{clauseOrdinal}Comparison{comparisonIndex}{side}";
+        $"{conditionPrefix}Comparison{comparisonIndex}{side}";
 
     private static string MasmConditionPartLabel(
-        int clauseOrdinal,
+        string conditionPrefix,
         int partIndex,
         string purpose) =>
-        $"ifCondition{clauseOrdinal}Part{partIndex}{purpose}";
+        $"{conditionPrefix}Part{partIndex}{purpose}";
 
 }

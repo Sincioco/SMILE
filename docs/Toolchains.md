@@ -88,18 +88,19 @@ and test Debug and Release independently. It validates the SMILE solution and
 the unit/integration tests supported by the hosted runner. It does not install
 or claim coverage for every destination-language toolchain.
 
-The v0.7.0 Java and generated-target acceptance tests remain environment-aware
+The v0.8.0 Java and generated-target acceptance tests remain environment-aware
 for contributors who do not have every local toolchain. Official release
 validation is therefore a separate local gate that makes Java and all ten
 targets mandatory and enables generated compiler-warning validation. This
-ensures the normative INPUT, invalid-input, checked-arithmetic, and full-line
-comment/source-layout programs, the cumulative `language.smile` reference, and
+ensures the normative WHILE and INPUT programs, finite loop corpus, invalid-input,
+checked-arithmetic, and full-line comment/source-layout programs, the cumulative `language.smile` reference, and
 the established all-target runtime conformance programs execute through every
 destination instead of skipping. Scripted runs provide stdin directly rather
 than through shell `echo`, then compare exact stdout, stderr, exit code, and
 generated compiler warnings with the reference evaluator. Structural generation
-tests cover nested branches, native comment preservation, source blank-line
-boundaries, comment-safe Block String/IF recovery, and wide/NUL/input planning
+tests cover nested IF/WHILE blocks, genuine loop structure, native comment preservation,
+source blank-line boundaries, comment-safe Block String/mixed-control recovery,
+fixed-point convergence, and wide/NUL/input planning
 without requiring a local toolchain. Run the complete local gate from
 the repository root before a release commit:
 
@@ -125,8 +126,8 @@ repository. The warning suite inspects retained compiler output with
 destination-specific diagnostic patterns. C#, C, MASM x64, Java, COBOL,
 Objective-C, Swift, and C++ are compiler-backed; JavaScript and Python are
 interpreted targets with no compile stage in their normal SMILE toolchains.
-Every compiler-backed INPUT/IF run must report zero detected warnings, and every
-generated source must retain all INPUT operations and IF, ELSE IF, and ELSE bodies.
+Every compiler-backed INPUT/IF/WHILE run must report zero detected warnings, and every
+generated source must retain all INPUT operations, IF/ELSE bodies, and genuine loop control flow.
 
 COBOL:
 
@@ -184,11 +185,11 @@ SMILE uses the same `VisualStudioLocator` as C and MASM, but C++ has its own too
 |---|---|---|
 | `Closed` | Detection, compilers, and captured programs that do not need input | Redirect stdin and close it immediately so a child cannot wait invisibly |
 | `ScriptedText` | Deterministic evaluator-versus-target tests | Redirect stdin, write the complete supplied input, flush, close, and capture stdout/stderr/exit |
-| `InteractiveInherited` | Normal CLI and visible Desktop INPUT execution | Use the invoking terminal or a visible console, stream prompts and errors live, and preserve the program exit code |
+| `InteractiveInherited` | Normal CLI and visible Desktop INPUT execution, including INPUT-driven loops | Use the invoking terminal or a visible console, stream prompts and errors live, and preserve the program exit code |
 
 Compiler and linker processes always use closed input. Scripted input is supplied only to the generated executable. Tests do not make shell-specific `echo` pipelines the conformance path because those pipelines can alter Unicode, embedded NUL, quoting, CR/LF distinctions, and a final line without a newline.
 
-When the CLI runs a generated program containing INPUT, the learner's standard input is inherited naturally, including redirected stdin, and output is not held until process exit. A Desktop Build & Run of an INPUT program builds through the ordinary captured path, then opens exactly one visible interactive console so each PRINT prompt is visible before the learner enters the corresponding line. The Desktop reports that launch and remains responsive while the generated program waits; it does not start a second hidden copy with stdin closed.
+When the CLI runs a generated program containing INPUT, including INPUT inside WHILE, the learner's standard input is inherited naturally, including redirected stdin, and output is not held until process exit. A Desktop Build & Run of an INPUT program builds through the ordinary captured path, then opens exactly one visible interactive console so each PRINT prompt is visible before the learner enters the corresponding line. The Desktop reports that launch and remains responsive while the generated program waits; it does not start a second hidden copy with stdin closed.
 
 Interactive programs may legitimately wait for the learner, while scripted tests retain the normal program timeout and cancellation behavior. Detection and build processes must never wait for input. Runtime input failures write the canonical SMILE runtime line to stderr and return exit code 1; successful generated programs return 0.
 
@@ -220,7 +221,7 @@ That launcher runs the generated program from the temporary workspace with norma
 
 ## Timeout And Cancellation
 
-The default captured or scripted program timeout is 10 seconds. Cancellation and timeout terminate the entire child process tree where possible. Standard output and standard error are captured asynchronously to avoid deadlocks and UI freezes. A deliberately visible interactive INPUT program may wait for the learner; its process work still stays off the WPF UI thread and failure containment remains best-effort.
+The default captured or scripted program timeout is 10 seconds. Cancellation and timeout terminate the entire child process tree where possible, including generated infinite WHILE programs. Standard output and standard error are captured asynchronously to avoid deadlocks and UI freezes. A deliberately visible interactive INPUT program may wait for the learner; its process work still stays off the WPF UI thread, remains cancellable through its host path, and never receives a hidden language-level iteration cap.
 
 Each process stream is retained up to 1,000,000 characters. SMILE keeps draining the child process pipes after the display cap is reached, then appends a truncation marker so learners can see that output was shortened. This keeps runaway generated programs from consuming unbounded desktop memory.
 

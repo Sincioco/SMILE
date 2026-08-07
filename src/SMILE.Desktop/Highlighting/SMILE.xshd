@@ -31,6 +31,7 @@
       <Word>THEN</Word>
       <Word>ELSE</Word>
       <Word>END</Word>
+      <Word>WHILE</Word>
     </Keywords>
 
     <Rule color="Number">\b\d+(\.\d+)?\b</Rule>

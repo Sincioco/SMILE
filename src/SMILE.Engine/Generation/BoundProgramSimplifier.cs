@@ -4,14 +4,19 @@ internal static class BoundProgramSimplifier
 {
     public static BoundProgram Simplify(BoundProgram program)
     {
+        BoundProgramAnalysis analysis = BoundProgramAnalysis.Create(program);
         var values = new Dictionary<VariableSymbol, SmileValue>();
-        IReadOnlyList<BoundSourceItem> sourceItems = SimplifySourceItems(program.SourceItems, values);
+        IReadOnlyList<BoundSourceItem> sourceItems = SimplifySourceItems(
+            program.SourceItems,
+            values,
+            analysis);
         return new BoundProgram(sourceItems, program.Variables);
     }
 
     private static IReadOnlyList<BoundSourceItem> SimplifySourceItems(
         IReadOnlyList<BoundSourceItem> sourceItems,
-        Dictionary<VariableSymbol, SmileValue> values)
+        Dictionary<VariableSymbol, SmileValue> values,
+        BoundProgramAnalysis analysis)
     {
         var simplifiedItems = new List<BoundSourceItem>(sourceItems.Count);
 
@@ -57,7 +62,11 @@ internal static class BoundProgramSimplifier
                     break;
 
                 case BoundIfStatement conditional:
-                    simplifiedItems.Add(SimplifyIfStatement(conditional, values));
+                    simplifiedItems.Add(SimplifyIfStatement(conditional, values, analysis));
+                    break;
+
+                case BoundWhileStatement loop:
+                    simplifiedItems.Add(SimplifyWhileStatement(loop, values, analysis));
                     break;
 
                 default:
@@ -71,7 +80,8 @@ internal static class BoundProgramSimplifier
 
     private static BoundIfStatement SimplifyIfStatement(
         BoundIfStatement conditional,
-        Dictionary<VariableSymbol, SmileValue> values)
+        Dictionary<VariableSymbol, SmileValue> values,
+        BoundProgramAnalysis analysis)
     {
         var clauses = new List<BoundConditionalClause>(conditional.Clauses.Count);
         var outgoingEnvironments = new List<Dictionary<VariableSymbol, SmileValue>>(
@@ -91,14 +101,14 @@ internal static class BoundProgramSimplifier
                 new Dictionary<VariableSymbol, SmileValue>());
             var branchValues = new Dictionary<VariableSymbol, SmileValue>(values);
             IReadOnlyList<BoundSourceItem> branchSourceItems =
-                SimplifySourceItems(clause.SourceItems, branchValues);
+                SimplifySourceItems(clause.SourceItems, branchValues, analysis);
             clauses.Add(new BoundConditionalClause(condition, branchSourceItems));
             outgoingEnvironments.Add(branchValues);
         }
 
         var elseValues = new Dictionary<VariableSymbol, SmileValue>(values);
         IReadOnlyList<BoundSourceItem> elseSourceItems = conditional.HasElseClause
-            ? SimplifySourceItems(conditional.ElseSourceItems, elseValues)
+            ? SimplifySourceItems(conditional.ElseSourceItems, elseValues, analysis)
             : conditional.ElseSourceItems;
 
         // An IF without ELSE has an implicit unchanged path. Every explicit
@@ -115,6 +125,55 @@ internal static class BoundProgramSimplifier
             clauses,
             elseSourceItems,
             conditional.HasElseClause);
+    }
+
+    private static BoundWhileStatement SimplifyWhileStatement(
+        BoundWhileStatement loop,
+        Dictionary<VariableSymbol, SmileValue> values,
+        BoundProgramAnalysis analysis)
+    {
+        BoundWhileStatementAnalysis loopFacts = analysis.GetWhileFacts(loop);
+        var headValues = new Dictionary<VariableSymbol, SmileValue>(
+            GeneratorConditionFacts.KnownValues(loopFacts.ValuesAtHead));
+
+        // A WHILE condition and every expression in its body may run after an
+        // arbitrary number of back-edges. Only fixed-point loop-head facts are
+        // safe here; pre-loop LET values would freeze the first iteration into
+        // generated code and could even turn a finite loop into an infinite one.
+        BoundExpression condition = SimplifyExpression(loop.Condition, headValues);
+        if (condition is BoundBooleanLiteralExpression &&
+            GeneratorConditionFacts.ContainsVariableRead(loop.Condition))
+        {
+            // Retain source variable reads when short-circuit simplification
+            // proves the complete condition. The target warning-safe wrapper
+            // makes the condition runtime-opaque, while the original AND/OR
+            // still suppresses its unreachable operand. This keeps strict C#
+            // and Java builds warning-free without deleting learner code or
+            // introducing a synthetic discard read.
+            condition = loop.Condition;
+        }
+
+        IReadOnlyList<BoundSourceItem> body = SimplifySourceItems(
+            loop.SourceItems,
+            headValues,
+            analysis);
+
+        ReplaceKnownValues(values, loopFacts.ValuesAfter);
+        return new BoundWhileStatement(condition, body, loop.KeywordSpan);
+    }
+
+    private static void ReplaceKnownValues(
+        Dictionary<VariableSymbol, SmileValue> destination,
+        IReadOnlyDictionary<VariableSymbol, AnalyzedValue> analyzedValues)
+    {
+        destination.Clear();
+        foreach ((VariableSymbol variable, AnalyzedValue analyzed) in analyzedValues)
+        {
+            if (analyzed.IsKnown)
+            {
+                destination.Add(variable, analyzed.Value);
+            }
+        }
     }
 
     private static void UpdateKnownValue(

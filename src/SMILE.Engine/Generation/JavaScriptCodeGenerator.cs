@@ -24,6 +24,11 @@ internal sealed class JavaScriptCodeGenerator : ICodeGenerator
             AppendInputHelpers(source, program);
             source.AppendLine();
         }
+        else if (checkedArithmetic)
+        {
+            AppendFailureHelper(source);
+            source.AppendLine();
+        }
 
         if (checkedArithmetic)
         {
@@ -87,6 +92,24 @@ internal sealed class JavaScriptCodeGenerator : ICodeGenerator
 
                 case BoundIfStatement conditional:
                     AppendIfStatement(source, conditional, indent, identifiers, integers, checkedArithmetic);
+                    break;
+
+                case BoundWhileStatement loop:
+                    source.Append(indent).Append("while (")
+                        .Append(TargetExpression.JavaScript(
+                            loop.Condition,
+                            identifiers,
+                            integers,
+                            checkedArithmetic))
+                        .AppendLine(") {");
+                    AppendSourceItems(
+                        source,
+                        loop.SourceItems,
+                        indent + "    ",
+                        identifiers,
+                        integers,
+                        checkedArithmetic);
+                    source.Append(indent).AppendLine("}");
                     break;
             }
         }
@@ -194,6 +217,11 @@ internal sealed class JavaScriptCodeGenerator : ICodeGenerator
         }
 
         source.AppendLine();
+        AppendFailureHelper(source);
+    }
+
+    private static void AppendFailureHelper(StringBuilder source)
+    {
         source.AppendLine("function _smile_fail(message) {");
         source.AppendLine("    console.error(message);");
         source.AppendLine("    const error = new Error(message);");

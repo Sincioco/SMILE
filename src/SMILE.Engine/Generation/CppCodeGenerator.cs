@@ -22,9 +22,9 @@ internal sealed class CppCodeGenerator : ICodeGenerator
         var expressions = new CppExpressionWriter(identifiers, integers, checkedArithmetic);
         var source = new StringBuilder();
 
-        bool needsIostream = hasInput || BoundStatementTree.Enumerate(program)
+        bool needsIostream = hasInput || checkedArithmetic || BoundStatementTree.Enumerate(program)
             .Any(statement => statement is BoundPrintStatement);
-        bool needsString = CppGenerationFacts.NeedsStringHeader(program) || hasInput;
+        bool needsString = CppGenerationFacts.NeedsStringHeader(program) || hasInput || checkedArithmetic;
 
         if (needsIostream)
         {
@@ -41,9 +41,13 @@ internal sealed class CppCodeGenerator : ICodeGenerator
             source.AppendLine("#include <cstdint>");
         }
 
-        if (hasInput)
+        if (hasInput || checkedArithmetic)
         {
             source.AppendLine("#include <cstdlib>");
+        }
+
+        if (hasInput)
+        {
             if (hasIntegerInput)
             {
                 source.AppendLine("#include <charconv>");
@@ -56,7 +60,7 @@ internal sealed class CppCodeGenerator : ICodeGenerator
             source.AppendLine("#endif");
         }
 
-        if (needsIostream || needsString || integers.RequiresSigned64Storage || hasInput)
+        if (needsIostream || needsString || integers.RequiresSigned64Storage || hasInput || checkedArithmetic)
         {
             source.AppendLine();
         }
@@ -64,6 +68,11 @@ internal sealed class CppCodeGenerator : ICodeGenerator
         if (hasInput)
         {
             AppendInputHelpers(source, program);
+            source.AppendLine();
+        }
+        else if (checkedArithmetic)
+        {
+            AppendFailureHelper(source);
             source.AppendLine();
         }
 
@@ -186,6 +195,19 @@ internal sealed class CppCodeGenerator : ICodeGenerator
                         ref emittedExecutable);
                     emittedExecutable = true;
                     break;
+
+                case BoundWhileStatement loop:
+                    AppendWhileStatement(
+                        source,
+                        loop,
+                        indent,
+                        expressions,
+                        identifiers,
+                        integers,
+                        ref emittedDeclaration,
+                        ref emittedExecutable);
+                    emittedExecutable = true;
+                    break;
             }
         }
     }
@@ -235,6 +257,31 @@ internal sealed class CppCodeGenerator : ICodeGenerator
                 ref emittedExecutable);
             source.Append(indent).AppendLine("}");
         }
+    }
+
+    private static void AppendWhileStatement(
+        StringBuilder source,
+        BoundWhileStatement loop,
+        string indent,
+        CppExpressionWriter expressions,
+        TargetIdentifierMap identifiers,
+        TargetIntegerProfile integers,
+        ref bool emittedDeclaration,
+        ref bool emittedExecutable)
+    {
+        source.Append(indent).Append("while (")
+            .Append(expressions.Write(loop.Condition)).AppendLine(")");
+        source.Append(indent).AppendLine("{");
+        AppendSourceItems(
+            source,
+            loop.SourceItems,
+            indent + "    ",
+            expressions,
+            identifiers,
+            integers,
+            ref emittedDeclaration,
+            ref emittedExecutable);
+        source.Append(indent).AppendLine("}");
     }
 
     private static void AppendPrint(
@@ -296,12 +343,7 @@ internal sealed class CppCodeGenerator : ICodeGenerator
 
     private static void AppendInputHelpers(StringBuilder source, BoundProgram program)
     {
-        source.AppendLine("[[noreturn]] void _smile_fail(const std::string& message)");
-        source.AppendLine("{");
-        source.AppendLine("    std::cout.flush();");
-        source.AppendLine("    std::cerr << message << '\\n';");
-        source.AppendLine("    std::exit(1);");
-        source.AppendLine("}");
+        AppendFailureHelper(source);
         source.AppendLine();
         source.AppendLine("bool _smile_skip_lf = false;");
         source.AppendLine();
@@ -429,6 +471,16 @@ internal sealed class CppCodeGenerator : ICodeGenerator
         }
     }
 
+    private static void AppendFailureHelper(StringBuilder source)
+    {
+        source.AppendLine("[[noreturn]] void _smile_fail(const std::string& message)");
+        source.AppendLine("{");
+        source.AppendLine("    std::cout.flush();");
+        source.AppendLine("    std::cerr << message << '\\n';");
+        source.AppendLine("    std::exit(1);");
+        source.AppendLine("}");
+    }
+
     private static void AppendCheckedArithmeticHelpers(StringBuilder source)
     {
         source.AppendLine("std::int64_t _smile_add(std::int64_t left, std::int64_t right)");
@@ -474,6 +526,7 @@ internal static class CppGenerationFacts
                 ContainsDirectStreamStringFacility(print.Value),
             BoundIfStatement conditional => conditional.Clauses.Any(clause =>
                 ContainsStringFacility(clause.Condition)),
+            BoundWhileStatement loop => ContainsStringFacility(loop.Condition),
             _ => false
         });
 

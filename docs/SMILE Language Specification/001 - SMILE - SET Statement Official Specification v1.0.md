@@ -21,6 +21,7 @@ This specification works together with:
 - [006 - SMILE - IF Statement Official Specification v1.0](006%20-%20SMILE%20-%20IF%20Statement%20Official%20Specification%20v1.0.md)
 - [007 - SMILE - Full-Line Comments and Source Layout Preservation Official Specification v1.0](007%20-%20SMILE%20-%20Full-Line%20Comments%20and%20Source%20Layout%20Preservation%20Official%20Specification%20v1.0.md)
 - [008 - SMILE - INPUT Statement Official Specification v1.0](008%20-%20SMILE%20-%20INPUT%20Statement%20Official%20Specification%20v1.0.md)
+- [009 - SMILE - WHILE Statement Official Specification v1.0](009%20-%20SMILE%20-%20WHILE%20Statement%20Official%20Specification%20v1.0.md)
 
 In SMILE v0.6.1, comment and blank-line recognition is suspended from a block's opening delimiter through its structural closing delimiter. Marker-looking lines and blank physical content lines remain exact String data and never become separate source-layout items.
 
@@ -335,13 +336,13 @@ The target variable is not changed while its new value is still being evaluated.
 
 If evaluation fails, the previous value remains unchanged.
 
-SMILE v0.7.0 adds runtime input through the separate INPUT statement but still has no loop, function call, or other external runtime operation. A SET right side is evaluated only when its containing branch executes. Binding and whole-program target planning still inspect SET expressions in every source branch. An earlier INPUT may make a later SET expression runtime-unknown, so the generator must evaluate that expression from current target storage and preserve checked runtime Integer semantics.
+SMILE v0.8.0 adds pre-test loops through the separate WHILE statement while still having no function call or other user-defined external runtime operation. A SET right side is evaluated only when its containing branch or loop body executes. Binding and whole-program target planning still inspect SET expressions in every source branch and loop body. An earlier INPUT or loop-carried mutation may make a later SET expression runtime-unknown, so the generator must evaluate that expression from current target storage and preserve checked runtime Integer semantics.
 
 ---
 
 # 11. Sequential execution
 
-Statements execute in source order. Within IF, only the first successful clause or final ELSE body executes; a SET in the selected branch updates the current value seen after END IF.
+Statements execute in source order. Within IF, only the first successful clause or final ELSE body executes; a SET in the selected branch updates the current value seen after END IF. Within WHILE, a reached SET updates the current value seen by later body statements, the next condition test, and statements after END WHILE.
 
 ```smile
 LET Counter = 0
@@ -715,7 +716,7 @@ S
   N
 ```
 
-This rule allows the SET statement to be indented naturally inside current IF branches and future loop, function, or scope syntax without forcing structural code indentation into the String value.
+This rule allows the SET statement to be indented naturally inside current IF branches and WHILE bodies, and inside future function or scope syntax, without forcing structural code indentation into the String value.
 
 ---
 
@@ -1339,7 +1340,7 @@ A dedicated token or syntax node may exist in the front end to enforce source pl
 
 `SET` is case-insensitive and reserved in every casing.
 
-SMILE v0.6.0 also reserves `IF`, `THEN`, `ELSE`, and `END`. `ELSEIF` and `ENDIF` are not combined keywords.
+SMILE v0.6.0 also reserves `IF`, `THEN`, `ELSE`, and `END`; v0.7.0 reserves `INPUT`; and v0.8.0 reserves `WHILE`. `ELSEIF`, `ENDIF`, and `ENDWHILE` are not combined keywords.
 
 Invalid:
 
@@ -1702,6 +1703,12 @@ SET and INPUT both update an existing variable without changing the type establi
 
 After INPUT, compile-time analysis MUST NOT reuse a pre-input LET or SET value. A String may contain 0 through 4096 UTF-8 bytes and NUL, an Integer may contain any signed 64-bit value, and a Boolean may contain either value. These facts apply to every later SET expression and target-storage plan.
 
+## Compatibility with WHILE in SMILE v0.8.0
+
+SET is permitted in every WHILE body and is the ordinary way to change a value used by the next condition test. A loop is analyzed structurally as zero or more iterations; the compiler MUST NOT execute or unroll it to obtain SET results. Generators must emit each SET once in the genuine target loop body and evaluate its right side from current loop-carried storage.
+
+A SET Block String Literal remains one normalized SET value inside WHILE. Its internal physical lines are content and MUST NOT be interpreted as WHILE, END WHILE, IF, or END IF structure. Every String recurrence through a WHILE must reach a finite compile-time UTF-8 byte bound under the official WHILE rules; otherwise `SMILE1612` is reported at the WHILE opener and generation does not run.
+
 ---
 
 # 55. Normative ordinary SET acceptance program
@@ -1771,13 +1778,9 @@ The `{Name}` text is literal because block Strings do not interpolate.
 
 # 57. Future evolution
 
-`SET` establishes mutable runtime state. SMILE v0.7.0 realizes INPUT using that existing fixed-type storage model.
+`SET` establishes mutable runtime state. SMILE v0.7.0 realizes INPUT using that existing fixed-type storage model, and SMILE v0.8.0 realizes WHILE by carrying the same current storage through zero or more iterations.
 
-It continues to prepare SMILE for:
-
-- loops;
-- functions;
-- scopes.
+It continues to prepare SMILE for functions and scopes.
 
 The SET Block String Literal remains deliberately SET-only.
 
@@ -1788,3 +1791,5 @@ Optimizations may use known values only when they preserve statement order, muta
 SMILE v0.6.0 realizes the IF milestone. Optimizations must additionally preserve every IF clause and body and must not propagate branch-specific state after END IF.
 
 SMILE v0.7.0 realizes INPUT. Optimizations must preserve every INPUT at its source position, remove the target's previous known value, and never bake a scripted input value into generated source.
+
+SMILE v0.8.0 realizes WHILE. Optimizations must preserve every loop condition and body, use only fixed-point facts valid at every iteration, and never delete, execute, duplicate, hoist from, or unroll a learner loop.

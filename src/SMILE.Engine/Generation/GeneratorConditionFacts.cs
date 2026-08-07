@@ -11,8 +11,11 @@ internal static class GeneratorConditionFacts
 
     public static bool RequiresWarningSafeWrapper(BoundExpression expression)
     {
-        if ((expression is BoundUnaryExpression or BoundBinaryExpression) &&
-            IsProvenWithoutVariableReads(expression))
+        // Shared simplification can reduce a complete source comparison to a
+        // Boolean literal. Literals need the same runtime-opaque wrapper as a
+        // larger proven condition: C# warns about the body of while (false),
+        // while Java rejects that body as unreachable source.
+        if (IsProvenWithoutVariableReads(expression))
         {
             return true;
         }
@@ -25,6 +28,19 @@ internal static class GeneratorConditionFacts
             _ => false
         };
     }
+
+    public static bool ContainsVariableRead(BoundExpression expression) =>
+        expression switch
+        {
+            BoundVariableExpression => true,
+            BoundUnaryExpression unary => ContainsVariableRead(unary.Operand),
+            BoundBinaryExpression binary => ContainsVariableRead(binary.Left) ||
+                ContainsVariableRead(binary.Right),
+            BoundInterpolatedStringExpression interpolated => interpolated.Parts
+                .OfType<BoundInterpolationExpressionPart>()
+                .Any(part => ContainsVariableRead(part.Expression)),
+            _ => false
+        };
 
     public static bool TryEvaluateWithoutVariableReads(
         BoundExpression expression,

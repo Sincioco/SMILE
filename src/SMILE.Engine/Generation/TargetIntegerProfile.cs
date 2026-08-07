@@ -84,6 +84,10 @@ internal sealed record TargetIntegerProfile(
                     }
 
                     break;
+
+                case BoundWhileStatement loop:
+                    Visit(loop.Condition);
+                    break;
             }
         }
 

@@ -17,6 +17,7 @@ public enum SyntaxKind
     InputKeyword,
     PrintKeyword,
     IfKeyword,
+    WhileKeyword,
     ThenKeyword,
     ElseKeyword,
     EndKeyword,

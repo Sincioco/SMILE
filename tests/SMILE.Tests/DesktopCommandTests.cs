@@ -10,14 +10,14 @@ namespace SMILE.Tests;
 public sealed class DesktopCommandTests
 {
     [TestMethod]
-    public void Desktop_assembly_reports_the_v0701_Target_Editor_Hardening_release()
+    public void Desktop_assembly_reports_the_v080_WHILE_Loops_release()
     {
         string? version = typeof(MainWindowViewModel).Assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
             .InformationalVersion;
 
         Assert.IsNotNull(version);
-        Assert.AreEqual("0.7.0.1 Target Editor Hardening", version);
+        Assert.AreEqual("0.8.0 WHILE Loops", version);
     }
 
     [TestMethod]
@@ -253,6 +253,14 @@ public sealed class DesktopCommandTests
         Assert.IsTrue(
             inputExample.Success,
             string.Join(Environment.NewLine, inputExample.Diagnostics) + inputExample.StandardError);
+        string runtimeWhileExamplePath = Path.Combine(AppContext.BaseDirectory, "while.smile");
+        Assert.IsTrue(File.Exists(runtimeWhileExamplePath), runtimeWhileExamplePath);
+        EvaluationResult whileExample = new SmileEvaluator().Evaluate(
+            await File.ReadAllTextAsync(runtimeWhileExamplePath),
+            "3\n");
+        Assert.IsTrue(
+            whileExample.Success,
+            string.Join(Environment.NewLine, whileExample.Diagnostics) + whileExample.StandardError);
 
         var viewModel = new MainWindowViewModel(
             CreateRegistry(),
@@ -344,6 +352,10 @@ PRINT A; B; C
         StringAssert.Contains(viewModel.SourceText, "INPUT InputAge");
         StringAssert.Contains(viewModel.SourceText, "INPUT InputReady");
         StringAssert.Contains(viewModel.SourceText, "IF InputAge >= 18 THEN");
+        StringAssert.Contains(viewModel.SourceText, "PRINT \"WHILE statement examples in language.smile:\"");
+        StringAssert.Contains(viewModel.SourceText, "WHILE LoopCount <= 3");
+        StringAssert.Contains(viewModel.SourceText, "SET LoopCount = LoopCount + 1");
+        StringAssert.Contains(viewModel.SourceText, "END WHILE");
         StringAssert.Contains(
             normalizedSource,
             "LET CommentLayoutMessage = \"\"\n\n\n\nIF REM = \"REM remains a valid variable name.\" THEN");
@@ -902,6 +914,45 @@ PRINT A; B; C
         Assert.IsTrue(viewModel.Pane1.HasUserEdits);
         Assert.AreEqual("Edited", viewModel.Pane1.Status);
         Assert.AreEqual("Generated target 1 - C# *", viewModel.Pane1.Title);
+        Assert.IsFalse(viewModel.Pane2.HasUserEdits);
+        Assert.IsFalse(viewModel.Pane3.HasUserEdits);
+    }
+
+    [TestMethod]
+    public async Task Newer_target_edit_survives_an_older_WHILE_live_generation_while_siblings_update()
+    {
+        var generationGate = new SingleUseLiveGenerationGate();
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(),
+            new FakeErrorReporter(),
+            new FakeFolderOpener(),
+            languageFilePath: null,
+            languageSourceReader: null,
+            liveGenerationGate: generationGate.WaitAsync);
+        await viewModel.InitializeAsync();
+
+        const string whileSource = """
+LET Count = 0
+WHILE Count < 2
+    PRINT WHILE live generation Count={Count}
+    SET Count = Count + 1
+END WHILE
+""";
+        generationGate.Arm();
+        viewModel.SourceText = whileSource;
+        await generationGate.Entered.WaitAsync(TimeSpan.FromSeconds(2));
+
+        viewModel.Pane1.GeneratedCode = "// learner edit after WHILE generation began";
+        long learnerRevision = viewModel.Pane1.UserEditRevision;
+        generationGate.Release();
+
+        await WaitUntilAsync(() =>
+            viewModel.Pane2.GeneratedCode.Contains("WHILE live generation", StringComparison.Ordinal) &&
+            viewModel.Pane3.GeneratedCode.Contains("WHILE live generation", StringComparison.Ordinal));
+
+        Assert.AreEqual("// learner edit after WHILE generation began", viewModel.Pane1.GeneratedCode);
+        Assert.AreEqual(learnerRevision, viewModel.Pane1.UserEditRevision);
+        Assert.IsTrue(viewModel.Pane1.HasUserEdits);
         Assert.IsFalse(viewModel.Pane2.HasUserEdits);
         Assert.IsFalse(viewModel.Pane3.HasUserEdits);
     }

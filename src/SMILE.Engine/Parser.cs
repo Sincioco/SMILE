@@ -4,10 +4,11 @@ namespace SMILE.Engine;
 
 internal sealed class Parser
 {
-    private const int MaximumIfNestingDepth = 128;
+    private const int MaximumControlFlowNestingDepth = 128;
     private readonly string _source;
     private readonly IReadOnlyList<SourceLine> _lines;
     private readonly List<Diagnostic> _diagnostics = new();
+    private readonly List<BlockKind> _activeBlocks = new();
 
     public Parser(string source)
     {
@@ -24,8 +25,8 @@ internal sealed class Parser
         int lineIndex = 0;
         IReadOnlyList<SourceItemSyntax> sourceItems = ParseStatementList(
             ref lineIndex,
-            isIfBody: false,
-            ifNestingDepth: 0);
+            bodyKind: BlockKind.None,
+            controlFlowNestingDepth: 0);
 
         TextSpan span = sourceItems.Count == 0
             ? new TextSpan(0, 0, 1, 1)
@@ -40,8 +41,8 @@ internal sealed class Parser
 
     private IReadOnlyList<SourceItemSyntax> ParseStatementList(
         ref int lineIndex,
-        bool isIfBody,
-        int ifNestingDepth)
+        BlockKind bodyKind,
+        int controlFlowNestingDepth)
     {
         var sourceItems = new List<SourceItemSyntax>();
         while (lineIndex < _lines.Count)
@@ -69,42 +70,23 @@ internal sealed class Parser
                 continue;
             }
 
-            IfTerminatorKind terminator = ClassifyIfTerminator(line, first);
-            if (terminator is IfTerminatorKind.ElseIf or
-                IfTerminatorKind.Else or
-                IfTerminatorKind.EndIf or
-                IfTerminatorKind.MalformedEnd)
+            BlockTerminatorKind terminator = ClassifyBlockTerminator(line, first);
+            if (ShouldReturnToBlockOwner(bodyKind, terminator))
             {
-                if (isIfBody)
-                {
-                    return sourceItems;
-                }
-
-                string code = terminator is IfTerminatorKind.MalformedEnd
-                    ? "SMILE1413"
-                    : "SMILE1411";
-                string message = terminator is IfTerminatorKind.MalformedEnd
-                    ? "END IF is malformed or has trailing content."
-                    : "ELSE, ELSE IF, or END IF has no matching IF.";
-                AddDiagnostic(code, message, line.Span(first, line.Text.Length - first));
-                lineIndex++;
-                continue;
+                return sourceItems;
             }
 
-            if (terminator is IfTerminatorKind.MalformedElse)
+            if (terminator is not BlockTerminatorKind.None)
             {
-                AddDiagnostic(
-                    "SMILE1407",
-                    "ELSE must stand alone or be followed by IF on the same logical line.",
-                    line.Span(first, line.Text.Length - first));
+                ReportMisplacedTerminator(terminator, line, first);
                 lineIndex++;
                 continue;
             }
 
             StatementSyntax? statement = ParseLine(
                 ref lineIndex,
-                isIfBody,
-                ifNestingDepth);
+                bodyKind,
+                controlFlowNestingDepth);
             if (statement is not null)
             {
                 sourceItems.Add(statement);
@@ -118,8 +100,8 @@ internal sealed class Parser
 
     private StatementSyntax? ParseLine(
         ref int lineIndex,
-        bool isIfBody,
-        int ifNestingDepth)
+        BlockKind bodyKind,
+        int controlFlowNestingDepth)
     {
         SourceLine line = _lines[lineIndex];
         int first = SkipHorizontalWhitespace(line.Text, 0);
@@ -160,13 +142,13 @@ internal sealed class Parser
 
         if (keyword.Text.Equals("IF", StringComparison.OrdinalIgnoreCase))
         {
-            if (ifNestingDepth >= MaximumIfNestingDepth)
+            if (controlFlowNestingDepth >= MaximumControlFlowNestingDepth)
             {
                 AddDiagnostic(
                     "SMILE1416",
-                    $"Maximum IF nesting depth of {MaximumIfNestingDepth} exceeded.",
+                    $"Maximum combined IF/WHILE nesting depth of {MaximumControlFlowNestingDepth} exceeded at IF.",
                     keyword.Span);
-                RecoverOverLimitIf(ref lineIndex);
+                RecoverOverLimitControlFlow(ref lineIndex, BlockKind.If);
                 return null;
             }
 
@@ -174,12 +156,31 @@ internal sealed class Parser
                 ref lineIndex,
                 line,
                 keyword,
-                ifNestingDepth + 1);
+                controlFlowNestingDepth + 1);
+        }
+
+        if (keyword.Text.Equals("WHILE", StringComparison.OrdinalIgnoreCase))
+        {
+            if (controlFlowNestingDepth >= MaximumControlFlowNestingDepth)
+            {
+                AddDiagnostic(
+                    "SMILE1611",
+                    $"Maximum combined IF/WHILE nesting depth of {MaximumControlFlowNestingDepth} exceeded at WHILE.",
+                    keyword.Span);
+                RecoverOverLimitControlFlow(ref lineIndex, BlockKind.While);
+                return null;
+            }
+
+            return ParseWhileStatement(
+                ref lineIndex,
+                line,
+                keyword,
+                controlFlowNestingDepth + 1);
         }
 
         AddDiagnostic(
-            isIfBody ? "SMILE1415" : "SMILE1001",
-            isIfBody
+            bodyKind is BlockKind.If ? "SMILE1415" : "SMILE1001",
+            bodyKind is BlockKind.If
                 ? "Statement is not permitted inside IF v1.0."
                 : "Unknown statement or keyword.",
             keyword.Span);
@@ -203,11 +204,12 @@ internal sealed class Parser
             ifKeyword.Start,
             ifLine.Text.Length - ifKeyword.Start);
 
+        _activeBlocks.Add(BlockKind.If);
         lineIndex++;
         IReadOnlyList<SourceItemSyntax> firstSourceItems = ParseStatementList(
             ref lineIndex,
-            isIfBody: true,
-            ifNestingDepth: ifNestingDepth);
+            bodyKind: BlockKind.If,
+            controlFlowNestingDepth: ifNestingDepth);
         clauses.Add(new ConditionalClauseSyntax(
             firstCondition,
             firstSourceItems,
@@ -218,7 +220,7 @@ internal sealed class Parser
             SourceLine line = _lines[lineIndex];
             int first = SkipHorizontalWhitespace(line.Text, 0);
             if (first >= line.Text.Length ||
-                ClassifyIfTerminator(line, first) is not IfTerminatorKind.ElseIf)
+                ClassifyBlockTerminator(line, first) is not BlockTerminatorKind.ElseIf)
             {
                 break;
             }
@@ -235,8 +237,8 @@ internal sealed class Parser
             lineIndex++;
             IReadOnlyList<SourceItemSyntax> sourceItems = ParseStatementList(
                 ref lineIndex,
-                isIfBody: true,
-                ifNestingDepth: ifNestingDepth);
+                bodyKind: BlockKind.If,
+                controlFlowNestingDepth: ifNestingDepth);
             clauses.Add(new ConditionalClauseSyntax(
                 condition,
                 sourceItems,
@@ -250,14 +252,14 @@ internal sealed class Parser
             SourceLine line = _lines[lineIndex];
             int first = SkipHorizontalWhitespace(line.Text, 0);
             if (first < line.Text.Length &&
-                ClassifyIfTerminator(line, first) is IfTerminatorKind.Else)
+                ClassifyBlockTerminator(line, first) is BlockTerminatorKind.Else)
             {
                 hasElseClause = true;
                 lineIndex++;
                 elseSourceItems.AddRange(ParseStatementList(
                     ref lineIndex,
-                    isIfBody: true,
-                    ifNestingDepth: ifNestingDepth));
+                    bodyKind: BlockKind.If,
+                    controlFlowNestingDepth: ifNestingDepth));
 
                 // Recover through extra clause headers so the nearest IF still
                 // owns its END IF and later top-level statements remain usable.
@@ -271,10 +273,10 @@ internal sealed class Parser
                         continue;
                     }
 
-                    IfTerminatorKind duplicate = ClassifyIfTerminator(
+                    BlockTerminatorKind duplicate = ClassifyBlockTerminator(
                         duplicateLine,
                         duplicateFirst);
-                    if (duplicate is IfTerminatorKind.Else)
+                    if (duplicate is BlockTerminatorKind.Else)
                     {
                         AddDiagnostic(
                             "SMILE1409",
@@ -283,7 +285,7 @@ internal sealed class Parser
                                 duplicateFirst,
                                 duplicateLine.Text.Length - duplicateFirst));
                     }
-                    else if (duplicate is IfTerminatorKind.ElseIf)
+                    else if (duplicate is BlockTerminatorKind.ElseIf)
                     {
                         AddDiagnostic(
                             "SMILE1410",
@@ -300,8 +302,8 @@ internal sealed class Parser
                     lineIndex++;
                     elseSourceItems.AddRange(ParseStatementList(
                         ref lineIndex,
-                        isIfBody: true,
-                        ifNestingDepth: ifNestingDepth));
+                        bodyKind: BlockKind.If,
+                        controlFlowNestingDepth: ifNestingDepth));
                 }
             }
         }
@@ -320,8 +322,8 @@ internal sealed class Parser
         {
             SourceLine endLine = _lines[lineIndex];
             int first = SkipHorizontalWhitespace(endLine.Text, 0);
-            IfTerminatorKind terminator = ClassifyIfTerminator(endLine, first);
-            if (terminator is IfTerminatorKind.MalformedEnd)
+            BlockTerminatorKind terminator = ClassifyBlockTerminator(endLine, first);
+            if (terminator is BlockTerminatorKind.MalformedEndIf or BlockTerminatorKind.MalformedEnd)
             {
                 AddDiagnostic(
                     "SMILE1413",
@@ -329,7 +331,7 @@ internal sealed class Parser
                     endLine.Span(first, endLine.Text.Length - first));
                 statementEnd = endLine.Start + endLine.Text.Length;
             }
-            else if (terminator is IfTerminatorKind.EndIf)
+            else if (terminator is BlockTerminatorKind.EndIf)
             {
                 statementEnd = endLine.Start + endLine.Text.Length;
             }
@@ -344,6 +346,7 @@ internal sealed class Parser
             }
         }
 
+        _activeBlocks.RemoveAt(_activeBlocks.Count - 1);
         return new IfStatementSyntax(
             clauses,
             elseSourceItems,
@@ -355,15 +358,133 @@ internal sealed class Parser
                 ifKeyword.Start + 1));
     }
 
-    private void RecoverOverLimitIf(ref int lineIndex)
+    private WhileStatementSyntax ParseWhileStatement(
+        ref int lineIndex,
+        SourceLine whileLine,
+        IdentifierRead whileKeyword,
+        int controlFlowNestingDepth)
     {
-        int unclosedIfCount = 1;
+        int statementStart = whileLine.Start + whileKeyword.Start;
+        ExpressionSyntax condition = ParseWhileHeader(whileLine, whileKeyword);
+
+        _activeBlocks.Add(BlockKind.While);
+        lineIndex++;
+        IReadOnlyList<SourceItemSyntax> sourceItems = ParseStatementList(
+            ref lineIndex,
+            bodyKind: BlockKind.While,
+            controlFlowNestingDepth: controlFlowNestingDepth);
+
+        int statementEnd;
+        if (lineIndex >= _lines.Count)
+        {
+            SourceLine diagnosticLine = _lines.Count > 0 ? _lines[^1] : whileLine;
+            AddDiagnostic(
+                "SMILE1607",
+                "WHILE requires a matching END WHILE.",
+                diagnosticLine.Span(diagnosticLine.Text.Length, 0));
+            statementEnd = _source.Length;
+        }
+        else
+        {
+            SourceLine endLine = _lines[lineIndex];
+            int first = SkipHorizontalWhitespace(endLine.Text, 0);
+            BlockTerminatorKind terminator = ClassifyBlockTerminator(endLine, first);
+            if (terminator is BlockTerminatorKind.MalformedEndWhile or BlockTerminatorKind.MalformedEnd)
+            {
+                AddDiagnostic(
+                    "SMILE1608",
+                    "END WHILE must contain two keywords and stand alone.",
+                    endLine.Span(first, endLine.Text.Length - first));
+                statementEnd = endLine.Start + endLine.Text.Length;
+            }
+            else if (terminator is BlockTerminatorKind.EndWhile)
+            {
+                statementEnd = endLine.Start + endLine.Text.Length;
+            }
+            else
+            {
+                AddDiagnostic(
+                    "SMILE1607",
+                    "WHILE requires a matching END WHILE.",
+                    endLine.Span(first, Math.Max(0, endLine.Text.Length - first)));
+                statementEnd = endLine.Start;
+                lineIndex--;
+            }
+        }
+
+        _activeBlocks.RemoveAt(_activeBlocks.Count - 1);
+        return new WhileStatementSyntax(
+            condition,
+            sourceItems,
+            whileKeyword.Span,
+            new TextSpan(
+                statementStart,
+                Math.Max(0, statementEnd - statementStart),
+                whileLine.LineNumber,
+                whileKeyword.Start + 1));
+    }
+
+    private ExpressionSyntax ParseWhileHeader(
+        SourceLine line,
+        IdentifierRead whileKeyword)
+    {
+        int conditionStart = SkipHorizontalWhitespace(line.Text, whileKeyword.End);
+        if (whileKeyword.End >= line.Text.Length)
+        {
+            AddDiagnostic(
+                "SMILE1602",
+                "WHILE requires a condition.",
+                line.Span(whileKeyword.End, 0));
+            return new ErrorExpressionSyntax(line.Span(whileKeyword.End, 0));
+        }
+
+        if (!SyntaxFacts.IsHorizontalWhitespace(line.Text[whileKeyword.End]))
+        {
+            AddDiagnostic(
+                "SMILE1601",
+                "WHILE must be followed by a space or tab.",
+                line.Span(whileKeyword.End, 0));
+            conditionStart = whileKeyword.End;
+        }
+
+        if (conditionStart >= line.Text.Length)
+        {
+            AddDiagnostic(
+                "SMILE1602",
+                "WHILE requires a condition.",
+                line.Span(conditionStart, 0));
+            return new ErrorExpressionSyntax(line.Span(conditionStart, 0));
+        }
+
+        var expressionParser = new ExpressionParser(
+            this,
+            line,
+            conditionStart,
+            line.Text.Length);
+        ExpressionSyntax condition = expressionParser.ParseExpression();
+        int trailing = SkipHorizontalWhitespace(line.Text, expressionParser.Position);
+        if (trailing < line.Text.Length)
+        {
+            AddDiagnostic(
+                "SMILE1606",
+                "Unexpected content follows the WHILE condition.",
+                line.Span(trailing, line.Text.Length - trailing));
+        }
+
+        return condition;
+    }
+
+    private void RecoverOverLimitControlFlow(
+        ref int lineIndex,
+        BlockKind rejectedOpener)
+    {
+        var openBlocks = new List<BlockKind> { rejectedOpener };
         var ignoredBlockDiagnostics = new List<Diagnostic>();
 
         // The ordinary parser deliberately stays recursive because that most
-        // clearly mirrors SMILE's nested block syntax. Once the safety limit
-        // is reached, this small iterative scanner balances only structural
-        // headers so malformed editor input cannot consume the process stack.
+        // clearly mirrors SMILE's nested block syntax through the documented
+        // limit. Once that limit is reached, this iterative scanner balances
+        // mixed IF and WHILE headers without consuming the process stack.
         for (int scanIndex = lineIndex + 1; scanIndex < _lines.Count; scanIndex++)
         {
             SourceLine line = _lines[scanIndex];
@@ -373,9 +494,9 @@ internal sealed class Parser
                 continue;
             }
 
-            // Comment payload is inert even when it spells IF, ELSE, END IF,
-            // or a block-String opener. Recovery must classify it with the
-            // same contextual rules as the ordinary statement-list parser.
+            // Comment payload is inert even when it spells a block header or
+            // terminator. Recovery uses the same contextual ownership as the
+            // ordinary statement-list parser.
             if (FullLineCommentFacts.TryClassify(
                     line.Text,
                     first,
@@ -400,25 +521,64 @@ internal sealed class Parser
                 continue;
             }
 
-            IfTerminatorKind terminator = ClassifyIfTerminator(line, first);
-            if (terminator is IfTerminatorKind.EndIf or IfTerminatorKind.MalformedEnd)
+            BlockTerminatorKind terminator = ClassifyBlockTerminator(line, first);
+            if ((terminator is BlockTerminatorKind.ElseIf or BlockTerminatorKind.Else) &&
+                !openBlocks.Contains(BlockKind.If) &&
+                _activeBlocks.Contains(BlockKind.If))
             {
-                unclosedIfCount--;
-                if (unclosedIfCount == 0)
+                // The rejected subtree has no IF that can own this clause, so
+                // it belongs to an accepted outer IF. Leave the header for that
+                // owner just as the ordinary statement-list parser does.
+                lineIndex = scanIndex - 1;
+                return;
+            }
+
+            BlockKind closingKind = terminator switch
+            {
+                BlockTerminatorKind.EndIf or BlockTerminatorKind.MalformedEndIf => BlockKind.If,
+                BlockTerminatorKind.EndWhile or BlockTerminatorKind.MalformedEndWhile => BlockKind.While,
+                BlockTerminatorKind.MalformedEnd => openBlocks[^1],
+                _ => BlockKind.None
+            };
+            if (closingKind is not BlockKind.None)
+            {
+                int matchingIndex = openBlocks.LastIndexOf(closingKind);
+                if (matchingIndex >= 0)
                 {
-                    lineIndex = scanIndex;
+                    // A mismatched closer implicitly abandons any malformed
+                    // inner blocks during recovery, then closes its nearest
+                    // matching opener. This keeps later top-level source usable.
+                    openBlocks.RemoveRange(
+                        matchingIndex,
+                        openBlocks.Count - matchingIndex);
+                    if (openBlocks.Count == 0)
+                    {
+                        lineIndex = scanIndex;
+                        return;
+                    }
+                }
+                else if (_activeBlocks.Contains(closingKind))
+                {
+                    // This closer belongs to an accepted outer block, not the
+                    // rejected subtree. Leave it unconsumed so the recursive
+                    // owner can unwind normally and preserve later source.
+                    lineIndex = scanIndex - 1;
                     return;
                 }
 
                 continue;
             }
 
-            // ELSE IF starts with ELSE and therefore does not pass this
-            // first-keyword check. A standalone ELSE then IF on the following
-            // line naturally counts as a nested block.
+            // ELSE IF starts with ELSE and therefore is not counted as a new
+            // IF. A standalone ELSE followed by IF on the next line naturally
+            // opens a nested block, as required by SMILE's grammar.
             if (StartsWithKeyword(line, first, "IF"))
             {
-                unclosedIfCount++;
+                openBlocks.Add(BlockKind.If);
+            }
+            else if (StartsWithKeyword(line, first, "WHILE"))
+            {
+                openBlocks.Add(BlockKind.While);
             }
         }
 
@@ -630,11 +790,11 @@ internal sealed class Parser
         return -1;
     }
 
-    private IfTerminatorKind ClassifyIfTerminator(SourceLine line, int first)
+    private BlockTerminatorKind ClassifyBlockTerminator(SourceLine line, int first)
     {
         if (first >= line.Text.Length || !SyntaxFacts.IsIdentifierStart(line.Text[first]))
         {
-            return IfTerminatorKind.None;
+            return BlockTerminatorKind.None;
         }
 
         IdentifierRead keyword = ReadIdentifier(line, first);
@@ -642,18 +802,18 @@ internal sealed class Parser
         {
             if (keyword.End >= line.Text.Length)
             {
-                return IfTerminatorKind.Else;
+                return BlockTerminatorKind.Else;
             }
 
             if (!SyntaxFacts.IsHorizontalWhitespace(line.Text[keyword.End]))
             {
-                return IfTerminatorKind.MalformedElse;
+                return BlockTerminatorKind.MalformedElse;
             }
 
             int next = SkipHorizontalWhitespace(line.Text, keyword.End);
             if (next >= line.Text.Length)
             {
-                return IfTerminatorKind.Else;
+                return BlockTerminatorKind.Else;
             }
 
             if (SyntaxFacts.IsIdentifierStart(line.Text[next]))
@@ -661,43 +821,126 @@ internal sealed class Parser
                 IdentifierRead following = ReadIdentifier(line, next);
                 if (following.Text.Equals("IF", StringComparison.OrdinalIgnoreCase))
                 {
-                    return IfTerminatorKind.ElseIf;
+                    return BlockTerminatorKind.ElseIf;
                 }
             }
 
-            return IfTerminatorKind.MalformedElse;
+            return BlockTerminatorKind.MalformedElse;
         }
 
         if (keyword.Text.Equals("ENDIF", StringComparison.OrdinalIgnoreCase))
         {
-            return IfTerminatorKind.MalformedEnd;
+            return BlockTerminatorKind.MalformedEndIf;
+        }
+
+        if (keyword.Text.Equals("ENDWHILE", StringComparison.OrdinalIgnoreCase))
+        {
+            return BlockTerminatorKind.MalformedEndWhile;
         }
 
         if (!keyword.Text.Equals("END", StringComparison.OrdinalIgnoreCase))
         {
-            return IfTerminatorKind.None;
+            return BlockTerminatorKind.None;
         }
 
         if (keyword.End >= line.Text.Length ||
             !SyntaxFacts.IsHorizontalWhitespace(line.Text[keyword.End]))
         {
-            return IfTerminatorKind.MalformedEnd;
+            return BlockTerminatorKind.MalformedEnd;
         }
 
-        int ifStart = SkipHorizontalWhitespace(line.Text, keyword.End);
-        if (ifStart >= line.Text.Length || !SyntaxFacts.IsIdentifierStart(line.Text[ifStart]))
+        int followingStart = SkipHorizontalWhitespace(line.Text, keyword.End);
+        if (followingStart >= line.Text.Length ||
+            !SyntaxFacts.IsIdentifierStart(line.Text[followingStart]))
         {
-            return IfTerminatorKind.MalformedEnd;
+            return BlockTerminatorKind.MalformedEnd;
         }
 
-        IdentifierRead ifKeyword = ReadIdentifier(line, ifStart);
-        if (!ifKeyword.Text.Equals("IF", StringComparison.OrdinalIgnoreCase) ||
-            SkipHorizontalWhitespace(line.Text, ifKeyword.End) < line.Text.Length)
+        IdentifierRead followingKeyword = ReadIdentifier(line, followingStart);
+        int trailing = SkipHorizontalWhitespace(line.Text, followingKeyword.End);
+        if (followingKeyword.Text.Equals("IF", StringComparison.OrdinalIgnoreCase))
         {
-            return IfTerminatorKind.MalformedEnd;
+            return trailing < line.Text.Length
+                ? BlockTerminatorKind.MalformedEndIf
+                : BlockTerminatorKind.EndIf;
         }
 
-        return IfTerminatorKind.EndIf;
+        if (followingKeyword.Text.Equals("WHILE", StringComparison.OrdinalIgnoreCase))
+        {
+            return trailing < line.Text.Length
+                ? BlockTerminatorKind.MalformedEndWhile
+                : BlockTerminatorKind.EndWhile;
+        }
+
+        return BlockTerminatorKind.MalformedEnd;
+    }
+
+    private bool ShouldReturnToBlockOwner(
+        BlockKind bodyKind,
+        BlockTerminatorKind terminator)
+    {
+        BlockKind target = terminator switch
+        {
+            BlockTerminatorKind.ElseIf or
+            BlockTerminatorKind.Else or
+            BlockTerminatorKind.EndIf or
+            BlockTerminatorKind.MalformedEndIf => BlockKind.If,
+            BlockTerminatorKind.EndWhile or
+            BlockTerminatorKind.MalformedEndWhile => BlockKind.While,
+            BlockTerminatorKind.MalformedEnd => bodyKind,
+            _ => BlockKind.None
+        };
+        if (target is BlockKind.None)
+        {
+            return false;
+        }
+
+        if (target == bodyKind)
+        {
+            return true;
+        }
+
+        // A closer for an outer block must be left for that owner. The current
+        // owner will report its missing terminator and unwind one level without
+        // consuming the outer closer.
+        for (int index = 0; index + 1 < _activeBlocks.Count; index++)
+        {
+            if (_activeBlocks[index] == target)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void ReportMisplacedTerminator(
+        BlockTerminatorKind terminator,
+        SourceLine line,
+        int first)
+    {
+        (string code, string message) = terminator switch
+        {
+            BlockTerminatorKind.MalformedElse => (
+                "SMILE1407",
+                "ELSE must stand alone or be followed by IF on the same logical line."),
+            BlockTerminatorKind.ElseIf or
+            BlockTerminatorKind.Else or
+            BlockTerminatorKind.EndIf => (
+                "SMILE1411",
+                "ELSE, ELSE IF, or END IF has no matching IF."),
+            BlockTerminatorKind.MalformedEndIf or BlockTerminatorKind.MalformedEnd => (
+                "SMILE1413",
+                "END IF is malformed or has trailing content."),
+            BlockTerminatorKind.EndWhile => (
+                "SMILE1609",
+                "END WHILE has no matching WHILE."),
+            BlockTerminatorKind.MalformedEndWhile => (
+                "SMILE1608",
+                "END WHILE must contain two keywords and stand alone."),
+            _ => throw new InvalidOperationException("Unexpected block terminator classification.")
+        };
+        AddDiagnostic(code, message, line.Span(first, line.Text.Length - first));
     }
 
     private static TextSpan ExtendHeaderSpan(
@@ -1397,13 +1640,23 @@ internal sealed class Parser
         string Text,
         TextSpan Span);
 
-    private enum IfTerminatorKind
+    private enum BlockKind
+    {
+        None,
+        If,
+        While
+    }
+
+    private enum BlockTerminatorKind
     {
         None,
         ElseIf,
         Else,
         EndIf,
+        EndWhile,
         MalformedElse,
+        MalformedEndIf,
+        MalformedEndWhile,
         MalformedEnd
     }
 
@@ -1694,6 +1947,7 @@ internal static class SyntaxFacts
             "INPUT" => SyntaxKind.InputKeyword,
             "PRINT" => SyntaxKind.PrintKeyword,
             "IF" => SyntaxKind.IfKeyword,
+            "WHILE" => SyntaxKind.WhileKeyword,
             "THEN" => SyntaxKind.ThenKeyword,
             "ELSE" => SyntaxKind.ElseKeyword,
             "END" => SyntaxKind.EndKeyword,

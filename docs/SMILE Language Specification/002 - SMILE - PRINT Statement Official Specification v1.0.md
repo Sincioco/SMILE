@@ -14,7 +14,7 @@
 
 Evaluated variable references read the variable's current runtime value at the `PRINT` statement. An earlier `SET` or successful `INPUT` therefore changes what every later direct expression, raw-template hole, and interpolated String hole prints. After INPUT, a generator must read current target storage rather than reuse the LET or SET value that preceded the input operation.
 
-SMILE v0.7.0 permits PRINT and INPUT in IF, ELSE IF, ELSE, and nested IF bodies. A PRINT executes only when its containing branch is selected. All PRINT source text in unselected branches is still parsed and bound, and every target retains the complete branch structure. PRINT prompts remain separate statements before INPUT; INPUT has no built-in prompt form.
+SMILE v0.8.0 permits PRINT and INPUT in IF, ELSE IF, ELSE, nested IF, WHILE, and nested WHILE bodies. A PRINT executes only when its containing branch is selected and each time its containing loop body is reached. All PRINT source text in unselected branches and zero-iteration loop bodies is still parsed and bound, and every target retains the complete branch and loop structure. PRINT prompts remain separate statements before INPUT; INPUT has no built-in prompt form.
 
 SMILE deliberately provides both:
 
@@ -128,7 +128,7 @@ First step; second step; third step.
 
 All forms of `PRINT` defined by this specification must fit on one physical source line. The multiline SET Block String Literal is a SET-only source form and is not legal directly in `PRINT`.
 
-IF headers and terminators have their own one-logical-line rules. PRINT text inside a branch does not change how ELSE, ELSE IF, or END IF is recognized on later lines.
+IF and WHILE headers and terminators have their own one-logical-line rules. PRINT text inside a branch or loop body does not change how ELSE, ELSE IF, END IF, or END WHILE is recognized on later lines.
 
 Future SMILE versions may permit visibly incomplete expressions to continue across lines, but that does not permit multiple statements on one line.
 
@@ -826,12 +826,15 @@ The official v0.4.1 expression grammar and short-circuit evaluation rules are de
 - [004 - SMILE - Core Types and Expressions Official Specification v1.0](004%20-%20SMILE%20-%20Core%20Types%20and%20Expressions%20Official%20Specification%20v1.0.md)
 - [007 - SMILE - Full-Line Comments and Source Layout Preservation Official Specification v1.0](007%20-%20SMILE%20-%20Full-Line%20Comments%20and%20Source%20Layout%20Preservation%20Official%20Specification%20v1.0.md)
 - [008 - SMILE - INPUT Statement Official Specification v1.0](008%20-%20SMILE%20-%20INPUT%20Statement%20Official%20Specification%20v1.0.md)
+- [009 - SMILE - WHILE Statement Official Specification v1.0](009%20-%20SMILE%20-%20WHILE%20Statement%20Official%20Specification%20v1.0.md)
 
 Future versions may expand the expression grammar further without changing the raw-template rules.
 
 SMILE v0.6.0 reuses these same expression, interpolation, display, and current-value rules for PRINT statements inside conditional branches. Only the selected branch produces output.
 
 SMILE v0.7.0 reuses them for runtime-entered values. PRINT writes only program output; interactive terminal echo is host behavior and is not part of SMILE stdout. If a runtime input or arithmetic error follows earlier PRINT statements, that stdout remains present while the canonical error is written separately to stderr.
+
+SMILE v0.8.0 reuses them for WHILE. PRINT reads current loop-carried storage and runs once per reached statement execution; a false pre-test condition produces no body output. Generated targets retain PRINT in the genuine loop body rather than unrolling it or replacing current variables with pre-loop literals.
 
 Future versions MUST preserve the deterministic distinction:
 
@@ -867,8 +870,8 @@ The official SMILE `PRINT` rules are:
 17. Target generators preserve expression intent when the target language has an idiomatic equivalent.
 18. Evaluated variable references read the current value established by earlier `LET`, `SET`, and successful `INPUT` statements.
 19. SET Block String Literals are not legal directly in `PRINT`.
-20. PRINT is permitted in every IF v1.0 body and executes only when that branch is selected.
-21. Bare PRINT templates do not change IF condition parsing or ELSE/END IF terminator recognition.
+20. PRINT is permitted in every IF and WHILE v1.0 body; it executes only in a selected branch and on each reached loop iteration.
+21. Bare PRINT templates do not change IF/WHILE condition parsing or ELSE, END IF, and END WHILE terminator recognition.
 22. Prompts are ordinary PRINT statements before INPUT; INPUT has no built-in prompt syntax in v1.0.
 23. Runtime errors preserve earlier PRINT stdout and write their canonical line to stderr.
 

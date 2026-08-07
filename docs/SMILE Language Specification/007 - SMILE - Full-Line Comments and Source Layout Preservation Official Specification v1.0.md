@@ -13,7 +13,7 @@ It defines:
 3. preservation of blank source lines in generated target source;
 4. the non-semantic source-layout model needed to support both features safely.
 
-This specification works together with the official SMILE specifications for LET, SET, INPUT, PRINT, IF, String literals, and core expressions.
+This specification works together with the official SMILE specifications for LET, SET, INPUT, PRINT, IF, WHILE, String literals, and core expressions.
 
 **Repository destination:** `docs/SMILE Language Specification/007 - SMILE - Full-Line Comments and Source Layout Preservation Official Specification v1.0.md`
 
@@ -24,6 +24,7 @@ This specification works together with the official SMILE specifications for LET
 - [005 - SMILE - LET Statement Official Specification v1.0](005%20-%20SMILE%20-%20LET%20Statement%20Official%20Specification%20v1.0.md)
 - [006 - SMILE - IF Statement Official Specification v1.0](006%20-%20SMILE%20-%20IF%20Statement%20Official%20Specification%20v1.0.md)
 - [008 - SMILE - INPUT Statement Official Specification v1.0](008%20-%20SMILE%20-%20INPUT%20Statement%20Official%20Specification%20v1.0.md)
+- [009 - SMILE - WHILE Statement Official Specification v1.0](009%20-%20SMILE%20-%20WHILE%20Statement%20Official%20Specification%20v1.0.md)
 
 ---
 
@@ -419,15 +420,28 @@ Examples of statement lists include:
 - an IF clause body;
 - an ELSE IF clause body;
 - an ELSE body;
-- a future loop or function body.
+- a WHILE body;
+- a future function body.
 
 Generator-owned formatting may add additional blank lines. It must not erase a source-authored blank line.
 
 ---
 
-# 15. Comments and blank lines inside IF
+# 15. Comments and blank lines inside IF and WHILE
 
 Comments and blank lines may appear anywhere a blank line may appear in an IF-related body.
+
+They may likewise appear in a WHILE body without counting as an executable iteration statement:
+
+```smile
+LET Count = 0
+
+WHILE Count < 2
+    // This comment remains in the generated loop body.
+
+    SET Count = Count + 1
+END WHILE
+```
 
 Valid:
 
@@ -494,9 +508,9 @@ IF Ready = TRUE THEN
 END IF
 ```
 
-The comment text does not open, close, or redirect the IF statement.
+The comment text does not open, close, or redirect an IF or WHILE statement.
 
-The same rule applies during parser recovery, including maximum-IF-depth recovery.
+The same rule applies during parser recovery, including maximum combined IF/WHILE-depth recovery.
 
 ---
 
@@ -783,7 +797,7 @@ public sealed record BlankLineSyntax(TextSpan Span)
     : SourceItemSyntax(Span);
 ```
 
-Program and branch bodies should preserve an ordered list of source items.
+Program, branch, and loop bodies should preserve an ordered list of source items.
 
 The exact public API may differ, but comments and blank lines must not be reconstructed later from source offsets or a fragile side table.
 
@@ -808,7 +822,7 @@ public sealed record BoundBlankLine()
     : BoundSourceItem;
 ```
 
-Bound programs and branch bodies preserve ordered source items.
+Bound programs, branch bodies, and WHILE bodies preserve ordered source items.
 
 Semantic helpers may expose filtered `BoundStatement` sequences for evaluation and analysis.
 
@@ -991,5 +1005,5 @@ Future language milestones must preserve these rules unless an explicit newer sp
 - source comments remain non-semantic;
 - blank lines remain non-semantic;
 - comments and blank lines remain available to formatters, source maps, documentation tools, and IDE features;
-- future loops, functions, and scopes use the same ordered source-item model for their bodies;
+- current WHILE bodies and future loop forms, functions, and scopes use the same ordered source-item model for their bodies;
 - generated comment preservation remains target-safe and deterministic.

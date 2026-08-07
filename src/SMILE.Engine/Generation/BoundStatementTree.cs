@@ -12,22 +12,30 @@ internal static class BoundStatementTree
         {
             yield return statement;
 
-            if (statement is not BoundIfStatement conditional)
+            if (statement is BoundWhileStatement loop)
             {
-                continue;
-            }
-
-            foreach (BoundConditionalClause clause in conditional.Clauses)
-            {
-                foreach (BoundStatement nested in Enumerate(clause.Statements))
+                foreach (BoundStatement nested in Enumerate(loop.Statements))
                 {
                     yield return nested;
                 }
+
+                continue;
             }
 
-            foreach (BoundStatement nested in Enumerate(conditional.ElseStatements))
+            if (statement is BoundIfStatement conditional)
             {
-                yield return nested;
+                foreach (BoundConditionalClause clause in conditional.Clauses)
+                {
+                    foreach (BoundStatement nested in Enumerate(clause.Statements))
+                    {
+                        yield return nested;
+                    }
+                }
+
+                foreach (BoundStatement nested in Enumerate(conditional.ElseStatements))
+                {
+                    yield return nested;
+                }
             }
         }
     }
@@ -56,6 +64,10 @@ internal static class BoundStatementTree
                         yield return clause.Condition;
                     }
 
+                    break;
+
+                case BoundWhileStatement loop:
+                    yield return loop.Condition;
                     break;
             }
         }

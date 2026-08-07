@@ -338,6 +338,30 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
                     emittedExecutable = true;
                     emittedBodyStatement = true;
                     break;
+
+                case BoundWhileStatement loop:
+                    if (!emittedExecutable && emittedDeclaration)
+                    {
+                        source.AppendLine();
+                    }
+
+                    AppendWhileStatement(
+                        source,
+                        loop,
+                        indent,
+                        analysis,
+                        identifiers,
+                        integers,
+                        exactStringLengths,
+                        runtimeStringBuffers,
+                        runtimeExpressionBuffers,
+                        checkedArithmetic,
+                        ref emittedDeclaration,
+                        ref emittedExecutable,
+                        ref emittedBodyStatement);
+                    emittedExecutable = true;
+                    emittedBodyStatement = true;
+                    break;
             }
         }
     }
@@ -410,6 +434,50 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
                 ref emittedBodyStatement);
             source.Append(indent).AppendLine("}");
         }
+    }
+
+    private static void AppendWhileStatement(
+        StringBuilder source,
+        BoundWhileStatement loop,
+        string indent,
+        BoundProgramAnalysis analysis,
+        TargetIdentifierMap identifiers,
+        TargetIntegerProfile integers,
+        IReadOnlyDictionary<VariableSymbol, string> exactStringLengths,
+        IReadOnlyDictionary<BoundStatement, CCodeGenerator.RuntimeStringBuffer> runtimeStringBuffers,
+        IReadOnlyDictionary<BoundExpression, CCodeGenerator.RuntimeStringBuffer> runtimeExpressionBuffers,
+        bool checkedArithmetic,
+        ref bool emittedDeclaration,
+        ref bool emittedExecutable,
+        ref bool emittedBodyStatement)
+    {
+        BoundWhileStatementAnalysis loopFacts = analysis.GetWhileFacts(loop);
+        source.Append(indent).Append("while (")
+            .Append(TargetExpression.ObjectiveC(
+                loop.Condition,
+                identifiers,
+                integers,
+                GeneratorConditionFacts.KnownValues(loopFacts.ValuesAtHead),
+                exactStringLengths,
+                runtimeExpressionBuffers,
+                checkedArithmetic))
+            .AppendLine(")");
+        source.Append(indent).AppendLine("{");
+        AppendSourceItems(
+            source,
+            loop.SourceItems,
+            indent + "    ",
+            analysis,
+            identifiers,
+            integers,
+            exactStringLengths,
+            runtimeStringBuffers,
+            runtimeExpressionBuffers,
+            checkedArithmetic,
+            ref emittedDeclaration,
+            ref emittedExecutable,
+            ref emittedBodyStatement);
+        source.Append(indent).AppendLine("}");
     }
 
     private static void AppendObjectiveCPrint(

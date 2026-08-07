@@ -10,7 +10,7 @@ The language definition was introduced in:
 
 The current implementation baseline is:
 
-> **SMILE v0.7.0 — INPUT**
+> **SMILE v0.8.0 — WHILE Loops**
 
 This specification defines three permanent SMILE rules:
 
@@ -23,7 +23,7 @@ This specification defines three permanent SMILE rules:
 3. **ELSE IF clause rule**
    When `ELSE` is immediately followed by `IF` on the same logical statement line, the two keywords form an `ELSE IF` clause belonging to the current IF statement.
 
-This specification works together with the numbered official SMILE specifications for LET, SET, PRINT, String literals, core expressions, [007 - Full-Line Comments and Source Layout Preservation](007%20-%20SMILE%20-%20Full-Line%20Comments%20and%20Source%20Layout%20Preservation%20Official%20Specification%20v1.0.md), and [008 - INPUT](008%20-%20SMILE%20-%20INPUT%20Statement%20Official%20Specification%20v1.0.md).
+This specification works together with the numbered official SMILE specifications for LET, SET, PRINT, String literals, core expressions, [007 - Full-Line Comments and Source Layout Preservation](007%20-%20SMILE%20-%20Full-Line%20Comments%20and%20Source%20Layout%20Preservation%20Official%20Specification%20v1.0.md), [008 - INPUT](008%20-%20SMILE%20-%20INPUT%20Statement%20Official%20Specification%20v1.0.md), and [009 - WHILE](009%20-%20SMILE%20-%20WHILE%20Statement%20Official%20Specification%20v1.0.md).
 
 ---
 
@@ -628,6 +628,7 @@ Permitted:
 - SET;
 - INPUT;
 - nested IF;
+- WHILE;
 - full-line `REM`, `//`, `#`, and `--` comments;
 - blank lines;
 - SET Block String Literals within SET.
@@ -653,7 +654,7 @@ END IF
 
 # 24. LET is not permitted inside IF v1.0
 
-v0.7.0 does not introduce block-local declarations or scopes.
+SMILE v0.8.0 does not introduce block-local declarations or scopes.
 
 Valid:
 
@@ -845,7 +846,7 @@ END IF
 | `SMILE1413` | END IF is malformed or has trailing content |
 | `SMILE1414` | LET is not permitted inside IF v1.0 |
 | `SMILE1415` | Statement is not permitted inside IF v1.0 |
-| `SMILE1416` | Maximum IF nesting depth of 128 exceeded |
+| `SMILE1416` | Maximum combined IF/WHILE nesting depth of 128 exceeded at IF |
 
 Existing expression and type diagnostics remain applicable.
 
@@ -966,9 +967,9 @@ Ready for the next lesson.
 
 # 40. Implementation safety limit
 
-The maximum supported IF nesting depth is 128, where the first outermost IF is depth 1. A program nested to exactly depth 128 is valid. Attempting to enter depth 129 produces the `DiagnosticSeverity.Error` diagnostic `SMILE1416` at that IF keyword, and the compiler recovers without recursively processing the over-limit body.
+The maximum supported combined IF/WHILE control-flow nesting depth is 128, where the first outermost block is depth 1. A program nested to exactly depth 128 is valid. Attempting to enter an IF at depth 129 produces the `DiagnosticSeverity.Error` diagnostic `SMILE1416` at that IF keyword; attempting to enter a WHILE there produces `SMILE1611` under specification 009. The compiler recovers without recursively processing the over-limit body, and alternating block kinds cannot bypass the limit.
 
-Iterative recovery gives the canonical SET Block String scanner first ownership of block content, then recognizes and ignores valid full-line comments before examining structural headers. Comment payloads such as `// END IF`, `# IF TRUE = TRUE THEN`, `-- ELSE`, and `REM ENDIF` therefore cannot change the nesting balance or prevent recovery to later top-level code.
+Iterative recovery balances IF, ELSE IF, ELSE, END IF, WHILE, and END WHILE. It gives the canonical SET Block String scanner first ownership of block content, then recognizes and ignores valid full-line comments before examining structural headers. Comment payloads such as `// END IF`, `# WHILE TRUE = TRUE`, `-- END WHILE`, and `REM ENDIF` therefore cannot change the nesting balance or prevent recovery to later top-level code.
 
 This is a compiler safety and resource limit. It does not change IF syntax, clause selection, branch validation, or the behavior of ordinary valid programs within the supported depth.
 
