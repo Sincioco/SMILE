@@ -208,13 +208,22 @@
 - Make CLI runs inherit interactive standard input and stream prompts live. Launch Desktop INPUT programs through one visible interactive console path while keeping live transpilation and the WPF UI responsive.
 - Extend and package the cumulative `examples/language.smile`, add the focused `examples/input.smile`, highlight INPUT lexically in AvalonEdit, and align public documentation and About SMILE at `0.7.0 INPUT`.
 
+## Implemented In v0.7.0.1
+
+- Treat every visible target pane as an independent editable build document and process duplicate target-language selections sequentially in Pane1, Pane2, Pane3 order.
+- Build each pane from its own current primary source while retaining the current generated project file, INPUT metadata, non-primary companions, immutable preview cache, and unique toolchain workspace.
+- Identify build output by pane and language, and rename the global command to `Build & Run Visible Panes`.
+- Add a monotonically increasing learner-edit revision to each pane and capture immutable pane revision/language state for startup and debounced live generation.
+- Prevent an older generation result from replacing a still-newer target edit while allowing untouched and same-language siblings to update; retain later-SMILE, same-pane-switch, Transpile All, and New authority.
+- Append `*` when a target pane differs from generated SMILE output, preserve it across Save Source, Build & Run, toolchain refresh, unrelated pane work, and Maximize/Restore, and clear it only through authoritative replacement or reset.
+
 ## Final Destination-Language Freeze
 
 C++ is SMILE's tenth and final planned destination language. Target-language expansion is frozen so development can focus on input, loops, functions, scopes, debugging, and teaching tools. Do not add another destination language unless Sin explicitly reopens target expansion. Rust, Zig, and Go remain intentionally deferred and are not active targets.
 
 ## Active Language-Depth Milestones
 
-These are not implemented in v0.7.0:
+These are not implemented in v0.7.0.1:
 
 1. v0.8.0 - Loops
 2. v0.9.0 - Functions and scopes

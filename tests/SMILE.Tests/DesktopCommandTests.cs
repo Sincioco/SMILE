@@ -10,14 +10,14 @@ namespace SMILE.Tests;
 public sealed class DesktopCommandTests
 {
     [TestMethod]
-    public void Desktop_assembly_reports_the_v070_INPUT_release()
+    public void Desktop_assembly_reports_the_v0701_Target_Editor_Hardening_release()
     {
         string? version = typeof(MainWindowViewModel).Assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
             .InformationalVersion;
 
         Assert.IsNotNull(version);
-        StringAssert.StartsWith(version, "0.7.0 INPUT");
+        Assert.AreEqual("0.7.0.1 Target Editor Hardening", version);
     }
 
     [TestMethod]
@@ -158,6 +158,52 @@ public sealed class DesktopCommandTests
 
         Assert.IsFalse(pane.CanBuild);
         Assert.IsFalse(pane.CanChangeLanguage);
+    }
+
+    [TestMethod]
+    public void Target_pane_tracks_user_edit_revisions_and_marks_generated_divergence()
+    {
+        var pane = new TargetPaneViewModel("Pane", TargetLanguage.CSharp);
+        var changedProperties = new List<string?>();
+        pane.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
+
+        pane.ApplyGeneratedCode("// generated");
+
+        Assert.AreEqual(0L, pane.UserEditRevision);
+        Assert.IsFalse(pane.HasUserEdits);
+        Assert.AreEqual("Pane - C#", pane.DisplayTitle);
+        Assert.AreEqual("Pane - C#", pane.Title);
+
+        pane.GeneratedCode = "// learner edit 1";
+
+        Assert.AreEqual(1L, pane.UserEditRevision);
+        Assert.IsTrue(pane.HasUserEdits);
+        Assert.AreEqual("Pane - C#", pane.DisplayTitle);
+        Assert.AreEqual("Pane - C# *", pane.Title);
+        CollectionAssert.Contains(changedProperties, nameof(TargetPaneViewModel.UserEditRevision));
+        CollectionAssert.Contains(changedProperties, nameof(TargetPaneViewModel.Title));
+
+        pane.GeneratedCode = "// learner edit 2";
+        pane.IsMaximized = true;
+        pane.IsMaximized = false;
+
+        Assert.AreEqual(2L, pane.UserEditRevision);
+        Assert.AreEqual("Pane - C# *", pane.Title);
+
+        pane.ApplyGeneratedCode("// generated replacement");
+
+        Assert.AreEqual(2L, pane.UserEditRevision);
+        Assert.IsFalse(pane.HasUserEdits);
+        Assert.AreEqual("Pane - C#", pane.Title);
+
+        pane.GeneratedCode = "// temporary Swift edit";
+        pane.SelectedLanguageOption = pane.LanguageOptions.Single(
+            option => option.Language == TargetLanguage.Swift);
+
+        Assert.AreEqual(3L, pane.UserEditRevision);
+        Assert.IsFalse(pane.HasUserEdits);
+        Assert.AreEqual("Pane - Swift", pane.DisplayTitle);
+        Assert.AreEqual("Pane - Swift", pane.Title);
     }
 
     [TestMethod]
@@ -395,6 +441,7 @@ PRINT A; B; C
         Assert.IsTrue(viewModel.Panes.All(pane => string.IsNullOrEmpty(pane.GeneratedCode)));
         Assert.IsTrue(viewModel.Panes.All(pane => !pane.HasValidSource && !pane.HasSyntaxError));
         Assert.IsTrue(viewModel.Panes.All(pane => !pane.HasUserEdits));
+        Assert.IsTrue(viewModel.Panes.All(pane => !pane.Title.EndsWith(" *", StringComparison.Ordinal)));
         Assert.IsTrue(viewModel.Panes.All(pane => pane.CopyCommand?.CanExecute(null) == false));
         Assert.IsTrue(viewModel.Panes.All(pane => pane.SaveSourceCommand?.CanExecute(null) == false));
         Assert.IsTrue(viewModel.Panes.All(pane => pane.BuildRunCommand?.CanExecute(null) == false));
@@ -607,6 +654,7 @@ PRINT A; B; C
 
         Assert.IsTrue(viewModel.Pane1.HasUserEdits);
         Assert.IsTrue(viewModel.Pane1.CanBuild);
+        Assert.AreEqual("Generated target 1 - C# *", viewModel.Pane1.Title);
 
         viewModel.Pane1.BuildRunCommand!.Execute(null);
         await WaitUntilAsync(() => !viewModel.IsBusy && viewModel.OperationStatus == "Completed");
@@ -614,10 +662,49 @@ PRINT A; B; C
         Assert.IsNotNull(csharp.LastGeneratedProgram);
         Assert.AreEqual(editedSource, csharp.LastGeneratedProgram.PrimaryFile.Content);
         Assert.IsTrue(csharp.LastGeneratedProgram.RequiresStandardInput);
+        Assert.IsTrue(viewModel.Pane1.HasUserEdits);
+        Assert.AreEqual("Generated target 1 - C# *", viewModel.Pane1.Title);
 
         GeneratedFile[] expectedCompanions = generated.Files.Where(file => !file.IsPrimary).ToArray();
         GeneratedFile[] actualCompanions = csharp.LastGeneratedProgram.Files.Where(file => !file.IsPrimary).ToArray();
         CollectionAssert.AreEqual(expectedCompanions, actualCompanions);
+    }
+
+    [TestMethod]
+    public async Task Save_Source_preserves_the_target_edit_marker()
+    {
+        string workspace = Directory.CreateDirectory(
+            Path.Combine(Path.GetTempPath(), "SMILE-Test-" + Guid.NewGuid())).FullName;
+        string savePath = Path.Combine(workspace, "Program.cs");
+
+        try
+        {
+            var viewModel = new MainWindowViewModel(
+                CreateRegistry(),
+                new FakeErrorReporter(),
+                new FakeFolderOpener(),
+                languageFilePath: null,
+                languageSourceReader: null,
+                generatedSourcePathSelector: (_, _) => savePath);
+            await viewModel.InitializeAsync();
+
+            string editedSource = viewModel.Pane1.GeneratedCode + "// saved learner target edit\n";
+            viewModel.Pane1.GeneratedCode = editedSource;
+
+            Assert.IsTrue(viewModel.Pane1.HasUserEdits);
+            Assert.AreEqual("Generated target 1 - C# *", viewModel.Pane1.Title);
+
+            viewModel.Pane1.SaveSourceCommand!.Execute(null);
+            await WaitUntilAsync(() => viewModel.OperationStatus == "Saved Program.cs");
+
+            Assert.AreEqual(editedSource, await File.ReadAllTextAsync(savePath));
+            Assert.IsTrue(viewModel.Pane1.HasUserEdits);
+            Assert.AreEqual("Generated target 1 - C# *", viewModel.Pane1.Title);
+        }
+        finally
+        {
+            Directory.Delete(workspace, recursive: true);
+        }
     }
 
     [TestMethod]
@@ -712,6 +799,7 @@ PRINT A; B; C
         Assert.AreEqual(editedSource, viewModel.Pane1.GeneratedCode);
         Assert.IsTrue(viewModel.Pane1.HasUserEdits);
         Assert.AreEqual("Edited", viewModel.Pane1.Status);
+        Assert.AreEqual("Generated target 1 - C# *", viewModel.Pane1.Title);
     }
 
     [TestMethod]
@@ -736,6 +824,7 @@ PRINT A; B; C
         Assert.IsTrue(viewModel.Pane1.HasUserEdits);
         Assert.AreEqual("Edited", viewModel.Pane1.Status);
         Assert.IsTrue(viewModel.Pane1.CanBuild);
+        Assert.AreEqual("Generated target 1 - C# *", viewModel.Pane1.Title);
     }
 
     [TestMethod]
@@ -756,8 +845,193 @@ PRINT A; B; C
             viewModel.Pane1.GeneratedCode.Contains("SMILE replacement wins", StringComparison.Ordinal));
 
         Assert.IsFalse(viewModel.Pane1.HasUserEdits);
+        Assert.AreEqual("Generated target 1 - C#", viewModel.Pane1.Title);
         Assert.IsFalse(
             viewModel.Pane1.GeneratedCode.Contains("temporary learner target edit", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task Explicit_Transpile_All_clears_target_edit_ownership_and_markers()
+    {
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(),
+            new FakeErrorReporter(),
+            new FakeFolderOpener());
+        await viewModel.InitializeAsync();
+
+        viewModel.Pane1.GeneratedCode = "// temporary target edit";
+        Assert.AreEqual("Generated target 1 - C# *", viewModel.Pane1.Title);
+
+        viewModel.TranspileAllCommand.Execute(null);
+        await WaitUntilAsync(() => !viewModel.IsBusy && viewModel.OperationStatus == "Completed");
+
+        Assert.IsTrue(viewModel.Panes.All(pane => !pane.HasUserEdits));
+        Assert.IsTrue(viewModel.Panes.All(pane => !pane.Title.EndsWith(" *", StringComparison.Ordinal)));
+        Assert.IsFalse(
+            viewModel.Pane1.GeneratedCode.Contains("temporary target edit", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task Newer_target_edits_survive_an_older_live_generation_while_siblings_update()
+    {
+        var generationGate = new SingleUseLiveGenerationGate();
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(),
+            new FakeErrorReporter(),
+            new FakeFolderOpener(),
+            languageFilePath: null,
+            languageSourceReader: null,
+            liveGenerationGate: generationGate.WaitAsync);
+        await viewModel.InitializeAsync();
+
+        generationGate.Arm();
+        viewModel.SourceText = "PRINT generation A";
+        await generationGate.Entered.WaitAsync(TimeSpan.FromSeconds(2));
+
+        viewModel.Pane1.GeneratedCode = "// learner edit 1";
+        viewModel.Pane1.GeneratedCode = "// learner edit 2";
+        long learnerRevision = viewModel.Pane1.UserEditRevision;
+        generationGate.Release();
+
+        await WaitUntilAsync(() =>
+            viewModel.Pane2.GeneratedCode.Contains("generation A", StringComparison.Ordinal) &&
+            viewModel.Pane3.GeneratedCode.Contains("generation A", StringComparison.Ordinal));
+
+        Assert.AreEqual("// learner edit 2", viewModel.Pane1.GeneratedCode);
+        Assert.AreEqual(learnerRevision, viewModel.Pane1.UserEditRevision);
+        Assert.IsTrue(viewModel.Pane1.HasUserEdits);
+        Assert.AreEqual("Edited", viewModel.Pane1.Status);
+        Assert.AreEqual("Generated target 1 - C# *", viewModel.Pane1.Title);
+        Assert.IsFalse(viewModel.Pane2.HasUserEdits);
+        Assert.IsFalse(viewModel.Pane3.HasUserEdits);
+    }
+
+    [TestMethod]
+    public async Task Same_language_sibling_panes_keep_independent_live_generation_ownership()
+    {
+        var generationGate = new SingleUseLiveGenerationGate();
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(),
+            new FakeErrorReporter(),
+            new FakeFolderOpener(),
+            languageFilePath: null,
+            languageSourceReader: null,
+            liveGenerationGate: generationGate.WaitAsync);
+        await viewModel.InitializeAsync();
+        SelectLanguage(viewModel.Pane2, TargetLanguage.CSharp);
+        await WaitUntilAsync(() => viewModel.Pane2.Status == "Ready");
+
+        generationGate.Arm();
+        viewModel.SourceText = "PRINT same-language generation";
+        await generationGate.Entered.WaitAsync(TimeSpan.FromSeconds(2));
+        viewModel.Pane2.GeneratedCode = "// only pane 2 changed";
+        generationGate.Release();
+
+        await WaitUntilAsync(() =>
+            viewModel.Pane1.GeneratedCode.Contains("same-language generation", StringComparison.Ordinal) &&
+            viewModel.Pane3.GeneratedCode.Contains("same-language generation", StringComparison.Ordinal));
+
+        StringAssert.Contains(viewModel.Pane1.GeneratedCode, "same-language generation");
+        Assert.AreEqual("// only pane 2 changed", viewModel.Pane2.GeneratedCode);
+        Assert.IsFalse(viewModel.Pane1.HasUserEdits);
+        Assert.IsTrue(viewModel.Pane2.HasUserEdits);
+        Assert.AreEqual("Generated target 2 - C# *", viewModel.Pane2.Title);
+    }
+
+    [TestMethod]
+    public async Task Target_edit_after_a_same_pane_language_switch_survives_older_generation()
+    {
+        var generationGate = new SingleUseLiveGenerationGate();
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(),
+            new FakeErrorReporter(),
+            new FakeFolderOpener(),
+            languageFilePath: null,
+            languageSourceReader: null,
+            liveGenerationGate: generationGate.WaitAsync);
+        await viewModel.InitializeAsync();
+
+        viewModel.Pane3.GeneratedCode = "// old C edit";
+        Assert.AreEqual("Generated target 3 - C *", viewModel.Pane3.Title);
+
+        generationGate.Arm();
+        SelectLanguage(viewModel.Pane3, TargetLanguage.Java);
+        Assert.IsFalse(viewModel.Pane3.HasUserEdits);
+        Assert.AreEqual("Generated target 3 - Java", viewModel.Pane3.Title);
+        await generationGate.Entered.WaitAsync(TimeSpan.FromSeconds(2));
+
+        viewModel.Pane3.GeneratedCode = "// newer Java edit";
+        generationGate.Release();
+        await WaitUntilAsync(() => viewModel.OperationStatus == "Ready");
+
+        Assert.AreEqual(TargetLanguage.Java, viewModel.Pane3.Language);
+        Assert.AreEqual("// newer Java edit", viewModel.Pane3.GeneratedCode);
+        Assert.IsTrue(viewModel.Pane3.HasUserEdits);
+        Assert.AreEqual("Edited", viewModel.Pane3.Status);
+        Assert.AreEqual("Generated target 3 - Java *", viewModel.Pane3.Title);
+    }
+
+    [TestMethod]
+    public async Task Target_edit_after_a_second_SMILE_edit_wins_over_that_pending_generation()
+    {
+        var generationGate = new SingleUseLiveGenerationGate();
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(),
+            new FakeErrorReporter(),
+            new FakeFolderOpener(),
+            languageFilePath: null,
+            languageSourceReader: null,
+            liveGenerationGate: generationGate.WaitAsync);
+        await viewModel.InitializeAsync();
+
+        viewModel.Pane1.GeneratedCode = "// target edit T1";
+        long firstTargetRevision = viewModel.Pane1.UserEditRevision;
+        generationGate.Arm();
+        viewModel.SourceText = "PRINT SMILE edit B";
+        await generationGate.Entered.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.IsFalse(viewModel.Pane1.HasUserEdits);
+        viewModel.Pane1.GeneratedCode = "// target edit T2";
+        generationGate.Release();
+
+        await WaitUntilAsync(() =>
+            viewModel.Pane2.GeneratedCode.Contains("SMILE edit B", StringComparison.Ordinal) &&
+            viewModel.Pane3.GeneratedCode.Contains("SMILE edit B", StringComparison.Ordinal));
+
+        Assert.AreEqual(firstTargetRevision + 1, viewModel.Pane1.UserEditRevision);
+        Assert.AreEqual("// target edit T2", viewModel.Pane1.GeneratedCode);
+        Assert.IsTrue(viewModel.Pane1.HasUserEdits);
+        Assert.AreEqual("Edited", viewModel.Pane1.Status);
+    }
+
+    [TestMethod]
+    public async Task Live_syntax_diagnostics_do_not_erase_a_newer_target_edit()
+    {
+        var generationGate = new SingleUseLiveGenerationGate();
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(),
+            new FakeErrorReporter(),
+            new FakeFolderOpener(),
+            languageFilePath: null,
+            languageSourceReader: null,
+            liveGenerationGate: generationGate.WaitAsync);
+        await viewModel.InitializeAsync();
+
+        generationGate.Arm();
+        viewModel.SourceText = "LET MissingValue =";
+        await generationGate.Entered.WaitAsync(TimeSpan.FromSeconds(2));
+        viewModel.Pane1.GeneratedCode = "// valid learner-owned target source";
+        generationGate.Release();
+
+        await WaitUntilAsync(() =>
+            viewModel.Panes.Skip(1).All(pane => pane.HasSyntaxError) &&
+            viewModel.OperationStatus == "Syntax Error");
+
+        Assert.AreEqual("// valid learner-owned target source", viewModel.Pane1.GeneratedCode);
+        Assert.IsTrue(viewModel.Pane1.HasUserEdits);
+        Assert.IsFalse(viewModel.Pane1.HasSyntaxError);
+        Assert.AreEqual("Edited", viewModel.Pane1.Status);
+        StringAssert.Contains(viewModel.OutputText, "SMILE");
     }
 
     [TestMethod]
@@ -780,6 +1054,7 @@ PRINT A; B; C
         viewModel.Pane1.GeneratedCode = editedSource;
 
         Assert.IsTrue(viewModel.Pane1.CanBuild);
+        Assert.AreEqual("Generated target 1 - C# *", viewModel.Pane1.Title);
         Assert.IsTrue(viewModel.BuildRunVisibleCommand.CanExecute(null));
         Assert.IsGreaterThan(0, globalCommandChanges);
         viewModel.Pane1.BuildRunCommand!.Execute(null);
@@ -875,6 +1150,237 @@ PRINT A; B; C
         StringAssert.Contains(viewModel.OutputText, "Objective-C detected.");
         StringAssert.Contains(viewModel.OutputText, "Swift detected.");
         StringAssert.Contains(viewModel.OutputText, "C++ detected.");
+    }
+
+    [TestMethod]
+    public async Task Visible_build_runs_duplicate_CSharp_panes_with_their_own_edits_and_INPUT_metadata()
+    {
+        var csharp = new FakeToolchain(TargetLanguage.CSharp);
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(csharp),
+            new FakeErrorReporter(),
+            new FakeFolderOpener())
+        {
+            OpenGeneratedFolderAfterBuild = false,
+            SourceText = "LET Name = \"\"\nINPUT Name\nPRINT {Name}"
+        };
+        await viewModel.InitializeAsync();
+        await WaitUntilAsync(() => viewModel.Pane1.HasValidSource);
+        SelectLanguage(viewModel.Pane2, TargetLanguage.CSharp);
+        await WaitUntilAsync(() => viewModel.Pane2.HasValidSource);
+
+        const string pane1Source = "Console.WriteLine(\"pane 1\");";
+        const string pane2Source = "Console.WriteLine(\"pane 2\");";
+        viewModel.Pane1.GeneratedCode = pane1Source;
+        viewModel.Pane2.GeneratedCode = pane2Source;
+        viewModel.Pane3.GeneratedCode = string.Empty;
+
+        viewModel.BuildRunVisibleCommand.Execute(null);
+        await WaitUntilAsync(() => !viewModel.IsBusy && csharp.BuildRuns == 2);
+
+        Assert.HasCount(2, csharp.GeneratedPrograms);
+        Assert.AreEqual(pane1Source, csharp.GeneratedPrograms[0].PrimaryFile.Content);
+        Assert.AreEqual(pane2Source, csharp.GeneratedPrograms[1].PrimaryFile.Content);
+        Assert.AreNotSame(csharp.GeneratedPrograms[0], csharp.GeneratedPrograms[1]);
+        Assert.AreNotSame(csharp.GeneratedPrograms[0].Files, csharp.GeneratedPrograms[1].Files);
+        Assert.IsTrue(csharp.GeneratedPrograms.All(program => program.RequiresStandardInput));
+        Assert.IsTrue(csharp.GeneratedPrograms.All(program =>
+            program.Files.Any(file => file.RelativePath == "GeneratedProgram.csproj")));
+        Assert.HasCount(2, csharp.BuildRunOptionsHistory);
+        Assert.IsTrue(csharp.BuildRunOptionsHistory.All(options =>
+            options.ProgramStandardInput.Mode == ProcessInputMode.InteractiveInherited &&
+            options.LaunchVisibleConsole));
+        Assert.AreEqual(pane1Source, viewModel.Pane1.GeneratedCode);
+        Assert.AreEqual(pane2Source, viewModel.Pane2.GeneratedCode);
+        Assert.IsTrue(viewModel.Pane1.HasUserEdits);
+        Assert.IsTrue(viewModel.Pane2.HasUserEdits);
+
+        int pane1Header = viewModel.OutputText.IndexOf(
+            "=== Generated target 1 - C# ===",
+            StringComparison.Ordinal);
+        int pane2Header = viewModel.OutputText.IndexOf(
+            "=== Generated target 2 - C# ===",
+            StringComparison.Ordinal);
+        Assert.IsGreaterThanOrEqualTo(0, pane1Header);
+        Assert.IsGreaterThan(pane1Header, pane2Header);
+    }
+
+    [TestMethod]
+    public async Task Duplicate_visible_build_before_debounce_refreshes_an_unedited_sibling_before_compiling()
+    {
+        var generationGate = new SingleUseLiveGenerationGate();
+        var csharp = new FakeToolchain(TargetLanguage.CSharp);
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(csharp),
+            new FakeErrorReporter(),
+            new FakeFolderOpener(),
+            languageFilePath: null,
+            languageSourceReader: null,
+            liveGenerationGate: generationGate.WaitAsync)
+        {
+            OpenGeneratedFolderAfterBuild = false
+        };
+        await viewModel.InitializeAsync();
+        SelectLanguage(viewModel.Pane2, TargetLanguage.CSharp);
+        await WaitUntilAsync(() => viewModel.Pane2.HasValidSource);
+
+        const string smileSource = "PRINT current SMILE source B";
+        const string pane1Edit = "Console.WriteLine(\"pane 1 target edit T\");";
+        generationGate.Arm();
+        viewModel.SourceText = smileSource;
+        await generationGate.Entered.WaitAsync(TimeSpan.FromSeconds(2));
+        viewModel.Pane1.GeneratedCode = pane1Edit;
+        viewModel.Pane3.GeneratedCode = string.Empty;
+
+        viewModel.BuildRunVisibleCommand.Execute(null);
+        await WaitUntilAsync(() => !viewModel.IsBusy && csharp.BuildRuns == 2);
+
+        Assert.AreEqual(pane1Edit, csharp.GeneratedPrograms[0].PrimaryFile.Content);
+        StringAssert.Contains(csharp.GeneratedPrograms[1].PrimaryFile.Content, "current SMILE source B");
+        Assert.AreEqual(
+            csharp.GeneratedPrograms[1].PrimaryFile.Content,
+            viewModel.Pane2.GeneratedCode);
+        Assert.IsFalse(viewModel.Pane2.HasUserEdits);
+        Assert.AreEqual("Generated target 2 - C#", viewModel.Pane2.Title);
+    }
+
+    [TestMethod]
+    public async Task Visible_build_runs_three_COBOL_panes_and_preserves_each_INPUT_companion()
+    {
+        var cobol = new FakeToolchain(TargetLanguage.Cobol);
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(cobol),
+            new FakeErrorReporter(),
+            new FakeFolderOpener())
+        {
+            OpenGeneratedFolderAfterBuild = false,
+            SourceText = "LET Name = \"\"\nINPUT Name\nPRINT {Name}"
+        };
+        await viewModel.InitializeAsync();
+        foreach (TargetPaneViewModel pane in viewModel.Panes)
+        {
+            SelectLanguage(pane, TargetLanguage.Cobol);
+        }
+
+        await WaitUntilAsync(() => viewModel.Panes.All(pane => pane.HasValidSource));
+        for (int index = 0; index < viewModel.Panes.Count; index++)
+        {
+            viewModel.Panes[index].GeneratedCode = $"*> learner COBOL pane {index + 1}";
+        }
+
+        viewModel.BuildRunVisibleCommand.Execute(null);
+        await WaitUntilAsync(() => !viewModel.IsBusy && cobol.BuildRuns == 3);
+
+        Assert.HasCount(3, cobol.GeneratedPrograms);
+        for (int index = 0; index < cobol.GeneratedPrograms.Count; index++)
+        {
+            GeneratedProgram program = cobol.GeneratedPrograms[index];
+            Assert.AreEqual($"*> learner COBOL pane {index + 1}", program.PrimaryFile.Content);
+            Assert.IsTrue(program.RequiresStandardInput);
+            Assert.IsTrue(program.Files.Any(file => file.RelativePath == "SmileRuntime.c"));
+        }
+    }
+
+    [TestMethod]
+    public async Task Visible_build_runs_mixed_duplicate_languages_in_pane_order()
+    {
+        var buildOrder = new List<string>();
+        var csharp = new FakeToolchain(TargetLanguage.CSharp)
+        {
+            BuildStarted = () => buildOrder.Add("C#")
+        };
+        var python = new FakeToolchain(TargetLanguage.Python)
+        {
+            BuildStarted = () => buildOrder.Add("Python")
+        };
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(csharp, python),
+            new FakeErrorReporter(),
+            new FakeFolderOpener())
+        {
+            OpenGeneratedFolderAfterBuild = false
+        };
+        await viewModel.InitializeAsync();
+        SelectLanguage(viewModel.Pane2, TargetLanguage.CSharp);
+        SelectLanguage(viewModel.Pane3, TargetLanguage.Python);
+        await WaitUntilAsync(() => viewModel.Panes.All(pane => pane.HasValidSource));
+
+        viewModel.Pane1.GeneratedCode = "// C# pane 1";
+        viewModel.Pane2.GeneratedCode = "// C# pane 2";
+        viewModel.Pane3.GeneratedCode = "# Python pane 3";
+
+        viewModel.BuildRunVisibleCommand.Execute(null);
+        await WaitUntilAsync(() => !viewModel.IsBusy && csharp.BuildRuns == 2 && python.BuildRuns == 1);
+
+        Assert.AreEqual(2, csharp.BuildRuns);
+        Assert.AreEqual(1, python.BuildRuns);
+        CollectionAssert.AreEqual(new[] { "C#", "C#", "Python" }, buildOrder);
+        Assert.AreEqual("// C# pane 1", csharp.GeneratedPrograms[0].PrimaryFile.Content);
+        Assert.AreEqual("// C# pane 2", csharp.GeneratedPrograms[1].PrimaryFile.Content);
+        Assert.AreEqual("# Python pane 3", python.GeneratedPrograms[0].PrimaryFile.Content);
+    }
+
+    [TestMethod]
+    public async Task An_unbuildable_duplicate_pane_does_not_suppress_its_valid_sibling()
+    {
+        var csharp = new FakeToolchain(TargetLanguage.CSharp);
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(csharp),
+            new FakeErrorReporter(),
+            new FakeFolderOpener())
+        {
+            OpenGeneratedFolderAfterBuild = false
+        };
+        await viewModel.InitializeAsync();
+        SelectLanguage(viewModel.Pane2, TargetLanguage.CSharp);
+        await WaitUntilAsync(() => viewModel.Pane2.HasValidSource);
+
+        viewModel.Pane1.GeneratedCode = "// buildable C# pane";
+        viewModel.Pane2.GeneratedCode = string.Empty;
+        viewModel.Pane3.GeneratedCode = string.Empty;
+
+        viewModel.BuildRunVisibleCommand.Execute(null);
+        await WaitUntilAsync(() => !viewModel.IsBusy && csharp.BuildRuns == 1);
+
+        Assert.AreEqual(1, csharp.BuildRuns);
+        Assert.AreEqual("// buildable C# pane", csharp.GeneratedPrograms[0].PrimaryFile.Content);
+        Assert.AreEqual(string.Empty, viewModel.Pane2.GeneratedCode);
+        Assert.IsTrue(viewModel.Pane2.HasUserEdits);
+    }
+
+    [TestMethod]
+    public async Task Cancelling_a_visible_pane_build_stops_before_later_duplicate_panes()
+    {
+        var csharp = new FakeToolchain(TargetLanguage.CSharp);
+        var viewModel = new MainWindowViewModel(
+            CreateRegistry(csharp),
+            new FakeErrorReporter(),
+            new FakeFolderOpener())
+        {
+            OpenGeneratedFolderAfterBuild = false
+        };
+        await viewModel.InitializeAsync();
+        SelectLanguage(viewModel.Pane2, TargetLanguage.CSharp);
+        SelectLanguage(viewModel.Pane3, TargetLanguage.CSharp);
+        await WaitUntilAsync(() => viewModel.Panes.All(pane => pane.HasValidSource));
+
+        string[] editorSources = { "// pane 1", "// pane 2", "// pane 3" };
+        for (int index = 0; index < viewModel.Panes.Count; index++)
+        {
+            viewModel.Panes[index].GeneratedCode = editorSources[index];
+        }
+
+        csharp.BuildStarted = () =>
+        {
+            csharp.BuildStarted = null;
+            viewModel.CancelCommand.Execute(null);
+        };
+        viewModel.BuildRunVisibleCommand.Execute(null);
+        await WaitUntilAsync(() => !viewModel.IsBusy && viewModel.OperationStatus == "Cancelled");
+
+        Assert.AreEqual(1, csharp.BuildRuns);
+        CollectionAssert.AreEqual(editorSources, viewModel.Panes.Select(pane => pane.GeneratedCode).ToArray());
+        Assert.IsTrue(viewModel.Panes.All(pane => pane.HasUserEdits));
     }
 
     [TestMethod]
@@ -1088,6 +1594,9 @@ PRINT A; B; C
     private static string NormalizeLineEndings(string text) =>
         text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
 
+    private static void SelectLanguage(TargetPaneViewModel pane, TargetLanguage language) =>
+        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == language);
+
     private static string CreateNestedIfSource(int depth) =>
         string.Concat(Enumerable.Repeat("IF TRUE = TRUE THEN\n", depth)) +
         "PRINT Reached\n" +
@@ -1111,6 +1620,8 @@ PRINT A; B; C
         private readonly string? _workingDirectory;
         private readonly bool _simulateLaunchFailure;
         private readonly Task? _detectGate;
+        private readonly List<GeneratedProgram> _generatedPrograms = new();
+        private readonly List<BuildRunOptions> _buildRunOptions = new();
 
         public FakeToolchain(
             TargetLanguage language,
@@ -1132,9 +1643,15 @@ PRINT A; B; C
 
         public int BuildRuns { get; private set; }
 
-        public GeneratedProgram? LastGeneratedProgram { get; private set; }
+        public IReadOnlyList<GeneratedProgram> GeneratedPrograms => _generatedPrograms;
 
-        public BuildRunOptions? LastBuildRunOptions { get; private set; }
+        public IReadOnlyList<BuildRunOptions> BuildRunOptionsHistory => _buildRunOptions;
+
+        public GeneratedProgram? LastGeneratedProgram => _generatedPrograms.LastOrDefault();
+
+        public BuildRunOptions? LastBuildRunOptions => _buildRunOptions.LastOrDefault();
+
+        public Action? BuildStarted { get; set; }
 
         public async Task<ToolchainStatus> DetectAsync(CancellationToken cancellationToken)
         {
@@ -1158,8 +1675,10 @@ PRINT A; B; C
             BuildRunOptions? options = null)
         {
             BuildRuns++;
-            LastGeneratedProgram = generatedProgram;
-            LastBuildRunOptions = options;
+            _generatedPrograms.Add(generatedProgram);
+            _buildRunOptions.Add(options ?? new BuildRunOptions());
+            BuildStarted?.Invoke();
+            cancellationToken.ThrowIfCancellationRequested();
             if (_buildRunException is not null)
             {
                 throw _buildRunException;
@@ -1198,6 +1717,42 @@ PRINT A; B; C
                 _workingDirectory,
                 null,
                 "Running");
+        }
+    }
+
+    private sealed class SingleUseLiveGenerationGate
+    {
+        private TaskCompletionSource<bool> _entered = CompletedSource();
+        private TaskCompletionSource<bool> _release = CompletedSource();
+        private int _armed;
+
+        public Task Entered => _entered.Task;
+
+        public void Arm()
+        {
+            _entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            Volatile.Write(ref _armed, 1);
+        }
+
+        public async Task WaitAsync(CancellationToken cancellationToken)
+        {
+            if (Interlocked.Exchange(ref _armed, 0) == 0)
+            {
+                return;
+            }
+
+            _entered.TrySetResult(true);
+            await _release.Task.WaitAsync(cancellationToken);
+        }
+
+        public void Release() => _release.TrySetResult(true);
+
+        private static TaskCompletionSource<bool> CompletedSource()
+        {
+            var source = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            source.SetResult(true);
+            return source;
         }
     }
 

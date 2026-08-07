@@ -87,6 +87,10 @@
 - Source tooling must not trim trailing spaces or tabs because block String content may depend on them.
 - Block String normalization belongs entirely to the front end. Target generators receive only the normalized ordinary String value.
 - New language work must preserve asynchronous debounced WPF live transpilation.
+- Every visible target pane is an independent editable build unit. Global visible-pane builds remain sequential in pane order and must not collapse duplicate target-language selections.
+- Startup and live generation must capture each receiving pane's selected language and user-edit revision. An older result may update the generated cache but must not overwrite a pane edited after that request began; unaffected and same-language sibling panes must still update.
+- Later SMILE source edits, same-pane language changes, explicit Transpile All, and New remain authoritative over earlier target edits. A target edit made after one of those pending generation requests becomes the newest action and must survive that older result.
+- A target-pane title `*` means the current primary source differs from generated SMILE output, not that a separate file is unsaved. Save, build, toolchain refresh, unrelated pane operations, and Maximize/Restore preserve it; authoritative generated replacement, same-pane language switching, and New clear it.
 - Published official language specifications and compiler behavior must remain synchronized.
 - Every normative valid and invalid example in an official language specification should be represented in the conformance test suite.
 - Target generators must use a symbol-based target identifier map and must not emit raw SMILE identifiers when they conflict with destination-language syntax or generator-owned runtime names.

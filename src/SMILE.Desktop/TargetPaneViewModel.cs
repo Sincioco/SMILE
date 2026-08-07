@@ -32,6 +32,7 @@ public sealed class TargetPaneViewModel : ViewModelBase
     private bool _isBusy;
     private bool _isMaximized;
     private bool _isApplyingGeneratedCode;
+    private long _userEditRevision;
 
     public TargetPaneViewModel(string title, TargetLanguage defaultLanguage)
     {
@@ -46,7 +47,9 @@ public sealed class TargetPaneViewModel : ViewModelBase
 
     public event EventHandler? UserSourceChanged;
 
-    public string Title => $"{_baseTitle} - {SelectedLanguageOption.DisplayName}";
+    public string DisplayTitle => $"{_baseTitle} - {SelectedLanguageOption.DisplayName}";
+
+    public string Title => HasUserEdits ? $"{DisplayTitle} *" : DisplayTitle;
 
     public IReadOnlyList<TargetLanguageOption> LanguageOptions { get; }
 
@@ -62,6 +65,7 @@ public sealed class TargetPaneViewModel : ViewModelBase
                 // replace the old text through the normal refresh path.
                 MarkGeneratedCodeStale();
                 OnPropertyChanged(nameof(Language));
+                OnPropertyChanged(nameof(DisplayTitle));
                 OnPropertyChanged(nameof(Title));
                 OnPropertyChanged(nameof(BuildButtonText));
                 OnPropertyChanged(nameof(HighlightingId));
@@ -91,7 +95,9 @@ public sealed class TargetPaneViewModel : ViewModelBase
                 // learner edit. Generated snapshots use ApplyGeneratedCode so
                 // Build & Run can distinguish the editable primary file from
                 // the compiler-owned cache and companion files.
-                SetProperty(ref _hasUserEdits, true, nameof(HasUserEdits));
+                _userEditRevision++;
+                OnPropertyChanged(nameof(UserEditRevision));
+                SetHasUserEdits(true);
                 HasValidSource = !string.IsNullOrWhiteSpace(_generatedCode);
                 // The syntax flag describes the SMILE snapshot that failed to
                 // generate this pane, not source the learner writes directly
@@ -109,6 +115,8 @@ public sealed class TargetPaneViewModel : ViewModelBase
     }
 
     public bool HasUserEdits => _hasUserEdits;
+
+    public long UserEditRevision => _userEditRevision;
 
     public string Status
     {
@@ -218,15 +226,23 @@ public sealed class TargetPaneViewModel : ViewModelBase
             _isApplyingGeneratedCode = false;
         }
 
-        SetProperty(ref _hasUserEdits, false, nameof(HasUserEdits));
+        SetHasUserEdits(false);
         RaiseCommandStateChanged();
     }
 
     public void MarkGeneratedCodeStale()
     {
-        SetProperty(ref _hasUserEdits, false, nameof(HasUserEdits));
+        SetHasUserEdits(false);
         HasValidSource = false;
         RaiseCommandStateChanged();
+    }
+
+    private void SetHasUserEdits(bool value)
+    {
+        if (SetProperty(ref _hasUserEdits, value, nameof(HasUserEdits)))
+        {
+            OnPropertyChanged(nameof(Title));
+        }
     }
 
     public void RaiseCommandStateChanged()

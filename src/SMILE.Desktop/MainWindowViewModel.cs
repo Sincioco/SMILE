@@ -27,6 +27,8 @@ public sealed class MainWindowViewModel : ViewModelBase
     private readonly IFolderOpener _folderOpener;
     private readonly string _languageFilePath;
     private readonly Func<CancellationToken, Task<string>> _languageSourceReader;
+    private readonly Func<CancellationToken, Task>? _liveGenerationGate;
+    private readonly Func<string, string, string?> _generatedSourcePathSelector;
     private readonly Dictionary<TargetLanguage, GeneratedSnapshot> _generatedPrograms = new();
     private readonly Dictionary<TargetLanguage, ToolchainStatus> _toolchainStatuses = new();
     private CancellationTokenSource? _operationCancellation;
@@ -56,7 +58,14 @@ public sealed class MainWindowViewModel : ViewModelBase
         IAppErrorReporter? errorReporter = null,
         IFolderOpener? folderOpener = null,
         string? languageFilePath = null)
-        : this(toolchains, errorReporter, folderOpener, languageFilePath, languageSourceReader: null)
+        : this(
+            toolchains,
+            errorReporter,
+            folderOpener,
+            languageFilePath,
+            languageSourceReader: null,
+            liveGenerationGate: null,
+            generatedSourcePathSelector: null)
     {
     }
 
@@ -65,7 +74,9 @@ public sealed class MainWindowViewModel : ViewModelBase
         IAppErrorReporter? errorReporter,
         IFolderOpener? folderOpener,
         string? languageFilePath,
-        Func<CancellationToken, Task<string>>? languageSourceReader)
+        Func<CancellationToken, Task<string>>? languageSourceReader,
+        Func<CancellationToken, Task>? liveGenerationGate = null,
+        Func<string, string, string?>? generatedSourcePathSelector = null)
     {
         _toolchains = toolchains;
         _errorReporter = errorReporter ?? AppErrorReporter.Shared;
@@ -73,6 +84,8 @@ public sealed class MainWindowViewModel : ViewModelBase
         _languageFilePath = languageFilePath ?? Path.Combine(AppContext.BaseDirectory, LanguageFileName);
         _languageSourceReader = languageSourceReader ?? (cancellationToken =>
             File.ReadAllTextAsync(_languageFilePath, Encoding.UTF8, cancellationToken));
+        _liveGenerationGate = liveGenerationGate;
+        _generatedSourcePathSelector = generatedSourcePathSelector ?? SelectGeneratedSourcePath;
 
         Pane1 = CreatePane("Generated target 1", TargetLanguage.CSharp);
         Pane2 = CreatePane("Generated target 2", TargetLanguage.MasmX64);
@@ -90,6 +103,11 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     private sealed record GeneratedSnapshot(long SourceRevision, GeneratedProgram Program);
+
+    private sealed record PaneGenerationState(
+        TargetPaneViewModel Pane,
+        TargetLanguage Language,
+        long UserEditRevision);
 
     public TargetPaneViewModel Pane1 { get; }
 
@@ -410,6 +428,12 @@ public sealed class MainWindowViewModel : ViewModelBase
             .Select(pane => pane.Language)
             .Distinct()
             .ToArray();
+        PaneGenerationState[] paneGenerationStates = Panes
+            .Select(pane => new PaneGenerationState(
+                pane,
+                pane.Language,
+                pane.UserEditRevision))
+            .ToArray();
         IReadOnlyList<TranspileResult> results = await GenerateAsync(
             sourceSnapshot,
             languages,
@@ -425,7 +449,8 @@ public sealed class MainWindowViewModel : ViewModelBase
             revision,
             isLive: true,
             reportSuccess: false,
-            preserveUserEdits: true);
+            preserveUserEdits: true,
+            paneGenerationStates: paneGenerationStates);
         if (results.All(result => result.Success))
         {
             OperationStatus = "Ready";
@@ -474,6 +499,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         }
 
         var missingLanguages = new List<TargetLanguage>();
+        var paneGenerationStates = new List<PaneGenerationState>();
         foreach (TargetPaneViewModel pane in Panes)
         {
             if (ReferenceEquals(pane, preservedPane))
@@ -505,6 +531,10 @@ public sealed class MainWindowViewModel : ViewModelBase
                 pane.MarkGeneratedCodeStale();
                 pane.Status = "Updating";
                 missingLanguages.Add(pane.Language);
+                paneGenerationStates.Add(new PaneGenerationState(
+                    pane,
+                    pane.Language,
+                    pane.UserEditRevision));
             }
 
             pane.RaiseCommandStateChanged();
@@ -531,6 +561,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             sourceSnapshot,
             revision,
             languages,
+            paneGenerationStates.ToArray(),
             cancellation,
             LiveTranspileDelay,
             preserveUserEdits: !clearExistingSyntaxErrors,
@@ -542,6 +573,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         string sourceSnapshot,
         long revision,
         IReadOnlyList<TargetLanguage> languages,
+        IReadOnlyList<PaneGenerationState> paneGenerationStates,
         CancellationTokenSource cancellation,
         TimeSpan delay,
         bool preserveUserEdits,
@@ -551,6 +583,11 @@ public sealed class MainWindowViewModel : ViewModelBase
         try
         {
             await Task.Delay(delay, cancellation.Token).ConfigureAwait(true);
+
+            if (_liveGenerationGate is not null)
+            {
+                await _liveGenerationGate(cancellation.Token).ConfigureAwait(true);
+            }
 
             IReadOnlyList<TranspileResult> results = await GenerateAsync(
                 sourceSnapshot,
@@ -568,7 +605,8 @@ public sealed class MainWindowViewModel : ViewModelBase
                 isLive: true,
                 reportSuccess: false,
                 preserveUserEdits,
-                preservedPane);
+                preservedPane,
+                paneGenerationStates);
             if (operationStatusAfterCompletion is not null)
             {
                 OperationStatus = operationStatusAfterCompletion;
@@ -617,7 +655,8 @@ public sealed class MainWindowViewModel : ViewModelBase
         bool isLive,
         bool reportSuccess,
         bool preserveUserEdits,
-        TargetPaneViewModel? preservedPane = null)
+        TargetPaneViewModel? preservedPane = null,
+        IReadOnlyList<PaneGenerationState>? paneGenerationStates = null)
     {
         IReadOnlyList<Diagnostic> diagnostics = results
             .SelectMany(result => result.Diagnostics)
@@ -645,6 +684,12 @@ public sealed class MainWindowViewModel : ViewModelBase
                          !ReferenceEquals(pane, preservedPane) &&
                          generatedLanguages.Contains(pane.Language)))
             {
+                if (!CanApplyGenerationToPane(pane, paneGenerationStates))
+                {
+                    pane.RaiseCommandStateChanged();
+                    continue;
+                }
+
                 UpdatePaneForLanguage(pane, preserveUserEdits);
             }
 
@@ -671,6 +716,12 @@ public sealed class MainWindowViewModel : ViewModelBase
         {
             if (ReferenceEquals(pane, preservedPane))
             {
+                continue;
+            }
+
+            if (!CanApplyGenerationToPane(pane, paneGenerationStates))
+            {
+                pane.RaiseCommandStateChanged();
                 continue;
             }
 
@@ -717,18 +768,31 @@ public sealed class MainWindowViewModel : ViewModelBase
         RaiseCommandStateChanged();
     }
 
+    private static bool CanApplyGenerationToPane(
+        TargetPaneViewModel pane,
+        IReadOnlyList<PaneGenerationState>? paneGenerationStates)
+    {
+        if (paneGenerationStates is null)
+        {
+            return true;
+        }
+
+        PaneGenerationState? capturedState = paneGenerationStates.FirstOrDefault(
+            state => ReferenceEquals(state.Pane, pane));
+        return capturedState is not null &&
+            capturedState.Language == pane.Language &&
+            capturedState.UserEditRevision == pane.UserEditRevision;
+    }
+
     private async Task BuildRunVisibleAsync()
     {
         var results = new List<BuildRunResult>();
 
         await RunOperationAsync(
-            "Build & Run visible languages",
+            "Build & Run visible panes",
             async cancellationToken =>
             {
-                foreach (TargetPaneViewModel pane in Panes
-                    .Where(CanPreparePaneSource)
-                    .GroupBy(pane => pane.Language)
-                    .Select(group => group.First()))
+                foreach (TargetPaneViewModel pane in Panes.Where(CanPreparePaneSource))
                 {
                     if (cancellationToken.IsCancellationRequested)
                     {
@@ -793,12 +857,14 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         try
         {
+            AppendOutput($"=== {pane.DisplayTitle} ===");
+
             if (!_toolchainStatuses.TryGetValue(language, out ToolchainStatus? status) || !status.IsAvailable)
             {
                 pane.Status = status?.Message.StartsWith("Detection failed:", StringComparison.Ordinal) == true
                     ? "Detection Failed"
                     : "Toolchain Missing";
-                AppendOutput($"=== {languageName} ==={Environment.NewLine}{status?.Message ?? "Toolchain not detected."}");
+                AppendOutput(status?.Message ?? "Toolchain not detected.");
                 return null;
             }
 
@@ -815,7 +881,6 @@ public sealed class MainWindowViewModel : ViewModelBase
                 pane.GeneratedCode);
 
             pane.Status = GetInitialBuildStatus(language);
-            AppendOutput($"=== {languageName} ===");
 
             BuildRunOptions options = runnableProgram.RequiresStandardInput
                 ? BuildRunOptions.VisibleInteractiveConsole
@@ -907,6 +972,11 @@ public sealed class MainWindowViewModel : ViewModelBase
         if (_generatedPrograms.TryGetValue(language, out GeneratedSnapshot? snapshot) &&
             snapshot.SourceRevision == revision)
         {
+            if (!pane.HasUserEdits)
+            {
+                TryApplyCurrentGeneratedProgram(pane);
+            }
+
             return snapshot.Program;
         }
 
@@ -1040,20 +1110,28 @@ public sealed class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        var dialog = new SaveFileDialog
-        {
-            FileName = generatedProgram.PrimaryFile.RelativePath,
-            Title = $"Save {TargetLanguageInfo.GetDisplayName(pane.Language)} source",
-            Filter = "All files (*.*)|*.*"
-        };
-
-        if (dialog.ShowDialog() != true)
+        string? filePath = _generatedSourcePathSelector(
+            generatedProgram.PrimaryFile.RelativePath,
+            TargetLanguageInfo.GetDisplayName(pane.Language));
+        if (string.IsNullOrWhiteSpace(filePath))
         {
             return;
         }
 
-        await File.WriteAllTextAsync(dialog.FileName, pane.GeneratedCode).ConfigureAwait(true);
-        OperationStatus = $"Saved {Path.GetFileName(dialog.FileName)}";
+        await File.WriteAllTextAsync(filePath, pane.GeneratedCode).ConfigureAwait(true);
+        OperationStatus = $"Saved {Path.GetFileName(filePath)}";
+    }
+
+    private static string? SelectGeneratedSourcePath(string fileName, string languageDisplayName)
+    {
+        var dialog = new SaveFileDialog
+        {
+            FileName = fileName,
+            Title = $"Save {languageDisplayName} source",
+            Filter = "All files (*.*)|*.*"
+        };
+
+        return dialog.ShowDialog() == true ? dialog.FileName : null;
     }
 
     private void UpdatePaneForLanguage(
@@ -1173,7 +1251,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             return folders[0];
         }
 
-        // A visible-languages build creates one temp workspace per language.
+        // A visible-panes build creates one temp workspace per pane build.
         // Opening their shared parent gives the learner one folder view where
         // all generated-code folders from the operation can be inspected.
         string? parent = Path.GetDirectoryName(folders[0]);

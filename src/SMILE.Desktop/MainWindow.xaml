@@ -119,7 +119,7 @@
                 <Button Content="Save" Command="{Binding SaveCommand}" />
                 <Button Content="Save As" Command="{Binding SaveAsCommand}" />
                 <Button Content="Transpile All" Command="{Binding TranspileAllCommand}" />
-                <Button Content="Build &amp; Run Visible Languages" Command="{Binding BuildRunVisibleCommand}" />
+                <Button Content="Build &amp; Run Visible Panes" Command="{Binding BuildRunVisibleCommand}" />
                 <Button Content="Cancel" Command="{Binding CancelCommand}" />
                 <CheckBox Content="Open Generated Folder"
                           IsChecked="{Binding OpenGeneratedFolderAfterBuild}"
