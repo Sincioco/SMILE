@@ -15,6 +15,7 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
         TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
         BoundProgramAnalysis analysis = BoundProgramAnalysis.Create(program);
         bool hasInput = TargetRuntimeFacts.HasInput(program);
+        bool requiresUtf8Output = TargetRuntimeFacts.RequiresUtf8Output(program);
         bool checkedArithmetic = TargetRuntimeFacts.NeedsCheckedIntegerArithmetic(program);
         var knownValues = new Dictionary<BoundStatement, IReadOnlyDictionary<VariableSymbol, SmileValue>>(
             ReferenceEqualityComparer.Instance);
@@ -30,19 +31,22 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
         var source = new StringBuilder();
         bool emittedHelper = false;
 
-        if (hasInput || checkedArithmetic)
+        if (requiresUtf8Output || checkedArithmetic)
         {
             source.AppendLine("import sys");
+            source.AppendLine();
+        }
+
+        if (requiresUtf8Output)
+        {
+            source.AppendLine("sys.stdout.reconfigure(encoding=\"utf-8\", errors=\"strict\")");
+            source.AppendLine("sys.stderr.reconfigure(encoding=\"utf-8\", errors=\"strict\")");
             source.AppendLine();
             source.AppendLine();
         }
 
         if (hasInput)
         {
-            source.AppendLine("sys.stdout.reconfigure(encoding=\"utf-8\", errors=\"strict\")");
-            source.AppendLine("sys.stderr.reconfigure(encoding=\"utf-8\", errors=\"strict\")");
-            source.AppendLine();
-            source.AppendLine();
             AppendInputHelpers(source, program);
             emittedHelper = true;
         }
@@ -120,7 +124,7 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
 
         return new GeneratedProgram(
             Language,
-            new[] { new GeneratedFile("Program.py", TextOutput.EnsureOneTrailingNewLine(source.ToString()), IsPrimary: true) });
+            new[] { new GeneratedFile("Program.py", TextOutput.EnsureOneTrailingNewLinePreservingExistingLineEndings(source.ToString()), IsPrimary: true) });
     }
 
     private static void AppendSourceItems(
@@ -155,11 +159,11 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
             switch (statement)
             {
                 case BoundLetStatement let:
-                    source.AppendLine($"{indent}{identifiers.Get(let.Variable)} = {expressions.Write(let.Initializer)}");
+                    source.AppendLine($"{indent}{identifiers.Get(let.Variable)} = {WriteDirectExpression(let.Initializer, indent, expressions)}");
                     break;
 
                 case BoundSetStatement set:
-                    source.AppendLine($"{indent}{identifiers.Get(set.Variable)} = {expressions.Write(set.Value)}");
+                    source.AppendLine($"{indent}{identifiers.Get(set.Variable)} = {WriteDirectExpression(set.Value, indent, expressions)}");
                     break;
 
                 case BoundInputStatement input:
@@ -178,7 +182,7 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
                 case BoundPrintStatement print:
                     source.Append(indent).AppendLine(print.IsBlankLine
                         ? "print()"
-                        : $"print({expressions.WriteDisplay(print.Value)})");
+                        : $"print({WriteDirectDisplayExpression(print.Value, indent, expressions)})");
                     break;
 
                 case BoundIfStatement conditional:
@@ -198,6 +202,22 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
             }
         }
     }
+
+    private static string WriteDirectExpression(
+        BoundExpression expression,
+        string structuralIndent,
+        PythonExpressionWriter expressions) =>
+        expression is BoundStringLiteralExpression literal && literal.Value.Contains('\n')
+            ? TargetMultilineLiterals.Python(literal.Value, structuralIndent)
+            : expressions.Write(expression);
+
+    private static string WriteDirectDisplayExpression(
+        BoundExpression expression,
+        string structuralIndent,
+        PythonExpressionWriter expressions) =>
+        expression is BoundStringLiteralExpression literal && literal.Value.Contains('\n')
+            ? TargetMultilineLiterals.Python(literal.Value, structuralIndent)
+            : expressions.WriteDisplay(expression);
 
     private static void AppendIfStatement(
         StringBuilder source,

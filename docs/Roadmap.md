@@ -143,7 +143,7 @@
 - Add case-insensitive `SET` as SMILE's only assignment statement, with declaration-before-assignment and exact fixed-type checking.
 - Move current runtime state out of `BoundLetStatement` and into the evaluator's mutable symbol environment.
 - Add shared statement-order execution analysis for mutation-aware simplification, short-circuit reachability, Integer profiling, exact String planning, and deterministic generation.
-- Add the SET Block String Literal — The SMILE Way as a complete SET-only value with exact structural indentation removal, logical `\n` normalization, official escapes, quotes, tabs, trailing whitespace, and embedded NUL preservation.
+- Introduce the Block String Literal — The SMILE Way initially as a complete SET-only value, with exact structural indentation removal, logical `\n` normalization, official escapes, quotes, tabs, trailing whitespace, and embedded NUL preservation.
 - Emit real assignments across all ten targets, including Swift `var` analysis, C/Objective-C pointer-plus-length updates, COBOL `MOVE`, and MASM runtime pointer/length updates.
 - Add the committed cumulative `examples/language.smile`, package it for Desktop deployment, load it only after the first window paint, and preserve visible-target-only background transpilation. Keep SET/block syntax highlighting, official specifications, diagnostics, CLI examples, and About version synchronized.
 - Preserve asynchronous debounced live transpilation, exact-byte evaluator conformance, deterministic generation, and the ten-target destination-language freeze.
@@ -170,7 +170,7 @@
 - Add block `IF / ELSE IF / ELSE / END IF` with case-insensitive `IF`, `THEN`, `ELSE`, and `END` keywords.
 - Require every atomic condition to be an explicit comparison and keep IF conditions free of function or procedure invocation.
 - Treat same-line `ELSE IF` as one clause while preserving an IF after a standalone ELSE line as a nested statement with its own END IF.
-- Permit PRINT, SET, nested IF, blank lines, and SET Block String Literals in branches; reject LET until scopes are formally introduced.
+- Permit PRINT, SET, nested IF, blank lines, and Block String Literals as complete SET values in branches; reject LET until scopes are formally introduced.
 - Add canonical recursive syntax and bound IF representations, first-successful-clause evaluator behavior, and branch-aware Known/Unknown path merging.
 - Preserve every source branch across all ten generators with idiomatic high-level control flow, Python `elif`, COBOL `END-IF`, and deterministic MASM compare/jump labels.
 - Extend the cumulative deployable `examples/language.smile`, lexical highlighting, official documentation, exact evaluator conformance, deterministic generation, and strict generated-warning validation.
@@ -191,7 +191,7 @@
 - Add equivalent first-non-whitespace `REM`, `//`, `#`, and `--` full-line comments, with ordinal case-insensitive boundary-aware contextual REM and no inline-comment syntax.
 - Retain comments and every blank physical source line as ordered non-semantic syntax and bound items while keeping evaluation, execution trace, analysis, diagnostics, mutation, and runtime output unchanged.
 - Preserve comments once in each target's primary user-code region with native `//`, `#`, `*>`, or `;` syntax, deterministic target-safe payload rendering, conservative COBOL wrapping, and explicit source blank-line boundaries.
-- Keep SET Block String content authoritative over comment/layout classification and make IF parsing plus 128-level recovery ignore comment payloads safely.
+- Keep Block String content authoritative over comment/layout classification and make IF parsing plus 128-level recovery ignore comment payloads safely.
 - Preserve layout through simplification and nested branches, including leading, trailing, consecutive, and layout-only bodies with required Python or COBOL no-op placeholders.
 - Extend the cumulative packaged `examples/language.smile`, AvalonEdit Comment highlighting, numbered official specifications, evaluator conformance, and strict all-ten-target warning-free runtime validation.
 - Preserve first-paint Desktop startup, asynchronous visible-target transpilation, cancellation, failure containment, and the destination-language freeze.
@@ -220,12 +220,16 @@
 ## Implemented In v0.8.0
 
 - Add canonical case-insensitive, block-only, pre-test `WHILE condition` / `END WHILE` with the same explicit-comparison and call-free condition rules as IF, zero-or-more execution, and no THEN, DO, WEND, BREAK, or CONTINUE aliases.
-- Permit PRINT, SET, INPUT, IF, nested WHILE, comments, blank lines, and SET Block String Literals in loop bodies while rejecting LET recursively until scopes are introduced.
+- Permit PRINT, SET, INPUT, IF, nested WHILE, comments, blank lines, and Block String Literals as complete SET values in loop bodies while rejecting LET recursively until scopes are introduced.
 - Share one 128-level IF/WHILE control-flow nesting limit, add opener-specific depth diagnostics and bounded mixed-block recovery, and keep comments plus Block Strings authoritative over structural-looking text.
 - Add one canonical syntax and bound WHILE node, cancellation-aware evaluator execution, deterministic loop ordinals, and structural execution-trace handling that never runs a loop during compilation.
 - Solve zero-or-more loop facts with a terminating two-phase fixed point, conservative post-loop merging, deterministic Integer widening, current-storage condition facts, and portable finite String-bound validation through `SMILE1612`.
 - Emit genuine warning-free pre-test loops for all ten destinations, including Python empty-body `pass`, structured COBOL `PERFORM`, deterministic MASM labels/back-edges, checked runtime arithmetic, exact INPUT, and preserved comments and blank lines.
-- Extend and package the cumulative `examples/language.smile`, add focused `examples/while.smile`, highlight WHILE and both END/WHILE terminator keywords, and align public documentation and About SMILE at `0.8.0 WHILE Loops`.
+- Extend and package the cumulative `examples/language.smile`, add focused `examples/while.smile`, highlight WHILE and both END/WHILE terminator keywords, and establish the `0.8.0 WHILE Loops` release baseline.
+- Generalize Block String Literals from SET-only to one shared complete-value form for top-level LET declarations and every valid SET position, while preserving the existing IF/WHILE LET scope restrictions.
+- Normalize LET and SET blocks through one front-end scanner into the existing bound String literal representation, keeping comments, blank content, exact space/tab margins, escapes, NUL, trailing whitespace, and logical LF semantics identical.
+- Render direct semantic multiline literals idiomatically and exactly across all ten targets: native raw/template/text/multiline/triple/raw forms for C#, JavaScript, Java, Swift, Python, and C++; adjacent literals for C and Objective-C; and exact byte-oriented storage for COBOL and MASM x64, with deterministic safe fallbacks.
+- Append direct LET Block declaration, later SET Block reassignment, and bounded WHILE SET Block examples to the cumulative `examples/language.smile`; keep the numeric version at 0.8.0 and align the inclusive About label as `0.8.0 WHILE Loops + LET/SET Block Strings`.
 - Preserve every v0.7.0.1 target-editor ownership rule, first-paint responsiveness, process-tree cancellation, strict all-ten-target evaluator conformance, generated-warning gates, and exact-SHA post-push CI completion.
 
 ## Final Destination-Language Freeze

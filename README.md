@@ -16,15 +16,15 @@ SMILE is a modern programming language inspired by BASIC, designed to help newco
 
 ## Current Release
 
-SMILE v0.8.0 — WHILE Loops — adds case-insensitive, pre-test `WHILE condition` / `END WHILE` blocks. A loop may run zero or more times, re-evaluates its explicit call-free Boolean condition from current storage before every iteration, and remains genuine runtime control flow in all ten target languages.
+SMILE v0.8.0 — WHILE Loops + LET/SET Block Strings — keeps case-insensitive, pre-test `WHILE condition` / `END WHILE` blocks and now lets a beginner declare multiline text directly with `LET`. The learner no longer needs to invent an empty placeholder and immediately replace it with `SET`; both statements accept the same complete Block String value and use one front-end scanner and normalization rule.
 
-WHILE bodies permit PRINT, SET, INPUT, IF, nested WHILE, comments, blank lines, and SET Block String Literals. LET remains prohibited inside WHILE until scopes exist. A shared IF/WHILE nesting limit protects the editor at depth 129, the evaluator supports cancellation for intentional infinite loops, and loop analysis uses a terminating zero-or-more fixed point with conservative Integer, Boolean, String, and known-value facts. The release preserves v0.7.0 INPUT semantics and every v0.7.0.1 independent target-editor ownership rule.
+A loop may run zero or more times, re-evaluates its explicit call-free Boolean condition from current storage before every iteration, and remains genuine runtime control flow in all ten target languages. WHILE bodies permit PRINT, SET, INPUT, IF, nested WHILE, comments, blank lines, and Block String Literals as complete SET values. LET remains prohibited inside WHILE until scopes exist. Direct semantic multiline literals use clear native destination syntax when it is exact, with deterministic escaped or byte-oriented fallbacks for controls, delimiter collisions, and other target hazards. The release preserves v0.7.0 INPUT semantics and every v0.7.0.1 independent target-editor ownership rule.
 
 ```text
 SMILE source
   -> lex source into tokens
   -> classify full-line comments and blank lines as ordered non-semantic source items
-  -> normalize SET Block String content entirely in the front end
+  -> scan and normalize LET/SET Block String content entirely in the front end
   -> parse logical lines into recursive ordered source-item lists and canonical syntax nodes
   -> bind declarations, SET/INPUT mutations, IF clauses, WHILE bodies, typed expressions, comments, and layout once
   -> solve loop-head fixed points, then record statement facts once with branch-aware Known/Unknown/Invalid environments
@@ -32,7 +32,7 @@ SMILE source
   -> identify variables mutated by SET or INPUT anywhere in IF/WHILE trees
   -> map SMILE symbols to safe target identifiers once per target
   -> choose one idiomatic target Integer and String plan from every branch, loop-head fact, and runtime input fact
-  -> generate ten target programs with genuine branches and loops, native input, checked runtime arithmetic, native comments, preserved blank lines, and real storage updates
+  -> generate ten target programs with genuine branches and loops, exact idiomatic multiline literals, native input, checked runtime arithmetic, native comments, preserved blank lines, and real storage updates
   -> read and compute from current generated storage for every branch-aware Unknown expression
   -> compare generated stdout, stderr, and exit code to the SMILE reference evaluator with scripted stdin
   -> show three debounced live target previews with line numbers and syntax highlighting
@@ -114,9 +114,10 @@ source-item      -> blank-line | full-line-comment | statement
 blank-line       -> hspace* line-end
 full-line-comment -> hspace* (REM rem-boundary | '//' | '#' | '--') comment-payload? statement-end
 statement        -> let-statement | set-statement | input-statement | print-statement | if-statement | while-statement
-let-statement    -> LET hspace+ identifier hspace* '=' hspace* expression
+let-statement    -> LET hspace+ identifier hspace* '=' hspace* let-value
+let-value        -> expression | block-string-literal
 set-statement    -> SET hspace+ identifier hspace* '=' hspace* set-value
-set-value        -> expression | set-block-string-literal
+set-value        -> expression | block-string-literal
 input-statement  -> INPUT hspace+ identifier hspace* statement-end
 print-statement  -> PRINT
                   | PRINT hspace+ interpolated-string
@@ -142,7 +143,17 @@ while-condition  -> expression subject to the explicit-comparison and call-free 
 expression       -> typed expression with precedence
 ```
 
-A SET Block String Literal begins when the opening `"` is the final non-whitespace character on the physical SET line. Its closing delimiter is a line whose only non-whitespace character is `"`. The block token consumes its internal physical newlines, so the complete block remains one logical SET statement.
+A Block String Literal begins when the opening `"` is the final non-whitespace character on a physical LET or SET line. Its closing delimiter is a line whose only non-whitespace character is `"`. The shared block scanner owns every intervening physical line, so comment markers and IF/WHILE-looking text remain String data and the complete block remains one logical LET or SET statement.
+
+```basic
+LET MultilineText = "
+    Hello World!
+    This is SMILE!
+        How are you?
+"
+```
+
+The declaration above creates the exact value `    Hello World!\n    This is SMILE!\n        How are you?` immediately. `SET` uses the identical form for later reassignment. Block Strings are not general expressions: they are valid only as the complete value after LET or SET, never inside PRINT, interpolation, concatenation, or parentheses.
 
 Implemented rules:
 
@@ -171,18 +182,18 @@ Implemented rules:
 - `ELSE IF` is a clause only when ELSE and IF occur on the same logical header line. An IF after a standalone ELSE line is nested and needs its own END IF.
 - Every complete IF condition has type Boolean, invokes no function or procedure, and contains an explicit comparison at every Boolean leaf. Standalone Boolean variables and literals are not conditions.
 - Conditions retain normal left-to-right `AND`/`OR` short-circuit evaluation, but parsing, binding, structural validation, and type checking still inspect both operands and every source branch.
-- IF v1.0 branches permit `PRINT`, `SET`, `INPUT`, nested `IF`, `WHILE`, full-line comments, blank lines, and SET Block String Literals. `LET` is rejected inside every IF-related body because SMILE has no block scope. Only an executed branch consumes input.
+- IF v1.0 branches permit `PRINT`, `SET`, `INPUT`, nested `IF`, `WHILE`, full-line comments, blank lines, and Block String Literals as complete SET values. `LET` is rejected inside every IF-related body because SMILE has no block scope. Only an executed branch consumes input.
 - Clauses are tested in order; only the first successful clause executes, otherwise ELSE executes when present. Only the selected branch mutates evaluator state.
 - Every generator preserves all source branches even when current values make one branch predictable. Known-value analysis merges outgoing paths and propagates a post-IF value only when every possible path proves the same value.
 - `WHILE condition` begins a block-only pre-test loop and `END WHILE` closes it. At least one space or tab must follow WHILE; the header has no THEN or DO keyword and cannot contain a one-line body.
 - Every WHILE condition has type Boolean, invokes no function or procedure, and contains an explicit comparison at every Boolean leaf. It is tested before the first iteration and after every completed iteration.
-- WHILE v1.0 bodies permit `PRINT`, `SET`, `INPUT`, `IF`, nested `WHILE`, full-line comments, blank lines, and SET Block String Literals. LET is rejected recursively anywhere lexically inside a WHILE body until scopes are introduced.
+- WHILE v1.0 bodies permit `PRINT`, `SET`, `INPUT`, `IF`, nested `WHILE`, full-line comments, blank lines, and Block String Literals as complete SET values. LET, including a LET Block String declaration, is rejected recursively anywhere lexically inside a WHILE body until scopes are introduced.
 - WHILE may execute zero or more times. SET and successful INPUT mutations persist into the next condition test; only reached loop bodies consume input or produce runtime failures.
 - `WEND`, `ENDWHILE`, `LOOP`, `BREAK`, and `CONTINUE` are not WHILE syntax. Infinite loops are valid and rely on host cancellation or process timeout rather than an implicit iteration cap.
 - IF and WHILE share a combined control-flow nesting limit. Depth 1 through 128 is supported; a 129th IF reports `SMILE1416`, a 129th WHILE reports `SMILE1611`, and bounded mixed-block recovery does not recurse into the rejected body.
 - Loop analysis includes the zero-iteration path, solves stable loop-head facts before recording body facts once, widens loop-carried Integer ranges, and retains a post-loop Known value only when every represented exit agrees.
 - Every String assigned through WHILE must retain a finite compile-time maximum UTF-8 byte length. Unbounded recurrence such as `SET Text = Text + "x"` reports `SMILE1612`; v1.0 deliberately does not infer a finite trip count to accept it.
-- A SET Block String Literal is valid only as the complete SET value. It is not legal in LET, PRINT, interpolation, concatenation, or parentheses.
+- A Block String Literal is valid only as the complete LET initializer or SET value. It is not legal in PRINT, interpolation, concatenation, parentheses, or another general expression position.
 - Block delimiter lines are excluded. Each boundary between content lines becomes one logical `\n`, with no automatic leading or trailing newline.
 - The exact spaces/tabs before the closing quote form the structural indentation margin. That exact margin is removed only from content lines that begin with it; all additional or nonmatching whitespace is preserved.
 - Blank content lines, trailing spaces/tabs, quotes inside content, and `\\`, `\"`, `\n`, `\r`, `\t`, `\0`, `\b`, and `\f` are preserved with official String semantics.
@@ -211,7 +222,7 @@ Implemented rules:
 - Explicit concatenation remains concatenation in generated code when the target language supports it.
 - A semicolon is not a statement separator. In raw templates, `PRINT A; B; C` prints the semicolons literally.
 - A physical line may contain only one statement.
-- A SET Block String Literal is one logical statement spanning its delimiter and content lines.
+- A LET or SET Block String Literal is one logical statement spanning its delimiter and content lines.
 - A second standalone `PRINT` keyword on the same line is a compiler error.
 - Quote omission is a `PRINT` convenience only; it does not make quote-free strings legal in `LET`, ordinary `SET`, or other expression positions.
 - Source loading, editing, saving, examples, and tests preserve trailing spaces and tabs because block content may depend on them.
@@ -417,7 +428,24 @@ For a SMILE IF / ELSE IF / ELSE chain, C#, C, C++, Java, JavaScript, Objective-C
 
 For a SMILE WHILE block, C#, C, C++, JavaScript, Java, and Objective-C emit natural `while (condition)` blocks; Swift and Python emit their native `while condition` form; COBOL emits a structured pre-test `PERFORM`; and MASM x64 emits deterministic condition, body, back-edge, and exit labels. Python and COBOL add their native no-op only when preserved layout leaves the semantic body empty. Every target re-evaluates the condition from current runtime storage and retains the source loop even when its incoming condition is known false or true.
 
-A SET Block String generates only as its normalized ordinary String value. No backend scans delimiters, removes indentation, or normalizes source newlines.
+A LET or SET Block String generates only as its normalized ordinary String value. No backend sees which source form produced that value, scans delimiters, removes indentation, or normalizes source newlines. The same native rendering may therefore represent an equivalent direct ordinary String literal containing `\n`. Explicit concatenation and interpolation retain their expression intent instead of being folded into a prettier literal.
+
+For a direct semantic String literal containing LF, each destination uses the clearest exact form below. Literal-internal physical line endings are emitted deterministically as LF. If a native form cannot safely preserve controls, carriage returns, NUL, trailing whitespace, delimiter-like data, or another source hazard, generation falls back without changing a byte of the SMILE value.
+
+| Target | Preferred exact multiline form | Deterministic fallback |
+|---|---|---|
+| C# | Raw String literal with a quote delimiter longer than any conflicting run | Escaped ordinary String literal |
+| JavaScript | Template literal with escaped backticks, `${`, and backslashes | Escaped ordinary String literal |
+| Java | Text block with the required terminal line-continuation and whitespace escapes | Adjacent escaped ordinary String fragments |
+| Swift | Multiline String literal, using collision-safe extended `#` delimiters when needed | Escaped ordinary String literal |
+| Python | Triple-quoted literal when indentation and delimiters remain clear and exact | Parenthesized adjacent escaped literals |
+| C++ | C++20 raw String literal with a deterministic collision-safe delimiter | Escaped ordinary literal or exact length-aware `std::string` construction |
+| C | Adjacent ordinary C String literal fragments with explicit `\n` boundaries | Exact escaped or byte-counted fragments |
+| Objective-C | Adjacent ordinary C-compatible String literal fragments with explicit `\n` boundaries | Exact escaped or byte-counted fragments |
+| COBOL | Exact UTF-8 byte/hex-oriented `WORKING-STORAGE` value | The same exact byte-oriented storage path |
+| MASM x64 | Readable `BYTE` chunks with numeric `10` line-feed bytes | Fully explicit byte declarations |
+
+C#, Java, and Python explicitly select UTF-8 standard output whenever INPUT can produce runtime Unicode or any bound source value contains non-ASCII text. One shared bound-tree fact controls that setup, so ordinary ASCII-only programs do not gain unrelated runtime scaffolding while redirected Windows output still preserves complete SMILE String values.
 
 Every source comment outside a Block String is emitted once in the primary generated user-code region. C#, C, C++, JavaScript, Java, Objective-C, and Swift use `//`; Python uses `#`; COBOL free source uses `*>`; and MASM x64 uses `;`. Python comments stay inside `main()`, MASM comments stay in the `.code` source-order stream, and COBOL places layout once in the nearest deterministic `PROCEDURE DIVISION` user-code region while LET declarations remain in `WORKING-STORAGE`. Source-authored blank lines remain explicit empty lines between generated statement chunks, including consecutive, leading, trailing, and branch-local layout. Semantically empty Python and COBOL bodies still receive the required `pass` or `CONTINUE` placeholder.
 
@@ -458,7 +486,7 @@ Visual Studio setup must include the x64 C++ tools and `VC\Auxiliary\Build\vcvar
 
 Microsoft OpenJDK 25 LTS is a free Java toolchain and can be installed with `winget install --id Microsoft.OpenJDK.25 --exact`. Restart the terminal or SMILE after installing so the updated user `PATH` is visible.
 
-The v0.8.0 Java and all-target acceptance suites compile and execute the normative WHILE program, zero/multiple/nested iterations, INPUT-driven loop exits, checked loop-carried arithmetic, bounded Strings, comment-safe mixed IF/WHILE structure, source-layout preservation, embedded NUL, and the complete `examples/language.smile` program. Scripted stdin is supplied directly, and exact stdout, stderr, exit code, and generated compiler warnings are compared with `SmileEvaluator`.
+The v0.8.0 Java and all-target acceptance suites compile and execute the normative WHILE program, zero/multiple/nested iterations, INPUT-driven loop exits, checked loop-carried arithmetic, bounded Strings, LET/SET Block declarations and assignments, native/fallback multiline source forms, comment-safe mixed IF/WHILE structure, source-layout preservation, embedded NUL, and the complete `examples/language.smile` program. Scripted stdin is supplied directly, and exact stdout, stderr, exit code, and generated compiler warnings are compared with `SmileEvaluator`.
 
 ## Build, Test, And Run
 
@@ -489,7 +517,7 @@ Remove-Item Env:SMILE_REQUIRE_ALL_TARGETS
 Remove-Item Env:SMILE_REQUIRE_ZERO_TARGET_WARNINGS
 ```
 
-A warning-free `dotnet build SMILE.sln` proves the SMILE solution itself is clean; it does not prove generated target programs are warning-free. `SMILE_REQUIRE_ZERO_TARGET_WARNINGS=1` activates destination-specific warning detection for the compiler-backed targets. JavaScript and Python have no compile stage in their normal SMILE toolchains. Runtime conformance remains a separate all-ten-target evaluator comparison. The normative WHILE and INPUT programs, invalid-input, runtime-arithmetic, finite loop corpus, and comment/layout runs use direct scripted stdin, emit zero detected compiler warnings, and match `SmileEvaluator` stdout, stderr, and exit code exactly.
+A warning-free `dotnet build SMILE.sln` proves the SMILE solution itself is clean; it does not prove generated target programs are warning-free. `SMILE_REQUIRE_ZERO_TARGET_WARNINGS=1` activates destination-specific warning detection for the compiler-backed targets. JavaScript and Python have no compile stage in their normal SMILE toolchains. Runtime conformance remains a separate all-ten-target evaluator comparison. The normative WHILE, INPUT, and LET/SET Block String programs, invalid-input, runtime-arithmetic, finite loop corpus, multiline fallback corpus, and comment/layout runs use direct scripted stdin, emit zero detected compiler warnings, and match `SmileEvaluator` stdout, stderr, and exit code exactly.
 
 Run the desktop app:
 
@@ -525,13 +553,13 @@ When `--run` executes a generated program containing INPUT, the CLI inherits the
 
 ## Desktop Application
 
-The desktop app title is `SMILE - Simple Modern Interactive Learning Environment`. It opens maximized and completes its first paint before doing language-reference I/O or compiler work. It then asynchronously loads the packaged [cumulative language reference](examples/language.smile) into the top-left editor and immediately transpiles only the three visible targets in the background. If a learner types, opens a file, or chooses New while that read is pending, the newer document state wins and is never replaced by the late startup result. The reference preserves the full valid LET, PRINT, SET, Block String, IF, comment, source-layout, and INPUT tour before appending a finite WHILE section. It is the committed file that future language syntax will extend instead of replacing earlier examples. The other three panes are editable generated targets. They default to C#, Assembly - Windows x64 MASM, and C. Each target pane can switch between C#, C, MASM x64, JavaScript, Java, COBOL, Objective-C, Swift, Python, and C++.
+The desktop app title is `SMILE - Simple Modern Interactive Learning Environment`. It opens maximized and completes its first paint before doing language-reference I/O or compiler work. It then asynchronously loads the packaged [cumulative language reference](examples/language.smile) into the top-left editor and immediately transpiles only the three visible targets in the background. If a learner types, opens a file, or chooses New while that read is pending, the newer document state wins and is never replaced by the late startup result. The reference preserves the full valid LET, PRINT, SET, IF, comment, source-layout, INPUT, and finite WHILE tour, then appends direct LET Block declaration, later SET Block reassignment, and bounded loop-local SET Block examples. It is the committed file that future language syntax will extend instead of replacing earlier examples. The other three panes are editable generated targets. They default to C#, Assembly - Windows x64 MASM, and C. Each target pane can switch between C#, C, MASM x64, JavaScript, Java, COBOL, Objective-C, Swift, Python, and C++.
 
 `examples/language.smile`, the focused [INPUT example](examples/input.smile), and the focused [WHILE example](examples/while.smile) are copied beside the Desktop executable and included in deployment publishes as `language.smile`, `input.smile`, and `while.smile`. Application startup loads only the cumulative runtime reference asynchronously without associating Save with the packaged copy, so learners can experiment safely and use Save As for their own programs. File > New instead creates an unassociated blank document and immediately clears the SMILE editor plus all three target editors. It cancels pending live generation and advances the source revision, so neither the debounce nor a late startup read can repopulate the blank document. Relaunching SMILE still loads `language.smile` normally.
 
 ![SMILE desktop app in maximized state](Requirements/Progress/2026-08-02-day-1-2-smile-desktop.png)
 
-The four code panes use AvalonEdit. The SMILE source pane and all three target panes show line numbers and lexical syntax highlighting. Every language uses one normalized teaching palette: comments are green and green is reserved exclusively for comments; all language keyword groups are blue; learner-named variables, labels, classes, functions, and methods are black; and no definition uses purple, magenta, fuchsia, or pink. `INPUT` and `WHILE` are highlighted case-insensitively, and `IF`, `THEN`, `ELSE`, and `END` remain highlighted individually so ELSE IF, END IF, and END WHILE visibly remain separate keywords. A dedicated Comment style recognizes `REM`, `//`, `#`, and `--` only at first non-whitespace, with case-insensitive boundary-aware REM. Comment and String spans own keyword-looking text inside comments, ordinary/interpolated Strings, and SET Block Strings. Nested documentation tags and comment markers remain green with the surrounding comment. A SET Block String remains one higher-precedence String-colored span across physical lines inside any IF/WHILE body until its whitespace-only closing delimiter; marker-looking content and blank block lines remain String-owned. Unterminated blocks, incomplete comments, and malformed INPUT/IF/WHILE text remain safe while typing. Target panes switch highlighting when their selected language changes. C++ keeps AvalonEdit's built-in C++ grammar, with its colors normalized to the SMILE palette. Objective-C uses the same mature C/C++ grammar because SMILE's current Objective-C output is a Foundation-free C-compatible console profile. Language switching reuses generated code already cached for the current source revision and only schedules live transpilation for visible targets that are actually missing. The output area remains a plain build/program log without line numbers.
+The four code panes use AvalonEdit. The SMILE source pane and all three target panes show line numbers and lexical syntax highlighting. Every language uses one normalized teaching palette: comments are green and green is reserved exclusively for comments; all language keyword groups are blue; learner-named variables, labels, classes, functions, and methods are black; and no definition uses purple, magenta, fuchsia, or pink. `INPUT` and `WHILE` are highlighted case-insensitively, and `IF`, `THEN`, `ELSE`, and `END` remain highlighted individually so ELSE IF, END IF, and END WHILE visibly remain separate keywords. A dedicated Comment style recognizes `REM`, `//`, `#`, and `--` only at first non-whitespace, with case-insensitive boundary-aware REM. Comment and String spans own keyword-looking text inside comments, ordinary/interpolated Strings, and LET/SET Block Strings. Nested documentation tags and comment markers remain green with the surrounding comment. A Block String remains one higher-precedence String-colored span across physical lines until its whitespace-only closing delimiter; marker-looking content, IF/WHILE/END text, and blank block lines remain String-owned. Unterminated blocks, incomplete comments, and malformed INPUT/IF/WHILE text remain safe while typing. Target panes switch highlighting when their selected language changes. C++ keeps AvalonEdit's built-in C++ grammar, with its colors normalized to the SMILE palette. Objective-C uses the same mature C/C++ grammar because SMILE's current Objective-C output is a Foundation-free C-compatible console profile. Language switching reuses generated code already cached for the current source revision and only schedules live transpilation for visible targets that are actually missing. The output area remains a plain build/program log without line numbers.
 
 Hold Ctrl and rotate the mouse wheel over any code pane or the diagnostics/output pane to increase or decrease only that pane's font size in one-point steps from 8 through 48 points. Normal mouse-wheel scrolling is unchanged. Each pane keeps its own in-memory zoom level so presenters can enlarge the generated code or program output without changing the other panes.
 
@@ -549,7 +577,7 @@ When Open Generated Folder is enabled, SMILE asks Windows Explorer to open the g
 
 When Press Any Key Launcher is enabled, SMILE writes `Run Program - Press Any Key.cmd` into each successful build/run workspace. Double-clicking that launcher runs the generated program and then shows `Press any key to exit...`, which keeps the console window open long enough to inspect the output.
 
-Current desktop build version: `0.8.0 WHILE Loops`.
+Current desktop build version: `0.8.0 WHILE Loops + LET/SET Block Strings`.
 
 ## Diagnostics
 
@@ -558,7 +586,7 @@ SMILE reports source errors as diagnostics instead of ordinary crashes. Current 
 | Code | Meaning |
 |---|---|
 | `SMILE1001` | Unknown statement or keyword |
-| `SMILE1003` | Unterminated ordinary String literal or SET Block String Literal |
+| `SMILE1003` | Unterminated ordinary String literal or Block String Literal |
 | `SMILE1005` | Invalid or unexpected character |
 | `SMILE1101` | `PRINT` requires whitespace before its payload |
 | `SMILE1102` | Only one `PRINT` statement is allowed per line |
@@ -588,9 +616,9 @@ SMILE reports source errors as diagnostics instead of ordinary crashes. Current 
 | `SMILE1303` | `SET` requires a value |
 | `SMILE1304` | SET target variable is undefined |
 | `SMILE1305` | SET value type does not match the variable's fixed type |
-| `SMILE1306` | SET Block String Literal is valid only as the complete value of SET |
+| `SMILE1306` | Block String Literal is valid only as the complete value of LET or SET |
 | `SMILE1307` | Unexpected content follows the closing block delimiter |
-| `SMILE1308` | Block opening quote must end the physical SET line |
+| `SMILE1308` | Block opening quote must end the physical LET or SET line |
 | `SMILE1401` | IF requires a condition |
 | `SMILE1402` | Every atomic IF condition must be an explicit comparison |
 | `SMILE1403` | The complete IF condition must have type Boolean |
@@ -692,7 +720,7 @@ SMILE-owned build/output artifacts older than 1 day may be cleaned from known ge
 
 - Only `String`, `Integer`, and `Boolean` core types are implemented.
 - `SET` is the only expression-assignment statement; INPUT is the separate one-line runtime-input statement. Assignment expressions, compound assignment, increment/decrement syntax, multiple assignment, INPUT declaration, built-in prompts, and automatic retry are not implemented.
-- Multiline String source syntax is limited to one complete SET Block String value; general block Strings and block interpolation are not implemented.
+- Multiline String source syntax is limited to one complete LET initializer or SET value; general block expressions and block interpolation are not implemented.
 - IF v1.0 is block-only. One-line IF, branch-local LET, and scopes are not implemented. Function/procedure calls in conditions are permanently prohibited, and standalone Boolean conditions are invalid because every atomic condition requires an explicit comparison.
 - WHILE v1.0 is pre-test and block-only. One-line WHILE, DO, WEND, BREAK, CONTINUE, post-test loops, and loop-local LET are not implemented. WHILE String mutation must have a finite compile-time maximum UTF-8 size; symbolic trip-count proof and dynamic unbounded String allocation are future work.
 - The combined supported IF/WHILE nesting depth is limited to 128 as a compiler resource-safety boundary; ordinary programs within that depth retain the same control-flow syntax and behavior.

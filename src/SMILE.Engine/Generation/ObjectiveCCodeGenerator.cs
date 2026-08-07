@@ -197,9 +197,20 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
                         SmileValue letValue = let.Variable.Type is SmileType.String
                             ? facts.Value.Value
                             : default;
-                        string initializer = let.Variable.Type is SmileType.String
-                            ? TargetExpression.CConstant(letValue, integers)
-                            : TargetExpression.ObjectiveC(
+                        if (let.Variable.Type is SmileType.String)
+                        {
+                            CCodeGenerator.AppendCStringAssignment(
+                                source,
+                                indent,
+                                TargetTypes.CDeclaration(
+                                    let.Variable.Type,
+                                    identifiers.Get(let.Variable),
+                                    integers),
+                                letValue.StringValue);
+                        }
+                        else
+                        {
+                            string initializer = TargetExpression.ObjectiveC(
                                 let.Initializer,
                                 identifiers,
                                 integers,
@@ -207,7 +218,9 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
                                 exactStringLengths,
                                 runtimeExpressionBuffers,
                                 checkedArithmetic);
-                        source.AppendLine($"{indent}{TargetTypes.CDeclaration(let.Variable.Type, identifiers.Get(let.Variable), integers)} = {initializer};");
+                            source.AppendLine($"{indent}{TargetTypes.CDeclaration(let.Variable.Type, identifiers.Get(let.Variable), integers)} = {initializer};");
+                        }
+
                         if (exactStringLengths.TryGetValue(let.Variable, out string? letLengthName))
                         {
                             source.AppendLine($"{indent}size_t {letLengthName} = {CCodeGenerator.Utf8ByteLength(letValue)};");
@@ -256,9 +269,17 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
                         SmileValue setValue = facts.Value.IsKnown
                             ? facts.Value.Value
                             : default;
-                        string value = set.Variable.Type is SmileType.String
-                            ? TargetExpression.CConstant(setValue, integers)
-                            : TargetExpression.ObjectiveC(
+                        if (set.Variable.Type is SmileType.String)
+                        {
+                            CCodeGenerator.AppendCStringAssignment(
+                                source,
+                                indent,
+                                identifiers.Get(set.Variable),
+                                setValue.StringValue);
+                        }
+                        else
+                        {
+                            string value = TargetExpression.ObjectiveC(
                                 set.Value,
                                 identifiers,
                                 integers,
@@ -266,7 +287,9 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
                                 exactStringLengths,
                                 runtimeExpressionBuffers,
                                 checkedArithmetic);
-                        source.AppendLine($"{indent}{identifiers.Get(set.Variable)} = {value};");
+                            source.AppendLine($"{indent}{identifiers.Get(set.Variable)} = {value};");
+                        }
+
                         if (exactStringLengths.TryGetValue(set.Variable, out string? setLengthName))
                         {
                             source.AppendLine($"{indent}{setLengthName} = {CCodeGenerator.Utf8ByteLength(setValue)};");

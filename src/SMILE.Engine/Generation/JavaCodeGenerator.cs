@@ -12,6 +12,7 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
         BoundProgramAnalysis analysis = BoundProgramAnalysis.Create(program);
         TargetIntegerProfile integers = TargetIntegerProfile.Analyze(program, analysis);
         bool hasInput = TargetRuntimeFacts.HasInput(program);
+        bool requiresUtf8Output = TargetRuntimeFacts.RequiresUtf8Output(program);
         bool checkedArithmetic = TargetRuntimeFacts.NeedsCheckedIntegerArithmetic(program);
         if (TargetRuntimeFacts.HasInput(program, SmileType.Integer) || checkedArithmetic)
         {
@@ -27,7 +28,15 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
             source.AppendLine("import java.nio.ByteBuffer;");
             source.AppendLine("import java.nio.charset.CharacterCodingException;");
             source.AppendLine("import java.nio.charset.CodingErrorAction;");
+        }
+
+        if (requiresUtf8Output)
+        {
             source.AppendLine("import java.nio.charset.StandardCharsets;");
+        }
+
+        if (hasInput || requiresUtf8Output)
+        {
             source.AppendLine();
         }
 
@@ -41,7 +50,7 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
 
         source.AppendLine("    public static void main(String[] args)");
         source.AppendLine("    {");
-        if (hasInput)
+        if (requiresUtf8Output)
         {
             source.AppendLine("        System.setOut(new java.io.PrintStream(System.out, true, StandardCharsets.UTF_8));");
             source.AppendLine("        System.setErr(new java.io.PrintStream(System.err, true, StandardCharsets.UTF_8));");
@@ -76,7 +85,7 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
 
         return new GeneratedProgram(
             Language,
-            new[] { new GeneratedFile("Program.java", TextOutput.EnsureOneTrailingNewLine(source.ToString()), IsPrimary: true) });
+            new[] { new GeneratedFile("Program.java", TextOutput.EnsureOneTrailingNewLinePreservingExistingLineEndings(source.ToString()), IsPrimary: true) });
     }
 
     private static void AppendSourceItems(
@@ -100,12 +109,17 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
                     break;
 
                 case BoundLetStatement let:
-                    string initializer = TargetExpression.Java(let.Initializer, identifiers, integers, checkedArithmetic);
+                    string initializer = WriteDirectExpression(
+                        let.Initializer,
+                        indent,
+                        identifiers,
+                        integers,
+                        checkedArithmetic);
                     source.AppendLine($"{indent}{TargetTypes.Java(let.Variable.Type, integers)} {identifiers.Get(let.Variable)} = {initializer};");
                     break;
 
                 case BoundSetStatement set:
-                    source.AppendLine($"{indent}{identifiers.Get(set.Variable)} = {TargetExpression.Java(set.Value, identifiers, integers, checkedArithmetic)};");
+                    source.AppendLine($"{indent}{identifiers.Get(set.Variable)} = {WriteDirectExpression(set.Value, indent, identifiers, integers, checkedArithmetic)};");
                     break;
 
                 case BoundInputStatement input:
@@ -124,7 +138,7 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
                 case BoundPrintStatement print:
                     source.Append(indent).AppendLine(print.IsBlankLine
                         ? "System.out.println();"
-                        : $"System.out.println({TargetExpression.JavaDisplay(print.Value, identifiers, integers, checkedArithmetic)});");
+                        : $"System.out.println({WriteDirectDisplayExpression(print.Value, indent, identifiers, integers, checkedArithmetic)});");
                     break;
 
                 case BoundIfStatement conditional:
@@ -143,6 +157,26 @@ internal sealed class JavaCodeGenerator : ICodeGenerator
             }
         }
     }
+
+    private static string WriteDirectExpression(
+        BoundExpression expression,
+        string structuralIndent,
+        TargetIdentifierMap identifiers,
+        TargetIntegerProfile integers,
+        bool checkedArithmetic) =>
+        expression is BoundStringLiteralExpression literal && literal.Value.Contains('\n')
+            ? TargetMultilineLiterals.Java(literal.Value, structuralIndent)
+            : TargetExpression.Java(expression, identifiers, integers, checkedArithmetic);
+
+    private static string WriteDirectDisplayExpression(
+        BoundExpression expression,
+        string structuralIndent,
+        TargetIdentifierMap identifiers,
+        TargetIntegerProfile integers,
+        bool checkedArithmetic) =>
+        expression is BoundStringLiteralExpression literal && literal.Value.Contains('\n')
+            ? TargetMultilineLiterals.Java(literal.Value, structuralIndent)
+            : TargetExpression.JavaDisplay(expression, identifiers, integers, checkedArithmetic);
 
     private static void AppendIfStatement(
         StringBuilder source,

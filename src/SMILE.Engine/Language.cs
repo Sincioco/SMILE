@@ -185,9 +185,9 @@ public sealed record StringLiteralExpressionSyntax(
     TextSpan Span)
     : ExpressionSyntax(Span);
 
-// The dedicated syntax form lets the parser enforce SET-only placement while
-// the binder still lowers the already-normalized value to the one canonical
-// bound String literal used by every target.
+// The dedicated syntax form lets the parser enforce complete-value LET/SET
+// placement while the binder still lowers the already-normalized value to the
+// one canonical bound String literal used by every target.
 public sealed record BlockStringLiteralExpressionSyntax(
     string Value,
     TextSpan Span)

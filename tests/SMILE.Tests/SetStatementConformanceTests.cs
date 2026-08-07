@@ -113,12 +113,14 @@ public sealed class SetStatementConformanceTests
     }
 
     [TestMethod]
-    [DataRow("LET Name =\"\nS\n\"")]
     [DataRow("PRINT \"\nS\n\"")]
     [DataRow("LET Name = \"\"\nLET Prefix = \"X\"\nSET Name = Prefix + \"\nS\n\"")]
     [DataRow("LET Name = \"\"\nSET Name = (\"\nS\n\")")]
     [DataRow("LET Name = \"Sin\"\nLET Message = \"\"\nSET Message =$\"\nHello {Name}\n\"")]
-    public void Block_string_is_rejected_outside_a_complete_SET_value(string source)
+    [DataRow("LET Prefix = \"X\"\nLET Name = Prefix + \"\nS\n\"")]
+    [DataRow("LET Name = (\"\nS\n\")")]
+    [DataRow("LET Name =$\"\nHello\n\"")]
+    public void Block_string_is_rejected_outside_a_complete_LET_or_SET_value(string source)
     {
         ParseResult result = _transpiler.Parse(source);
 

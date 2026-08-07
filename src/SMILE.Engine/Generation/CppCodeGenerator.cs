@@ -111,7 +111,7 @@ internal sealed class CppCodeGenerator : ICodeGenerator
             {
                 new GeneratedFile(
                     "Program.cpp",
-                    TextOutput.EnsureOneTrailingNewLine(source.ToString()),
+                    TextOutput.EnsureOneTrailingNewLinePreservingExistingLineEndings(source.ToString()),
                     IsPrimary: true)
             });
     }
@@ -140,7 +140,7 @@ internal sealed class CppCodeGenerator : ICodeGenerator
 
                 case BoundLetStatement let:
                     source.AppendLine(
-                        $"{indent}{TargetTypes.Cpp(let.Variable.Type, integers)} {identifiers.Get(let.Variable)} = {expressions.Write(let.Initializer)};");
+                        $"{indent}{TargetTypes.Cpp(let.Variable.Type, integers)} {identifiers.Get(let.Variable)} = {expressions.WriteDirect(let.Initializer)};");
                     emittedDeclaration = true;
                     break;
 
@@ -150,7 +150,7 @@ internal sealed class CppCodeGenerator : ICodeGenerator
                         source.AppendLine();
                     }
 
-                    source.AppendLine($"{indent}{identifiers.Get(set.Variable)} = {expressions.Write(set.Value)};");
+                    source.AppendLine($"{indent}{identifiers.Get(set.Variable)} = {expressions.WriteDirect(set.Value)};");
                     emittedExecutable = true;
                     break;
 
@@ -335,7 +335,7 @@ internal sealed class CppCodeGenerator : ICodeGenerator
         else
         {
             source.Append(" << ");
-            source.Append(expressions.WriteForStream(print.Value));
+            source.Append(expressions.WriteDirectForStream(print.Value));
         }
 
         source.AppendLine(" << '\\n';");
@@ -576,10 +576,21 @@ internal sealed class CppExpressionWriter
     public string Write(BoundExpression expression) =>
         WriteExpression(expression, parentPrecedence: 0, isRightChild: false, parentOperator: null);
 
+    public string WriteDirect(BoundExpression expression) =>
+        expression is BoundStringLiteralExpression literal &&
+        TargetMultilineLiterals.TryCpp(literal.Value, out string multiline)
+            ? multiline
+            : Write(expression);
+
     public string WriteForStream(BoundExpression expression) =>
         expression.Type is SmileType.Boolean
             ? $"({Write(expression)} ? \"TRUE\" : \"FALSE\")"
             : Write(expression);
+
+    public string WriteDirectForStream(BoundExpression expression) =>
+        expression.Type is SmileType.Boolean
+            ? $"({Write(expression)} ? \"TRUE\" : \"FALSE\")"
+            : WriteDirect(expression);
 
     public string WriteStringLiteral(string value) =>
         value.Contains('\0', StringComparison.Ordinal)

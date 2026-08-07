@@ -506,12 +506,13 @@ internal sealed class Parser
                 continue;
             }
 
-            if (TryFindSetBlockOpening(line, first, out int openingQuoteColumn))
+            if (TryFindBlockOpening(line, first, out int openingQuoteColumn))
             {
                 // A block String's physical content is data. Reuse the one
                 // canonical delimiter scan, but suppress diagnostics because
-                // the complete over-limit IF is intentionally being skipped.
-                SetBlockStringScanResult block = SetBlockStringScanner.Scan(
+                // the complete over-limit control-flow subtree is intentionally
+                // being skipped.
+                BlockStringScanResult block = BlockStringScanner.Scan(
                     _source,
                     _lines,
                     scanIndex,
@@ -588,25 +589,26 @@ internal sealed class Parser
         lineIndex = Math.Max(lineIndex, _lines.Count - 1);
     }
 
-    private bool TryFindSetBlockOpening(
+    private bool TryFindBlockOpening(
         SourceLine line,
         int first,
         out int openingQuoteColumn)
     {
         openingQuoteColumn = -1;
-        if (!StartsWithKeyword(line, first, "SET"))
+        if (!StartsWithKeyword(line, first, "LET") &&
+            !StartsWithKeyword(line, first, "SET"))
         {
             return false;
         }
 
-        IdentifierRead setKeyword = ReadIdentifier(line, first);
-        if (setKeyword.End >= line.Text.Length ||
-            !SyntaxFacts.IsHorizontalWhitespace(line.Text[setKeyword.End]))
+        IdentifierRead statementKeyword = ReadIdentifier(line, first);
+        if (statementKeyword.End >= line.Text.Length ||
+            !SyntaxFacts.IsHorizontalWhitespace(line.Text[statementKeyword.End]))
         {
             return false;
         }
 
-        int nameStart = SkipHorizontalWhitespace(line.Text, setKeyword.End);
+        int nameStart = SkipHorizontalWhitespace(line.Text, statementKeyword.End);
         if (nameStart >= line.Text.Length ||
             !SyntaxFacts.IsIdentifierStart(line.Text[nameStart]))
         {
@@ -627,10 +629,10 @@ internal sealed class Parser
             return true;
         }
 
-        // ParseSetStatement consumes a misplaced trailing block opener before
+        // LET and SET consume a misplaced trailing block opener before
         // reporting its placement error. Recovery must make the same physical
-        // line ownership decision so block content cannot masquerade as IF
-        // structure while a learner is still editing the SET expression.
+        // line ownership decision so block content cannot masquerade as
+        // control-flow structure while a learner is editing a LET/SET value.
         int misplacedBlockOpening = FindMisplacedBlockOpening(line.Text, valueStart);
         if (misplacedBlockOpening < 0 ||
             !IsBlockOpening(line, misplacedBlockOpening))
@@ -987,11 +989,11 @@ internal sealed class Parser
 
         if (IsBlockOpening(line, payloadStart))
         {
-            SetBlockStringScanResult block = ConsumeBlock(lineIndex, payloadStart);
+            BlockStringScanResult block = ConsumeBlock(lineIndex, payloadStart);
             lineIndex = block.ClosingLineIndex;
             AddDiagnostic(
                 "SMILE1306",
-                "A SET Block String Literal is valid only as the complete value of SET.",
+                "A Block String Literal is valid only as the complete value of LET or SET.",
                 block.Token.Span);
             return null;
         }
@@ -999,11 +1001,11 @@ internal sealed class Parser
         int misplacedPrintBlock = FindMisplacedBlockOpening(line.Text, payloadStart);
         if (misplacedPrintBlock >= 0 && IsBlockOpening(line, misplacedPrintBlock))
         {
-            SetBlockStringScanResult block = ConsumeBlock(lineIndex, misplacedPrintBlock);
+            BlockStringScanResult block = ConsumeBlock(lineIndex, misplacedPrintBlock);
             lineIndex = block.ClosingLineIndex;
             AddDiagnostic(
                 "SMILE1306",
-                "A SET Block String Literal is valid only as the complete value of SET.",
+                "A Block String Literal is valid only as the complete value of LET or SET.",
                 block.Token.Span);
             return null;
         }
@@ -1091,23 +1093,42 @@ internal sealed class Parser
 
         if (IsBlockOpening(line, position))
         {
-            SetBlockStringScanResult block = ConsumeBlock(lineIndex, position);
+            BlockStringScanResult block = ConsumeBlock(lineIndex, position);
             lineIndex = block.ClosingLineIndex;
-            AddDiagnostic(
-                "SMILE1306",
-                "A SET Block String Literal is valid only as the complete value of SET.",
+            var blockInitializer = new BlockStringLiteralExpressionSyntax(
+                (string?)block.Token.Value ?? string.Empty,
                 block.Token.Span);
+            int statementEnd = block.Token.Span.Start + block.Token.Span.Length;
+            return new LetStatementSyntax(
+                name.Text,
+                name.Span,
+                blockInitializer,
+                new TextSpan(
+                    line.Start + letKeyword.Start,
+                    statementEnd - (line.Start + letKeyword.Start),
+                    line.LineNumber,
+                    letKeyword.Start + 1));
+        }
+
+        if (line.Text[position] == '"' &&
+            !HasClosingQuoteOnLine(line.Text, position + 1) &&
+            !EndsWithUnterminatedStringEscape(line.Text, position + 1))
+        {
+            AddDiagnostic(
+                "SMILE1308",
+                "The opening quote of a Block String Literal must end the physical LET or SET line.",
+                line.Span(position, 1));
             return null;
         }
 
         int misplacedLetBlock = FindMisplacedBlockOpening(line.Text, position);
         if (misplacedLetBlock >= 0 && IsBlockOpening(line, misplacedLetBlock))
         {
-            SetBlockStringScanResult block = ConsumeBlock(lineIndex, misplacedLetBlock);
+            BlockStringScanResult block = ConsumeBlock(lineIndex, misplacedLetBlock);
             lineIndex = block.ClosingLineIndex;
             AddDiagnostic(
                 "SMILE1306",
-                "A SET Block String Literal is valid only as the complete value of SET.",
+                "A Block String Literal is valid only as the complete value of LET or SET.",
                 block.Token.Span);
             return null;
         }
@@ -1176,7 +1197,7 @@ internal sealed class Parser
 
         if (IsBlockOpening(line, position))
         {
-            SetBlockStringScanResult block = ConsumeBlock(lineIndex, position);
+            BlockStringScanResult block = ConsumeBlock(lineIndex, position);
             lineIndex = block.ClosingLineIndex;
             var value = new BlockStringLiteralExpressionSyntax(
                 (string?)block.Token.Value ?? string.Empty,
@@ -1194,11 +1215,12 @@ internal sealed class Parser
         }
 
         if (line.Text[position] == '"' &&
-            !HasClosingQuoteOnLine(line.Text, position + 1))
+            !HasClosingQuoteOnLine(line.Text, position + 1) &&
+            !EndsWithUnterminatedStringEscape(line.Text, position + 1))
         {
             AddDiagnostic(
                 "SMILE1308",
-                "The opening quote of a SET Block String Literal must end the physical SET line.",
+                "The opening quote of a Block String Literal must end the physical LET or SET line.",
                 line.Span(position, 1));
             return null;
         }
@@ -1206,11 +1228,11 @@ internal sealed class Parser
         int misplacedBlockOpening = FindMisplacedBlockOpening(line.Text, position);
         if (misplacedBlockOpening >= 0 && IsBlockOpening(line, misplacedBlockOpening))
         {
-            SetBlockStringScanResult block = ConsumeBlock(lineIndex, misplacedBlockOpening);
+            BlockStringScanResult block = ConsumeBlock(lineIndex, misplacedBlockOpening);
             lineIndex = block.ClosingLineIndex;
             AddDiagnostic(
                 "SMILE1306",
-                "A SET Block String Literal is valid only as the complete value of SET.",
+                "A Block String Literal is valid only as the complete value of LET or SET.",
                 block.Token.Span);
             return null;
         }
@@ -1290,8 +1312,8 @@ internal sealed class Parser
             line.Span(inputKeyword.Start, line.Text.Length - inputKeyword.Start));
     }
 
-    private SetBlockStringScanResult ConsumeBlock(int openingLineIndex, int openingQuoteColumn) =>
-        SetBlockStringScanner.Scan(
+    private BlockStringScanResult ConsumeBlock(int openingLineIndex, int openingQuoteColumn) =>
+        BlockStringScanner.Scan(
             _source,
             _lines,
             openingLineIndex,
@@ -1374,6 +1396,20 @@ internal sealed class Parser
         }
 
         return false;
+    }
+
+    private static bool EndsWithUnterminatedStringEscape(string text, int position)
+    {
+        int backslashCount = 0;
+        for (int index = text.Length - 1; index >= position && text[index] == '\\'; index--)
+        {
+            backslashCount++;
+        }
+
+        // An odd final run leaves the last backslash without an escape target.
+        // Let the ordinary String lexer retain ownership of SMILE1209 instead
+        // of treating that established error as a malformed Block opener.
+        return backslashCount % 2 == 1;
     }
 
     private ExpressionSyntax? ParseRawTemplate(SourceLine line, int start, int end)

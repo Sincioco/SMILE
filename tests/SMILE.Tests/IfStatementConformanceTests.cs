@@ -227,11 +227,14 @@ PRINT {Message}
     }
 
     [TestMethod]
-    public void Over_limit_recovery_ignores_control_flow_text_inside_set_block_strings()
+    [DataRow("LET")]
+    [DataRow("SET")]
+    public void Over_limit_recovery_ignores_control_flow_text_inside_LET_and_SET_block_strings(
+        string statementKeyword)
     {
         string source = CreateNestedIfSource(
             129,
-            innermostBody: "SET Message =\"\nEND IF\nIF FALSE = TRUE THEN\nELSE\n\"\n",
+            innermostBody: $"{statementKeyword} Message =\"\nEND IF\nIF FALSE = TRUE THEN\nELSE\n\"\n",
             trailingSource: "PRINT Recovered\n");
 
         ParseResult result = _transpiler.Parse(source);
@@ -242,11 +245,14 @@ PRINT {Message}
     }
 
     [TestMethod]
-    public void Over_limit_recovery_ignores_control_flow_text_after_a_misplaced_set_block_opener()
+    [DataRow("LET")]
+    [DataRow("SET")]
+    public void Over_limit_recovery_ignores_control_flow_text_after_a_misplaced_LET_or_SET_block_opener(
+        string statementKeyword)
     {
         string source = CreateNestedIfSource(
             129,
-            innermostBody: "SET Message = \"prefix\" + \"\nEND IF\nIF FALSE = TRUE THEN\n\"\n",
+            innermostBody: $"{statementKeyword} Message = \"prefix\" + \"\nEND IF\nIF FALSE = TRUE THEN\n\"\n",
             trailingSource: "PRINT Recovered\n");
 
         ParseResult result = _transpiler.Parse(source);
@@ -457,6 +463,7 @@ END IF
 
     [TestMethod]
     [DataRow("IF Ready = TRUE THEN\n    LET Local = 1\nEND IF")]
+    [DataRow("IF Ready = TRUE THEN\n    LET Local =\"\nBlock content\n\"\nEND IF")]
     [DataRow("IF Ready = TRUE THEN\nELSE IF Ready = FALSE THEN\n    LET Local = 1\nEND IF")]
     [DataRow("IF Ready = TRUE THEN\nELSE\n    LET Local = 1\nEND IF")]
     [DataRow("IF Ready = TRUE THEN\n    IF Ready = TRUE THEN\n        LET Local = 1\n    END IF\nEND IF")]

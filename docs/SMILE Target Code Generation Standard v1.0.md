@@ -134,7 +134,7 @@ Wide profiles must be exact and consistent. For example, a C program that requir
 
 Source-known, definitely evaluated arithmetic keeps compile diagnostics `SMILE1206` and `SMILE1207`. Runtime-dependent unary negation, addition, subtraction, multiplication, division by zero, and `-9223372036854775808 / -1` must be checked at the reached operation. A reached failure writes `SMILER1206` or `SMILER1207`; an unreachable short-circuit operand or unselected branch must not fail.
 
-## Runtime Variables, SET, INPUT, And Block Strings
+## Runtime Variables, LET, SET, INPUT, And Block Strings
 
 `LET` declares a variable and stores its initial value. `SET` changes the current value of an earlier declaration from a SMILE expression. `INPUT` changes an earlier declaration from one runtime input line. Neither changes its SMILE type. Every target generator iterates ordered bound source items, handling non-semantic comments and blank lines directly while retaining canonical `BoundLetStatement`, `BoundSetStatement`, `BoundInputStatement`, `BoundPrintStatement`, recursive `BoundIfStatement`, and recursive `BoundWhileStatement` behavior. High-level targets preserve natural assignment:
 
@@ -155,7 +155,35 @@ Ready = True
 
 Low-level targets may lower a SET right side to the exact value proven by the shared branch-aware program analysis, but they must emit a real storage update at the SET statement. INPUT is always a runtime operation and must remain at its source position. A generator must not omit SET or INPUT merely because a later or pre-input value is known.
 
-The front end completely normalizes a SET Block String Literal to an ordinary bound String value. Target generators never inspect delimiters, remove indentation, normalize physical newlines, decode block syntax, or choose behavior based on the original source form. They emit the normalized value using the clearest exact ordinary destination String syntax.
+The source grammar gives LET and SET one shared complete-value alternative:
+
+```text
+let-statement -> LET identifier '=' let-value
+let-value     -> expression | block-string-literal
+set-statement -> SET identifier '=' set-value
+set-value     -> expression | block-string-literal
+```
+
+The front end completely scans and normalizes either Block String Literal to an ordinary bound String value. Target generators never inspect delimiters, remove indentation, normalize physical newlines, decode block syntax, or choose behavior based on whether the original source statement was LET or SET. The same renderer handles an equivalent direct ordinary String literal containing logical LF. Explicit concatenation and interpolation remain their original bound expression forms and must not be folded merely to obtain prettier target syntax.
+
+For a direct `BoundStringLiteralExpression` containing LF, the preferred exact representation is:
+
+| Target | Preferred representation | Required exact fallback |
+|---|---|---|
+| C# | Raw multiline String literal; choose a quote delimiter longer than every conflicting quote run and make target indentation structural | Escaped ordinary String literal |
+| JavaScript | Template literal with literal LF; escape backticks, `${`, and backslashes so no target interpolation is invented | Escaped ordinary String literal |
+| Java | Text block; suppress an unwanted terminal newline and preserve trailing spaces with target escapes | Adjacent escaped ordinary String fragments |
+| Swift | Multiline String literal; select collision-safe extended `#` delimiters when required | Escaped ordinary String literal |
+| Python | Triple-quoted literal only when delimiters and surrounding function indentation remain semantically exact and clear | Parenthesized adjacent escaped literals |
+| C++ | C++20 raw String literal with a deterministic collision-safe delimiter no longer than the language limit | Escaped ordinary `std::string` literal or exact length-aware construction |
+| C | Adjacent ordinary C String fragments with explicit `\n` boundaries | Exact escaped/byte-counted fragments |
+| Objective-C | Adjacent C-compatible ordinary String fragments with explicit `\n` boundaries | Exact escaped/byte-counted fragments |
+| COBOL | Exact UTF-8 byte/hex-oriented `WORKING-STORAGE` representation | The same byte-oriented storage path |
+| MASM x64 | Readable `BYTE` chunks separated by numeric line-feed byte `10` | Fully explicit byte declarations |
+
+Native multiline syntax is conditional, never mandatory. Embedded NUL, carriage return, unsafe controls, Unicode line separators, irreconcilable delimiters, or target source hazards use the fallback that preserves the complete SMILE value. Physical line breaks inside native literals are emitted deterministically as LF even when the generated file otherwise uses the host's line ending. Multiline rendering applies recursively to direct literals in LET, SET, evaluated PRINT, IF branches, and WHILE bodies; it must not bypass branch/loop analysis, mutation planning, or current-storage reads.
+
+C#, Java, and Python must explicitly select UTF-8 standard output whenever INPUT may supply runtime Unicode or a bound source value contains non-ASCII text. This requirement is computed once from the recursive bound tree and shared by those generators; ASCII-only programs without INPUT need no encoding setup. Redirected Windows output must preserve the same complete String value as the evaluator rather than falling back to a legacy code page.
 
 One shared recursive mutation analysis records every symbol targeted by SET or INPUT anywhere in the program, including currently unselected IF branches and zero-or-more WHILE bodies. Swift declares those symbols with `var` and may retain `let` only for symbols never changed on any path.
 
@@ -234,11 +262,11 @@ One shared target-comment emitter maps every SMILE source marker to the destinat
 
 The original marker kind does not leak into target source; the exact payload after it is preserved in order and safely rendered. NUL, U+2028, U+2029, and target-unsafe C0 controls other than permitted tab use readable reversible `\u{HEX}` text. C, C++, and Objective-C must not leave a literal backslash as the last non-horizontal-whitespace character before a physical line ending, because translation-phase splicing can otherwise consume the next line; trailing payload spaces and tabs remain present. Java must prevent source text such as `\u000A` from becoming a Unicode escape before ordinary tokenization. Printable Unicode remains literal when the current target toolchain accepts it. GnuCOBOL comments wrap deterministically only when needed, repeat `*>` and indentation on consecutive fragments, preserve payload order, and stay within a conservative 200-column cap. Width accounting includes UTF-8 byte length and conventional tab stops. At extreme supported IF/WHILE depth, only generated comment indentation may be capped, at 40 spaces; payload text remains complete. No character may be silently dropped or invented.
 
-Each blank source line outside a SET Block String emits one physically empty target line at the corresponding source-order boundary. Preserve isolated, consecutive, leading, trailing, and branch-local blank lines in addition to generator-owned formatting. A statement that lowers to several target lines remains one chunk, so a source blank line belongs between chunks. Layout does not need to force target line numbers to equal SMILE line numbers.
+Each blank source line outside a LET/SET Block String emits one physically empty target line at the corresponding source-order boundary. Preserve isolated, consecutive, leading, trailing, and branch-local blank lines in addition to generator-owned formatting. A statement that lowers to several target lines remains one chunk, so a source blank line belongs between chunks. Layout does not need to force target line numbers to equal SMILE line numbers.
 
 Comments and blank lines belong only in the primary generated program file. Python places them inside `main()` or the existing source-order user body, never before file-level boilerplate where a comment could become an encoding declaration or shebang. MASM places them in the `.code` source-order statement stream and never duplicates them into `.data`. COBOL emits every layout item exactly once in the closest deterministic `PROCEDURE DIVISION` user-code region; LET storage may remain in `WORKING-STORAGE`. Comment-only or blank-only target bodies are still semantically empty, so Python emits `pass` and COBOL emits `CONTINUE` wherever their grammar requires a statement.
 
-SET Block String ownership is stronger than comment and blank-line recognition. Its marker-looking and blank content lines are normalized into the ordinary bound String value and must never be emitted separately as source layout. Because preserved comments are copied into generated primary files, programmers must not put passwords, private keys, tokens, or other secrets in source comments.
+LET/SET Block String ownership is stronger than comment and blank-line recognition. Marker-looking and blank content lines are normalized into the ordinary bound String value and must never be emitted separately as source layout. Because preserved comments are copied into generated primary files, programmers must not put passwords, private keys, tokens, or other secrets in source comments.
 
 ## Python
 
@@ -446,7 +474,7 @@ Every reference to a SMILE symbol must use the same mapped target name as its de
 
 ## Conformance Validation
 
-Every expression, statement, comment, and source-layout feature is validated against the `SmileEvaluator` reference oracle. The generated-target suite includes WHILE casing/structure, zero/multiple/nested iterations, INPUT casing and placement, all String/Integer/Boolean conversions, UTF-8 and 4096-byte boundaries, EOF, invalid input, repeated path-dependent consumption, checked loop-carried arithmetic and reachability, all four comment markers, nested and layout-only IF/WHILE bodies, Block String ownership, SET mutation, wide Integers, and embedded NUL. Every generated source must retain every INPUT, branch/loop body, and source layout item exactly once except intentional safe comment wrapping. Tests provide identical scripted stdin without shell `echo`, capture exact stdout and stderr, require the canonical exit code, and inspect compiler warnings for all ten targets. They never trim or discard NUL, backspace, form feed, carriage return, tab, or meaningful trailing whitespace; only explicitly permitted physical CRLF normalization occurs. Repeated generation, including helper names, buffers, labels, ancillary files, comments, blank lines, and project files, remains byte-for-byte deterministic. Java release validation requires both `javac` and `java` and executes the normative WHILE/INPUT, invalid-input, runtime-arithmetic, finite-loop corpus, comment/layout, and cumulative `examples/language.smile` programs without skips.
+Every expression, statement, comment, and source-layout feature is validated against the `SmileEvaluator` reference oracle. The generated-target suite includes WHILE casing/structure, zero/multiple/nested iterations, INPUT casing and placement, all String/Integer/Boolean conversions, UTF-8 and 4096-byte boundaries, EOF, invalid input, repeated path-dependent consumption, checked loop-carried arithmetic and reachability, all four comment markers, nested and layout-only IF/WHILE bodies, LET/SET Block String ownership, direct semantic multiline rendering, safe fallbacks, SET mutation, wide Integers, and embedded NUL. Every generated source must retain every INPUT, branch/loop body, and source layout item exactly once except intentional safe comment wrapping. Tests provide identical scripted stdin without shell `echo`, capture exact stdout and stderr, require the canonical exit code, and inspect compiler warnings for all ten targets. They never trim or discard NUL, backspace, form feed, carriage return, tab, or meaningful trailing whitespace; only explicitly permitted physical CRLF normalization occurs. Repeated generation, including multiline delimiters, helper names, buffers, labels, ancillary files, comments, blank lines, and project files, remains byte-for-byte deterministic. Java release validation requires both `javac` and `java` and executes the normative WHILE/INPUT, invalid-input, runtime-arithmetic, finite-loop corpus, comment/layout, and cumulative `examples/language.smile` programs without skips.
 
 Release validation must distinguish warnings from the SMILE solution build and warnings from generated target programs. `SMILE_REQUIRE_ZERO_TARGET_WARNINGS=1` activates destination-specific warning checks for compiler-backed targets; JavaScript and Python have no compile stage in their normal SMILE toolchains. The normative WHILE, INPUT, and comment/layout programs must build/run through all ten targets, emit zero detected compiler warnings, preserve native loop/input/layout structure, and match `SmileEvaluator` stdout, stderr, and exit code exactly. This generated warning gate remains separate from the solution-build warning count.
 
@@ -454,4 +482,4 @@ The hosted `SMILE CI` Windows workflow restores, builds, and tests the Debug and
 
 ## Destination-Language Freeze
 
-C++ is SMILE's tenth and final planned destination language. Target-language expansion is frozen unless Sin explicitly reopens it. After v0.8.0 WHILE Loops, later work should deepen loops, functions, scopes, debugging, and teaching tools rather than adding another backend. Rust, Zig, and Go remain deferred.
+C++ is SMILE's tenth and final planned destination language. Target-language expansion is frozen unless Sin explicitly reopens it. The v0.8.0 WHILE Loops + LET/SET Block Strings work deepens the existing language and generators without adding another backend; later work should continue toward functions, scopes, debugging, and teaching tools. Rust, Zig, and Go remain deferred.

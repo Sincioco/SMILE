@@ -126,7 +126,7 @@ Output:
 First step; second step; third step.
 ```
 
-All forms of `PRINT` defined by this specification must fit on one physical source line. The multiline SET Block String Literal is a SET-only source form and is not legal directly in `PRINT`.
+All forms of `PRINT` defined by this specification must fit on one physical source line. The multiline Block String Literal is a LET/SET complete-value source form and is not legal directly in `PRINT`.
 
 IF and WHILE headers and terminators have their own one-logical-line rules. PRINT text inside a branch or loop body does not change how ELSE, ELSE IF, END IF, or END WHILE is recognized on later lines.
 
@@ -420,7 +420,7 @@ Generated code MUST use valid target-language quotation syntax.
 
 Embedded quotation-mark escaping is outside version 1.0 of this `PRINT` specification unless separately defined by the general SMILE string specification.
 
-A quote at the end of a physical line cannot begin a SET Block String Literal here. That form is valid only as the complete value of `SET` and produces the SET placement diagnostic when used directly in `PRINT`.
+A quote at the end of a physical line cannot begin a Block String Literal here. That form is valid only as the complete value of `LET` or `SET` and produces `SMILE1306` when used directly in `PRINT`.
 
 ---
 
@@ -574,7 +574,7 @@ After recognizing the case-insensitive `PRINT` keyword:
 4. Else if the payload begins with `"`, parse the remainder of the line as a normal expression.
 5. Else parse the remainder of the line as a raw template.
 6. Reject a second standalone `PRINT` keyword token on the same physical line outside quoted text.
-7. Reject a SET Block String Literal; it is not a PRINT payload form.
+7. Reject a Block String Literal; it is not a PRINT payload form.
 8. Require the complete statement to end at the physical newline or end-of-file.
 
 The compiler MUST NOT select a form by trying one grammar and silently falling back to another.
@@ -757,7 +757,7 @@ Block text
 "
 ```
 
-The multiline example produces `SMILE1306` because a SET Block String Literal is valid only as the complete value of `SET`.
+The multiline example produces `SMILE1306` because a Block String Literal is valid only as the complete value of `LET` or `SET`.
 
 Diagnostics MUST include:
 
@@ -869,7 +869,7 @@ The official SMILE `PRINT` rules are:
 16. Every form lowers to a common language-neutral expression representation.
 17. Target generators preserve expression intent when the target language has an idiomatic equivalent.
 18. Evaluated variable references read the current value established by earlier `LET`, `SET`, and successful `INPUT` statements.
-19. SET Block String Literals are not legal directly in `PRINT`.
+19. Block String Literals are not legal directly in `PRINT`.
 20. PRINT is permitted in every IF and WHILE v1.0 body; it executes only in a selected branch and on each reached loop iteration.
 21. Bare PRINT templates do not change IF/WHILE condition parsing or ELSE, END IF, and END WHILE terminator recognition.
 22. Prompts are ordinary PRINT statements before INPUT; INPUT has no built-in prompt syntax in v1.0.

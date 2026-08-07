@@ -26,7 +26,7 @@ The lexer recognizes:
 - string literals;
 - integer literals;
 - `LET`, `SET`, `INPUT`, `PRINT`, `IF`, `WHILE`, `THEN`, `ELSE`, `END`, `TRUE`, `FALSE`, `NOT`, `AND`, and `OR`;
-- the dedicated lexical representation for a SET Block String Literal;
+- the dedicated lexical representation for a Block String Literal used as a complete LET or SET value;
 - `+`, `-`, `*`, `/`;
 - `=`, `<>`, `<`, `<=`, `>`, `>=`;
 - `(` and `)`;
@@ -64,7 +64,7 @@ Operator precedence, from strongest to weakest:
 
 Binary operators are left-associative.
 
-The grammar above defines ordinary expressions. `SET` is an expression-assignment statement and `INPUT` is a runtime-input statement; neither is an expression or adds an assignment operator. A SET Block String Literal is normalized before binding and is valid only as the complete value of `SET`; it is not a general expression primary.
+The grammar above defines ordinary expressions. `SET` is an expression-assignment statement and `INPUT` is a runtime-input statement; neither is an expression or adds an assignment operator. A Block String Literal is normalized before binding and is valid only as the complete value of `LET` or `SET`; it is not a general expression primary.
 
 ## Canonical Expression Representation
 
@@ -156,7 +156,7 @@ These restrictions are validated on the unsimplified bound expression so simplif
 
 `$"..."` strings and raw `PRINT` templates may contain `{expression}` holes. The expression inside a hole is parsed and type-checked with the normal expression grammar. The inserted text is the expression value's display text.
 
-SET Block String Literals do not interpolate. Their normalized value is one ordinary bound String literal.
+Block String Literals do not interpolate. Their normalized value is one ordinary bound String literal.
 
 ```basic
 LET Age = 49
@@ -222,7 +222,7 @@ A runtime error preserves stdout already produced, writes exactly one canonical 
 
 ## Target Generation Rule
 
-Every target generator must consume the shared bound tree and recursive branch/loop-aware analysis produced by the lexer, parser, binder, and evaluator. A target generator must not invent its own expression semantics, reparse SMILE source text, interpret SET Block String delimiters, substitute a pre-input or pre-loop value, delete an INPUT or IF clause because current values make another branch predictable, or delete/unroll a WHILE because its incoming condition is known.
+Every target generator must consume the shared bound tree and recursive branch/loop-aware analysis produced by the lexer, parser, binder, and evaluator. A target generator must not invent its own expression semantics, reparse SMILE source text, interpret Block String delimiters, substitute a pre-input or pre-loop value, delete an INPUT or IF clause because current values make another branch predictable, or delete/unroll a WHILE because its incoming condition is known.
 
 C and Objective-C preserve native Integer and Boolean expression intent where the destination language has a direct equivalent. Low-level targets may use an evaluated value only when the corresponding stable branch/loop-aware fact is `Known` on every possible incoming path; an `Unknown` expression must be lowered from current runtime storage. Every `SET` and `INPUT` must still emit an actual storage update at its source position. An INPUT- or loop-dependent Integer uses the required signed-64 storage and every dependent arithmetic operation checks overflow and division. A WHILE condition is re-evaluated before every possible body execution. C-family NUL-free String equality uses value comparison such as `strcmp`, not pointer equality; an INPUT String is NUL-capable and must retain its complete current bytes and length. Compiler-owned `printf` format strings use `%d`, `%lld`, `%s`, and safe literal-percent escaping only where semantically valid.
 

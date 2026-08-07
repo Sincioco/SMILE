@@ -131,16 +131,16 @@ PRINT {Name}
 
         var generated = TargetLanguageInfo.All.ToDictionary(
             language => language,
-            language => Generate(source, language));
+            language => NormalizePhysicalNewlines(Generate(source, language)));
 
-        StringAssert.Contains(generated[TargetLanguage.CSharp], "Name = \"S\\n I\\n  N\";");
-        StringAssert.Contains(generated[TargetLanguage.C], "Name = \"S\\n I\\n  N\";");
-        StringAssert.Contains(generated[TargetLanguage.JavaScript], "Name = \"S\\n I\\n  N\";");
-        StringAssert.Contains(generated[TargetLanguage.Java], "Name = \"S\\n I\\n  N\";");
-        StringAssert.Contains(generated[TargetLanguage.ObjectiveC], "Name = \"S\\n I\\n  N\";");
-        StringAssert.Contains(generated[TargetLanguage.Swift], "Name = \"S\\n I\\n  N\"");
-        StringAssert.Contains(generated[TargetLanguage.Python], "Name = \"S\\n I\\n  N\"");
-        StringAssert.Contains(generated[TargetLanguage.Cpp], "Name = \"S\\n I\\n  N\";");
+        StringAssert.Contains(generated[TargetLanguage.CSharp], "Name = \"\"\"");
+        StringAssert.Contains(generated[TargetLanguage.C], "Name =\n        \"S\\n\"");
+        StringAssert.Contains(generated[TargetLanguage.JavaScript], "Name = `S\n I\n  N`;");
+        StringAssert.Contains(generated[TargetLanguage.Java], "Name = \"\"\"");
+        StringAssert.Contains(generated[TargetLanguage.ObjectiveC], "Name =\n        \"S\\n\"");
+        StringAssert.Contains(generated[TargetLanguage.Swift], "Name = \"\"\"");
+        StringAssert.Contains(generated[TargetLanguage.Python], "Name = \"\"\"S\n I\n  N\"\"\"");
+        StringAssert.Contains(generated[TargetLanguage.Cpp], "Name = R\"SMILE(S\n I\n  N)SMILE\";");
         StringAssert.Contains(generated[TargetLanguage.Cobol], "MOVE X\"530A20490A20204E\" TO Name.");
         StringAssert.Contains(generated[TargetLanguage.MasmX64], "set1Value BYTE \"S\", 10, \" I\", 10, \"  N\"");
 

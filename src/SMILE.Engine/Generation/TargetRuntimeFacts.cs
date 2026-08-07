@@ -16,6 +16,13 @@ internal static class TargetRuntimeFacts
         BoundStatementTree.Enumerate(program).Any(statement =>
             statement is BoundInputStatement input && input.Variable.Type == type);
 
+    public static bool RequiresUtf8Output(BoundProgram program) =>
+        // Runtime String input can contain any valid Unicode scalar, while a
+        // source-only program needs explicit UTF-8 output only when one of its
+        // bound values actually contains non-ASCII text.
+        HasInput(program) ||
+        BoundStatementTree.EnumerateExpressions(program).Any(ContainsNonAsciiText);
+
     public static bool NeedsCheckedIntegerArithmetic(BoundProgram program) =>
         (HasInput(program) ||
          BoundStatementTree.Enumerate(program).Any(statement => statement is BoundWhileStatement)) &&
@@ -39,6 +46,26 @@ internal static class TargetRuntimeFacts
             BoundInterpolatedStringExpression interpolated => interpolated.Parts.Any(part =>
                 part is BoundInterpolationExpressionPart hole &&
                 ContainsIntegerArithmetic(hole.Expression)),
+            _ => false
+        };
+
+    private static bool ContainsNonAsciiText(BoundExpression expression) =>
+        expression switch
+        {
+            BoundStringLiteralExpression literal =>
+                literal.Value.Any(character => character > 0x7f),
+            BoundUnaryExpression unary => ContainsNonAsciiText(unary.Operand),
+            BoundBinaryExpression binary =>
+                ContainsNonAsciiText(binary.Left) || ContainsNonAsciiText(binary.Right),
+            BoundInterpolatedStringExpression interpolated => interpolated.Parts.Any(part =>
+                part switch
+                {
+                    BoundInterpolatedTextPart text =>
+                        text.Text.Any(character => character > 0x7f),
+                    BoundInterpolationExpressionPart hole =>
+                        ContainsNonAsciiText(hole.Expression),
+                    _ => false
+                }),
             _ => false
         };
 }

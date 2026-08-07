@@ -526,7 +526,7 @@ PRINT {Age}
 
 The blank lines and comment remain non-semantic, retain their source order, and are preserved in generated target source.
 
-Marker-looking text inside a SET Block String Literal remains String data, not an `INPUT` statement or comment.
+Marker-looking text inside a Block String Literal remains String data, not an `INPUT` statement or comment. The block form is valid only as a complete LET or SET value and is never an INPUT operand.
 
 ---
 

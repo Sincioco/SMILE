@@ -295,7 +295,7 @@ public sealed class Lexer
 
         // LexOne is intentionally bounded to one expression line. The public
         // full-source lexer can surface the dedicated block token, while the
-        // indexed statement parser remains responsible for SET-only placement.
+        // indexed statement parser remains responsible for LET/SET placement.
         if (!_isFullSource)
         {
             return false;
@@ -331,7 +331,7 @@ public sealed class Lexer
 
         SourceLine line = lines[lineIndex];
         var blockDiagnostics = new List<Diagnostic>();
-        SetBlockStringScanResult result = SetBlockStringScanner.Scan(
+        BlockStringScanResult result = BlockStringScanner.Scan(
             _text,
             lines,
             lineIndex,
@@ -394,7 +394,7 @@ public sealed class Lexer
     }
 }
 
-// Ordinary, interpolated, and SET block Strings all use this one escape table.
+// Ordinary, interpolated, and LET/SET Block Strings all use this one escape table.
 // Keeping the mapping at the lexical boundary prevents the special block
 // source form from acquiring subtly different String semantics.
 internal static class SmileStringEscapes
@@ -433,16 +433,16 @@ internal static class SmileStringEscapes
     }
 }
 
-internal sealed record SetBlockStringScanResult(
+internal sealed record BlockStringScanResult(
     SyntaxToken Token,
     int ClosingLineIndex);
 
 // A block is scanned once, linearly, before expression binding. The resulting
 // token retains its exact source text/span but carries the same normalized
 // String value used by an ordinary String literal.
-internal static class SetBlockStringScanner
+internal static class BlockStringScanner
 {
-    public static SetBlockStringScanResult Scan(
+    public static BlockStringScanResult Scan(
         string source,
         IReadOnlyList<SourceLine> lines,
         int openingLineIndex,
@@ -500,7 +500,7 @@ internal static class SetBlockStringScanner
             diagnostics.Add(new Diagnostic(
                 "SMILE1307",
                 DiagnosticSeverity.Error,
-                "Unexpected content follows the closing SET Block String delimiter.",
+                "Unexpected content follows the closing Block String delimiter.",
                 malformedLine.Span(
                     malformedSuffixStart,
                     malformedLine.Text.Length - malformedSuffixStart)));
@@ -517,9 +517,9 @@ internal static class SetBlockStringScanner
         diagnostics.Add(new Diagnostic(
             "SMILE1003",
             DiagnosticSeverity.Error,
-            "Unterminated SET Block String literal.",
+            "Unterminated Block String literal.",
             unterminatedSpan));
-        return new SetBlockStringScanResult(
+        return new BlockStringScanResult(
             new SyntaxToken(
                 SyntaxKind.BlockStringLiteralToken,
                 source[tokenStart..],
@@ -527,7 +527,7 @@ internal static class SetBlockStringScanner
                 unterminatedSpan),
             Math.Max(openingLineIndex, lines.Count - 1));
 
-        SetBlockStringScanResult Complete(int closingLineIndex, int quoteColumn)
+        BlockStringScanResult Complete(int closingLineIndex, int quoteColumn)
         {
             SourceLine closingLine = lines[closingLineIndex];
             string margin = closingLine.Text[..quoteColumn];
@@ -543,7 +543,7 @@ internal static class SetBlockStringScanner
                 tokenEnd - tokenStart,
                 openingLine.LineNumber,
                 openingQuoteColumn + 1);
-            return new SetBlockStringScanResult(
+            return new BlockStringScanResult(
                 new SyntaxToken(
                     SyntaxKind.BlockStringLiteralToken,
                     source[tokenStart..tokenEnd],

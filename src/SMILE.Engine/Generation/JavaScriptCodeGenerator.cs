@@ -40,7 +40,7 @@ internal sealed class JavaScriptCodeGenerator : ICodeGenerator
 
         return new GeneratedProgram(
             Language,
-            new[] { new GeneratedFile("Program.js", TextOutput.EnsureOneTrailingNewLine(source.ToString()), IsPrimary: true) });
+            new[] { new GeneratedFile("Program.js", TextOutput.EnsureOneTrailingNewLinePreservingExistingLineEndings(source.ToString()), IsPrimary: true) });
     }
 
     private static void AppendSourceItems(
@@ -64,11 +64,11 @@ internal sealed class JavaScriptCodeGenerator : ICodeGenerator
                     break;
 
                 case BoundLetStatement let:
-                    source.AppendLine($"{indent}let {identifiers.Get(let.Variable)} = {TargetExpression.JavaScript(let.Initializer, identifiers, integers, checkedArithmetic)};");
+                    source.AppendLine($"{indent}let {identifiers.Get(let.Variable)} = {WriteDirectExpression(let.Initializer, identifiers, integers, checkedArithmetic)};");
                     break;
 
                 case BoundSetStatement set:
-                    source.AppendLine($"{indent}{identifiers.Get(set.Variable)} = {TargetExpression.JavaScript(set.Value, identifiers, integers, checkedArithmetic)};");
+                    source.AppendLine($"{indent}{identifiers.Get(set.Variable)} = {WriteDirectExpression(set.Value, identifiers, integers, checkedArithmetic)};");
                     break;
 
                 case BoundInputStatement input:
@@ -87,7 +87,7 @@ internal sealed class JavaScriptCodeGenerator : ICodeGenerator
                 case BoundPrintStatement print:
                     source.Append(indent).AppendLine(print.IsBlankLine
                         ? "console.log();"
-                        : $"console.log({TargetExpression.JavaScriptDisplay(print.Value, identifiers, integers, checkedArithmetic)});");
+                        : $"console.log({WriteDirectDisplayExpression(print.Value, identifiers, integers, checkedArithmetic)});");
                     break;
 
                 case BoundIfStatement conditional:
@@ -114,6 +114,26 @@ internal sealed class JavaScriptCodeGenerator : ICodeGenerator
             }
         }
     }
+
+    private static string WriteDirectExpression(
+        BoundExpression expression,
+        TargetIdentifierMap identifiers,
+        TargetIntegerProfile integers,
+        bool checkedArithmetic) =>
+        expression is BoundStringLiteralExpression literal &&
+        TargetMultilineLiterals.TryJavaScript(literal.Value, out string multiline)
+            ? multiline
+            : TargetExpression.JavaScript(expression, identifiers, integers, checkedArithmetic);
+
+    private static string WriteDirectDisplayExpression(
+        BoundExpression expression,
+        TargetIdentifierMap identifiers,
+        TargetIntegerProfile integers,
+        bool checkedArithmetic) =>
+        expression is BoundStringLiteralExpression literal &&
+        TargetMultilineLiterals.TryJavaScript(literal.Value, out string multiline)
+            ? multiline
+            : TargetExpression.JavaScriptDisplay(expression, identifiers, integers, checkedArithmetic);
 
     private static void AppendIfStatement(
         StringBuilder source,

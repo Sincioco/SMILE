@@ -576,7 +576,7 @@ A `WHILE` body may contain:
 - nested `WHILE`;
 - full-line `REM`, `//`, `#`, and `--` comments;
 - blank source lines;
-- SET Block String Literals as the complete value of `SET`.
+- Block String Literals as the complete value of `SET`. Although the same form is valid for top-level LET, LET remains prohibited lexically inside WHILE v1.0.
 
 Example:
 
@@ -791,7 +791,7 @@ This replaces the narrower implementation wording that described `SMILE1416` as 
 
 Parser recovery must not recurse into the rejected subtree.
 
-Comments and SET Block String content do not affect depth counting.
+Comments and Block String content do not affect depth counting.
 
 ---
 
@@ -818,7 +818,7 @@ The same rule applies during deep-nesting recovery.
 
 # 28. Block String content cannot alter loop structure
 
-Inside a SET Block String Literal, marker-looking lines remain String data.
+Inside a Block String Literal used by SET, marker-looking lines remain String data. LET remains invalid anywhere lexically inside the loop, including a LET with a Block String initializer.
 
 ```smile
 LET Text = ""

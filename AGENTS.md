@@ -47,7 +47,7 @@
 - Runtime-dependent Integer arithmetic is checked in the evaluator and every target. Reached overflow and division failures use `SMILER1206` and `SMILER1207`; source-known definitely evaluated failures retain compile diagnostics `SMILE1206` and `SMILE1207`.
 - WHILE is a case-insensitive, block-only pre-test loop with mandatory two-keyword `END WHILE`. It has no THEN, DO, one-line, WEND, BREAK, CONTINUE, or implicit iteration-limit form in v1.0.
 - WHILE conditions use the same explicit-comparison, complete-Boolean, call-free, left-to-right short-circuit rules as IF and are re-evaluated from current runtime storage before every possible iteration.
-- WHILE v1.0 bodies permit PRINT, SET, INPUT, IF, nested WHILE, comments, blank lines, and SET Block String Literals. LET is prohibited recursively anywhere lexically inside WHILE until scopes are introduced.
+- WHILE v1.0 bodies permit PRINT, SET, INPUT, IF, nested WHILE, comments, blank lines, and Block String Literals as complete SET values. LET, including LET with a Block String initializer, is prohibited recursively anywhere lexically inside WHILE until scopes are introduced.
 - IF and WHILE share one combined control-flow nesting depth limit of 128. A rejected 129th IF uses `SMILE1416`; a rejected 129th WHILE uses `SMILE1611`; bounded mixed-block recovery must not recurse into the rejected body or reinterpret comment or Block String content.
 - Loop analysis is zero-or-more and fixed-point based. Solve loop-head facts without recording statements repeatedly, then record each source statement and deterministic loop ordinal once; widen loop-carried facts monotonically and merge the zero-iteration path conservatively after the loop.
 - Every String value assigned through WHILE must retain a finite compile-time maximum UTF-8 byte length. Report `SMILE1612` at the WHILE opener for unbounded recurrence; do not infer a trip count or add dynamic unbounded String storage in v1.0.
@@ -71,9 +71,9 @@
 - A physical source line normally contains one statement, and semicolons do not separate statements.
 - A second standalone `PRINT` keyword on the same line is a compiler error.
 - `REM`, `//`, `#`, and `--` are equivalent full-line comment markers only at the first non-space-or-tab position. `REM` is ordinal case-insensitive, requires a space, tab, line ending, or EOF boundary, and remains a valid identifier elsewhere.
-- Inline and trailing comments are not SMILE syntax. Marker-looking text after PRINT, inside an ordinary or interpolated String, or inside a SET Block String Literal remains data.
+- Inline and trailing comments are not SMILE syntax. Marker-looking text after PRINT, inside an ordinary or interpolated String, or inside a Block String Literal remains data.
 - Program and branch bodies retain comments and blank physical lines as ordered non-semantic source items. Semantic passes must enumerate statements without assigning layout items ordinals, values, mutations, diagnostics, or execution-trace entries.
-- The SET Block String scanner owns all content through its closing delimiter. Comment classification, syntax highlighting, and IF recovery must never reinterpret marker-looking block content.
+- The shared Block String scanner owns all LET/SET block content through its closing delimiter. Comment classification, syntax highlighting, and mixed IF/WHILE recovery must never reinterpret marker-looking block content.
 - Every target emits preserved comments once in its primary user-code region using native syntax: `//` for C#, C, C++, JavaScript, Java, Objective-C, and Swift; `#` for Python; `*>` for COBOL; and `;` for MASM x64.
 - Preserved comment payloads must be deterministic and target-safe. Escape unsafe controls and line separators, protect C-family trailing backslashes and Java Unicode escapes, wrap COBOL when needed, and keep Python comments inside the generated user body.
 - Every source-authored blank line outside a Block String remains one physically empty target line at the corresponding source-order boundary. Generator formatting may add lines but must not erase or coalesce source layout.
@@ -87,11 +87,11 @@
 - IF conditions are call-free. Every value used by a condition must already exist without invoking a function or procedure during condition evaluation.
 - Every atomic IF condition must contain an explicit comparison and right-hand operand. Standalone Boolean variables and literals are invalid.
 - ELSE IF consists of ELSE and IF on the same logical header line. An IF after a standalone ELSE line is nested and requires its own END IF.
-- IF v1.0 permits PRINT, SET, INPUT, nested IF, blank lines, and SET Block String Literals in branches. LET is not permitted until scopes are formally introduced.
+- IF v1.0 permits PRINT, SET, INPUT, nested IF, blank lines, and Block String Literals as complete SET values in branches. LET, including LET with a Block String initializer, is not permitted until scopes are formally introduced.
 - Every target must preserve genuine branch structure. Do not delete unselected source branches merely because current values are known.
 - Branch-aware known-value analysis may propagate a value after IF only when outgoing-path merge proves it known.
-- The maximum supported combined IF/WHILE nesting depth is 128. Entering depth 129 reports `SMILE1416` at an IF opener or `SMILE1611` at a WHILE opener and recovers without recursing into the over-limit body or interpreting comment or SET Block String content as control-flow headers.
-- A SET Block String Literal is a SET-only complete-value source form. Its delimiter lines are excluded, content-line boundaries become logical line feeds, and the closing delimiter's indentation margin is removed from matching content lines.
+- The maximum supported combined IF/WHILE nesting depth is 128. Entering depth 129 reports `SMILE1416` at an IF opener or `SMILE1611` at a WHILE opener and recovers without recursing into the over-limit body or interpreting comment or Block String content as control-flow headers.
+- A Block String Literal is valid only as the complete value of LET or SET. Its delimiter lines are excluded, content-line boundaries become logical line feeds, and the closing delimiter's exact space/tab indentation margin is removed only from matching content lines.
 - Source tooling must not trim trailing spaces or tabs because block String content may depend on them.
 - Block String normalization belongs entirely to the front end. Target generators receive only the normalized ordinary String value.
 - New language work must preserve asynchronous debounced WPF live transpilation.

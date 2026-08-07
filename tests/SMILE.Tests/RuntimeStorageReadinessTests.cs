@@ -107,9 +107,10 @@ A
 PRINT {Message}
 """;
 
-        string generated = Generate(source, language).PrimaryFile.Content;
+        string generated = NormalizePhysicalNewlines(
+            Generate(source, language).PrimaryFile.Content);
 
-        StringAssert.Contains(generated, "Message = \"A\\n B\";");
+        StringAssert.Contains(generated, "Message =\n        \"A\\n\"\n        \" B\";");
         StringAssert.Contains(generated, "printf(\"%s\\n\", Message);");
         Assert.IsFalse(generated.Contains("printf(\"A\\n B\\n\")", StringComparison.Ordinal));
     }

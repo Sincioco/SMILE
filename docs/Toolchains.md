@@ -93,13 +93,13 @@ for contributors who do not have every local toolchain. Official release
 validation is therefore a separate local gate that makes Java and all ten
 targets mandatory and enables generated compiler-warning validation. This
 ensures the normative WHILE and INPUT programs, finite loop corpus, invalid-input,
-checked-arithmetic, and full-line comment/source-layout programs, the cumulative `language.smile` reference, and
+checked-arithmetic, LET/SET Block String and idiomatic multiline programs, full-line comment/source-layout programs, the cumulative `language.smile` reference, and
 the established all-target runtime conformance programs execute through every
 destination instead of skipping. Scripted runs provide stdin directly rather
 than through shell `echo`, then compare exact stdout, stderr, exit code, and
 generated compiler warnings with the reference evaluator. Structural generation
 tests cover nested IF/WHILE blocks, genuine loop structure, native comment preservation,
-source blank-line boundaries, comment-safe Block String/mixed-control recovery,
+source blank-line boundaries, comment-safe LET/SET Block String recovery, direct semantic multiline forms and their exact fallbacks,
 fixed-point convergence, and wide/NUL/input planning
 without requiring a local toolchain. Run the complete local gate from
 the repository root before a release commit:
@@ -128,6 +128,8 @@ Objective-C, Swift, and C++ are compiler-backed; JavaScript and Python are
 interpreted targets with no compile stage in their normal SMILE toolchains.
 Every compiler-backed INPUT/IF/WHILE run must report zero detected warnings, and every
 generated source must retain all INPUT operations, IF/ELSE bodies, and genuine loop control flow.
+
+The multiline acceptance corpus checks generated source form as well as exact runtime bytes. C# uses raw multiline literals; JavaScript uses template literals; Java uses text blocks; Swift uses multiline literals; Python uses a clear triple-quoted or parenthesized adjacent-literal form; and C++ uses C++20 raw literals when the value is safe. C and Objective-C use adjacent ordinary literals with explicit `\n`; COBOL and MASM x64 retain exact byte-oriented storage. Each backend must take its deterministic escaped or byte-oriented fallback when controls, NUL, delimiter collisions, or source-layout rules make the preferred native form unsafe. Literal-internal physical line breaks are LF on every host, and LET declarations plus SET assignments nested in IF/WHILE structures compile warning-free and match the evaluator exactly.
 
 COBOL:
 

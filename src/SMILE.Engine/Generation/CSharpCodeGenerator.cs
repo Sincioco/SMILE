@@ -13,6 +13,7 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
         BoundProgramAnalysis analysis = BoundProgramAnalysis.Create(program);
         TargetIntegerProfile integers = TargetIntegerProfile.Analyze(program, analysis);
         bool hasInput = TargetRuntimeFacts.HasInput(program);
+        bool requiresUtf8Output = TargetRuntimeFacts.RequiresUtf8Output(program);
         bool checkedArithmetic = TargetRuntimeFacts.NeedsCheckedIntegerArithmetic(program);
         if (TargetRuntimeFacts.HasInput(program, SmileType.Integer) || checkedArithmetic)
         {
@@ -35,7 +36,7 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
             source.AppendLine("using System.Globalization;");
         }
 
-        if (hasInput)
+        if (requiresUtf8Output)
         {
             source.AppendLine("using System.Text;");
         }
@@ -46,7 +47,7 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
         source.AppendLine("    private static void Main()");
         source.AppendLine("    {");
 
-        if (hasInput)
+        if (requiresUtf8Output)
         {
             source.AppendLine("        Console.OutputEncoding = new UTF8Encoding(false);");
         }
@@ -99,7 +100,7 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
             Language,
             new[]
             {
-                new GeneratedFile("Program.cs", TextOutput.EnsureOneTrailingNewLine(source.ToString()), IsPrimary: true),
+                new GeneratedFile("Program.cs", TextOutput.EnsureOneTrailingNewLinePreservingExistingLineEndings(source.ToString()), IsPrimary: true),
                 new GeneratedFile("GeneratedProgram.csproj", TextOutput.EnsureOneTrailingNewLine(project), IsPrimary: false)
             });
     }
@@ -126,13 +127,23 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
                     break;
 
                 case BoundLetStatement let:
-                    string initializer = TargetExpression.CSharp(let.Initializer, identifiers, integers, checkedArithmetic);
+                    string initializer = WriteDirectExpression(
+                        let.Initializer,
+                        indent,
+                        identifiers,
+                        integers,
+                        checkedArithmetic);
                     source.AppendLine($"{indent}{TargetTypes.CSharp(let.Variable.Type, integers)} {identifiers.Get(let.Variable)} = {initializer};");
                     break;
 
                 case BoundSetStatement set:
                     string name = identifiers.Get(set.Variable);
-                    string value = TargetExpression.CSharp(set.Value, identifiers, integers, checkedArithmetic);
+                    string value = WriteDirectExpression(
+                        set.Value,
+                        indent,
+                        identifiers,
+                        integers,
+                        checkedArithmetic);
                     if (set.Value is BoundVariableExpression variable &&
                         ReferenceEquals(variable.Variable, set.Variable))
                     {
@@ -172,7 +183,7 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
                     }
                     else
                     {
-                        source.AppendLine($"{indent}Console.WriteLine({TargetExpression.CSharpDisplay(print.Value, identifiers, integers, checkedArithmetic)});");
+                        source.AppendLine($"{indent}Console.WriteLine({WriteDirectDisplayExpression(print.Value, indent, identifiers, integers, checkedArithmetic)});");
                     }
 
                     break;
@@ -201,6 +212,28 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
             }
         }
     }
+
+    private static string WriteDirectExpression(
+        BoundExpression expression,
+        string structuralIndent,
+        TargetIdentifierMap identifiers,
+        TargetIntegerProfile integers,
+        bool checkedArithmetic) =>
+        expression is BoundStringLiteralExpression literal &&
+        TargetMultilineLiterals.TryCSharp(literal.Value, structuralIndent, out string multiline)
+            ? multiline
+            : TargetExpression.CSharp(expression, identifiers, integers, checkedArithmetic);
+
+    private static string WriteDirectDisplayExpression(
+        BoundExpression expression,
+        string structuralIndent,
+        TargetIdentifierMap identifiers,
+        TargetIntegerProfile integers,
+        bool checkedArithmetic) =>
+        expression is BoundStringLiteralExpression literal &&
+        TargetMultilineLiterals.TryCSharp(literal.Value, structuralIndent, out string multiline)
+            ? multiline
+            : TargetExpression.CSharpDisplay(expression, identifiers, integers, checkedArithmetic);
 
     private static void AppendIfStatement(
         StringBuilder source,

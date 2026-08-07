@@ -72,7 +72,7 @@ SET SameName = FullName = "Louiery Cioco"
 SET MixedMessage = $"{FullName}: Age={Age}, Adult={Adult}"
 
 SET MixedMessage ="
-SET Block String Literal:
+Block String Literal reassigned with SET:
   Quotes remain text: "Hello".
   Braces remain text: {FullName}
   Escapes work: tab=\t and path=C:\\SMILE
@@ -274,3 +274,35 @@ WHILE LoopCount <= 3
 END WHILE
 
 PRINT WHILE finished at LoopCount={LoopCount}.
+
+PRINT
+PRINT "LET and SET Block String Literal examples:"
+
+// LET declares and initializes multiline text without a placeholder assignment.
+LET MultilineText = "
+    Hello World!
+    This is SMILE!
+        How are you?
+"
+
+PRINT {MultilineText}
+
+// The same variable may later receive another complete Block String value.
+SET MultilineText = "
+    SET replaces the complete multiline value.
+        Exact extra indentation remains.
+"
+
+PRINT {MultilineText}
+
+LET LoopBlockMessage = ""
+LET LoopBlockCount = 0
+
+// A finite literal assignment remains bounded inside genuine WHILE control flow.
+WHILE LoopBlockCount < 2
+    SET LoopBlockMessage = "
+        Block String assigned inside WHILE.
+    "
+    PRINT {LoopBlockMessage}
+    SET LoopBlockCount = LoopBlockCount + 1
+END WHILE

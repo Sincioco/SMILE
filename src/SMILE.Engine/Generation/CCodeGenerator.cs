@@ -196,9 +196,20 @@ internal sealed class CCodeGenerator : ICodeGenerator
                         SmileValue letValue = let.Variable.Type is SmileType.String
                             ? facts.Value.Value
                             : default;
-                        string initializer = let.Variable.Type is SmileType.String
-                            ? TargetExpression.CConstant(letValue, integers)
-                            : TargetExpression.C(
+                        if (let.Variable.Type is SmileType.String)
+                        {
+                            AppendCStringAssignment(
+                                source,
+                                indent,
+                                TargetTypes.CDeclaration(
+                                    let.Variable.Type,
+                                    identifiers.Get(let.Variable),
+                                    integers),
+                                letValue.StringValue);
+                        }
+                        else
+                        {
+                            string initializer = TargetExpression.C(
                                 let.Initializer,
                                 identifiers,
                                 integers,
@@ -206,7 +217,9 @@ internal sealed class CCodeGenerator : ICodeGenerator
                                 exactStringLengths,
                                 runtimeExpressionBuffers,
                                 checkedArithmetic);
-                        source.AppendLine($"{indent}{TargetTypes.CDeclaration(let.Variable.Type, identifiers.Get(let.Variable), integers)} = {initializer};");
+                            source.AppendLine($"{indent}{TargetTypes.CDeclaration(let.Variable.Type, identifiers.Get(let.Variable), integers)} = {initializer};");
+                        }
+
                         if (exactStringLengths.TryGetValue(let.Variable, out string? letLengthName))
                         {
                             source.AppendLine($"{indent}size_t {letLengthName} = {Utf8ByteLength(letValue)};");
@@ -255,9 +268,17 @@ internal sealed class CCodeGenerator : ICodeGenerator
                         SmileValue setValue = facts.Value.IsKnown
                             ? facts.Value.Value
                             : default;
-                        string value = set.Variable.Type is SmileType.String
-                            ? TargetExpression.CConstant(setValue, integers)
-                            : TargetExpression.C(
+                        if (set.Variable.Type is SmileType.String)
+                        {
+                            AppendCStringAssignment(
+                                source,
+                                indent,
+                                identifiers.Get(set.Variable),
+                                setValue.StringValue);
+                        }
+                        else
+                        {
+                            string value = TargetExpression.C(
                                 set.Value,
                                 identifiers,
                                 integers,
@@ -265,7 +286,9 @@ internal sealed class CCodeGenerator : ICodeGenerator
                                 exactStringLengths,
                                 runtimeExpressionBuffers,
                                 checkedArithmetic);
-                        source.AppendLine($"{indent}{identifiers.Get(set.Variable)} = {value};");
+                            source.AppendLine($"{indent}{identifiers.Get(set.Variable)} = {value};");
+                        }
+
                         if (exactStringLengths.TryGetValue(set.Variable, out string? setLengthName))
                         {
                             source.AppendLine($"{indent}{setLengthName} = {Utf8ByteLength(setValue)};");
@@ -726,6 +749,29 @@ internal sealed class CCodeGenerator : ICodeGenerator
 
     internal static void AppendPrintfCall(StringBuilder source, string indent, CPrintfPlan plan)
     {
+        // C concatenates adjacent ordinary literals during translation. Split
+        // a genuinely multiline PRINT format at its logical LF boundaries so
+        // learners can see the same lines in generated source without relying
+        // on a non-standard quote-spanning literal. A normal one-line PRINT
+        // owns one final LF and keeps the established compact form.
+        if (plan.FormatText.Count(value => value == '\n') > 1)
+        {
+            source.Append(indent).AppendLine("printf(");
+            AppendCStringFragments(
+                source,
+                indent + "    ",
+                plan.FormatText,
+                suffix: plan.Arguments.Count == 0 ? ");" : ",");
+
+            for (int index = 0; index < plan.Arguments.Count; index++)
+            {
+                source.Append(indent).Append("    ").Append(plan.Arguments[index])
+                    .AppendLine(index == plan.Arguments.Count - 1 ? ");" : ",");
+            }
+
+            return;
+        }
+
         source.Append(indent);
         source.Append("printf(");
         source.Append(TargetEscapes.CPrintfFormatString(plan.FormatText));
@@ -737,6 +783,75 @@ internal sealed class CCodeGenerator : ICodeGenerator
         }
 
         source.AppendLine(");");
+    }
+
+    /// <summary>
+    /// Emits one C assignment while giving semantic multiline String values a
+    /// conventional adjacent-literal representation. Every embedded LF stays
+    /// an explicit <c>\n</c>, so generated-file line endings cannot alter the
+    /// value compiled by C or by the Foundation-free Objective-C backend.
+    /// </summary>
+    internal static void AppendCStringAssignment(
+        StringBuilder source,
+        string indent,
+        string destination,
+        string value)
+    {
+        if (!value.Contains('\n', StringComparison.Ordinal))
+        {
+            source.Append(indent).Append(destination).Append(" = ")
+                .Append(TargetEscapes.CString(value)).AppendLine(";");
+            return;
+        }
+
+        source.Append(indent).Append(destination).AppendLine(" =");
+        AppendCStringFragments(source, indent + "    ", value, suffix: ";");
+    }
+
+    private static void AppendCStringFragments(
+        StringBuilder source,
+        string indent,
+        string value,
+        string suffix)
+    {
+        IReadOnlyList<string> fragments = CreateCStringFragments(value);
+        for (int index = 0; index < fragments.Count; index++)
+        {
+            source.Append(indent).Append(TargetEscapes.CString(fragments[index]));
+            if (index == fragments.Count - 1)
+            {
+                source.Append(suffix);
+            }
+
+            source.AppendLine();
+        }
+    }
+
+    private static IReadOnlyList<string> CreateCStringFragments(string value)
+    {
+        var fragments = new List<string>();
+        int fragmentStart = 0;
+
+        for (int index = 0; index < value.Length; index++)
+        {
+            if (value[index] != '\n')
+            {
+                continue;
+            }
+
+            // Keep the explicit LF on the preceding physical fragment. This
+            // mirrors the learner's line boundaries and avoids a redundant
+            // empty literal when the semantic value ends in LF.
+            fragments.Add(value[fragmentStart..(index + 1)]);
+            fragmentStart = index + 1;
+        }
+
+        if (fragmentStart < value.Length || fragments.Count == 0)
+        {
+            fragments.Add(value[fragmentStart..]);
+        }
+
+        return fragments;
     }
 
     internal static bool TryAppendExactNulStringPrint(

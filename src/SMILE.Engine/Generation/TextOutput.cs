@@ -17,4 +17,17 @@ internal static class TextOutput
             ? normalized
             : normalized + Environment.NewLine;
     }
+
+    public static string EnsureOneTrailingNewLinePreservingExistingLineEndings(string text)
+    {
+        // Native multiline literals contain physical LF characters that are part
+        // of the runtime String value.  Once a generator has deliberately mixed
+        // those semantic LFs with its normal target-file line endings, a whole-file
+        // normalization pass can no longer distinguish data from formatting.
+        return text.EndsWith("\r\n", StringComparison.Ordinal) ||
+            text.EndsWith('\n') ||
+            text.EndsWith('\r')
+                ? text
+                : text + Environment.NewLine;
+    }
 }

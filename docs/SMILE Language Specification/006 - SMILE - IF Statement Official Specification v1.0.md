@@ -631,9 +631,9 @@ Permitted:
 - WHILE;
 - full-line `REM`, `//`, `#`, and `--` comments;
 - blank lines;
-- SET Block String Literals within SET.
+- Block String Literals as complete SET values. LET remains prohibited in every IF-related body.
 
-Comments and blank lines are ordered non-semantic source items. Comment payloads that spell `IF`, `ELSE`, `ELSE IF`, `END IF`, malformed terminators, or Block String delimiters have no control-flow meaning. Marker-looking and blank physical lines inside a SET Block String remain String data rather than branch layout.
+Comments and blank lines are ordered non-semantic source items. Comment payloads that spell `IF`, `ELSE`, `ELSE IF`, `END IF`, malformed terminators, or Block String delimiters have no control-flow meaning. Marker-looking and blank physical lines inside a Block String used by SET remain String data rather than branch layout.
 
 INPUT targets an existing variable declared outside the IF. Only the selected branch executes its INPUT statements and consumes lines. An unselected INPUT still participates in binding, mutation analysis, full-range Integer/String planning, and target generation, but consumes no input at runtime.
 
@@ -763,7 +763,7 @@ ELSE
 END IF
 ```
 
-A SET Block String may span physical lines inside a branch but remains one SET statement.
+A Block String may span physical lines as a SET value inside a branch but remains one SET statement. The same source form is valid for top-level LET, but LET remains invalid in IF v1.0.
 
 ---
 
@@ -969,7 +969,7 @@ Ready for the next lesson.
 
 The maximum supported combined IF/WHILE control-flow nesting depth is 128, where the first outermost block is depth 1. A program nested to exactly depth 128 is valid. Attempting to enter an IF at depth 129 produces the `DiagnosticSeverity.Error` diagnostic `SMILE1416` at that IF keyword; attempting to enter a WHILE there produces `SMILE1611` under specification 009. The compiler recovers without recursively processing the over-limit body, and alternating block kinds cannot bypass the limit.
 
-Iterative recovery balances IF, ELSE IF, ELSE, END IF, WHILE, and END WHILE. It gives the canonical SET Block String scanner first ownership of block content, then recognizes and ignores valid full-line comments before examining structural headers. Comment payloads such as `// END IF`, `# WHILE TRUE = TRUE`, `-- END WHILE`, and `REM ENDIF` therefore cannot change the nesting balance or prevent recovery to later top-level code.
+Iterative recovery balances IF, ELSE IF, ELSE, END IF, WHILE, and END WHILE. It gives the canonical shared Block String scanner first ownership of block content, then recognizes and ignores valid full-line comments before examining structural headers. Comment payloads such as `// END IF`, `# WHILE TRUE = TRUE`, `-- END WHILE`, and `REM ENDIF` therefore cannot change the nesting balance or prevent recovery to later top-level code.
 
 This is a compiler safety and resource limit. It does not change IF syntax, clause selection, branch validation, or the behavior of ordinary valid programs within the supported depth.
 

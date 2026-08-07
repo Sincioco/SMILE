@@ -38,12 +38,12 @@ Current v0.8.0 behavior includes:
 - Block IF with optional same-line ELSE IF clauses, optional final ELSE, mandatory THEN, and mandatory END IF.
 - Call-free IF conditions whose complete result is Boolean and whose every atomic leaf contains an explicit comparison and right-hand operand.
 - A same-line ELSE IF clause distinct from a nested IF after a standalone ELSE line.
-- PRINT, SET, INPUT, nested IF, WHILE, blank lines, and SET Block String Literals in branches, with LET rejected until scopes are introduced.
+- PRINT, SET, INPUT, nested IF, WHILE, blank lines, and Block String Literals as SET values in branches, with LET rejected until scopes are introduced.
 - First-successful-clause evaluator execution and selected-branch-only mutation.
 - Recursive Known/Unknown analysis that merges all possible outgoing paths and never leaks branch-specific values.
 - Genuine idiomatic control flow across all ten targets without deleting source clauses or bodies.
 - Block-only pre-test WHILE with mandatory END WHILE, zero-or-more iterations, current-storage condition re-evaluation, and no THEN, DO, WEND, BREAK, or CONTINUE form.
-- Explicit-comparison, call-free WHILE conditions shared with IF and loop bodies containing PRINT, SET, INPUT, IF, nested WHILE, comments, blank lines, and SET Block Strings while LET remains prohibited.
+- Explicit-comparison, call-free WHILE conditions shared with IF and loop bodies containing PRINT, SET, INPUT, IF, nested WHILE, comments, blank lines, and Block Strings as SET values while LET remains prohibited.
 - One combined IF/WHILE nesting depth of 128, with opener-specific `SMILE1416` or `SMILE1611` and bounded mixed-block parser recovery at depth 129.
 - Cancellation-aware reference loop execution with no implicit iteration limit and safe generated-process timeout/tree termination.
 - Two-phase zero-or-more fixed-point analysis with deterministic loop ordinals, conservative post-loop merging, Integer range widening, and facts recorded once per source statement.
@@ -53,7 +53,7 @@ Current v0.8.0 behavior includes:
 - No inline or trailing comment syntax; PRINT raw templates and marker-looking ordinary, interpolated, and Block String content remain data.
 - Ordered non-semantic comment and blank-line source items preserved through parsing, binding, simplification, and all ten primary generated source files while semantic analysis and evaluation ignore them.
 - Native target comment markers, deterministic safe payload rendering, conservative COBOL wrapping, source blank-line boundaries, and required no-op placeholders in semantically empty target bodies.
-- The SET Block String Literal — The SMILE Way, with exact logical newlines, structural indentation removal, quotes, escapes, trailing whitespace, and embedded NUL.
+- The Block String Literal — The SMILE Way, valid as a complete LET initializer or SET value with exact logical newlines, structural indentation removal, quotes, escapes, trailing whitespace, and embedded NUL.
 - Empty string `LET` values preserved exactly across the evaluator and generated targets.
 - Official string escapes for quote, backslash, control characters, and tab/newline text.
 - Signed 64-bit integer arithmetic, comparison, and grouping with parentheses.

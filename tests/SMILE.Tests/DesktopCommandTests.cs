@@ -10,14 +10,14 @@ namespace SMILE.Tests;
 public sealed class DesktopCommandTests
 {
     [TestMethod]
-    public void Desktop_assembly_reports_the_v080_WHILE_Loops_release()
+    public void Desktop_assembly_reports_the_v080_WHILE_and_LET_SET_Block_String_release()
     {
         string? version = typeof(MainWindowViewModel).Assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
             .InformationalVersion;
 
         Assert.IsNotNull(version);
-        Assert.AreEqual("0.8.0 WHILE Loops", version);
+        Assert.AreEqual("0.8.0 WHILE Loops + LET/SET Block Strings", version);
     }
 
     [TestMethod]
@@ -356,6 +356,16 @@ PRINT A; B; C
         StringAssert.Contains(viewModel.SourceText, "WHILE LoopCount <= 3");
         StringAssert.Contains(viewModel.SourceText, "SET LoopCount = LoopCount + 1");
         StringAssert.Contains(viewModel.SourceText, "END WHILE");
+        StringAssert.Contains(viewModel.SourceText, "PRINT \"LET and SET Block String Literal examples:\"");
+        StringAssert.Contains(
+            normalizedSource,
+            "LET MultilineText = \"\n    Hello World!\n    This is SMILE!\n        How are you?\n\"");
+        StringAssert.Contains(
+            normalizedSource,
+            "SET MultilineText = \"\n    SET replaces the complete multiline value.\n        Exact extra indentation remains.\n\"");
+        StringAssert.Contains(
+            normalizedSource,
+            "WHILE LoopBlockCount < 2\n    SET LoopBlockMessage = \"\n        Block String assigned inside WHILE.\n    \"");
         StringAssert.Contains(
             normalizedSource,
             "LET CommentLayoutMessage = \"\"\n\n\n\nIF REM = \"REM remains a valid variable name.\" THEN");

@@ -129,6 +129,61 @@ PRINT {Greeting}
     }
 
     [TestMethod]
+    public void Duplicate_LET_Block_declarations_keep_the_existing_case_insensitive_rule()
+    {
+        BindResult result = _transpiler.Bind("""
+LET Message ="
+First
+"
+LET MESSAGE ="
+Second
+"
+""");
+
+        Assert.IsFalse(result.Success);
+        Diagnostic duplicate = result.Diagnostics.Single(diagnostic => diagnostic.Code == "SMILE1107");
+        Assert.AreEqual(4, duplicate.Span.Line);
+    }
+
+    [TestMethod]
+    [DataRow("LET Value =\"\nS\n\" + \"!\"", "SMILE1307")]
+    [DataRow("LET Value =\" trailing\nS\n\"", "SMILE1308")]
+    [DataRow("LET Value =\"\nS", "SMILE1003")]
+    public void Malformed_LET_Blocks_use_the_shared_Block_String_diagnostics(
+        string source,
+        string expectedCode)
+    {
+        ParseResult result = _transpiler.Parse(source);
+
+        Assert.IsFalse(result.Success);
+        Diagnostic diagnostic = result.Diagnostics.First(item => item.Code == expectedCode);
+        Assert.IsFalse(diagnostic.Message.Contains("SET Block", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void Misplaced_LET_Block_is_consumed_before_the_following_statement_and_creates_no_declaration_syntax()
+    {
+        const string source = """
+LET Prefix = "X"
+LET Broken = Prefix + "
+IF TRUE = TRUE THEN
+END WHILE
+"
+PRINT Recovered
+""";
+
+        ParseResult result = _transpiler.Parse(source);
+
+        Assert.IsFalse(result.Success);
+        Assert.HasCount(1, result.Diagnostics);
+        Assert.AreEqual("SMILE1306", result.Diagnostics[0].Code);
+        Assert.HasCount(2, result.Program!.Statements);
+        Assert.AreEqual("Prefix", ((LetStatementSyntax)result.Program.Statements[0]).Name);
+        Assert.IsInstanceOfType<PrintStatementSyntax>(result.Program.Statements[1]);
+        Assert.AreEqual(6, result.Program.Statements[1].Span.Line);
+    }
+
+    [TestMethod]
     public void Failed_let_initializer_does_not_create_a_later_symbol()
     {
         BindResult result = _transpiler.Bind("""

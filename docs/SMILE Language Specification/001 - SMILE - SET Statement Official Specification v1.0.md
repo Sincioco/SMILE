@@ -6,11 +6,13 @@ This document is the complete official language specification for the SMILE `SET
 
 It is intended for:
 
-> **SMILE v0.5.0 — Runtime Variables, SET, and SET Block String Literals**
+> **SMILE v0.5.0 — Runtime Variables, SET, and Block String Literals**
 
-The SET-only multiline String form defined here is officially named:
+The shared multiline String form used by SET is officially named:
 
-> **SET Block String Literal — The SMILE Way**
+> **Block String Literal — The SMILE Way**
+
+The official [String Literal specification](003%20-%20SMILE%20-%20String%20Literals%20Official%20Specification%20v1.0.md) is the normative home for its delimiters, exact margin removal, LF normalization, escapes, LET/SET complete-value placement, diagnostics, and target semantics. This specification defines how that shared form participates in SET assignment.
 
 This specification works together with:
 
@@ -82,7 +84,7 @@ set-statement ->
 
 set-value ->
     expression
-    | set-block-string-literal
+    | block-string-literal
 
 hspace ->
     space
@@ -510,17 +512,15 @@ SET Counter = Counter + 1
 SET Adult = Age >= 18
 ```
 
-Ordinary quoted String expressions remain one-line.
-
-The block form defined below is a separate SET-only source form.
+Ordinary quoted String expressions remain one-line. The block form is a separate complete-value source form shared by LET and SET; it does not become a general expression.
 
 ---
 
-# 17. SET Block String Literal — The SMILE Way
+# 17. Block String Literal — The SMILE Way In SET
 
 ## 17.1 Purpose
 
-A SET Block String Literal lets a learner assign a multiline String without a special multi-character delimiter.
+A Block String Literal lets a learner assign a multiline String with SET without a special multi-character delimiter. The shared String specification is authoritative; the following SET examples illustrate those rules in assignment context.
 
 Example:
 
@@ -552,7 +552,7 @@ The opening and closing delimiter lines are not part of the value.
 
 # 18. Opening delimiter
 
-A SET Block String Literal begins when:
+A Block String Literal used by SET begins when:
 
 1. the parser is reading the complete right-hand value of a `SET` statement;
 2. the next token is an ordinary double quote;
@@ -586,7 +586,7 @@ This is invalid:
 SET Name ="Sin
 ```
 
-A block String begins only when the opening quote ends the SET line.
+A block String used by SET begins only when the opening quote ends the SET line.
 
 ---
 
@@ -1016,7 +1016,7 @@ Result:
 
 # 33. Escape sequences
 
-All official SMILE String escapes remain valid inside a SET Block String Literal:
+All official SMILE String escapes remain valid inside a Block String Literal:
 
 ```text
 \\
@@ -1091,7 +1091,7 @@ Every destination target must preserve the complete value and exact byte sequenc
 
 # 36. Block Strings do not interpolate
 
-A SET Block String Literal is an ordinary String value, not an interpolated String.
+A Block String Literal is an ordinary String value, not an interpolated String.
 
 Example:
 
@@ -1126,9 +1126,9 @@ Hello {Name}
 
 ---
 
-# 37. SET-only placement
+# 37. Complete-value placement
 
-A SET Block String Literal is valid only as the complete value of `SET`.
+A Block String Literal is valid only as the complete value of `LET` or `SET`.
 
 Valid:
 
@@ -1142,7 +1142,7 @@ S
 "
 ```
 
-Invalid in LET:
+Also valid in LET:
 
 ```smile
 LET Name ="
@@ -1172,7 +1172,7 @@ S
 ")
 ```
 
-All non-SET contexts continue using conventional one-line String syntax unless a future official specification explicitly adds another form.
+All non-LET/SET contexts continue using conventional one-line String syntax unless a future official specification explicitly adds another form.
 
 ---
 
@@ -1238,7 +1238,7 @@ After the closing delimiter quote, only spaces or tabs may appear before the phy
 
 Ordinary SMILE statements normally occupy one physical line.
 
-A SET Block String Literal creates one logical SET statement spanning multiple physical source lines.
+A Block String Literal used by SET creates one logical SET statement spanning multiple physical source lines.
 
 The internal physical newlines belong to the block token or block syntax and do not terminate the logical SET statement.
 
@@ -1324,7 +1324,7 @@ public sealed record BoundSetStatement(
     : BoundStatement;
 ```
 
-A SET Block String Literal binds to:
+A Block String Literal used by SET binds to:
 
 ```text
 BoundStringLiteralExpression
@@ -1439,10 +1439,10 @@ PRINT {SET Counter = 1}
 SET A = 1; SET B = 2
 ```
 
-## Block String outside SET
+## Block String directly in PRINT
 
 ```smile
-LET Name ="
+PRINT "
 S
  I
  N
@@ -1472,15 +1472,15 @@ SMILE v0.5.0 reserves these SET diagnostics:
 | `SMILE1303` | The SET value is missing |
 | `SMILE1304` | The SET target variable is undefined |
 | `SMILE1305` | The SET value type does not match the variable's declared type |
-| `SMILE1306` | A SET Block String Literal is valid only as the complete value of SET |
-| `SMILE1307` | Unexpected non-whitespace content follows the closing block delimiter |
-| `SMILE1308` | The opening quote of a SET Block String Literal must end the physical SET line |
+| `SMILE1306` | A Block String Literal is valid only as the complete value of LET or SET |
+| `SMILE1307` | Unexpected non-whitespace content follows the closing Block String delimiter |
+| `SMILE1308` | The opening quote of a Block String must end the physical LET or SET line |
 
 Existing lexer and String diagnostics remain applicable:
 
 | Code | Meaning |
 |---|---|
-| `SMILE1003` | Unterminated String literal or SET Block String Literal |
+| `SMILE1003` | Unterminated String literal or Block String Literal |
 | `SMILE1208` | Unknown or invalid String escape |
 | `SMILE1209` | Unterminated String escape |
 
@@ -1587,7 +1587,7 @@ Objective-C:
 Counter = Counter + 1;
 ```
 
-A SET Block String Literal generates exactly as its normalized ordinary String value.
+A Block String Literal used by SET generates exactly as its normalized ordinary String value.
 
 No target generator performs block parsing or indentation processing.
 
@@ -1648,8 +1648,8 @@ The LET specification must be read with these v0.5.0 clarifications:
 - self-reference in a LET initializer remains invalid;
 - failed declarations do not leak symbols;
 - declaration-before-use remains mandatory;
-- LET String expressions remain one-line;
-- SET Block String Literals are not legal LET initializers.
+- ordinary LET String expressions remain one-line;
+- a Block String Literal is also legal as the complete LET initializer under the official LET and String specifications.
 
 ---
 
@@ -1673,7 +1673,7 @@ PRINT {Name}
 
 prints the variable's current value.
 
-SET Block String Literals are not legal directly in PRINT.
+Block String Literals are not legal directly in PRINT.
 
 ---
 
@@ -1685,7 +1685,7 @@ Expressions remain pure in v0.5.0.
 
 `SET` is the only statement that assigns from a SMILE expression. `INPUT` is the separate statement that updates an existing variable from one runtime input line.
 
-A SET Block String Literal is a SET-only source form, not a general expression feature.
+A Block String Literal is a LET/SET complete-value source form, not a general expression feature.
 
 All existing precedence, typing, equality, arithmetic, interpolation, escape, and short-circuit rules remain normative.
 
@@ -1695,7 +1695,7 @@ SET is permitted in IF, ELSE IF, ELSE, and nested IF bodies. The complete right 
 
 All branches are nevertheless parsed, bound, type-checked, and inspected for Integer width, maximum String byte length, embedded NUL, mutation, and target facilities. A target must retain every branch and emit a real storage update at each SET position. Branch-aware analysis may propagate a value after IF only when every possible outgoing path proves the same value.
 
-A SET Block String Literal remains one normalized SET value inside a branch. Its internal physical lines are content and MUST NOT be interpreted as ELSE, ELSE IF, or END IF terminators.
+A Block String Literal remains one normalized SET value when used inside a branch. Its internal physical lines are content and MUST NOT be interpreted as ELSE, ELSE IF, or END IF terminators. LET remains invalid inside IF v1.0.
 
 ## Compatibility with INPUT in SMILE v0.7.0
 
@@ -1707,7 +1707,7 @@ After INPUT, compile-time analysis MUST NOT reuse a pre-input LET or SET value. 
 
 SET is permitted in every WHILE body and is the ordinary way to change a value used by the next condition test. A loop is analyzed structurally as zero or more iterations; the compiler MUST NOT execute or unroll it to obtain SET results. Generators must emit each SET once in the genuine target loop body and evaluate its right side from current loop-carried storage.
 
-A SET Block String Literal remains one normalized SET value inside WHILE. Its internal physical lines are content and MUST NOT be interpreted as WHILE, END WHILE, IF, or END IF structure. Every String recurrence through a WHILE must reach a finite compile-time UTF-8 byte bound under the official WHILE rules; otherwise `SMILE1612` is reported at the WHILE opener and generation does not run.
+A Block String Literal remains one normalized SET value when used inside WHILE. Its internal physical lines are content and MUST NOT be interpreted as WHILE, END WHILE, IF, or END IF structure. LET remains invalid lexically inside WHILE v1.0. Every String recurrence through a WHILE must reach a finite compile-time UTF-8 byte bound under the official WHILE rules; otherwise `SMILE1612` is reported at the WHILE opener and generation does not run.
 
 ---
 
@@ -1741,7 +1741,7 @@ Louiery finished with 3.
 
 ---
 
-# 56. Normative SET Block String acceptance program
+# 56. Normative SET use of a Block String acceptance program
 
 ```smile
 LET Name = ""
@@ -1782,9 +1782,7 @@ The `{Name}` text is literal because block Strings do not interpolate.
 
 It continues to prepare SMILE for functions and scopes.
 
-The SET Block String Literal remains deliberately SET-only.
-
-A future general-purpose multiline String feature may use another explicitly specified source form. That future feature must not silently change the SET Block String behavior defined here.
+The Block String Literal remains deliberately limited to a complete LET initializer or SET value. It is not a general multiline expression and cannot be used directly in PRINT, concatenation, interpolation, or parentheses.
 
 Optimizations may use known values only when they preserve statement order, mutation, and left-to-right evaluation.
 

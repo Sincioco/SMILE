@@ -242,7 +242,7 @@ Identifier comparison is case-insensitive even though declaration spelling is pr
 
 ---
 
-## 7. One statement per line
+## 7. One logical statement per line
 
 A newline normally terminates a SMILE statement.
 
@@ -278,7 +278,7 @@ Output:
 First; second; third
 ```
 
-All forms of `LET` defined by this specification fit on one physical source line. The only current multiline statement form is the SET Block String Literal defined by the official SET specification; it is not a LET initializer.
+An ordinary LET expression fits on one physical source line. A [Block String Literal — The SMILE Way](003%20-%20SMILE%20-%20String%20Literals%20Official%20Specification%20v1.0.md) is the explicit exception: its complete LET initializer is one logical statement spanning the opening delimiter, content lines, and closing delimiter.
 
 Future SMILE versions may permit visibly incomplete expressions to continue onto another line, but that does not permit multiple statements on one line.
 
@@ -341,7 +341,14 @@ This specification does not define equality comparison.
 
 ## 10. Required initializer
 
-A `LET` declaration MUST provide an initializer expression.
+A `LET` declaration MUST provide one complete initializer value.
+
+```text
+let-statement -> LET hspace+ identifier hspace* '=' hspace* let-value
+let-value     -> expression | block-string-literal
+```
+
+The Block String alternative is a complete-value source form and does not become part of the general expression grammar.
 
 Valid:
 
@@ -377,9 +384,10 @@ Conceptually:
 Name : String
 ```
 
-Valid version 1.0 initializers include:
+Valid initializers include:
 
 - An ordinary string literal.
+- A Block String Literal as the complete initializer.
 - A previously declared string variable.
 - String concatenation.
 - An interpolated quoted string.
@@ -552,7 +560,7 @@ Generated code MUST use valid target-language string syntax.
 
 Embedded quotation-mark escaping is outside version 1.0 unless separately defined by the general SMILE string specification.
 
-The multiline SET Block String Literal is deliberately SET-only. It is not a valid LET initializer:
+The multiline Block String Literal is a valid complete LET initializer:
 
 ```basic
 LET Name ="
@@ -562,7 +570,7 @@ S
 "
 ```
 
-This produces `SMILE1306`. Ordinary LET String expressions remain one-line.
+This declares `Name` as a String whose exact value is `S\n I\n  N`. The opening and closing delimiters, exact indentation-margin removal, LF normalization, escapes, and diagnostics are defined once by the official String Literal specification. Ordinary LET String expressions remain one-line.
 
 ---
 
@@ -1141,10 +1149,10 @@ The official `LET`, `PRINT`, `SET`, `INPUT`, `IF`, and `WHILE` specifications ar
 15. A variable must be declared before `PRINT`, `SET`, `INPUT`, or another `LET` expression can use it.
 16. `SET` changes the current value without changing the type established by `LET`.
 17. `INPUT` reads one runtime line into the current variable storage without changing the type established by `LET`.
-18. A SET Block String Literal is a complete SET value only; it is not legal in LET, INPUT, or PRINT.
+18. A Block String Literal is valid only as the complete value of LET or SET; it is not legal in INPUT, PRINT, or a nested expression.
 19. Adding or removing a `LET` declaration does not change how bare `PRINT` text is parsed.
 20. LET, SET, PRINT, IF, and WHILE expression positions use the same language-neutral expression model; INPUT has no expression child.
-21. IF v1.0 permits PRINT, SET, INPUT, nested IF, blank lines, and SET Block String Literals in branches, but rejects LET until scopes are introduced.
+21. IF v1.0 permits Block String Literals as SET values, but rejects every LET—including LET with a Block String initializer—until scopes are introduced.
 22. Every atomic IF condition is an explicit comparison, and IF conditions cannot invoke functions, procedures, or input operations.
 23. WHILE uses the same explicit-comparison and call-free condition rules, re-evaluates current storage before every iteration, and permits no LET recursively in its body until scopes exist.
 24. Target generators do not independently reinterpret statement source text, IF/WHILE structure, INPUT, or block delimiters.
@@ -1368,7 +1376,7 @@ Current stable diagnostic codes for this specification include:
 | `SMILE1207` | Division by zero |
 | `SMILE1208` | Unknown or invalid string escape sequence |
 | `SMILE1209` | Unterminated string escape sequence |
-| `SMILE1306` | A SET Block String Literal is valid only as the complete value of SET |
+| `SMILE1306` | A Block String Literal is valid only as the complete value of LET or SET |
 
 ---
 
@@ -1437,11 +1445,11 @@ The official SMILE `LET` rules are:
 11. `$"..."` strings interpolate using the same rules as `PRINT`.
 12. `+` concatenates strings and adds integers according to the core expression type rules.
 13. Quote-free raw templates are exclusive to `PRINT`.
-14. Ordinary LET String expressions remain one-line; SET Block String Literals are not valid LET initializers.
+14. Ordinary LET String expressions remain one-line; a Block String Literal is valid as the complete LET initializer.
 15. `LET Name = Hello` is a variable reference, not literal text.
 16. `PRINT Name` prints literal text.
 17. `PRINT {Name}` evaluates the variable's current value.
-18. A newline normally terminates one statement; a SET Block String Literal is one explicit logical multiline exception.
+18. A newline normally terminates one statement; a Block String Literal used as a complete LET or SET value is one explicit logical multiline exception.
 19. Semicolons do not separate statements.
 20. Target generators consume the shared lexer/parser/binder/evaluator semantic representation and recursive statement-order, mutation-aware, branch-aware, loop-fixed-point analysis.
 21. After INPUT, the type established by LET remains known but the current value is runtime-unknown and the pre-input value cannot be propagated.

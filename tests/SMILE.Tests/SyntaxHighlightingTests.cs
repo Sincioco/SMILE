@@ -664,6 +664,66 @@ PRINT {Name}
     }
 
     [TestMethod]
+    public void Smile_highlighting_colors_LET_Block_content_as_String_then_resumes()
+    {
+        const string source = """
+LET Message ="
+REM remains String data
+IF TRUE = TRUE THEN -- also String data
+END WHILE
+"
+PRINT {Message}
+""";
+        var document = new TextDocument(source);
+        IHighlightingDefinition definition = SyntaxHighlightingCatalog.GetDefinition("smile")!;
+        var highlighter = new DocumentHighlighter(document, definition);
+        HighlightingColor keyword = definition.GetNamedColor("Keyword")!;
+        HighlightingColor stringColor = definition.GetNamedColor("String")!;
+        HighlightingColor comment = definition.GetNamedColor("Comment")!;
+        HighlightedLine[] lines = Enumerable.Range(1, document.LineCount)
+            .Select(highlighter.HighlightLine)
+            .ToArray();
+
+        DocumentLine letLine = document.GetLineByNumber(1);
+        AssertRangeHasColor(lines[0], letLine.Offset, 3, keyword, "LET keyword");
+        int openingQuote = document.GetText(letLine).IndexOf('"');
+        AssertRangeHasColor(
+            lines[0],
+            letLine.Offset + openingQuote,
+            1,
+            stringColor,
+            "LET Block opening delimiter");
+
+        for (int lineNumber = 2; lineNumber <= 4; lineNumber++)
+        {
+            DocumentLine contentLine = document.GetLineByNumber(lineNumber);
+            AssertRangeHasColor(
+                lines[lineNumber - 1],
+                contentLine.Offset,
+                contentLine.Length,
+                stringColor,
+                $"LET Block String content line {lineNumber}");
+            AssertRangeDoesNotHaveColor(
+                lines[lineNumber - 1],
+                contentLine.Offset,
+                contentLine.Length,
+                comment,
+                $"LET Block String content line {lineNumber} must stay String-owned");
+        }
+
+        DocumentLine closingLine = document.GetLineByNumber(5);
+        AssertRangeHasColor(lines[4], closingLine.Offset, closingLine.Length, stringColor, "closing delimiter");
+        DocumentLine printLine = document.GetLineByNumber(6);
+        AssertRangeHasColor(lines[5], printLine.Offset, 5, keyword, "PRINT after LET Block");
+        AssertRangeDoesNotHaveColor(
+            lines[5],
+            printLine.Offset,
+            printLine.Length,
+            stringColor,
+            "highlighting must leave LET Block state");
+    }
+
+    [TestMethod]
     public void Smile_highlighting_colors_every_full_line_comment_form_with_contextual_REM_rules()
     {
         string source = string.Join(

@@ -86,7 +86,7 @@ internal sealed class SwiftCodeGenerator : ICodeGenerator
 
         return new GeneratedProgram(
             Language,
-            new[] { new GeneratedFile("Program.swift", TextOutput.EnsureOneTrailingNewLine(source.ToString()), IsPrimary: true) });
+            new[] { new GeneratedFile("Program.swift", TextOutput.EnsureOneTrailingNewLinePreservingExistingLineEndings(source.ToString()), IsPrimary: true) });
     }
 
     private static void AppendSourceItems(
@@ -112,14 +112,24 @@ internal sealed class SwiftCodeGenerator : ICodeGenerator
                     break;
 
                 case BoundLetStatement let:
-                    string initializer = TargetExpression.Swift(let.Initializer, identifiers, integers, checkedArithmetic);
+                    string initializer = WriteDirectExpression(
+                        let.Initializer,
+                        indent,
+                        identifiers,
+                        integers,
+                        checkedArithmetic);
                     string declaration = mutatedVariables.Contains(let.Variable) ? "var" : "let";
                     source.AppendLine($"{indent}{declaration} {identifiers.Get(let.Variable)}: {TargetTypes.Swift(let.Variable.Type, integers)} = {initializer}");
                     break;
 
                 case BoundSetStatement set:
                     string name = identifiers.Get(set.Variable);
-                    string value = TargetExpression.Swift(set.Value, identifiers, integers, checkedArithmetic);
+                    string value = WriteDirectExpression(
+                        set.Value,
+                        indent,
+                        identifiers,
+                        integers,
+                        checkedArithmetic);
                     if (set.Value is BoundVariableExpression variable &&
                         variable.Variable == set.Variable)
                     {
@@ -155,7 +165,7 @@ internal sealed class SwiftCodeGenerator : ICodeGenerator
                 case BoundPrintStatement print:
                     source.Append(indent).AppendLine(print.IsBlankLine
                         ? "print()"
-                        : $"print({TargetExpression.SwiftDisplay(print.Value, identifiers, integers, checkedArithmetic)})");
+                        : $"print({WriteDirectDisplayExpression(print.Value, indent, identifiers, integers, checkedArithmetic)})");
                     break;
 
                 case BoundIfStatement conditional:
@@ -184,6 +194,28 @@ internal sealed class SwiftCodeGenerator : ICodeGenerator
             }
         }
     }
+
+    private static string WriteDirectExpression(
+        BoundExpression expression,
+        string structuralIndent,
+        TargetIdentifierMap identifiers,
+        TargetIntegerProfile integers,
+        bool checkedArithmetic) =>
+        expression is BoundStringLiteralExpression literal &&
+        TargetMultilineLiterals.TrySwift(literal.Value, structuralIndent, out string multiline)
+            ? multiline
+            : TargetExpression.Swift(expression, identifiers, integers, checkedArithmetic);
+
+    private static string WriteDirectDisplayExpression(
+        BoundExpression expression,
+        string structuralIndent,
+        TargetIdentifierMap identifiers,
+        TargetIntegerProfile integers,
+        bool checkedArithmetic) =>
+        expression is BoundStringLiteralExpression literal &&
+        TargetMultilineLiterals.TrySwift(literal.Value, structuralIndent, out string multiline)
+            ? multiline
+            : TargetExpression.SwiftDisplay(expression, identifiers, integers, checkedArithmetic);
 
     private static void AppendIfStatement(
         StringBuilder source,

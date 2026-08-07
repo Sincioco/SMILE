@@ -358,9 +358,9 @@ Markers: // # -- REM
 
 ---
 
-# 12. SET Block String Literals
+# 12. Block String Literals
 
-Comment and blank-line recognition is suspended inside a SET Block String Literal.
+Comment and blank-line recognition is suspended inside a Block String Literal used as the complete value of LET or SET.
 
 Every physical content line belongs to the String until the existing closing-delimiter rule ends the block.
 
@@ -388,7 +388,7 @@ The comment recognizer must not remove, classify, highlight as comments, or tran
 
 # 13. Blank source lines
 
-A blank source line contains only zero or more spaces or tabs outside a SET Block String Literal.
+A blank source line contains only zero or more spaces or tabs outside a Block String Literal.
 
 Example:
 
@@ -487,7 +487,7 @@ INPUT Age
 PRINT {Age}
 ```
 
-The two blank boundaries and native target comment are preserved. The INPUT remains one executable statement at the same source-order position. A comment whose payload contains `INPUT Age` does not read input, and marker-looking INPUT text inside a SET Block String remains String data.
+The two blank boundaries and native target comment are preserved. The INPUT remains one executable statement at the same source-order position. A comment whose payload contains `INPUT Age` does not read input, and marker-looking INPUT text inside a Block String remains String data.
 
 ---
 
@@ -873,7 +873,7 @@ Highlighting must:
 - recognize `REM` case-insensitively with its boundary;
 - avoid highlighting inline occurrences as comments;
 - keep marker-looking text inside ordinary Strings styled as String;
-- keep marker-looking lines and blank lines inside SET Block String Literals owned by the String span;
+- keep marker-looking lines and blank lines inside Block String Literals owned by the String span;
 - highlight INPUT as a case-insensitive keyword only outside Comment and String spans;
 - remain safe for incomplete source.
 

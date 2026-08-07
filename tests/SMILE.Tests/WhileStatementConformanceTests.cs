@@ -191,7 +191,9 @@ END WHILE
 
     [TestMethod]
     [DataRow("LET Local = 1", 4)]
+    [DataRow("LET Local =\"\nBlock content\n\"", 4)]
     [DataRow("IF Ready = TRUE THEN\n        LET Local = 1\n    END IF", 5)]
+    [DataRow("IF Ready = TRUE THEN\n        LET Local =\"\nBlock content\n\"\n    END IF", 5)]
     [DataRow("WHILE Count < 2\n        LET Local = 1\n    END WHILE", 5)]
     public void LET_is_rejected_recursively_anywhere_inside_WHILE(string body, int expectedLine)
     {
@@ -655,6 +657,7 @@ END WHILE
 
     [TestMethod]
     [DataRow("SET Text = \"Fixed\"")]
+    [DataRow("SET Text = \"\nFixed\n\"")]
     [DataRow("INPUT Text")]
     [DataRow("SET Text = Other")]
     [DataRow("SET Text = Text")]

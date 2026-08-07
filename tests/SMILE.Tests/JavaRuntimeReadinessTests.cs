@@ -181,9 +181,9 @@ public sealed class JavaRuntimeReadinessTests
             "LET Name = \"Sin\"\nSET Name = \"Louiery\"\nPRINT {Name}");
 
     [TestMethod]
-    public Task Java_runs_SET_Block_String_against_the_reference_evaluator() =>
+    public Task Java_runs_a_Block_String_SET_against_the_reference_evaluator() =>
         AssertJavaMatchesEvaluatorAsync(
-            "SET Block String",
+            "Block String SET",
             """
             LET Name = ""
 
