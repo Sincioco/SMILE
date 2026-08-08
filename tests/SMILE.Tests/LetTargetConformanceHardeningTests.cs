@@ -162,10 +162,10 @@ PRINT {Middle}
             .PrimaryFile
             .Content;
 
-        StringAssert.Contains(masm, "variable0Value BYTE 0");
-        StringAssert.Contains(masm, "variable0ValueLength EQU 0");
-        StringAssert.Contains(masm, "variable1Value BYTE \"Sin\"");
-        StringAssert.Contains(masm, "variable1ValueLength EQU $ - variable1Value");
+        StringAssert.Contains(masm, "smileText0 BYTE 0    ; String initializer");
+        StringAssert.Contains(masm, "_smile_Empty QWORD OFFSET smileText0");
+        StringAssert.Contains(masm, "smileText1 BYTE \"Sin\", 0    ; String initializer");
+        StringAssert.Contains(masm, "_smile_Name QWORD OFFSET smileText1");
     }
 
     [TestMethod]

@@ -313,8 +313,10 @@ LET Greeting = $"Hello {FullName}!"
         StringAssert.Contains(cobol, "01 Greeting PIC X(16) VALUE \"Hello Sin Cioco!\".");
 
         string masm = Generate(source, TargetLanguage.MasmX64).PrimaryFile.Content;
-        StringAssert.Contains(masm, "variable2Value BYTE \"Sin Cioco\"");
-        StringAssert.Contains(masm, "variable3Value BYTE \"Hello Sin Cioco!\"");
+        StringAssert.Contains(masm, "BYTE \"Sin Cioco\", 0");
+        StringAssert.Contains(masm, "_smile_FullName QWORD OFFSET");
+        StringAssert.Contains(masm, "BYTE \"Hello Sin Cioco!\", 0");
+        StringAssert.Contains(masm, "_smile_Greeting QWORD OFFSET");
     }
 
     [TestMethod]
@@ -390,6 +392,27 @@ PRINT {_smile_class}
         StringAssert.Contains(csharp, "string _smile_class_2 = \"B\";");
         StringAssert.Contains(csharp, "Console.WriteLine(_smile_class);");
         StringAssert.Contains(csharp, "Console.WriteLine(_smile_class_2);");
+    }
+
+    [TestMethod]
+    public void Masm_places_every_learner_variable_in_one_safe_readable_namespace()
+    {
+        string masm = Generate("""
+LET age = 1
+LET Name = "Sin"
+LET mov = 2
+
+PRINT {age}
+PRINT {Name}
+PRINT {mov}
+""", TargetLanguage.MasmX64).PrimaryFile.Content;
+
+        StringAssert.Contains(masm, "_smile_age DWORD 1");
+        StringAssert.Contains(masm, "_smile_Name QWORD OFFSET");
+        StringAssert.Contains(masm, "_smile_mov DWORD 2");
+        Assert.IsFalse(masm.Contains("    age DWORD", StringComparison.Ordinal));
+        Assert.IsFalse(masm.Contains("    Name QWORD", StringComparison.Ordinal));
+        Assert.IsFalse(masm.Contains("    mov DWORD", StringComparison.Ordinal));
     }
 
     private GeneratedProgram Generate(string source, TargetLanguage language)

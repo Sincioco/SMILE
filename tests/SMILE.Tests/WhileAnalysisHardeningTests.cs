@@ -407,7 +407,7 @@ END WHILE
         string generated = result.GeneratedProgram!.PrimaryFile.Content;
         StringAssert.Contains(
             generated,
-            "Console.WriteLine(Count.ToString(CultureInfo.InvariantCulture));");
+            "Console.WriteLine(Count);");
         Assert.IsFalse(generated.Contains("Console.WriteLine(0L", StringComparison.Ordinal));
     }
 

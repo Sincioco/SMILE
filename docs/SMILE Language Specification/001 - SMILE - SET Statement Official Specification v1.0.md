@@ -4,6 +4,8 @@
 
 This document is the complete official language specification for the SMILE `SET` statement.
 
+> **Strategic Reset note (2026-08-08):** SET syntax, fixed typing, current-storage updates, and expression semantics remain current. INPUT-derived values are runtime-Unknown, but references later in this document to a universal 4096-byte/NUL-capable INPUT model or mandatory all-ten-target parity are superseded by the current INPUT specification, `docs/SMILE Core Principles.md`, and the active-target policy. Conservative analysis facts may remain internal implementation details and must not force heavyweight learner-facing generated runtimes.
+
 It is intended for:
 
 > **SMILE v0.5.0 — Runtime Variables, SET, and Block String Literals**
@@ -680,7 +682,7 @@ These physical line endings all normalize to logical `\n` inside the block value
 - Unix `LF`;
 - legacy standalone `CR`, if accepted by the existing source reader.
 
-This keeps the resulting SMILE String identical across platforms and all ten destinations.
+This keeps the resulting source-authored SMILE String well defined across platforms and generated destinations.
 
 ---
 
@@ -1619,20 +1621,15 @@ A variable never assigned after declaration may remain `let`.
 
 It does not add another destination language.
 
-SMILE continues to target exactly:
+SMILE currently exposes exactly three active targets:
 
 1. C#
 2. C
 3. Windows x64 MASM Assembly
-4. JavaScript
-5. Java
-6. COBOL
-7. Objective-C
-8. Swift
-9. Python
-10. C++
 
-C++ remains the tenth and final planned target unless Sin explicitly reopens destination-language expansion.
+Seven completed generator implementations remain paused in the repository: JavaScript, Java, COBOL, Objective-C, Swift, Python, and C++. They are retained history and potential future re-enablement work, not current product choices or routine validation requirements.
+
+No additional destination language may be added or recommended unless Sin explicitly reopens destination-language expansion.
 
 ---
 
@@ -1701,7 +1698,7 @@ A Block String Literal remains one normalized SET value when used inside a branc
 
 SET and INPUT both update an existing variable without changing the type established by LET, but their value sources remain distinct. SET evaluates one SMILE expression; INPUT reads and converts one runtime line. SET after INPUT reads the current entered value. INPUT after SET replaces the SET value only after input reading and conversion succeed.
 
-After INPUT, compile-time analysis MUST NOT reuse a pre-input LET or SET value. A String may contain 0 through 4096 UTF-8 bytes and NUL, an Integer may contain any signed 64-bit value, and a Boolean may contain either value. These facts apply to every later SET expression and target-storage plan.
+After INPUT, compile-time analysis MUST NOT reuse a pre-input LET or SET value. The variable's type remains known and its value is runtime-Unknown. Conservative capacity, NUL, range, and Boolean facts may be retained for internal planning, but the current INPUT specification does not make those planner facts a universal generated-runtime contract. Every later SET expression must still read current runtime storage.
 
 ## Compatibility with WHILE in SMILE v0.8.0
 

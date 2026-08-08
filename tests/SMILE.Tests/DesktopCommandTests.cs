@@ -124,19 +124,14 @@ public sealed class DesktopCommandTests
     [TestMethod]
     public void Target_pane_button_text_and_language_lock_match_target_capability()
     {
-        var pane = new TargetPaneViewModel("Pane", TargetLanguage.JavaScript);
+        var pane = new TargetPaneViewModel("Pane", TargetLanguage.CSharp);
 
-        Assert.AreEqual("Pane - JavaScript", pane.Title);
-        Assert.AreEqual("Run", pane.BuildButtonText);
+        Assert.AreEqual("Pane - C#", pane.Title);
+        Assert.AreEqual("Build & Run", pane.BuildButtonText);
 
-        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Python);
+        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.C);
 
-        Assert.AreEqual("Pane - Python", pane.Title);
-        Assert.AreEqual("Run", pane.BuildButtonText);
-
-        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.ObjectiveC);
-
-        Assert.AreEqual("Pane - Objective-C", pane.Title);
+        Assert.AreEqual("Pane - C", pane.Title);
         Assert.AreEqual("Build & Run", pane.BuildButtonText);
         Assert.IsFalse(pane.CanBuild);
 
@@ -144,14 +139,14 @@ public sealed class DesktopCommandTests
 
         Assert.IsFalse(pane.CanBuild);
 
-        pane.GeneratedCode = "console.log('learner edit');";
+        pane.GeneratedCode = "printf(\"learner edit\\n\");";
 
         Assert.IsTrue(pane.CanBuild);
         Assert.IsTrue(pane.HasUserEdits);
 
-        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Cpp);
+        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.MasmX64);
 
-        Assert.AreEqual("Pane - C++", pane.Title);
+        Assert.AreEqual("Pane - Assembly - Windows x64 MASM", pane.Title);
         Assert.AreEqual("Build & Run", pane.BuildButtonText);
 
         pane.IsBusy = true;
@@ -196,14 +191,14 @@ public sealed class DesktopCommandTests
         Assert.IsFalse(pane.HasUserEdits);
         Assert.AreEqual("Pane - C#", pane.Title);
 
-        pane.GeneratedCode = "// temporary Swift edit";
+        pane.GeneratedCode = "// temporary C edit";
         pane.SelectedLanguageOption = pane.LanguageOptions.Single(
-            option => option.Language == TargetLanguage.Swift);
+            option => option.Language == TargetLanguage.C);
 
         Assert.AreEqual(3L, pane.UserEditRevision);
         Assert.IsFalse(pane.HasUserEdits);
-        Assert.AreEqual("Pane - Swift", pane.DisplayTitle);
-        Assert.AreEqual("Pane - Swift", pane.Title);
+        Assert.AreEqual("Pane - C", pane.DisplayTitle);
+        Assert.AreEqual("Pane - C", pane.Title);
     }
 
     [TestMethod]
@@ -232,9 +227,9 @@ public sealed class DesktopCommandTests
 
         Assert.AreEqual("csharp", pane.HighlightingId);
 
-        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Swift);
+        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.MasmX64);
 
-        Assert.AreEqual("swift", pane.HighlightingId);
+        Assert.AreEqual("masm-x64", pane.HighlightingId);
         CollectionAssert.Contains(changedProperties, nameof(TargetPaneViewModel.HighlightingId));
     }
 
@@ -472,7 +467,7 @@ PRINT A; B; C
 
         await Task.Delay(400);
         viewModel.Pane3.SelectedLanguageOption = viewModel.Pane3.LanguageOptions.Single(
-            option => option.Language == TargetLanguage.Python);
+            option => option.Language == TargetLanguage.CSharp);
         await Task.Delay(50);
 
         Assert.AreEqual(string.Empty, viewModel.SourceText);
@@ -619,7 +614,7 @@ PRINT A; B; C
     }
 
     [TestMethod]
-    public async Task Rapid_language_switching_only_generates_the_latest_missing_visible_target()
+    public async Task Rapid_active_language_switching_only_generates_the_latest_missing_visible_target()
     {
         var viewModel = new MainWindowViewModel(
             CreateRegistry(),
@@ -628,25 +623,28 @@ PRINT A; B; C
         await viewModel.InitializeAsync();
 
         TargetPaneViewModel pane = viewModel.Pane3;
-        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Cpp);
-        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Python);
-        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Cpp);
+        SelectLanguage(pane, TargetLanguage.CSharp);
+        viewModel.SourceText = "PRINT active target refresh";
+        await WaitUntilAsync(() => viewModel.Panes.All(candidate =>
+            candidate.Status == "Ready" &&
+            candidate.GeneratedCode.Contains("active target refresh", StringComparison.Ordinal)));
 
-        Assert.AreEqual("cpp", pane.HighlightingId);
+        // C was not visible for this source revision, so it is genuinely
+        // missing from the current generated cache. Rapidly selecting a cached
+        // target and then C again must leave the final C request authoritative.
+        SelectLanguage(pane, TargetLanguage.C);
+        SelectLanguage(pane, TargetLanguage.CSharp);
+        SelectLanguage(pane, TargetLanguage.C);
+
+        Assert.AreEqual("c", pane.HighlightingId);
         Assert.AreEqual("Updating", pane.Status);
 
         await WaitUntilAsync(() =>
             pane.Status == "Ready" &&
-            pane.GeneratedCode.Contains("std::cout", StringComparison.Ordinal));
-
-        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Swift);
-        pane.SelectedLanguageOption = pane.LanguageOptions.Single(option => option.Language == TargetLanguage.Python);
-
-        await WaitUntilAsync(() =>
-            pane.Status == "Ready" &&
-            pane.GeneratedCode.Contains("def main() -> None:", StringComparison.Ordinal));
+            pane.GeneratedCode.Contains("active target refresh", StringComparison.Ordinal));
 
         Assert.IsTrue(pane.HasValidSource);
+        Assert.AreEqual(TargetLanguage.C, pane.Language);
         Assert.AreEqual("Ready", viewModel.OperationStatus);
         Assert.AreEqual("Ready", pane.Status);
     }
@@ -666,7 +664,7 @@ PRINT A; B; C
         viewModel.SourceText = "LET Name = \"\"\nINPUT Name\nPRINT {Name}";
         await WaitUntilAsync(() =>
             viewModel.Pane1.HasValidSource &&
-            viewModel.Pane1.GeneratedCode.Contains("SMILER1501", StringComparison.Ordinal));
+            viewModel.Pane1.GeneratedCode.Contains("Console.ReadLine()", StringComparison.Ordinal));
 
         GeneratedProgram generated = new SmileTranspiler()
             .Transpile(viewModel.SourceText, TargetLanguage.CSharp)
@@ -786,13 +784,20 @@ PRINT A; B; C
         };
         await viewModel.InitializeAsync();
 
-        viewModel.Pane3.SelectedLanguageOption = viewModel.Pane3.LanguageOptions.Single(
-            option => option.Language == TargetLanguage.Python);
+        SelectLanguage(viewModel.Pane3, TargetLanguage.CSharp);
+        viewModel.SourceText = "PRINT preview status refresh";
+        await WaitUntilAsync(() => viewModel.Panes.All(pane =>
+            pane.Status == "Ready" &&
+            pane.GeneratedCode.Contains("preview status refresh", StringComparison.Ordinal)));
+
+        // C is missing for the new source revision because it was not visible.
+        // Resuming that active preview must not erase pane 1's build failure.
+        SelectLanguage(viewModel.Pane3, TargetLanguage.C);
         viewModel.Pane1.BuildRunCommand!.Execute(null);
 
         await WaitUntilAsync(() =>
             viewModel.Pane3.Status == "Ready" &&
-            viewModel.Pane3.GeneratedCode.Contains("def main() -> None:", StringComparison.Ordinal));
+            viewModel.Pane3.GeneratedCode.Contains("preview status refresh", StringComparison.Ordinal));
 
         Assert.AreEqual(1, csharp.BuildRuns);
         Assert.IsFalse(viewModel.Pane1.HasUserEdits);
@@ -812,11 +817,11 @@ PRINT A; B; C
         string editedSource = viewModel.Pane1.GeneratedCode + "// keep this learner edit\n";
         viewModel.Pane1.GeneratedCode = editedSource;
         viewModel.Pane3.SelectedLanguageOption = viewModel.Pane3.LanguageOptions.Single(
-            option => option.Language == TargetLanguage.Python);
+            option => option.Language == TargetLanguage.CSharp);
 
         await WaitUntilAsync(() =>
             viewModel.Pane3.Status == "Ready" &&
-            viewModel.Pane3.GeneratedCode.Contains("def main() -> None:", StringComparison.Ordinal));
+            viewModel.Pane3.GeneratedCode.Contains("static void Main", StringComparison.Ordinal));
 
         Assert.AreEqual(editedSource, viewModel.Pane1.GeneratedCode);
         Assert.IsTrue(viewModel.Pane1.HasUserEdits);
@@ -1012,24 +1017,30 @@ END WHILE
             liveGenerationGate: generationGate.WaitAsync);
         await viewModel.InitializeAsync();
 
-        viewModel.Pane3.GeneratedCode = "// old C edit";
-        Assert.AreEqual("Generated target 3 - C *", viewModel.Pane3.Title);
+        SelectLanguage(viewModel.Pane3, TargetLanguage.CSharp);
+        viewModel.SourceText = "PRINT active language switch race";
+        await WaitUntilAsync(() => viewModel.Panes.All(pane =>
+            pane.Status == "Ready" &&
+            pane.GeneratedCode.Contains("active language switch race", StringComparison.Ordinal)));
+
+        viewModel.Pane3.GeneratedCode = "// old C# edit";
+        Assert.AreEqual("Generated target 3 - C# *", viewModel.Pane3.Title);
 
         generationGate.Arm();
-        SelectLanguage(viewModel.Pane3, TargetLanguage.Java);
+        SelectLanguage(viewModel.Pane3, TargetLanguage.C);
         Assert.IsFalse(viewModel.Pane3.HasUserEdits);
-        Assert.AreEqual("Generated target 3 - Java", viewModel.Pane3.Title);
+        Assert.AreEqual("Generated target 3 - C", viewModel.Pane3.Title);
         await generationGate.Entered.WaitAsync(TimeSpan.FromSeconds(2));
 
-        viewModel.Pane3.GeneratedCode = "// newer Java edit";
+        viewModel.Pane3.GeneratedCode = "// newer C edit";
         generationGate.Release();
         await WaitUntilAsync(() => viewModel.OperationStatus == "Ready");
 
-        Assert.AreEqual(TargetLanguage.Java, viewModel.Pane3.Language);
-        Assert.AreEqual("// newer Java edit", viewModel.Pane3.GeneratedCode);
+        Assert.AreEqual(TargetLanguage.C, viewModel.Pane3.Language);
+        Assert.AreEqual("// newer C edit", viewModel.Pane3.GeneratedCode);
         Assert.IsTrue(viewModel.Pane3.HasUserEdits);
         Assert.AreEqual("Edited", viewModel.Pane3.Status);
-        Assert.AreEqual("Generated target 3 - Java *", viewModel.Pane3.Title);
+        Assert.AreEqual("Generated target 3 - C *", viewModel.Pane3.Title);
     }
 
     [TestMethod]
@@ -1181,13 +1192,13 @@ END WHILE
     }
 
     [TestMethod]
-    public async Task Visible_build_run_executes_objective_c_swift_and_cpp_when_available()
+    public async Task Visible_build_run_executes_the_three_active_targets_when_available()
     {
-        var objectiveC = new FakeToolchain(TargetLanguage.ObjectiveC);
-        var swift = new FakeToolchain(TargetLanguage.Swift);
-        var cpp = new FakeToolchain(TargetLanguage.Cpp);
+        var csharp = new FakeToolchain(TargetLanguage.CSharp);
+        var masm = new FakeToolchain(TargetLanguage.MasmX64);
+        var c = new FakeToolchain(TargetLanguage.C);
         var viewModel = new MainWindowViewModel(
-            CreateRegistry(objectiveC, swift, cpp),
+            CreateRegistry(csharp, masm, c),
             new FakeErrorReporter(),
             new FakeFolderOpener())
         {
@@ -1195,22 +1206,19 @@ END WHILE
         };
         await viewModel.InitializeAsync();
 
-        viewModel.Pane1.SelectedLanguageOption = viewModel.Pane1.LanguageOptions.Single(option => option.Language == TargetLanguage.ObjectiveC);
-        viewModel.Pane2.SelectedLanguageOption = viewModel.Pane2.LanguageOptions.Single(option => option.Language == TargetLanguage.Swift);
-        viewModel.Pane3.SelectedLanguageOption = viewModel.Pane3.LanguageOptions.Single(option => option.Language == TargetLanguage.Cpp);
-
         viewModel.BuildRunVisibleCommand.Execute(null);
 
         await WaitUntilAsync(() => !viewModel.IsBusy && viewModel.OperationStatus == "Completed");
 
-        Assert.AreEqual(1, objectiveC.BuildRuns);
-        Assert.AreEqual(1, swift.BuildRuns);
-        Assert.AreEqual(1, cpp.BuildRuns);
+        Assert.AreEqual(1, csharp.BuildRuns);
+        Assert.AreEqual(1, masm.BuildRuns);
+        Assert.AreEqual(1, c.BuildRuns);
         Assert.AreEqual("Completed", viewModel.Pane1.Status);
         Assert.AreEqual("Completed", viewModel.Pane2.Status);
-        StringAssert.Contains(viewModel.OutputText, "Objective-C detected.");
-        StringAssert.Contains(viewModel.OutputText, "Swift detected.");
-        StringAssert.Contains(viewModel.OutputText, "C++ detected.");
+        Assert.AreEqual("Completed", viewModel.Pane3.Status);
+        StringAssert.Contains(viewModel.OutputText, "C# detected.");
+        StringAssert.Contains(viewModel.OutputText, "Assembly - Windows x64 MASM detected.");
+        StringAssert.Contains(viewModel.OutputText, "C detected.");
     }
 
     [TestMethod]
@@ -1306,11 +1314,11 @@ END WHILE
     }
 
     [TestMethod]
-    public async Task Visible_build_runs_three_COBOL_panes_and_preserves_each_INPUT_companion()
+    public async Task Visible_build_runs_three_C_panes_with_independent_edits_and_INPUT_metadata()
     {
-        var cobol = new FakeToolchain(TargetLanguage.Cobol);
+        var c = new FakeToolchain(TargetLanguage.C);
         var viewModel = new MainWindowViewModel(
-            CreateRegistry(cobol),
+            CreateRegistry(c),
             new FakeErrorReporter(),
             new FakeFolderOpener())
         {
@@ -1320,25 +1328,24 @@ END WHILE
         await viewModel.InitializeAsync();
         foreach (TargetPaneViewModel pane in viewModel.Panes)
         {
-            SelectLanguage(pane, TargetLanguage.Cobol);
+            SelectLanguage(pane, TargetLanguage.C);
         }
 
         await WaitUntilAsync(() => viewModel.Panes.All(pane => pane.HasValidSource));
         for (int index = 0; index < viewModel.Panes.Count; index++)
         {
-            viewModel.Panes[index].GeneratedCode = $"*> learner COBOL pane {index + 1}";
+            viewModel.Panes[index].GeneratedCode = $"/* learner C pane {index + 1} */";
         }
 
         viewModel.BuildRunVisibleCommand.Execute(null);
-        await WaitUntilAsync(() => !viewModel.IsBusy && cobol.BuildRuns == 3);
+        await WaitUntilAsync(() => !viewModel.IsBusy && c.BuildRuns == 3);
 
-        Assert.HasCount(3, cobol.GeneratedPrograms);
-        for (int index = 0; index < cobol.GeneratedPrograms.Count; index++)
+        Assert.HasCount(3, c.GeneratedPrograms);
+        for (int index = 0; index < c.GeneratedPrograms.Count; index++)
         {
-            GeneratedProgram program = cobol.GeneratedPrograms[index];
-            Assert.AreEqual($"*> learner COBOL pane {index + 1}", program.PrimaryFile.Content);
+            GeneratedProgram program = c.GeneratedPrograms[index];
+            Assert.AreEqual($"/* learner C pane {index + 1} */", program.PrimaryFile.Content);
             Assert.IsTrue(program.RequiresStandardInput);
-            Assert.IsTrue(program.Files.Any(file => file.RelativePath == "SmileRuntime.c"));
         }
     }
 
@@ -1350,12 +1357,12 @@ END WHILE
         {
             BuildStarted = () => buildOrder.Add("C#")
         };
-        var python = new FakeToolchain(TargetLanguage.Python)
+        var c = new FakeToolchain(TargetLanguage.C)
         {
-            BuildStarted = () => buildOrder.Add("Python")
+            BuildStarted = () => buildOrder.Add("C")
         };
         var viewModel = new MainWindowViewModel(
-            CreateRegistry(csharp, python),
+            CreateRegistry(csharp, c),
             new FakeErrorReporter(),
             new FakeFolderOpener())
         {
@@ -1363,22 +1370,22 @@ END WHILE
         };
         await viewModel.InitializeAsync();
         SelectLanguage(viewModel.Pane2, TargetLanguage.CSharp);
-        SelectLanguage(viewModel.Pane3, TargetLanguage.Python);
+        SelectLanguage(viewModel.Pane3, TargetLanguage.C);
         await WaitUntilAsync(() => viewModel.Panes.All(pane => pane.HasValidSource));
 
         viewModel.Pane1.GeneratedCode = "// C# pane 1";
         viewModel.Pane2.GeneratedCode = "// C# pane 2";
-        viewModel.Pane3.GeneratedCode = "# Python pane 3";
+        viewModel.Pane3.GeneratedCode = "/* C pane 3 */";
 
         viewModel.BuildRunVisibleCommand.Execute(null);
-        await WaitUntilAsync(() => !viewModel.IsBusy && csharp.BuildRuns == 2 && python.BuildRuns == 1);
+        await WaitUntilAsync(() => !viewModel.IsBusy && csharp.BuildRuns == 2 && c.BuildRuns == 1);
 
         Assert.AreEqual(2, csharp.BuildRuns);
-        Assert.AreEqual(1, python.BuildRuns);
-        CollectionAssert.AreEqual(new[] { "C#", "C#", "Python" }, buildOrder);
+        Assert.AreEqual(1, c.BuildRuns);
+        CollectionAssert.AreEqual(new[] { "C#", "C#", "C" }, buildOrder);
         Assert.AreEqual("// C# pane 1", csharp.GeneratedPrograms[0].PrimaryFile.Content);
         Assert.AreEqual("// C# pane 2", csharp.GeneratedPrograms[1].PrimaryFile.Content);
-        Assert.AreEqual("# Python pane 3", python.GeneratedPrograms[0].PrimaryFile.Content);
+        Assert.AreEqual("/* C pane 3 */", c.GeneratedPrograms[0].PrimaryFile.Content);
     }
 
     [TestMethod]
@@ -1461,7 +1468,7 @@ END WHILE
         await viewModel.InitializeAsync();
         await WaitUntilAsync(() =>
             viewModel.Pane1.HasValidSource &&
-            viewModel.Pane1.GeneratedCode.Contains("SMILER1501", StringComparison.Ordinal));
+            viewModel.Pane1.GeneratedCode.Contains("Console.ReadLine()", StringComparison.Ordinal));
 
         viewModel.Pane1.BuildRunCommand!.Execute(null);
         await WaitUntilAsync(() => !viewModel.IsBusy && viewModel.OperationStatus == "Completed");

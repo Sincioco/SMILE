@@ -4,6 +4,8 @@
 
 This document is the complete official language specification for the SMILE `WHILE` statement.
 
+> **Strategic Reset note (2026-08-08):** WHILE syntax, pre-test control flow, nesting, fixed-point analysis, and genuine target loop structure remain current. References later in this document to a universal 4096-byte INPUT limit, embedded-NUL console preservation, exact all-target INPUT parity, or mandatory all-ten-target execution are superseded by the current INPUT specification, `docs/SMILE Core Principles.md`, and the active-target policy. Conservative capacity/NUL facts may remain internal planner details; they are not learner-facing runtime requirements.
+
 It is introduced by:
 
 > **SMILE v0.8.0 — WHILE Loops**
@@ -1061,7 +1063,7 @@ WHILE Continue = TRUE
 END WHILE
 ```
 
-`Text` remains bounded by the official 4096-byte INPUT limit.
+For static loop analysis, `Text` receives a finite conservative planning bound from INPUT. That internal fact is not a public line-length limit and does not require every target to use the same input capacity or runtime implementation.
 
 Valid:
 
@@ -1237,7 +1239,7 @@ Other loop forms may be specified later.
 
 # 45. Target-language mappings
 
-The ten targets must preserve pre-test loop behavior.
+The three active targets must preserve pre-test loop behavior. The retained paused generators must meet the same structural rule when each target is deliberately re-enabled.
 
 Recommended structures:
 
@@ -1254,7 +1256,7 @@ Recommended structures:
 | COBOL | structured `PERFORM` with a condition re-evaluated before each SMILE body iteration |
 | Windows x64 MASM | deterministic condition, body, back-edge, and exit labels |
 
-Target syntax may differ, but observable behavior must match the reference evaluator.
+Target syntax may differ, but ordinary observable loop behavior must match the reference evaluator, subject only to the documented target-native INPUT tradeoffs in specification 008.
 
 ---
 
@@ -1484,7 +1486,7 @@ Required exit code:
 0
 ```
 
-All ten targets must match the reference evaluator exactly.
+All three active targets must produce this result. Paused targets must add equivalent current conformance before re-enablement.
 
 ---
 

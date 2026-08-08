@@ -1,5 +1,8 @@
 # Roadmap
 
+> [!NOTE]
+> Sections labeled **Implemented** are a historical record of what each release delivered at that time. References there to simultaneous all-ten-target maintenance, exact cross-target INPUT parity, strict routine matrices, automatic CI, or the exact-SHA post-push gate describe the pre-Strategic-Reset policy. They do not override the current roadmap, `AGENTS.md`, [SMILE Core Principles](SMILE%20Core%20Principles.md), or current official specifications.
+
 ## Implemented In v0.2.0
 
 - Parse `LET Name = "Sin"` string variable declarations.
@@ -232,14 +235,65 @@
 - Append direct LET Block declaration, later SET Block reassignment, and bounded WHILE SET Block examples to the cumulative `examples/language.smile`; keep the numeric version at 0.8.0 and align the inclusive About label as `0.8.0 WHILE Loops + LET/SET Block Strings`.
 - Preserve every v0.7.0.1 target-editor ownership rule, first-paint responsiveness, process-tree cancellation, strict all-ten-target evaluator conformance, generated-warning gates, and exact-SHA post-push CI completion.
 
-## Final Destination-Language Freeze
+## Current Strategic Reset
 
-C++ is SMILE's tenth and final planned destination language. Target-language expansion is frozen so development can deepen loops, functions, scopes, debugging, and teaching tools. Do not add another destination language unless Sin explicitly reopens target expansion. Rust, Zig, and Go remain intentionally deferred and are not active targets.
+SMILE is now re-centered on beginner-readable native target code. Generated source is educational output, and readability is part of correctness.
 
-## Active Language-Depth Milestones
+Permanent direction:
 
-These are not implemented in v0.8.0:
+- use normal idiomatic destination-language constructs;
+- prefer native input, output, variables, expressions, conditions, loops, and interpolation;
+- avoid generated runtime machinery whose main purpose is obscure cross-runtime parity;
+- keep curly braces limited to interpolation holes in text-oriented syntax;
+- protect the mission with fast C#/C/MASM readability guardrails;
+- keep tests subordinate to current approved language requirements.
 
-1. v0.9.0 - Functions and scopes
+Temporary development policy:
 
-Later teaching-depth ideas include floating-point and decimal numeric types, debugging and source mapping, semantic highlighting, autocomplete, diagnostic squiggles, and a reusable web interface.
+- active targets are C#, C, and Windows x64 MASM;
+- JavaScript, Java, COBOL, Objective-C, Swift, Python, and C++ remain retained but paused;
+- normal work uses focused validation under Velocity Mode;
+- `SMILE CI` is manually dispatched rather than automatically triggered;
+- routine all-target and duplicated Debug/Release matrices are paused.
+
+## Strategic Reset Dependency Order — Implemented 2026-08-08
+
+1. Establish permanent governance and the authority hierarchy.
+2. Publish current Core Principles and revise affected official specifications.
+3. Classify and archive historical requirements.
+4. Add one central `ActiveTargetLanguages` policy for product, CLI, toolchain, and test enumeration.
+5. Simplify C#, C, and MASM generation around native beginner-level output, beginning with ordinary INPUT programs.
+6. Add fast `MissionGuardrail` golden/structural tests for LET/PRINT, INPUT, interpolation, SET, IF, WHILE, and Block Strings.
+7. Update current architecture, toolchain, generation, README, and roadmap documentation.
+8. Validate with focused active-target tests and human review of generated source.
+
+## Reset Completion And Next Milestones
+
+The Strategic Reset milestone delivered:
+
+- tiny SMILE programs generate small normal-looking C#, C, and MASM programs;
+- Desktop and CLI normal choices are limited to the active three targets;
+- a central active-target policy controls enumeration;
+- ordinary INPUT no longer emits byte readers, UTF-8 state machines, shared 4096-byte contracts, or generic error dispatch;
+- MissionGuardrail tests protect learner-facing output;
+- paused source remains intact;
+- current documentation and official specifications match implementation;
+- manual CI and future trigger restoration are documented.
+
+After the reset is stable, language-depth work may resume. Previously proposed ideas such as functions and scopes, additional numeric types, more loop forms, debugging/source mapping, semantic highlighting, autocomplete, diagnostic squiggles, and a reusable web interface remain future ideas rather than current commitments.
+
+## Paused-Target Re-Enablement
+
+A paused target may return only through a deliberate milestone:
+
+1. add it to the central active list;
+2. catch it up with every language/specification change made while paused;
+3. replace inherited cross-runtime machinery with normal native target constructs where practical;
+4. add equivalent readability/golden tests;
+5. run its focused functional and toolchain validation;
+6. run the broader milestone gate;
+7. restore Desktop and CLI exposure and current documentation.
+
+## Destination-Language Freeze
+
+C++ remains the tenth implemented historical destination. No eleventh target may be added, recommended, prototyped, or scaffolded unless Sin explicitly reopens target expansion. Rust, Zig, and Go remain deferred.

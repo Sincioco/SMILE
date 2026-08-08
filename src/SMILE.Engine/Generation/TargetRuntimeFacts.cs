@@ -17,10 +17,13 @@ internal static class TargetRuntimeFacts
             statement is BoundInputStatement input && input.Variable.Type == type);
 
     public static bool RequiresUtf8Output(BoundProgram program) =>
-        // Runtime String input can contain any valid Unicode scalar, while a
-        // source-only program needs explicit UTF-8 output only when one of its
-        // bound values actually contains non-ASCII text.
+        // Retained paused backends still use this fact to import their legacy
+        // INPUT support. Keep that path stable until each backend is
+        // deliberately re-enabled and rewritten under the native-first rule.
         HasInput(program) ||
+        RequiresUtf8OutputFromSource(program);
+
+    public static bool RequiresUtf8OutputFromSource(BoundProgram program) =>
         BoundStatementTree.EnumerateExpressions(program).Any(ContainsNonAsciiText);
 
     public static bool NeedsCheckedIntegerArithmetic(BoundProgram program) =>

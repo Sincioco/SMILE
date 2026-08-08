@@ -9,14 +9,14 @@ The SMILE v1.0 expression core has three value types:
 | Type | Meaning | Display Text |
 |---|---|---|
 | `String` | Text | The string itself |
-| `Integer` | Signed 64-bit integer | Decimal digits using invariant culture |
+| `Integer` | Signed 64-bit integer | Ordinary decimal digits |
 | `Boolean` | Truth value | `TRUE` or `FALSE` |
 
-`Integer` is a signed 64-bit SMILE semantic type regardless of target-language storage. A target generator MAY use a narrower natural destination type for a complete program only when every possible branch value and range, bound Integer literal, operand, and intermediate result, including merged later uses, is proven to fit that type. This target-local storage choice MUST NOT change the valid SMILE range, checked overflow behavior, division semantics, or evaluator output.
+`Integer` is a signed 64-bit SMILE semantic type for source literals, binding, analysis, and the reference evaluator. A target generator may use a narrower natural destination type when the program's source-known literals, values, operands, and intermediates fit it. Runtime INPUT uses the conventional target conversion selected under specification `008`; a host-native out-of-range failure need not be simulated through a shared generated parser. Source-known overflow, division semantics, and evaluator behavior remain defined here.
 
 SMILE v0.8.0 has mutable variables through `SET`, runtime values through `INPUT`, conditional branches through `IF`, and pre-test loops through `WHILE`, but it still has no function. Static evaluation MUST distinguish Known, runtime-Unknown, and Invalid. Analysis MUST be statement-order, mutation aware, branch aware, and loop-fixed-point aware. An earlier value MUST NOT be propagated past a later SET or INPUT, a branch-specific value MUST NOT be propagated after IF unless every possible outgoing path proves the same value, and a pre-loop value MUST NOT be reused at a WHILE head after a possible body mutation. WHILE is analyzed structurally as zero or more iterations; the compiler MUST NOT execute or unroll learner loops to obtain expression facts.
 
-After INPUT, a String is Unknown with 0 through 4096 possible UTF-8 bytes and possible NUL, an Integer is Unknown across the full signed 64-bit range, and a Boolean is Unknown with TRUE and FALSE both possible. Unknown is valid and MUST NOT be reported as a compile diagnostic.
+After INPUT, the variable's type remains known and its value becomes runtime-Unknown. Unknown is valid and MUST NOT be reported as a compile diagnostic or replaced by the earlier LET/SET value. An analyzer may retain conservative capacity or NUL facts for internal planning, but those facts do not define a universal INPUT byte limit or require generated targets to reproduce identical host-input edge behavior. The current INPUT specification governs target-native conversion and runtime differences.
 
 ## Lexical Tokens
 
@@ -65,6 +65,8 @@ Operator precedence, from strongest to weakest:
 Binary operators are left-associative.
 
 The grammar above defines ordinary expressions. `SET` is an expression-assignment statement and `INPUT` is a runtime-input statement; neither is an expression or adds an assignment operator. A Block String Literal is normalized before binding and is valid only as the complete value of `LET` or `SET`; it is not a general expression primary.
+
+Curly braces `{ }` identify interpolation holes in text-oriented syntax. They are not part of the ordinary expression grammar and are not general variable-reference delimiters. An ordinary expression reads a variable by its identifier directly, as in `Name = "Sin"`; braces appear only around an expression embedded in a raw `PRINT` template or `$"..."` interpolated String. Forms such as `INPUT {Name}`, `SET {Name} = ...`, and `IF {Name} = ...` are invalid.
 
 ## Canonical Expression Representation
 
@@ -224,6 +226,6 @@ A runtime error preserves stdout already produced, writes exactly one canonical 
 
 Every target generator must consume the shared bound tree and recursive branch/loop-aware analysis produced by the lexer, parser, binder, and evaluator. A target generator must not invent its own expression semantics, reparse SMILE source text, interpret Block String delimiters, substitute a pre-input or pre-loop value, delete an INPUT or IF clause because current values make another branch predictable, or delete/unroll a WHILE because its incoming condition is known.
 
-C and Objective-C preserve native Integer and Boolean expression intent where the destination language has a direct equivalent. Low-level targets may use an evaluated value only when the corresponding stable branch/loop-aware fact is `Known` on every possible incoming path; an `Unknown` expression must be lowered from current runtime storage. Every `SET` and `INPUT` must still emit an actual storage update at its source position. An INPUT- or loop-dependent Integer uses the required signed-64 storage and every dependent arithmetic operation checks overflow and division. A WHILE condition is re-evaluated before every possible body execution. C-family NUL-free String equality uses value comparison such as `strcmp`, not pointer equality; an INPUT String is NUL-capable and must retain its complete current bytes and length. Compiler-owned `printf` format strings use `%d`, `%lld`, `%s`, and safe literal-percent escaping only where semantically valid.
+C and other low-level targets preserve native Integer and Boolean expression intent where the destination language has a direct equivalent. A low-level target may use an evaluated value only when the corresponding stable branch/loop-aware fact is `Known` on every possible incoming path; an `Unknown` expression must read current runtime storage. Every `SET` and `INPUT` must still emit a real storage update at its source position, and every WHILE condition must be re-evaluated before each possible body execution. Target-native INPUT may use the destination's conventional parsing, storage, and failure behavior as defined by specification `008`; an INPUT alone does not justify a generated exact-byte runtime. C-family String equality uses value comparison rather than pointer equality whenever ordinary native String values make that comparison meaningful.
 
-Deterministic generated-expression conformance tests use a fixed seed, evaluate one larger valid SMILE program with `SmileEvaluator`, build every locally available target, provide identical scripted stdin when needed, normalize line endings only where explicitly allowed, and compare stdout, stderr, and exit code exactly without trimming control characters.
+Focused generated-expression tests protect the changed active targets and compare ordinary successful behavior with `SmileEvaluator` where that comparison is meaningful. Exact malformed-input bytes, identical host-library diagnostics, all-target execution, and paused-target parity are not routine language requirements. Broader active-target or restored-target conformance belongs to milestones, releases, target re-enablement, or explicit requests.

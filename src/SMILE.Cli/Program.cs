@@ -216,8 +216,14 @@ internal static class Program
 
     private static void PrintUsage()
     {
+        string targetList = string.Join(
+            "|",
+            ActiveTargetLanguages.All
+                .Select(TargetLanguageInfo.GetStableId)
+                .Append("all"));
+
         Console.Error.WriteLine("Usage:");
-        Console.Error.WriteLine("  dotnet run --project src\\SMILE.Cli -- <file.smile> --target csharp|c|masm-x64|javascript|java|cobol|objective-c|swift|python|cpp|all [--run]");
+        Console.Error.WriteLine($"  dotnet run --project src\\SMILE.Cli -- <file.smile> --target {targetList} [--run]");
     }
 }
 
@@ -275,10 +281,16 @@ internal sealed record CliOptions(
         IReadOnlyList<TargetLanguage> targets;
         if (targetText.Equals("all", StringComparison.OrdinalIgnoreCase))
         {
-            targets = TargetLanguageInfo.All;
+            targets = ActiveTargetLanguages.All;
         }
         else if (TargetLanguageInfo.TryParse(targetText, out TargetLanguage language))
         {
+            if (!ActiveTargetLanguages.IsActive(language))
+            {
+                error = $"{TargetLanguageInfo.GetDisplayName(language)} transpilation is temporarily paused in the current SMILE development phase.";
+                return null;
+            }
+
             targets = new[] { language };
         }
         else

@@ -121,14 +121,14 @@ PRINT {Message}
 """;
 
         string csharp = Generate(source, TargetLanguage.CSharp).PrimaryFile.Content;
-        StringAssert.Contains(csharp, "using System.Globalization;");
+        Assert.IsFalse(csharp.Contains("using System.Globalization;", StringComparison.Ordinal));
         StringAssert.Contains(csharp, "int Age = 49;");
         StringAssert.Contains(csharp, "bool Adult = Age >= 18;");
-        StringAssert.Contains(csharp, "string Message = $\"{Name}: {Age.ToString(CultureInfo.InvariantCulture)}, {(Adult ? \"TRUE\" : \"FALSE\")}\";");
-        StringAssert.Contains(csharp, "Console.WriteLine(Age.ToString(CultureInfo.InvariantCulture));");
+        StringAssert.Contains(csharp, "string Message = $\"{Name}: {Age}, {(Adult ? \"TRUE\" : \"FALSE\")}\";");
+        StringAssert.Contains(csharp, "Console.WriteLine(Age);");
         StringAssert.Contains(csharp, "Console.WriteLine((Adult ? \"TRUE\" : \"FALSE\"));");
-        StringAssert.Contains(csharp, "Console.WriteLine(Negative.ToString(CultureInfo.InvariantCulture));");
-        StringAssert.Contains(csharp, "Console.WriteLine((-12).ToString(CultureInfo.InvariantCulture));");
+        StringAssert.Contains(csharp, "Console.WriteLine(Negative);");
+        StringAssert.Contains(csharp, "Console.WriteLine(-12);");
 
         string javascript = Generate(source, TargetLanguage.JavaScript).PrimaryFile.Content;
         StringAssert.Contains(javascript, "let Age = 49;");
@@ -186,10 +186,13 @@ PRINT {Message}
             "DISPLAY SMILE-Message(1:SMILE-SET-LENGTH-2) WITH NO ADVANCING");
 
         string masm = Generate(source, TargetLanguage.MasmX64).PrimaryFile.Content;
-        StringAssert.Contains(masm, "variable0Value BYTE \"49\"");
-        StringAssert.Contains(masm, "variable1Value BYTE \"TRUE\"");
-        StringAssert.Contains(masm, "mov rdx, QWORD PTR [variable2Ptr]");
-        StringAssert.Contains(masm, "mov r8d, DWORD PTR [variable2Length]");
+        StringAssert.Contains(masm, "_smile_Age DWORD 49");
+        StringAssert.Contains(masm, "_smile_Adult BYTE 1");
+        StringAssert.Contains(masm, "_smile_Message QWORD OFFSET");
+        StringAssert.Contains(masm, "movsxd rax, DWORD PTR [_smile_Age]");
+        StringAssert.Contains(masm, "movzx eax, BYTE PTR [_smile_Adult]");
+        StringAssert.Contains(masm, "mov rax, QWORD PTR [_smile_Message]");
+        StringAssert.Contains(masm, "call printf");
     }
 
     private GeneratedProgram Generate(string source, TargetLanguage language)

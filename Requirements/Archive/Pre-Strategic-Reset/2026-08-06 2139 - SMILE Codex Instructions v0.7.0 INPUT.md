@@ -1,5 +1,10 @@
 # Codex Implementation Instructions — SMILE v0.7.0 INPUT
 
+> [!IMPORTANT]
+> **HISTORICAL / PARTIALLY SUPERSEDED**
+>
+> This document records the original INPUT implementation milestone. Its `INPUT variable` syntax, fixed-type mutation model, runtime-unknown analysis, and responsive interactive-execution goals remain useful history. Requirements for strict UTF-8 byte handling, a universal 4096-byte limit, embedded-NUL console input, identical runtime errors, custom generated input runtimes, all-ten-target maintenance, and routine strict validation are superseded by `docs/SMILE Core Principles.md` and the current official INPUT specification.
+
 ## Repository and workflow
 
 - Repository: `Sincioco/SMILE`

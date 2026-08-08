@@ -95,9 +95,9 @@ PRINT {MultilineText}
         string masm = Generate(source, TargetLanguage.MasmX64);
         StringAssert.Contains(
             masm,
-            "variable0Value BYTE \"    Hello World!\", 10, " +
-            "\"    This is SMILE!\", 10, \"        How are you?\"");
-        StringAssert.Contains(masm, "variable0ValueLength EQU $ - variable0Value");
+            "smileText0 BYTE \"    Hello World!\", 10, " +
+            "\"    This is SMILE!\", 10, \"        How are you?\", 0");
+        StringAssert.Contains(masm, "_smile_MultilineText QWORD OFFSET smileText0");
     }
 
     [TestMethod]
@@ -145,13 +145,13 @@ PRINT {Message}
         StringAssert.Contains(cobol, "MOVE 11 TO SMILE-SET-LENGTH-0");
 
         string masm = Generate(source, TargetLanguage.MasmX64);
-        StringAssert.Contains(masm, "while0Condition:");
-        StringAssert.Contains(masm, "; IF #1");
-        StringAssert.Contains(masm, "if0End:");
+        StringAssert.Contains(masm, "smilewhileHead0:");
+        StringAssert.Contains(masm, "; IF");
+        StringAssert.Contains(masm, "smileifNext");
         Assert.IsTrue(
             Regex.IsMatch(
                 masm,
-                @"(?m)^set\d+Value BYTE \""Hello\"", 10, \""World\"""),
+                @"(?m)^\s*smileText\d+ BYTE \""Hello\"", 10, \""World\"", 0\s+; SET String value"),
             masm);
     }
 
@@ -185,7 +185,9 @@ PRINT {Message}
         string masm = Generate(RecursivePlacementSource, TargetLanguage.MasmX64);
         Assert.HasCount(
             4,
-            Regex.Matches(masm, @"(?m)^set\d+Value BYTE").Cast<Match>(),
+            Regex.Matches(
+                masm,
+                @"(?m)^\s*smileText\d+ BYTE .+; SET String value\r?$").Cast<Match>(),
             "MASM missed an ELSE IF, ELSE, nested WHILE, or WHILE-inside-IF SET.");
         StringAssert.Contains(masm, "BYTE \"ElseIf\", 10, \"Value\"");
         StringAssert.Contains(masm, "BYTE \"Else\", 10, \"Value\"");

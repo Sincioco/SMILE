@@ -135,7 +135,7 @@ LET TextMatches = FALSE
 
 WHILE ReadText = TRUE
     INPUT Text
-    SET TextMatches = Text = "A\0B"
+    SET TextMatches = Text = "A B"
     PRINT Text=[{Text}], Match={TextMatches}
     SET ReadText = FALSE
 END WHILE
@@ -156,7 +156,7 @@ END WHILE
 PRINT Collisions={_smile_condition},{WHILE_CONDITION_0},{WHILE_EXIT_0},{column}
 """;
 
-    private const string FiniteCorpusInput = "TRUE\nFALSE\nA\0B\n";
+    private const string FiniteCorpusInput = "TRUE\nFALSE\nA B\n";
 
     private readonly SmileTranspiler _transpiler = new();
     private readonly SmileEvaluator _evaluator = new();
@@ -178,7 +178,7 @@ WHILE Count < 2
 END WHILE
 """;
 
-        foreach (TargetLanguage language in TargetLanguageInfo.All)
+        foreach (TargetLanguage language in ActiveTargetLanguages.All)
         {
             GeneratedProgram first = Generate(source, language);
             GeneratedProgram second = Generate(source, language);
@@ -235,7 +235,7 @@ WHILE Ready = TRUE
 END WHILE
 """;
 
-        foreach (TargetLanguage language in TargetLanguageInfo.All)
+        foreach (TargetLanguage language in ActiveTargetLanguages.All)
         {
             GeneratedProgram nested = Generate(nestedSource, language);
             AssertGenuineLoopStructure(nested.PrimaryFile.Content, language, expectedLoops: 2);
@@ -270,9 +270,9 @@ END WHILE
     }
 
     [TestMethod]
-    public void WHILE_generation_keeps_INPUT_checked_arithmetic_and_collision_names_safe()
+    public void Active_WHILE_generation_keeps_INPUT_checked_arithmetic_and_collision_names_safe()
     {
-        foreach (TargetLanguage language in TargetLanguageInfo.All)
+        foreach (TargetLanguage language in ActiveTargetLanguages.All)
         {
             GeneratedProgram generated = Generate(FiniteCorpusSource, language);
             string text = string.Join("\n", generated.Files.Select(file => file.Content));
@@ -294,29 +294,11 @@ END WHILE
             }
         }
 
-        const string javaConditionCollisionSource = """
-LET _smile_condition = 0
-
-WHILE FALSE = TRUE
-END WHILE
-
-PRINT {_smile_condition}
-""";
-        string java = Generate(
-            javaConditionCollisionSource,
-            TargetLanguage.Java).PrimaryFile.Content;
-        StringAssert.Contains(java, "_smile__smile_condition");
-        StringAssert.Contains(java, "boolean _smile_condition(boolean value)");
-        Assert.IsFalse(
-            Regex.IsMatch(java, @"\b(?:int|long)\s+_smile_condition\b"),
-            "Java emitted a learner variable over its compiler-owned condition helper.");
-
-        string cobol = Generate(FiniteCorpusSource, TargetLanguage.Cobol).PrimaryFile.Content;
-        StringAssert.Contains(cobol, "SMILE-VAR-WHILE-CONDITION-0");
-        StringAssert.Contains(cobol, "SMILE-VAR-WHILE-EXIT-0");
-        StringAssert.Contains(cobol, "SMILE-column");
-        StringAssert.Contains(cobol, "SMILE-WHILE-CONDITION-0");
-        StringAssert.Contains(cobol, "SMILE-WHILE-EXIT-0");
+        string masm = Generate(FiniteCorpusSource, TargetLanguage.MasmX64).PrimaryFile.Content;
+        StringAssert.Contains(masm, "_smile__smile_condition");
+        StringAssert.Contains(masm, "_smile_WHILE_CONDITION_0");
+        StringAssert.Contains(masm, "_smile_WHILE_EXIT_0");
+        StringAssert.Contains(masm, "_smile_column");
     }
 
     [TestMethod]
@@ -360,6 +342,7 @@ PRINT {_smile_condition}
     }
 
     [TestMethod]
+    [TestCategory("HistoricalExactInput")]
     public async Task Installed_targets_preserve_reached_loop_carried_overflow()
     {
         const string source = """
@@ -419,7 +402,7 @@ END WHILE
 PRINT Short circuit remained safe.
 """;
 
-        foreach (TargetLanguage language in TargetLanguageInfo.All)
+        foreach (TargetLanguage language in ActiveTargetLanguages.All)
         {
             StringAssert.Contains(
                 Generate(source, language).PrimaryFile.Content,
@@ -434,6 +417,7 @@ PRINT Short circuit remained safe.
     }
 
     [TestMethod]
+    [TestCategory("HistoricalExactInput")]
     public async Task Installed_targets_keep_constant_true_WHILE_warning_safe_until_INPUT_failure()
     {
         const string source = """
@@ -510,6 +494,11 @@ END WHILE
         bool requireJava = EnvironmentFlagIsEnabled(RequireJavaEnvironmentVariable);
         bool requireZeroWarnings = EnvironmentFlagIsEnabled(
             RequireZeroTargetWarningsEnvironmentVariable);
+        IReadOnlyList<TargetLanguage> targetLanguages = requireAllTargets
+            ? TargetLanguageInfo.All
+            : requireJava
+                ? ActiveTargetLanguages.All.Append(TargetLanguage.Java).Distinct().ToArray()
+                : ActiveTargetLanguages.All;
         var failures = new List<string>();
         int executed = 0;
 
@@ -518,7 +507,7 @@ END WHILE
             $"{RequireJavaEnvironmentVariable}={(requireJava ? "1" : "0")}, " +
             $"{RequireZeroTargetWarningsEnvironmentVariable}={(requireZeroWarnings ? "1" : "0")}");
 
-        foreach (TargetLanguage language in TargetLanguageInfo.All)
+        foreach (TargetLanguage language in targetLanguages)
         {
             IToolchain toolchain = _toolchains.Get(language);
             ToolchainStatus status = await toolchain.DetectAsync(CancellationToken.None);
@@ -641,7 +630,7 @@ END WHILE
             TargetLanguage.Swift => @"(?m)^\s*while\s+.+\s+\{",
             TargetLanguage.Python => @"(?m)^\s*while\s+.+:",
             TargetLanguage.Cobol => @"(?m)^\s*PERFORM UNTIL SMILE-WHILE-EXIT-\d+ = 1",
-            TargetLanguage.MasmX64 => @"(?m)^while\d+Condition:",
+            TargetLanguage.MasmX64 => @"(?m)^smilewhileHead\d+:",
             _ => throw new ArgumentOutOfRangeException(nameof(language))
         };
 
@@ -653,12 +642,18 @@ END WHILE
 
         if (language is TargetLanguage.MasmX64)
         {
-            for (int ordinal = 0; ordinal < expectedLoops; ordinal++)
-            {
-                StringAssert.Contains(generated, $"jz while{ordinal}End");
-                StringAssert.Contains(generated, $"jmp while{ordinal}Condition");
-                StringAssert.Contains(generated, $"while{ordinal}End:");
-            }
+            Assert.HasCount(
+                expectedLoops,
+                Regex.Matches(generated, @"(?m)^smilewhileEnd\d+:").Cast<Match>(),
+                generated);
+            Assert.HasCount(
+                expectedLoops,
+                Regex.Matches(generated, @"(?m)^\s*jz smilewhileEnd\d+\r?$").Cast<Match>(),
+                generated);
+            Assert.HasCount(
+                expectedLoops,
+                Regex.Matches(generated, @"(?m)^\s*jmp smilewhileHead\d+\r?$").Cast<Match>(),
+                generated);
         }
     }
 
@@ -690,15 +685,15 @@ END WHILE
             TargetLanguage.Swift or
             TargetLanguage.Python => ["_smile_add", "SMILER1206"],
             TargetLanguage.Cobol => ["smile_checked_add", "SMILER1206"],
-            TargetLanguage.MasmX64 => ["smileRuntimeOverflow", "SMILER1206"],
+            TargetLanguage.MasmX64 => ["add eax, r10d", "jo smileArithmeticOverflow", "SMILER1206"],
             _ => throw new ArgumentOutOfRangeException(nameof(language))
         };
 
     private static IReadOnlyList<string> InputMarkers(TargetLanguage language) =>
         language switch
         {
-            TargetLanguage.CSharp => ["_smile_read_byte", "_smile_input_boolean"],
-            TargetLanguage.C => ["fgetc(stdin)", "_smile_input_boolean"],
+            TargetLanguage.CSharp => ["Console.ReadLine()", "bool.Parse"],
+            TargetLanguage.C => ["scanf(", "fgets(", "strcmp("],
             TargetLanguage.Cpp => ["std::cin.get()", "_smile_input_boolean"],
             TargetLanguage.JavaScript => ["fs.readSync", "_smile_input_boolean"],
             TargetLanguage.Java => ["System.in.read()", "_smile_input_boolean"],
@@ -706,7 +701,7 @@ END WHILE
             TargetLanguage.ObjectiveC => ["fgetc(stdin)", "_smile_input_boolean"],
             TargetLanguage.Swift => ["FileHandle.standardInput.read", "_smile_input_boolean"],
             TargetLanguage.Python => ["sys.stdin.buffer.read", "_smile_input_boolean"],
-            TargetLanguage.MasmX64 => ["smileReadInputLine PROC", "call smileReadInputLine"],
+            TargetLanguage.MasmX64 => ["extern scanf:proc", "call scanf", "call _stricmp"],
             _ => throw new ArgumentOutOfRangeException(nameof(language))
         };
 
@@ -731,7 +726,6 @@ END WHILE
         string newLine = (language, isStandardError) switch
         {
             (TargetLanguage.JavaScript, _) => "\n",
-            (TargetLanguage.MasmX64, true) => "\n",
             (TargetLanguage.Swift, true) => "\n",
             _ => "\r\n"
         };

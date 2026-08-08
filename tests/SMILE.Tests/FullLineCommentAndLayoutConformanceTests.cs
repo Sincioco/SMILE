@@ -710,7 +710,7 @@ PRINT {Result}
                 TargetLanguage.CSharp => "int a = 49;\n\n        Console.WriteLine(\"a\");",
                 TargetLanguage.C => "int a = 49;\n\n\n    printf(\"a\\n\");",
                 TargetLanguage.MasmX64 =>
-                    "Update the runtime signed Integer storage.\n\n\n; PRINT #1",
+                    "sub rsp, 40\n\n\n    ; PRINT",
                 TargetLanguage.JavaScript => "let a = 49;\n\nconsole.log(\"a\");",
                 TargetLanguage.Java => "int a = 49;\n\n        System.out.println(\"a\");",
                 TargetLanguage.Cobol =>

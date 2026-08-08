@@ -1,0 +1,4 @@
+LET age = 0
+PRINT How old are you?
+INPUT age
+PRINT $"You are {age} years old."

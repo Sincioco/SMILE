@@ -4,12 +4,8 @@ permissions:
   contents: read
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+  # Automatic triggers are intentionally paused during SMILE Velocity Mode.
+  # Keep the full workflow manually available for milestones and releases.
   workflow_dispatch:
 
 jobs:
@@ -34,10 +30,10 @@ jobs:
         run: dotnet build SMILE.sln -c Debug --no-restore -nologo
 
       - name: Test Debug
-        run: dotnet test SMILE.sln -c Debug --no-build --no-restore -nologo
+        run: dotnet test SMILE.sln -c Debug --no-build --no-restore --filter "TestCategory!=HistoricalExactInput" -nologo
 
       - name: Build Release
         run: dotnet build SMILE.sln -c Release --no-restore -nologo
 
       - name: Test Release
-        run: dotnet test SMILE.sln -c Release --no-build --no-restore -nologo
+        run: dotnet test SMILE.sln -c Release --no-build --no-restore --filter "TestCategory!=HistoricalExactInput" -nologo

@@ -102,72 +102,24 @@ PRINT "Hello " + Name + "!"
     }
 
     [TestMethod]
-    public void Masm_generator_produces_real_x64_masm_with_unique_labels_and_comments()
+    public void Masm_generator_produces_small_native_x64_masm()
     {
         GeneratedProgram program = Generate(SampleSource, TargetLanguage.MasmX64);
 
         Assert.AreEqual("Program.asm", program.PrimaryFile.RelativePath);
-        Assert.AreEqual(
-            Lines(
-                "option casemap:none                             ; Keep symbol names case-sensitive.",
-                "",
-                "EXTERN GetStdHandle:PROC                        ; Windows API: get standard console handles.",
-                "EXTERN WriteFile:PROC                           ; Windows API: write bytes to the console.",
-                "EXTERN ExitProcess:PROC                         ; Windows API: terminate the process.",
-                "",
-                ".data                                           ; Static bytes and variables live here.",
-                "STD_OUTPUT_HANDLE EQU -11                       ; Magic value for the console output handle.",
-                "print0Segment0 BYTE \"Hello from SMILE!\"         ; PRINT #1 canonical text.",
-                "print0Segment0Length EQU $ - print0Segment0     ; Length of this print text.",
-                "print1Segment0 BYTE \"Different syntax, same idea.\" ; PRINT #2 canonical text.",
-                "print1Segment0Length EQU $ - print1Segment0     ; Length of this print text.",
-                "newline BYTE 13, 10                             ; SMILE PRINT appends CR/LF on Windows.",
-                "newlineLength EQU $ - newline                   ; Length of the newline bytes.",
-                "stdoutHandle QWORD ?                            ; Cached standard output handle.",
-                "bytesWritten DWORD ?                            ; WriteFile stores how many bytes it wrote.",
-                "",
-                ".code                                           ; CPU instructions live here.",
-                "main PROC                                       ; Program entry point.",
-                "    sub rsp, 28h                                ; Reserve Win64 shadow space and align the stack.",
-                "",
-                "    mov ecx, STD_OUTPUT_HANDLE                  ; Ask Windows for stdout.",
-                "    call GetStdHandle                           ; RAX receives the stdout handle.",
-                "    mov QWORD PTR [stdoutHandle], rax           ; Cache stdout for every PRINT segment.",
-                "",
-                "; PRINT #1                                      ; Write each expression segment, then newline.",
-                "    mov rcx, QWORD PTR [stdoutHandle]           ; WriteFile arg 1: stdout handle.",
-                "    lea rdx, print0Segment0                     ; WriteFile arg 2: address of literal bytes.",
-                "    mov r8d, print0Segment0Length               ; WriteFile arg 3: byte count.",
-                "    lea r9, bytesWritten                        ; WriteFile arg 4: address for bytes-written result.",
-                "    mov QWORD PTR [rsp + 20h], 0                ; WriteFile arg 5 on stack: no overlapped I/O.",
-                "    call WriteFile                              ; Emit this literal segment.",
-                "    mov rcx, QWORD PTR [stdoutHandle]           ; WriteFile arg 1: stdout handle.",
-                "    lea rdx, newline                            ; WriteFile arg 2: address of literal bytes.",
-                "    mov r8d, newlineLength                      ; WriteFile arg 3: byte count.",
-                "    lea r9, bytesWritten                        ; WriteFile arg 4: address for bytes-written result.",
-                "    mov QWORD PTR [rsp + 20h], 0                ; WriteFile arg 5 on stack: no overlapped I/O.",
-                "    call WriteFile                              ; Emit this literal segment.",
-                "",
-                "; PRINT #2                                      ; Write each expression segment, then newline.",
-                "    mov rcx, QWORD PTR [stdoutHandle]           ; WriteFile arg 1: stdout handle.",
-                "    lea rdx, print1Segment0                     ; WriteFile arg 2: address of literal bytes.",
-                "    mov r8d, print1Segment0Length               ; WriteFile arg 3: byte count.",
-                "    lea r9, bytesWritten                        ; WriteFile arg 4: address for bytes-written result.",
-                "    mov QWORD PTR [rsp + 20h], 0                ; WriteFile arg 5 on stack: no overlapped I/O.",
-                "    call WriteFile                              ; Emit this literal segment.",
-                "    mov rcx, QWORD PTR [stdoutHandle]           ; WriteFile arg 1: stdout handle.",
-                "    lea rdx, newline                            ; WriteFile arg 2: address of literal bytes.",
-                "    mov r8d, newlineLength                      ; WriteFile arg 3: byte count.",
-                "    lea r9, bytesWritten                        ; WriteFile arg 4: address for bytes-written result.",
-                "    mov QWORD PTR [rsp + 20h], 0                ; WriteFile arg 5 on stack: no overlapped I/O.",
-                "    call WriteFile                              ; Emit this literal segment.",
-                "",
-                "    xor ecx, ecx                                ; ExitProcess arg 1: process exit code 0.",
-                "    call ExitProcess                            ; End the program.",
-                "main ENDP                                       ; End of the main procedure.",
-                "",
-                "END"),
-            program.PrimaryFile.Content);
+        StringAssert.Contains(program.PrimaryFile.Content, "includelib ucrt.lib");
+        StringAssert.Contains(program.PrimaryFile.Content, "extern printf:proc");
+        StringAssert.Contains(program.PrimaryFile.Content, "extern ExitProcess:proc");
+        StringAssert.Contains(program.PrimaryFile.Content, ".data");
+        StringAssert.Contains(program.PrimaryFile.Content, "smileText0 BYTE \"Hello from SMILE!\", 10, 0");
+        StringAssert.Contains(
+            program.PrimaryFile.Content,
+            "smileText1 BYTE \"Different syntax, same idea.\", 10, 0");
+        StringAssert.Contains(program.PrimaryFile.Content, "main PROC");
+        Assert.AreEqual(2, CountOccurrences(program.PrimaryFile.Content, "call printf"));
+        StringAssert.Contains(program.PrimaryFile.Content, "call ExitProcess");
+        Assert.IsFalse(program.PrimaryFile.Content.Contains("WriteFile", StringComparison.Ordinal));
+        Assert.IsLessThan(80, program.PrimaryFile.Content.Split('\n').Length);
     }
 
     [TestMethod]
@@ -348,9 +300,10 @@ PRINT "Hello " + Name + "!"
         StringAssert.Contains(cobol, "DISPLAY \"Literal braces: {Name}\".");
 
         string masm = Generate(FriendlyPrintSource, TargetLanguage.MasmX64).PrimaryFile.Content;
-        StringAssert.Contains(masm, "variable0Ptr QWORD ?");
-        StringAssert.Contains(masm, "print3Segment0 BYTE \"Hello Sin!\"");
-        StringAssert.Contains(masm, "print6Segment0 BYTE \"Literal braces: {Name}\"");
+        StringAssert.Contains(masm, "_smile_Name QWORD OFFSET smileText0");
+        StringAssert.Contains(masm, "mov rax, QWORD PTR [_smile_Name]");
+        StringAssert.Contains(masm, "Literal braces: {Name}");
+        StringAssert.Contains(masm, "extern printf:proc");
     }
 
     [TestMethod]

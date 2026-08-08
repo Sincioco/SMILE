@@ -329,7 +329,7 @@ PRINT continued after false IF without ELSE
                     StringAssert.Matches(
                         generated,
                         new Regex(
-                            $@"set\d+Value BYTE {escaped}\s+; SET Grade assigned text\.",
+                            $@"smileText\d+ BYTE {escaped}, 0\s+; SET String value",
                             RegexOptions.CultureInvariant));
                     continue;
                 }
@@ -488,13 +488,9 @@ END IF
         string masm = Generate(source, TargetLanguage.MasmX64).PrimaryFile.Content;
         MatchCollection labelMatches = Regex.Matches(
             masm,
-            @"(?im)^\s*(if(?<id>\d+)(?:Clause\d+|Else|End)):\s*(?:;.*)?$");
+            @"(?im)^\s*(smileif(?:Next|End)\d+):\s*(?:;.*)?$");
         string[] labels = labelMatches
             .Select(match => match.Groups[1].Value)
-            .ToArray();
-        string[] ifIds = labelMatches
-            .Select(match => match.Groups["id"].Value)
-            .Distinct(StringComparer.Ordinal)
             .ToArray();
 
         Assert.IsGreaterThanOrEqualTo(6, labels.Length, masm);
@@ -502,10 +498,8 @@ END IF
             labels.Length,
             labels.Distinct(StringComparer.OrdinalIgnoreCase).Count(),
             $"Nested MASM IF labels collided.{Environment.NewLine}{masm}");
-        Assert.IsGreaterThanOrEqualTo(
-            3,
-            ifIds.Length,
-            $"Each nested BoundIfStatement needs a distinct deterministic label id.{Environment.NewLine}{masm}");
+        StringAssert.Contains(masm, "jz smileifNext");
+        StringAssert.Contains(masm, "jmp smileifEnd");
     }
 
     [TestMethod]
@@ -717,13 +711,16 @@ PRINT {StableValue}
     [TestMethod]
     public void COBOL_and_MASM_supported_post_merge_comparisons_read_current_storage()
     {
-        foreach (TargetLanguage language in new[] { TargetLanguage.C, TargetLanguage.ObjectiveC })
-        {
-            string generated = Generate(StorageConditionSource, language).PrimaryFile.Content;
-            StringAssert.Contains(generated, "Copy = State;");
-            StringAssert.Contains(generated, "smileString1Length = smileString0Length;");
-            StringAssert.Contains(generated, "fwrite(Copy, 1, smileString1Length, stdout);");
-        }
+        string c = Generate(StorageConditionSource, TargetLanguage.C).PrimaryFile.Content;
+        StringAssert.Contains(c, "memcpy(smileString0Buffer + smileString0BufferUsed, State, smileString0Length);");
+        StringAssert.Contains(c, "Copy = smileString0Buffer;");
+        StringAssert.Contains(c, "smileString1Length = smileString0BufferUsed;");
+        StringAssert.Contains(c, "fwrite(Copy, 1, smileString1Length, stdout);");
+
+        string objectiveC = Generate(StorageConditionSource, TargetLanguage.ObjectiveC).PrimaryFile.Content;
+        StringAssert.Contains(objectiveC, "Copy = State;");
+        StringAssert.Contains(objectiveC, "smileString1Length = smileString0Length;");
+        StringAssert.Contains(objectiveC, "fwrite(Copy, 1, smileString1Length, stdout);");
 
         string cobol = Generate(StorageConditionSource, TargetLanguage.Cobol).PrimaryFile.Content;
         StringAssert.Contains(cobol, "01 SMILE-Copy PIC X(14) VALUE SPACES.");

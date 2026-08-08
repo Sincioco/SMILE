@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text;
 
 namespace SMILE.Engine;
@@ -12,13 +11,10 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
         TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
         BoundProgramAnalysis analysis = BoundProgramAnalysis.Create(program);
         TargetIntegerProfile integers = TargetIntegerProfile.Analyze(program, analysis);
-        bool hasInput = TargetRuntimeFacts.HasInput(program);
-        bool requiresUtf8Output = TargetRuntimeFacts.RequiresUtf8Output(program);
+        // Console.ReadLine is already the native C# INPUT facility. INPUT by
+        // itself should not inject encoding setup into a tiny learner program.
+        bool requiresUtf8Output = TargetRuntimeFacts.RequiresUtf8OutputFromSource(program);
         bool checkedArithmetic = TargetRuntimeFacts.NeedsCheckedIntegerArithmetic(program);
-        if (TargetRuntimeFacts.HasInput(program, SmileType.Integer) || checkedArithmetic)
-        {
-            integers = new TargetIntegerProfile(RequiresSigned64Storage: true, RequiresJavaScriptBigInt: true);
-        }
         bool needsConditionHelper = BoundStatementTree.Enumerate(program).Any(statement =>
             statement switch
             {
@@ -30,12 +26,6 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
             });
         var source = new StringBuilder();
         source.AppendLine("using System;");
-        if (CSharpGenerationFacts.NeedsInvariantCulture(program) ||
-            TargetRuntimeFacts.HasInput(program, SmileType.Integer))
-        {
-            source.AppendLine("using System.Globalization;");
-        }
-
         if (requiresUtf8Output)
         {
             source.AppendLine("using System.Text;");
@@ -69,11 +59,7 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
             source.AppendLine("    private static bool _smile_condition(bool value) => value;");
         }
 
-        if (hasInput)
-        {
-            AppendInputHelpers(source, program);
-        }
-        else if (checkedArithmetic)
+        if (checkedArithmetic)
         {
             AppendFailureHelper(source);
         }
@@ -164,16 +150,17 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
                     break;
 
                 case BoundInputStatement input:
+                    string inputExpression = input.Variable.Type switch
+                    {
+                        SmileType.String => "Console.ReadLine() ?? string.Empty",
+                        SmileType.Integer => integers.RequiresSigned64Storage
+                            ? "long.Parse(Console.ReadLine()!)"
+                            : "int.Parse(Console.ReadLine()!)",
+                        SmileType.Boolean => "bool.Parse(Console.ReadLine()!)",
+                        _ => throw new InvalidOperationException("Unsupported INPUT target type.")
+                    };
                     source.Append(indent).Append(identifiers.Get(input.Variable)).Append(" = ")
-                        .Append(input.Variable.Type switch
-                        {
-                            SmileType.String => "_smile_input_string",
-                            SmileType.Integer => "_smile_input_integer",
-                            SmileType.Boolean => "_smile_input_boolean",
-                            _ => throw new InvalidOperationException("Unsupported INPUT target type.")
-                        })
-                        .Append('(').Append(TargetEscapes.CSharpString(input.Variable.Name))
-                        .AppendLine(");");
+                        .Append(inputExpression).AppendLine(";");
                     break;
 
                 case BoundPrintStatement print:
@@ -317,134 +304,6 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
         source.Append(indent).AppendLine("}");
     }
 
-    private static void AppendInputHelpers(StringBuilder source, BoundProgram program)
-    {
-        source.AppendLine();
-        source.AppendLine("    private static readonly UTF8Encoding _smile_utf8 = new UTF8Encoding(false, true);");
-        source.AppendLine("    private static readonly System.IO.Stream _smile_input_stream = _smile_open_input();");
-        source.AppendLine("    private static bool _smile_skip_lf;");
-        source.AppendLine();
-        source.AppendLine("    private static System.IO.Stream _smile_open_input()");
-        source.AppendLine("    {");
-        source.AppendLine("        Console.InputEncoding = _smile_utf8;");
-        source.AppendLine("        return Console.OpenStandardInput();");
-        source.AppendLine("    }");
-        source.AppendLine();
-        source.AppendLine("    private static int _smile_read_byte(string variableName)");
-        source.AppendLine("    {");
-        source.AppendLine("        try");
-        source.AppendLine("        {");
-        source.AppendLine("            return _smile_input_stream.ReadByte();");
-        source.AppendLine("        }");
-        source.AppendLine("        catch (System.IO.IOException)");
-        source.AppendLine("        {");
-        source.AppendLine("            _smile_fail($\"SMILE Runtime Error SMILER1506: Input for '{variableName}' could not be read as valid UTF-8 text.\");");
-        source.AppendLine("            return -1;");
-        source.AppendLine("        }");
-        source.AppendLine("    }");
-        source.AppendLine();
-        source.AppendLine("    private static string _smile_read_line(string variableName)");
-        source.AppendLine("    {");
-        source.AppendLine($"        byte[] bytes = new byte[{SmileLanguage.MaximumInputLineUtf8Bytes}];");
-        source.AppendLine("        int count = 0;");
-        source.AppendLine("        bool firstByte = true;");
-        source.AppendLine("        while (true)");
-        source.AppendLine("        {");
-        source.AppendLine("            int next = _smile_read_byte(variableName);");
-        source.AppendLine("            if (firstByte)");
-        source.AppendLine("            {");
-        source.AppendLine("                firstByte = false;");
-        source.AppendLine("                if (_smile_skip_lf)");
-        source.AppendLine("                {");
-        source.AppendLine("                    _smile_skip_lf = false;");
-        source.AppendLine("                    if (next == '\\n') continue;");
-        source.AppendLine("                }");
-        source.AppendLine("            }");
-        source.AppendLine();
-        source.AppendLine("            if (next < 0)");
-        source.AppendLine("            {");
-        source.AppendLine("                if (count == 0)");
-        source.AppendLine("                {");
-        source.AppendLine("                    _smile_fail($\"SMILE Runtime Error SMILER1501: Input ended before a value was received for '{variableName}'.\");");
-        source.AppendLine("                    return string.Empty;");
-        source.AppendLine("                }");
-        source.AppendLine();
-        source.AppendLine("                break;");
-        source.AppendLine("            }");
-        source.AppendLine();
-        source.AppendLine("            if (next == '\\n') break;");
-        source.AppendLine("            if (next == '\\r')");
-        source.AppendLine("            {");
-        source.AppendLine("                _smile_skip_lf = true;");
-        source.AppendLine("                break;");
-        source.AppendLine("            }");
-        source.AppendLine();
-        source.AppendLine($"            if (count == {SmileLanguage.MaximumInputLineUtf8Bytes})");
-        source.AppendLine("            {");
-        source.AppendLine($"                _smile_fail($\"SMILE Runtime Error SMILER1502: Input for '{{variableName}}' exceeds the {SmileLanguage.MaximumInputLineUtf8Bytes}-byte UTF-8 limit.\");");
-        source.AppendLine("                return string.Empty;");
-        source.AppendLine("            }");
-        source.AppendLine();
-        source.AppendLine("            bytes[count++] = (byte)next;");
-        source.AppendLine("        }");
-        source.AppendLine();
-        source.AppendLine("        try");
-        source.AppendLine("        {");
-        source.AppendLine("            return _smile_utf8.GetString(bytes, 0, count);");
-        source.AppendLine("        }");
-        source.AppendLine("        catch (DecoderFallbackException)");
-        source.AppendLine("        {");
-        source.AppendLine("            _smile_fail($\"SMILE Runtime Error SMILER1506: Input for '{variableName}' could not be read as valid UTF-8 text.\");");
-        source.AppendLine("            return string.Empty;");
-        source.AppendLine("        }");
-        source.AppendLine("    }");
-
-        if (TargetRuntimeFacts.HasInput(program, SmileType.String))
-        {
-            source.AppendLine();
-            source.AppendLine("    private static string _smile_input_string(string variableName) =>");
-            source.AppendLine("        _smile_read_line(variableName);");
-        }
-
-        if (TargetRuntimeFacts.HasInput(program, SmileType.Integer))
-        {
-            source.AppendLine();
-            source.AppendLine("    private static long _smile_input_integer(string variableName)");
-            source.AppendLine("    {");
-            source.AppendLine("        string text = _smile_read_line(variableName).Trim(' ', '\\t');");
-            source.AppendLine("        int digitStart = text.Length > 0 && (text[0] == '+' || text[0] == '-') ? 1 : 0;");
-            source.AppendLine("        if (digitStart == text.Length || text.AsSpan(digitStart).IndexOfAnyExceptInRange('0', '9') >= 0)");
-            source.AppendLine("        {");
-            source.AppendLine("            _smile_fail($\"SMILE Runtime Error SMILER1503: Input for '{variableName}' is not a valid Integer.\");");
-            source.AppendLine("            return 0;");
-            source.AppendLine("        }");
-            source.AppendLine();
-            source.AppendLine("        if (!long.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out long value))");
-            source.AppendLine("        {");
-            source.AppendLine("            _smile_fail($\"SMILE Runtime Error SMILER1504: Input for '{variableName}' is outside the signed 64-bit Integer range.\");");
-            source.AppendLine("            return 0;");
-            source.AppendLine("        }");
-            source.AppendLine();
-            source.AppendLine("        return value;");
-            source.AppendLine("    }");
-        }
-
-        if (TargetRuntimeFacts.HasInput(program, SmileType.Boolean))
-        {
-            source.AppendLine();
-            source.AppendLine("    private static bool _smile_input_boolean(string variableName)");
-            source.AppendLine("    {");
-            source.AppendLine("        string text = _smile_read_line(variableName).Trim(' ', '\\t');");
-            source.AppendLine("        if (text.Equals(\"TRUE\", StringComparison.OrdinalIgnoreCase)) return true;");
-            source.AppendLine("        if (text.Equals(\"FALSE\", StringComparison.OrdinalIgnoreCase)) return false;");
-            source.AppendLine("        _smile_fail($\"SMILE Runtime Error SMILER1505: Input for '{variableName}' must be TRUE or FALSE.\");");
-            source.AppendLine("        return false;");
-            source.AppendLine("    }");
-        }
-
-        AppendFailureHelper(source);
-    }
-
     private static void AppendFailureHelper(StringBuilder source)
     {
         source.AppendLine();
@@ -491,42 +350,5 @@ internal sealed class CSharpCodeGenerator : ICodeGenerator
         source.AppendLine($"        if (left == {type}.MinValue && right == -1) {{ _smile_fail(\"SMILE Runtime Error SMILER1206: Integer arithmetic overflow.\"); return 0; }}");
         source.AppendLine("        return left / right;");
         source.AppendLine("    }");
-    }
-}
-
-internal static class CSharpGenerationFacts
-{
-    public static bool NeedsInvariantCulture(BoundProgram program) =>
-        BoundStatementTree.Enumerate(program).Any(statement => statement switch
-        {
-            BoundLetStatement let => NeedsInvariantCulture(let.Initializer, displayContext: false),
-            BoundSetStatement set => NeedsInvariantCulture(set.Value, displayContext: false),
-            BoundPrintStatement print => !print.IsBlankLine && NeedsInvariantCulture(print.Value, displayContext: true),
-            BoundIfStatement conditional => conditional.Clauses.Any(clause =>
-                NeedsInvariantCulture(clause.Condition, displayContext: false)),
-            BoundWhileStatement loop =>
-                NeedsInvariantCulture(loop.Condition, displayContext: false),
-            _ => false
-        });
-
-    private static bool NeedsInvariantCulture(BoundExpression expression, bool displayContext)
-    {
-        // C# only needs CultureInfo when a SMILE Integer is converted to text.
-        // Its storage type is selected once from the complete bound program.
-        if (displayContext && expression.Type is SmileType.Integer)
-        {
-            return true;
-        }
-
-        return expression switch
-        {
-            BoundUnaryExpression unary => NeedsInvariantCulture(unary.Operand, displayContext: false),
-            BoundBinaryExpression binary => NeedsInvariantCulture(binary.Left, displayContext: false) ||
-                NeedsInvariantCulture(binary.Right, displayContext: false),
-            BoundInterpolatedStringExpression interpolated => interpolated.Parts.Any(part =>
-                part is BoundInterpolationExpressionPart interpolation &&
-                NeedsInvariantCulture(interpolation.Expression, displayContext: true)),
-            _ => false
-        };
     }
 }

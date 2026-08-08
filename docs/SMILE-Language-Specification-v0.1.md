@@ -2,6 +2,8 @@
 
 This document is retained as a historical v0.1 note.
 
+> **Historical snapshot:** The v0.8.0 inventory below records the pre-Strategic-Reset implementation. Its strict 4096-byte INPUT, exact all-ten-target parity, automatic-CI, and simultaneous ten-backend statements are no longer current policy. Use `AGENTS.md`, `docs/SMILE Core Principles.md`, and the numbered current specifications instead.
+
 SMILE v0.1 supported only:
 
 ```basic
@@ -20,7 +22,7 @@ SMILE v0.8.0 implements the official LET, SET, INPUT, IF, WHILE, Friendly PRINT,
 - [008 - SMILE - INPUT Statement Official Specification v1.0](SMILE%20Language%20Specification/008%20-%20SMILE%20-%20INPUT%20Statement%20Official%20Specification%20v1.0.md)
 - [009 - SMILE - WHILE Statement Official Specification v1.0](SMILE%20Language%20Specification/009%20-%20SMILE%20-%20WHILE%20Statement%20Official%20Specification%20v1.0.md)
 
-Current v0.8.0 behavior includes:
+The historical v0.8.0 snapshot included:
 
 - `LET Name = "Sin"` string variable declarations.
 - `LET Age = 49` integer variable declarations.

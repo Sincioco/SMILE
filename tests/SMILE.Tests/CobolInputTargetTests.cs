@@ -103,6 +103,7 @@ PRINT [{Value}]
     }
 
     [TestMethod]
+    [TestCategory("HistoricalExactInput")]
     public async Task Installed_COBOL_enforces_the_exact_String_byte_limit()
     {
         const string source = """

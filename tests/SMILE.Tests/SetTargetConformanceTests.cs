@@ -56,10 +56,9 @@ PRINT {Counter}
         StringAssert.Contains(c, "Counter = Counter + 1;");
 
         string masm = Generate(source, TargetLanguage.MasmX64);
-        StringAssert.Contains(masm, "set2Value BYTE \"1\"");
-        StringAssert.Contains(masm, "lea rax, set2Value");
-        StringAssert.Contains(masm, "mov QWORD PTR [variable0Ptr], rax");
-        StringAssert.Contains(masm, "mov DWORD PTR [variable0Length], set2ValueLength");
+        StringAssert.Contains(masm, "add eax, r10d");
+        StringAssert.Contains(masm, "jo smileArithmeticOverflow");
+        StringAssert.Contains(masm, "mov DWORD PTR [_smile_Counter], eax");
 
         string javascript = Generate(source, TargetLanguage.JavaScript);
         StringAssert.Contains(javascript, "let Counter = 0;");
@@ -142,7 +141,9 @@ PRINT {Name}
         StringAssert.Contains(generated[TargetLanguage.Python], "Name = \"\"\"S\n I\n  N\"\"\"");
         StringAssert.Contains(generated[TargetLanguage.Cpp], "Name = R\"SMILE(S\n I\n  N)SMILE\";");
         StringAssert.Contains(generated[TargetLanguage.Cobol], "MOVE X\"530A20490A20204E\" TO Name.");
-        StringAssert.Contains(generated[TargetLanguage.MasmX64], "set1Value BYTE \"S\", 10, \" I\", 10, \"  N\"");
+        StringAssert.Contains(
+            generated[TargetLanguage.MasmX64],
+            "BYTE \"S\", 10, \" I\", 10, \"  N\", 0    ; SET String value");
 
         foreach (string targetSource in generated.Values)
         {

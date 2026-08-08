@@ -12,6 +12,10 @@
 
 `PRINT` writes text to the program's standard output and appends one newline.
 
+Permanent variable-reference rule: curly braces `{ }` identify interpolation holes in text-oriented syntax such as raw `PRINT` templates and `$"..."` strings. They are not general variable-reference delimiters. When a statement or expression position already requires an identifier or expression, write the variable directly without braces.
+
+Accordingly, `PRINT Name` is literal template text while `PRINT {Name}` interpolates `Name`. Outside text-oriented interpolation, use forms such as `INPUT Name`, `SET Name = "Sin"`, and `IF Name = "Sin" THEN`; do not introduce `INPUT {Name}`, `SET {Name} = ...`, or `IF {Name} = ...`.
+
 Evaluated variable references read the variable's current runtime value at the `PRINT` statement. An earlier `SET` or successful `INPUT` therefore changes what every later direct expression, raw-template hole, and interpolated String hole prints. After INPUT, a generator must read current target storage rather than reuse the LET or SET value that preceded the input operation.
 
 SMILE v0.8.0 permits PRINT and INPUT in IF, ELSE IF, ELSE, nested IF, WHILE, and nested WHILE bodies. A PRINT executes only when its containing branch is selected and each time its containing loop body is reached. All PRINT source text in unselected branches and zero-iteration loop bodies is still parsed and bound, and every target retains the complete branch and loop structure. PRINT prompts remain separate statements before INPUT; INPUT has no built-in prompt form.

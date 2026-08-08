@@ -6,6 +6,7 @@ using SMILE.Toolchains;
 namespace SMILE.Tests;
 
 [TestClass]
+[TestCategory("HistoricalExactInput")]
 public sealed class InputTargetConformanceTests
 {
     private const string RequireAllTargetsEnvironmentVariable = "SMILE_REQUIRE_ALL_TARGETS";
@@ -704,10 +705,9 @@ PRINT {Never}
         string generated = string.Join("\n", program.Files.Select(file => file.Content));
         string[] markers = language switch
         {
-            TargetLanguage.CSharp => ["_smile_read_byte", "_smile_input_integer", "_smile_skip_lf"],
-            TargetLanguage.C => ["fgetc(stdin)", "_smile_input_integer", "skipLf = true"],
-            TargetLanguage.MasmX64 =>
-                ["smileReadInputLine PROC", "call smileReadInputLine", "smileInputSkipLf"],
+            TargetLanguage.CSharp => ["Console.ReadLine()", "int.Parse", "bool.Parse"],
+            TargetLanguage.C => ["fgets(", "scanf(\"%d\"", "scanf(\"%5s\""],
+            TargetLanguage.MasmX64 => ["extern printf:proc", "extern scanf:proc", "call ExitProcess"],
             TargetLanguage.JavaScript => ["fs.readSync", "_smile_input_integer", "_smile_skip_lf"],
             TargetLanguage.Java => ["System.in.read()", "_smile_input_integer", "_smile_skip_lf"],
             TargetLanguage.Cobol => ["CALL \"smile_input_", "static int smile_read_line"],

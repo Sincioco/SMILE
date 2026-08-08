@@ -837,7 +837,7 @@ public sealed class MasmX64Toolchain : ToolchainBase
                 "@echo off",
                 $"call {QuoteForCmd(status.Location)} >nul",
                 "if errorlevel 1 exit /b %errorlevel%",
-                "link.exe /nologo Program.obj kernel32.lib /subsystem:console /entry:main /out:Program.exe"
+                "link.exe /nologo /ignore:4210 Program.obj kernel32.lib legacy_stdio_definitions.lib ucrt.lib /subsystem:console /entry:main /out:Program.exe"
             },
             cancellationToken).ConfigureAwait(false);
 

@@ -105,34 +105,31 @@ PRINT {Second}
     }
 
     [TestMethod]
-    public void String_INPUT_accepts_the_exact_4096_byte_boundary()
+    public void String_INPUT_accepts_a_line_beyond_the_superseded_4096_byte_boundary()
     {
-        string input = string.Concat(Enumerable.Repeat("🙂", 1024)) + "\n";
+        string entered = new('A', SmileLanguage.MaximumInputLineUtf8Bytes + 1);
 
-        EvaluationResult result = _evaluator.Evaluate(StringProgram, input);
+        EvaluationResult result = _evaluator.Evaluate(StringProgram, entered + "\n");
 
         AssertSuccess(result);
-        Assert.AreEqual(
-            SmileLanguage.MaximumInputLineUtf8Bytes,
-            Encoding.UTF8.GetByteCount(result.Output[1..^2]));
+        Assert.AreEqual($"[{entered}]\n", result.Output);
     }
 
     [TestMethod]
-    public void String_INPUT_rejects_4097_UTF8_bytes_before_assignment()
+    public void String_INPUT_has_no_shared_cross_target_byte_limit()
     {
-        string input = new string('A', SmileLanguage.MaximumInputLineUtf8Bytes + 1) + "\n";
+        string entered = string.Concat(Enumerable.Repeat("🙂", 1025));
 
         EvaluationResult result = _evaluator.Evaluate(
             "PRINT Before\n" + StringProgram + "\nPRINT After",
-            input);
+            entered + "\n");
 
-        AssertRuntimeError(result, "SMILER1502");
-        Assert.AreEqual("Before\n", result.Output);
-        Assert.IsFalse(result.Output.Contains("After", StringComparison.Ordinal));
+        AssertSuccess(result);
+        Assert.AreEqual($"Before\n[{entered}]\nAfter\n", result.Output);
     }
 
     [TestMethod]
-    public void Raw_redirected_INPUT_stops_at_the_4097th_byte()
+    public void Raw_redirected_INPUT_accepts_more_than_4096_bytes()
     {
         byte[] bytes = Enumerable.Repeat(
                 (byte)'A',
@@ -143,8 +140,10 @@ PRINT {Second}
 
         EvaluationResult result = _evaluator.Evaluate(StringProgram, input);
 
-        AssertRuntimeError(result, "SMILER1502");
-        Assert.AreEqual(string.Empty, result.Output);
+        AssertSuccess(result);
+        Assert.AreEqual(
+            $"[{new string('A', SmileLanguage.MaximumInputLineUtf8Bytes + 1)}]\n",
+            result.Output);
     }
 
     [TestMethod]
@@ -485,7 +484,6 @@ PRINT {Value}
             "SMILER1206" => "Integer arithmetic overflow.",
             "SMILER1207" => "Division by zero.",
             "SMILER1501" => $"Input ended before a value was received for '{variableName}'.",
-            "SMILER1502" => $"Input for '{variableName}' exceeds the {SmileLanguage.MaximumInputLineUtf8Bytes}-byte UTF-8 limit.",
             "SMILER1503" => $"Input for '{variableName}' is not a valid Integer.",
             "SMILER1504" => $"Input for '{variableName}' is outside the signed 64-bit Integer range.",
             "SMILER1505" => $"Input for '{variableName}' must be TRUE or FALSE.",

@@ -1,6 +1,11 @@
 # Codex Implementation Instructions — LET Block Strings and Idiomatic Multiline Strings
 ## FULL v0.8.0-Aware Implementation Brief
 
+> [!IMPORTANT]
+> **HISTORICAL / PARTIALLY SUPERSEDED**
+>
+> This document records the original LET/SET Block String implementation milestone. Front-end scanning and normalization remain governed by current official String, LET, and SET specifications. Requirements for routine all-ten-target maintenance, strict all-target validation, or low-level exactness that would override native beginner-readable target code are superseded by `docs/SMILE Core Principles.md` and the current active three-target policy.
+
 ---
 
 # 1. Repository and current baseline

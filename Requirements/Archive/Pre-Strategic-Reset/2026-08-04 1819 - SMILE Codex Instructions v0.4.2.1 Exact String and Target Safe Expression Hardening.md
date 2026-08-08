@@ -1,5 +1,10 @@
 # Codex Implementation Instructions — SMILE v0.4.2.1 Exact String and Target-Safe Expression Hardening
 
+> [!IMPORTANT]
+> **HISTORICAL / PARTIALLY SUPERSEDED**
+>
+> This document records the original exact-String and short-circuit hardening milestone. Shared short-circuit correctness remains current. Exact-byte, embedded-NUL, or all-target machinery in this brief cannot override the current beginner-first native-generation rule; retain such complexity only when a current official language rule explicitly requires it. Current authority is `docs/SMILE Core Principles.md` plus the official String and core-expression specifications.
+
 ## Repository and workflow
 
 - Repository: `Sincioco/SMILE`

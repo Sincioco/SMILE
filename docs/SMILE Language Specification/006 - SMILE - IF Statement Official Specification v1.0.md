@@ -635,7 +635,7 @@ Permitted:
 
 Comments and blank lines are ordered non-semantic source items. Comment payloads that spell `IF`, `ELSE`, `ELSE IF`, `END IF`, malformed terminators, or Block String delimiters have no control-flow meaning. Marker-looking and blank physical lines inside a Block String used by SET remain String data rather than branch layout.
 
-INPUT targets an existing variable declared outside the IF. Only the selected branch executes its INPUT statements and consumes lines. An unselected INPUT still participates in binding, mutation analysis, full-range Integer/String planning, and target generation, but consumes no input at runtime.
+INPUT targets an existing variable declared outside the IF. Only the selected branch executes its INPUT statements and consumes lines. An unselected INPUT still participates in binding, mutation analysis, conservative internal Integer/String planning, and target generation, but consumes no input at runtime. Internal planning facts are not public INPUT limits and must not dictate a shared generated runtime.
 
 Example:
 
@@ -920,7 +920,7 @@ Only the selected branch updates runtime state or consumes input.
 - COBOL: valid `IF / ELSE / END-IF`
 - MASM x64: deterministic compare/jump labels
 
-All ten current targets remain supported. Each retains every branch-local INPUT at its source position, evaluates runtime-dependent conditions from current storage, and reports reached input or arithmetic errors only from the selected execution path.
+The active C#, C, and MASM targets retain every branch-local INPUT at its source position, evaluate runtime-dependent conditions from current storage, and preserve genuine branch structure. The seven other generator implementations are paused and do not form part of the current support or routine conformance promise; each must complete catch-up validation before re-enablement.
 
 ---
 

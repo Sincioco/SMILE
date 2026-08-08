@@ -1,105 +1,192 @@
 # Architecture
 
-SMILE v0.8.0 adds genuine pre-test `WHILE` loops, LET/SET Block String complete values, and idiomatic exact multiline target rendering while preserving the v0.7.0.1 editable-target-pane ownership model, runtime `INPUT`, comments and blank physical source lines as ordered non-semantic source items, and the existing LET, SET, PRINT, IF, expression, and exact String semantics:
+## Current Strategy
+
+SMILE is a beginner-first educational programming language. Generated source is learner-facing output, so architecture must make normal native destination-language code the easiest generator path.
+
+The permanent rules live in [SMILE Core Principles](SMILE%20Core%20Principles.md). The current implementation phase temporarily focuses active generation, product exposure, routine toolchains, and regression work on:
+
+1. C#
+2. C
+3. Windows x64 MASM Assembly
+
+The existing JavaScript, Java, COBOL, Objective-C, Swift, Python, and C++ implementations remain in the repository but are paused. They are historical implementation assets, not current maintenance obligations, and must be brought up to current semantics and readability standards before re-enablement.
+
+## Compiler Pipeline
 
 ```text
-Source -> Lexer -> Tokens/Layout -> Recursive Block Parser -> Ordered Syntax Items -> Binder -> Ordered Bound Items
-                                                                         -> Branch/Loop-Aware Known/Unknown/Invalid Analysis
-                                                                            + WHILE Fixed Point and Finite-String Validation
-                                                                         -> Mutation-Aware Pure Simplifier
-                                                                         -> Variable Mutation Analysis
-                                                                         -> Target Integer/String Planning
-                                                               -> Target Generator -> Generated Files
-                                                                                      |
-                                                                               Optional Toolchain
-                                                                                      |
-                                                                               Build and Run Result
+Source
+  -> Lexer and physical-source scanners
+  -> Tokens plus ordered comments/blank lines
+  -> Recursive parser
+  -> Syntax tree
+  -> Binder and variable symbols
+  -> Ordered bound tree
+  -> Statement/branch/loop analysis
+  -> Target generator
+  -> Learner-facing generated files
+  -> Optional active toolchain build and run
 ```
 
-The lexer turns source text into tokens for identifiers, literals, case-insensitive keywords including `INPUT`, `IF`, `WHILE`, `THEN`, `ELSE`, and `END`, operators, parentheses, full-line comments, line endings, and end-of-file. `FullLineCommentFacts` is the one physical-line classifier shared by the public lexer, indexed parser, and mixed IF/WHILE recovery. It recognizes `//`, `#`, and `--` exactly at the first space/tab-trimmed position and recognizes contextual `REM` ordinal case-insensitively only before a space, tab, line ending, or EOF. It does not add REM to the keyword table, and bounded expression lexing never treats inline marker text as a comment. The public full-source lexer and parser share `InterpolatedStringScanner`, so an interpolation remains one lexical source unit and comment classification resumes correctly on its following physical line. The lexer also recognizes a quote followed only by horizontal whitespace and a physical newline as the start of a possible Block String Literal, consumes through a structural closing-delimiter line, preserves exact source spans and trailing whitespace, normalizes content boundaries to logical `\n`, removes only the closing delimiter's exact indentation margin from matching lines, and decodes the official shared String escapes. One `BlockStringScanner` serves complete LET initializers, complete SET values, the public lexer, and bounded recovery. It owns every internal physical line before comment classification, so markers, INPUT/WHILE-looking text, and blank lines inside a block remain String data.
+The front end defines SMILE semantics once. Target generators consume the shared bound tree; they do not reparse source text or invent target-specific SMILE language rules.
 
-The parser remains in `Parser.cs`, retains the source-line model, and parses recursive ordered source-item lists. LET and SET each select between the ordinary expression path and the same complete-value Block String path; the general expression parser never accepts a Block String primary. Every list classifies a physical line in the fixed order: Block String ownership when already active, blank line, full-line comment, the terminator or malformed terminator for the current IF/WHILE block, then an ordinary semantic statement. `INPUT` parses as its own `InputStatementSyntax` with exactly one identifier and no expression child. `WHILE condition` parses as one `WhileStatementSyntax` with ordered body items and mandatory two-keyword `END WHILE`; it has no THEN, DO, one-line, WEND, or LOOP form. Program, IF, and WHILE bodies retain `StatementSyntax`, `FullLineCommentSyntax`, and `BlankLineSyntax` items in exact relative order. ELSE and IF form an ELSE IF clause only on the same logical header line. An IF following a standalone ELSE line is nested and consumes its own END IF. Comment payload text such as `INPUT Name`, `WHILE TRUE = TRUE`, `END IF`, or `END WHILE` has no structure. IF and WHILE share one combined recursive depth of 128. Attempting depth 129 reports opener-specific `SMILE1416` for IF or `SMILE1611` for WHILE, then bounded iterative mixed-block recovery skips valid comments, delegates Block String ownership to the canonical scanner, and does not recurse into the rejected body.
+`Parser.cs` remains focused on parsing. `Binder.cs` remains focused on binding, type checking, and producing the canonical bound representation. `Generation.cs` remains the small public generation facade. Shared generator helpers live under `src/SMILE.Engine/Generation/`, with each destination generator in its own focused file.
 
-The binder remains in focused `Binder.cs`. It resolves variable names with an ordinal case-insensitive symbol table and assigns each expression a SMILE type: `String`, `Integer`, or `Boolean`. A `LET` variable is deliberately absent while its complete initializer—including Block String scan, normalization, escape decoding, and binding—finishes, then becomes visible only after success. `SET` resolves an earlier declaration, binds its right side with the old value visible, requires exact type equality, and produces one canonical `BoundSetStatement`. `INPUT` resolves one earlier declaration, preserves its fixed type, and produces one canonical `BoundInputStatement`; it never invents a value or creates a symbol. IF clauses and WHILE headers use the same shared condition validator: bind the complete unsimplified condition, require every Boolean leaf to be an explicit comparison, reject future call or invocation nodes by default, and require a Boolean result. Every source body remains bound even when its first condition is known false. IF v1.0 rejects LET in branches, and WHILE v1.0 rejects LET recursively anywhere lexically inside its body, because v0.8.0 still has no block scope; PRINT, SET, INPUT, IF, nested WHILE, comments, blanks, and Block Strings as SET values remain valid. Every normalized ordinary or block literal binds as the same `BoundStringLiteralExpression`. Comment and blank-line syntax bind to non-semantic bound source items without variables, expressions, diagnostics, values, or trace entries.
+This organization is intentionally small. It does not require a plugin system, reflection-based discovery, a generic generated runtime, or a template framework.
 
-The syntax and bound trees each use one canonical representation for every feature. `SourceItemSyntax` is the common ordered syntax base; executable `StatementSyntax` plus comment and blank-line nodes derive from it. The bound tree mirrors that separation with a source-item base, executable bound statements, and non-semantic layout nodes. `InputStatementSyntax` and `BoundInputStatement` are distinct from SET and expressions. `IfStatementSyntax` contains ordered conditional clauses and an optional final ELSE body; `BoundIfStatement` contains the corresponding bound clauses and bodies. `WhileStatementSyntax` contains one condition plus ordered body items, and `BoundWhileStatement` contains the bound condition plus the same ordered body shape and source keyword span. Backward-compatible statement enumeration filters executable nodes for semantic callers without reconstructing source layout. `BlockStringLiteralExpressionSyntax` exists only to preserve placement and source-form information, then binds to an ordinary `BoundStringLiteralExpression`. Every target consumes the same recursive bound tree and never reparses source text.
+## Front End And Ordered Source
 
-`Generation.cs` remains the small public transpilation facade. Existing shared generator helpers are organized under `src/SMILE.Engine/Generation/`, alongside one focused source file for each of the ten destination generators. The split moves declarations only: it retains the namespace, visibility, registry order, APIs, generated filenames and project files, deterministic labels, and byte-for-byte generated output. It introduces no generator framework, inheritance hierarchy, reflection-based discovery, template system, or new dependency.
+The lexer and parser own:
 
-All generators iterate ordered bound source items. They lower each `BoundInputStatement` at its exact source position, update the target variable only after a complete valid line is available, and emit input/error helpers only when the program needs them. Each `BoundWhileStatement` becomes genuine destination control flow; no generator executes, unrolls, deletes, or replaces the loop from a known first condition. A shared target-comment emitter maps the four equivalent SMILE markers to `//` for C#, C, C++, JavaScript, Java, Objective-C, and Swift; `#` for Python; `*>` for COBOL; and `;` for MASM x64. It renders unsafe controls and Unicode line separators reversibly, prevents C-family line splicing even when horizontal whitespace follows the payload's last backslash, prevents Java Unicode-escape preprocessing, and wraps only COBOL comments that would exceed the conservative free-source limit. COBOL width accounting includes UTF-8 byte length and conventional tab stops; only extremely deep generated IF/WHILE indentation is capped, at 40 spaces, so the payload remains complete and every physical comment line stays at or below 200 columns. Blank layout items append explicit empty target lines. Python places layout inside `main()`, MASM uses the `.code` source stream, and COBOL emits each item once in the closest deterministic `PROCEDURE DIVISION` region while declarations remain in `WORKING-STORAGE`. Required target formatting remains additive, and semantically empty IF or WHILE bodies receive target no-op placeholders where syntax requires them.
+- case-insensitive SMILE keywords;
+- ordinary and interpolated Strings;
+- raw PRINT templates;
+- LET/SET Block String scanning and normalization;
+- full-line comments;
+- blank source lines;
+- recursive IF and WHILE structure;
+- syntax diagnostics and source spans.
 
-`BoundLetStatement` carries only its variable and initializer; it does not own a permanent current `SmileValue`. The reference evaluator enumerates executable bound statements with a mutable `VariableSymbol -> SmileValue` environment. LET evaluates an initializer and stores the initial value, SET evaluates its complete right side against the old environment and then atomically replaces the current value, and INPUT reads through an injected line source before atomically replacing the same fixed-type storage. PRINT reads the latest state, IF tests clauses in order using current runtime values, and WHILE tests its condition before every possible iteration using current storage. Only a selected branch or reached loop body consumes input. Comments and blank lines cannot execute, mutate, produce output, or enter an actual runtime trace. Nested IF and WHILE reuse the same evaluator path. `AND` and `OR` remain explicitly left-to-right and short-circuiting, while binding still visits both operands and every body.
+Curly braces are interpolation holes in text-oriented syntax. They are not general variable-reference delimiters. Expression and statement positions use direct identifiers.
 
-The evaluator's input reader recognizes CRLF, LF, standalone CR, and a final non-empty line ending at EOF. It distinguishes an empty terminated String line from EOF, validates strict UTF-8 input and the shared 4096-byte limit, and then applies the target variable's String, Integer, or Boolean conversion. Every public evaluator entry point accepts or forwards a `CancellationToken`; the token is checked before statements, conditions, and loop iterations, and `OperationCanceledException` propagates to the host instead of becoming a SMILE diagnostic. There is deliberately no hidden iteration cap. `EvaluationResult` retains compile diagnostics separately from an optional runtime error and exposes stdout produced so far, canonical stderr, and exit code. Reached runtime errors stop later statements and iterations, preserve stdout already written, leave an unsuccessfully updated target unchanged, and use exactly one canonical stderr line plus exit code 1.
+Comments and blank physical lines remain ordered non-semantic source items. They retain source order for generation but never receive runtime values, statement ordinals, mutations, or execution-trace entries. Block String content remains owned by the Block String scanner and cannot be reclassified as comments or control-flow headers.
 
-After binding, `BoundProgramAnalysis` walks filtered semantic statements in source order with facts that distinguish `Known(SmileValue)`, runtime `Unknown`, and semantically `Invalid`. Layout items receive no statement analysis, ordinal, assigned value, mutation, Integer range, display fact, or concrete value. INPUT removes the target's prior known value, marks it mutated, and records conservative type facts: String is 0 through 4096 UTF-8 bytes and may contain NUL, Integer spans `long.MinValue` through `long.MaxValue`, and Boolean may be either value. Each IF branch starts from the same incoming environment. Outgoing paths merge to Known only when every possible path proves the same value; different values, known/unknown mixtures, and a changed branch merged with an unchanged path become Unknown unless their values agree. An IF without ELSE includes the implicit unchanged path.
+## Binding, Runtime State, And Analysis
 
-WHILE analysis computes a terminating zero-or-more-iteration fixed point. Each loop receives one deterministic structural ordinal plus stable `ValuesAtHead`, `ValuesAfter`, concrete head values, and a known-false-entry fact. The head joins the incoming zero-iteration path with the body back-edge until Integer ranges and Known/Unknown facts stabilize; loop-body statement ordinals are recorded once structurally, never once per hypothetical iteration. Values mutated on a possible back-edge become conservative unless all paths prove the same value. String facts widen by UTF-8 byte bound and embedded-NUL possibility; a recurrence that cannot reach a finite portable bound reports `SMILE1612` at the WHILE opener and prevents generation rather than guessing a trip count or allocating target-specific unbounded storage.
+The binder resolves variables through the shared ordinal case-insensitive symbol table and assigns the current SMILE `String`, `Integer`, or `Boolean` type.
 
-`BoundProgramExecutionTrace.Create` rejects programs containing either INPUT or WHILE. A source-only compiler trace cannot supply runtime input and must never discover facts by executing an arbitrary or infinite learner loop. `BoundProgramAnalysis` owns structural zero-or-more loop facts; `SmileEvaluator` owns actual iterations with injected input and host cancellation.
+- LET declares and initializes a variable.
+- SET evaluates a SMILE expression and updates an existing variable without changing its type.
+- INPUT reads one runtime line into an existing variable without changing its type.
+- IF and WHILE consume the same bound expression model and preserve genuine source control flow.
 
-The target-independent simplifier consumes the analysis state, folds safe Boolean identities, and preserves readable expression intent. It rewrites semantic statements recursively while copying every INPUT, comment, and blank-line item in exact order and never moving layout across an IF clause or WHILE iteration boundary. For SET it uses the old environment and changes the known value only after the complete right side succeeds. At INPUT it removes the target variable from the known-value environment. A WHILE condition and body are simplified only from fixed-point facts valid at every loop head, so a mutated Count is never folded back to its pre-loop initializer. For `AND` and `OR`, it simplifies the left operand first and never simplifies or evaluates an unreachable right subtree. Explicit-comparison validation occurs before simplification so `= TRUE` cannot disappear before validation. Known facts may guide expressions, but simplification never replaces an entire IF or WHILE, deletes a clause, branch, loop, or body, carries one path's value into another, duplicates INPUT, hoists SET, or folds a later runtime read to stale storage.
+Current runtime values belong to the evaluator environment, not permanently to `BoundLetStatement`.
 
-SMILE `Integer` remains a signed 64-bit semantic type in the binder, evaluator, and language specification. Storage spelling is a target-generation decision. One profile scans every LET and SET value, every INPUT target and dependent expression, IF, ELSE IF, and WHILE condition, literal, operand, intermediate, PRINT expression, interpolation hole, nested branch, loop body, and loop-head range, including paths not selected by current values. An Integer targeted by INPUT or widened by a loop-carried runtime expression forces full signed-64 storage and checked runtime arithmetic throughout its dependent runtime expressions: C and Objective-C use `int64_t`, C++ `std::int64_t`, C# and Java `long`, JavaScript `BigInt`, Swift `Int64`, Python validated `int`, and MASM/COBOL full-range storage. Programs whose complete control-flow facts stay narrow retain the existing idiomatic narrow profiles.
+Analysis remains statement-order, mutation, branch, and loop aware. It distinguishes source-known values from runtime-unknown values, never propagates an initializer past SET or INPUT, never leaks one branch's value into another, and never substitutes a pre-loop value for current loop-carried storage.
 
-Source-known, definitely evaluated overflow and division by zero remain compile diagnostics `SMILE1206` and `SMILE1207`. When an operation depends on runtime input or loop-carried storage, evaluator and generated targets check unary negation, addition, subtraction, multiplication, division by zero, and `long.MinValue / -1` at the point of evaluation. A reached failure becomes canonical runtime error `SMILER1206` or `SMILER1207`; an unreachable loop body, short-circuited operand, or unselected branch does not fail.
+The compiler does not execute or unroll learner WHILE loops to discover facts. The evaluator executes actual selected branches and loop iterations and accepts host cancellation.
 
-The engine exposes a small target-local string flattener for targets that need ordered output segments. It derives those segments from the canonical bound tree; it is not a second expression model. It turns bound string expressions such as:
+## Revised INPUT Boundary
+
+INPUT keeps one canonical syntax and bound statement, but the compiler no longer requires every generated target to copy the evaluator's byte-level input implementation.
+
+The language-level contract is:
+
+- operate on one existing variable;
+- let the fixed variable type choose conversion;
+- read an ordinary line of text;
+- keep the resulting value runtime-unknown to static propagation;
+- consume input only on reached paths;
+- contain evaluator read/conversion failures;
+- keep CLI and Desktop interaction responsive.
+
+Strict UTF-8 byte algorithms, a universal 4096-byte limit, embedded-NUL console input, exact CR/LF edge handling, and identical cross-target error text are not current universal requirements.
+
+The reference evaluator retains injectable input so focused tests remain deterministic. It is the semantic reference for ordinary behavior, not a runtime implementation template for generated source.
+
+## Central Active-Target Policy
+
+`ActiveTargetLanguages` is the small central source of truth for the current active set.
+
+Conceptually:
+
+```csharp
+public static class ActiveTargetLanguages
+{
+    public static readonly IReadOnlyList<TargetLanguage> All =
+    [
+        TargetLanguage.CSharp,
+        TargetLanguage.C,
+        TargetLanguage.MasmX64
+    ];
+}
+```
+
+The central policy drives:
+
+- Desktop target selectors and default panes;
+- CLI target enumeration and `--target all`;
+- explicit handling of a named paused target;
+- Transpile All behavior;
+- routine generation tests;
+- normal toolchain detection;
+- active-target documentation.
+
+Do not scatter independent hard-coded active/paused checks across the UI, CLI, toolchains, and tests. A paused backend remains registered as retained implementation history but is not returned as a normal active choice.
+
+## Native-First Generation
+
+For every SMILE feature, a generator first identifies the ordinary beginner-level destination construct and emits it directly when practical.
+
+### C#
+
+Prefer ordinary C# facilities such as `Console.WriteLine`, `Console.ReadLine`, conventional parsing, normal variables, interpolation, `if`, and `while`. Do not expose raw input streams, a custom UTF-8 line reader, or a generated `SmileRuntime` for a simple program.
+
+### C
+
+Prefer ordinary C facilities such as `printf`, `scanf`, and `fgets` where each is appropriate. Use normal variables, arrays/strings, conditions, and loops. Document a target-native limitation instead of automatically generating a general cross-runtime simulator.
+
+### Windows x64 MASM
+
+Assembly is naturally more verbose, but it must remain proportional to the source program. Prefer recognizable CRT/Win64 calls, clear `.data` storage, correct calling convention and stack alignment, direct `printf`/`scanf` where suitable, direct `ExitProcess`, and understandable labels for IF and WHILE.
+
+`MasmX64NativeGeneration.cs` owns this ordinary learner-facing path, including checked Integer arithmetic through direct x64 instructions and compact failure labels. `MasmX64CodeGenerator.cs` retains the proven compatibility lowering only for currently approved String cases the concise CRT path cannot yet represent safely, including exact source-authored embedded-NUL Strings. That fallback is not the default and must not be expanded to cover ordinary programs merely for historical parity.
+
+Custom helpers are exceptional. A helper must be required by a current approved language rule, small, target-local, and clearer than the available native alternative.
+
+## Expression Intent And Control Flow
+
+The shared bound tree preserves expression intent:
+
+- raw PRINT text remains text;
+- `{expression}` remains interpolation;
+- `$"..."` remains explicit interpolation;
+- explicit concatenation remains concatenation when natural;
+- IF remains target-native conditional structure;
+- WHILE remains genuine target-native pre-test control flow;
+- direct variable reads use current target storage;
+- identifier mapping remains symbol based and collision safe.
+
+Target-local lowering may combine operations only when ordinary behavior remains safe and the generated result becomes clearer. It must not create hidden context-sensitive SMILE rules. In particular, PRINT retains its newline even when INPUT follows; a future no-newline form requires an explicit language feature.
+
+## Desktop And Process Architecture
+
+`SMILE.Engine` has no WPF dependency. `SMILE.Toolchains` owns detection, temporary workspaces, compiler/runtime invocation, standard-input modes, timeouts, cancellation, bounded output, and process-tree termination.
+
+Toolchain detection, generation, compilation, linking, execution, process output, and long file operations remain asynchronous and must not block the WPF dispatcher.
+
+The Desktop keeps three visible generated panes defaulted to C#, MASM x64, and C. Each pane remains an independent editable build unit with its own selected language, edit revision, divergence marker, generated cache relationship, and Build & Run operation. The active-target policy limits normal selector choices during the temporary freeze.
+
+Startup completes first paint before loading the packaged cumulative `language.smile` reference. Startup and debounced live generation target only visible active languages. Older results must not overwrite later source changes, language changes, New, explicit Transpile All, or later target-pane edits according to the existing revision rules.
+
+Recoverable toolchain, process, folder, command-refresh, and logging failures remain contained and visible without closing the IDE.
+
+Generated workspaces remain isolated under:
 
 ```text
-"Hello " + Name + "!"
-Hello {Name}!
-$"Hello {Name}!"
+%TEMP%\SMILE\Runs\<unique-id> - <language>\
 ```
 
-into ordered printable segments:
+## Validation Architecture
 
-```text
-literal "Hello "
-variable Name
-literal "!"
-```
+SMILE is in Velocity Mode. Routine validation uses the smallest focused tests and build that cover the changed subsystem.
 
-SMILE Strings are complete length-aware values even when a destination's ordinary representation is not. C and Objective-C keep mutable `const char *` pointers. A String targeted by INPUT receives stable capacity for 4096 UTF-8 bytes plus termination support and an explicit logical length, because redirected input may contain NUL. Branch/loop-aware Known String assignments may lower to exact ordinary C literals; runtime-unknown direct SET and later LET operations copy current source storage, while Unknown composite assignments materialize current runtime segments into bounded deterministic buffers. Pointer and logical-length metadata stay synchronized after LET, SET, and INPUT. If a variable can hold NUL on any branch or iteration, a deterministic collision-safe `size_t smileString{variableIndex}Length` support variable accompanies it. WHILE generation receives only programs whose repeated String transfer has a finite fixed maximum; direct/self-identity assignment, bounded-variable copying, `+ ""`, and INPUT can stabilize, while growth such as `Text = Text + "x"` is rejected with `SMILE1612`.
+Fast `MissionGuardrail` tests inspect learner-facing source for C#, C, and MASM without requiring every toolchain. Functional tests cover the corresponding parser, binder, evaluator, generator, Desktop, or toolchain behavior that changed.
 
-The reference evaluator's current state and generated target runtime storage must agree at every observable expression, not only in the program's final output. String planning considers every value assigned on every branch and loop back-edge, the maximum UTF-8 byte length, embedded-NUL possibility, logical-length requirements, and post-IF/post-WHILE reads. C and Objective-C direct String variable PRINT reads the current pointer and, when present, its current logical length. Composite assignment, output, interpolation, equality, and loop conditions materialize or stream current runtime segments when their value is Unknown, with ordinary `strcmp` for safely NUL-free values and length-aware byte operations for exact values.
+Broader Debug/Release and active-target integration validation belongs to major milestones, release candidates, broad architecture changes, and target re-enablement. Paused targets do not block ordinary work.
 
-COBOL sizes each `PIC X` from the maximum UTF-8 display-byte length across LET, SET, INPUT, branch, and loop facts. A mutated variable and every String used by direct PRINT gets a collision-safe logical-length field. Branch/loop-aware Known assignments move an exact value and length; runtime-unknown direct assignments copy current source storage, and Unknown composite LET, SET, output, and condition expressions use runtime `STRING`, numeric display, and condition plans. INPUT uses native facilities only when they prove every exact line, Unicode, NUL, EOF, and length rule; otherwise the generated program links one dependency-free C companion while keeping `Program.cob` primary. Generated IF / ELSE / END-IF preserves clause order and storage reads. WHILE becomes structured `PERFORM UNTIL SMILE-WHILE-EXIT-n = 1`; its complete condition is recomputed into a deterministic helper field before every possible body execution, and an empty semantic body receives `CONTINUE`. MASM retains pointer-plus-length String storage plus signed 64-bit runtime Integer fields, reads interactive or redirected stdin through Windows APIs, emits deterministic parsing/error labels, uses signed overflow checks and safe `idiv`, updates fields only after successful conversion in selected branches or reached iterations, and reads current fields for direct or composite runtime output and conditions. MASM WHILE uses collision-safe `while{n}Condition`, body, back-edge, and end labels.
+The hosted `SMILE CI` workflow retains its complete Windows Debug/Release job but is manually invoked through `workflow_dispatch` during Velocity Mode. Automatic push/pull-request triggers and the exact-SHA post-push completion gate are suspended.
 
-C#, C, C++, JavaScript, Java, and Objective-C emit natural `while (condition)` blocks. Swift emits native `while condition` control flow. Each condition is rendered from stable loop-head facts and therefore re-reads current storage before every iteration. C# configures and reads console input with standard APIs, uses `long` for INPUT-dependent or loop-wide Integers, and emits strict invariant conversion plus checked arithmetic helpers only when needed. JavaScript reads Node.js UTF-8 stdin deterministically, splits CRLF/LF/CR itself, distinguishes empty lines from EOF, and uses full-program `BigInt` signed-64 checks. Java uses a UTF-8 reader, `long`, strict decimal and Boolean conversion, `Math.*Exact`, and explicit division checks. Swift uses standard input, exact UTF-8 byte counts, `Int64`, reporting-overflow operations, and standard error. All targets stop at the first reached runtime error with the same canonical stderr and exit code as the evaluator.
+## Historical Ten-Target Architecture
 
-Python emits one dependency-free `Program.py` with a conventional `main()` function and guard. It maps SMILE strings, integers, and booleans to Python `str`, `int`, and `bool`; preserves interpolation as f-strings; and uses native case-sensitive string equality plus short-circuit `and`/`or`. WHILE lowers to native `while condition:` and a source body containing only comments/blanks receives `pass` after its preserved layout. INPUT reads `sys.stdin.buffer` so strict UTF-8 decoding, NUL, EOF versus empty line, and CRLF/LF/CR normalization remain explicit; Python's arbitrary-precision integers are range-checked to signed 64-bit. `_smile_text`, `_smile_div`, checked arithmetic, and input helpers are emitted only when required.
+Before the Strategic Reset, SMILE maintained ten simultaneous backends and extensive exact cross-target runtime conformance. Those source files, toolchains, tests, identifier data, and milestone records remain valuable history.
 
-C++ has its own bound-tree generator rather than reusing C output with another file extension. SMILE Strings become RAII-owned `std::string` values, SET and INPUT use natural assignment, WHILE uses native `while`, interpolation uses `std::to_string` and canonical Boolean text, equality uses native value operators, and `PRINT` uses `std::cout` with `'\n'`. INPUT reads one byte at a time through `std::cin.get()` so CRLF, LF, standalone CR, the 4096-byte limit, final nonempty EOF lines, embedded NUL, and strict UTF-8 validation remain exact without reading into a later logical line. Integer conversion uses `std::from_chars`, and canonical failures use `std::cerr`. A literal containing embedded NUL uses a UTF-8 byte-counted `std::string{literal, length}` construction. Header analysis follows the generated facilities, and the dedicated MSVC toolchain compiles `Program.cpp` as C++20 in the same isolated, cancellable temporary-workspace pipeline as C and MASM.
+Historical descriptions of strict UTF-8 input, shared byte limits, exact NUL-capable console storage, generic runtime error dispatch, and mandatory all-ten matrices describe the pre-reset architecture. They are not current design authority.
 
-One shared recursive mutation analysis records every variable targeted by SET or INPUT anywhere in the IF/WHILE tree, including unselected branches and zero-iteration bodies. Most destinations use mutable local storage naturally. Swift uses the complete set to emit `var` even when assignment appears only in a currently unselected branch or loop and keeps `let` only for declarations never changed on any path.
+Re-enabling any retained backend requires catching it up to current front-end semantics and rebuilding its output around the permanent native beginner-first rule.
 
-A direct SMILE self-assignment is semantically a valid no-op, but its SET must remain visible as an actual destination assignment. Destination rules are a separate concern: C# warns about `target = target`, and Swift rejects it. Those two generators recognize only a direct `BoundVariableExpression` whose `VariableSymbol` is the SET target, then emit the smallest type-preserving identity assignment: append an empty String, add Integer zero, or OR Boolean false. Case-insensitive references and mapped identifiers work through symbol identity and the existing target identifier map; assignments from a different symbol remain natural target assignments.
+## Architectural Decision Rule
 
-The engine includes a small `SmileEvaluator` reference evaluator. It executes recursive semantic statements directly, stores current typed `SmileValue` instances in a mutable symbol environment, applies SET atomically, selects exactly one IF branch, re-tests WHILE from current storage, honors cancellation, and appends current display text for PRINT. Tests use it as the semantic oracle for runnable generated targets. The normative WHILE and INPUT programs, finite-loop corpus, comment/layout program, and cumulative `language.smile` reference run through every installed target toolchain. Structural tests cover marker recognition, exact diagnostics and spans, mixed-depth recovery, Block String ownership, finite String fixed points, zero/one/multiple/nested iterations, empty layout-only bodies, current storage, authentic native loops, deterministic ordinals/labels, warning-safe constant conditions, collision-safe helper names, and exact runtime stdout/stderr/exit equivalence.
+When the architecture offers a choice between a normal native target construct and a generalized compiler/runtime subsystem, use the native path when it satisfies current approved SMILE semantics.
 
-The v0.4.2.1 exact-byte suite adds NUL literals, copies, concatenation, interpolation, equality, prefix collisions, and known-variable short circuits in every expression position. It captures stdout without trimming and compares UTF-8 bytes after normalizing only platform CRLF where the test explicitly permits that normalization. NUL, backspace, form feed, carriage return, and tab are never discarded.
-
-Target generators use a symbol-based target identifier map. Valid SMILE identifiers are preserved when safe, and mapped to readable names such as `_smile_class` or `SMILE-class` when they conflict with destination-language keywords, contextual/restricted identifiers, generator-owned runtime names, preprocessor macros, or target-specific reserved identifier patterns. When C, Objective-C, or C++ activates a fixed-width Integer header, names such as `INT64_MAX`, `INT64_C`, `UINT64_MAX`, and `SIZE_MAX` could be macro-expanded before compilation; all three targets therefore share the complete protected fixed-width and limit-macro family. C and Objective-C retain their implementation-reserved prefix checks for `__internal` and `_Upper` and protect every emitted library/type name, including `bool`, `int64_t`, `size_t`, `fwrite`, `fputc`, `fputs`, `strcmp`, `memcmp`, `memcpy`, `strlen`, and `snprintf`. C++ additionally treats a double underscore anywhere as reserved, then spells those underscore runs out in the `_smile_` result so the final emitted name is safe rather than merely prefixed. C++ also protects all C++20 keywords and generator-used `std` names. COBOL maps underscores and reserved words to hyphenated COBOL data names, protects `column`, and keeps the complete `SMILE-WHILE-*` loop-field namespace compiler-owned. Java protects `_smile_condition`, which constant-condition loop lowering may emit. Java and Swift map a single `_` because it is not a usable ordinary local variable in those targets. Python protects its keywords, `match`/`case` soft keywords, relevant built-ins, `main`, `__name__`, `_smile_text`, and `_smile_div`; a single `_` remains valid. The map is built once per target from `BoundProgram.Variables`, so every reference to a variable uses the same generated name as its declaration.
-
-MASM direct variable PRINT reads `variable{n}Ptr` and `variable{n}Length`, so it observes every prior SET. Complex PRINT retains exact static bytes only when branch-aware analysis proves the complete value; otherwise it lowers runtime storage and expressions. For an empty String, a data label may keep a one-byte placeholder so the symbol has an address while the logical length remains `0`.
-
-Generated target code should be semantically correct, idiomatic for the destination language, and close to code a competent human developer would naturally write. That rule applies even when a lower-level target must lower SMILE features into equivalent operations.
-
-`SMILE.Engine` has no WPF dependency. That keeps the language front end reusable from the CLI, the desktop app, tests, and a possible future web interface.
-
-`SMILE.Toolchains` owns local compiler/runtime detection, process execution, target availability status, separate build/program timeouts, bounded process output, process-tree termination, and optional press-any-key launcher scripts. Process execution has deliberate `Closed`, `ScriptedText`, and `InteractiveInherited` input modes. Detection and compiler processes remain closed-input. Automated generated-program runs write scripted input, flush and close stdin, and capture stdout/stderr/exit deterministically. Interactive runs inherit or expose a visible console, stream prompts before input is requested, and never launch a hidden process whose stdin is already closed. Java detection requires both `javac` and `java` for a full-JDK status and distinguishes that state from a runtime-only installation or a missing JDK. Process work is asynchronous, cancellable, timed, and isolated in `%TEMP%\SMILE\Runs\<unique-id> - <language>\` so a long-running or infinite generated WHILE can be cancelled or timed out with its process tree, the WPF UI thread stays responsive, learners can identify each generated-code folder, and build artifacts stay out of the repository.
-
-The hosted `SMILE CI` workflow runs restore plus Debug and Release solution builds/tests on `windows-latest` with .NET SDK 10.0.302. It validates the solution and tests supported by the hosted runner, but it does not install the complete destination-toolchain matrix. Strict local release validation remains a separate warning surface: a zero-warning solution build cannot hide a warning in generated code. With `SMILE_REQUIRE_JAVA=1`, `SMILE_REQUIRE_ALL_TARGETS=1`, and `SMILE_REQUIRE_ZERO_TARGET_WARNINGS=1`, tests require Java and all ten target toolchains and inspect destination-specific compiler output for compiler-backed targets while identifying JavaScript and Python as interpreter-only. The normative WHILE and INPUT programs, finite loop corpus, invalid-input runs, checked loop-carried arithmetic, comment/layout program, and cumulative-reference run provide identical scripted stdin and compare exact stdout, stderr, exit code, and warning state with the evaluator. This validation stays in tests and explicit Build & Run paths; parsing, analysis, simplification, generation, and live transpilation never execute learner loops, invoke a destination compiler, or wait for input on the WPF dispatcher.
-
-The desktop app tracks source revisions for live preview. Its view model starts with an empty editor and performs no language-reference file I/O or compiler work during window construction. A one-shot `ContentRendered` handler waits until WPF has completed the first paint, yields once behind pending render/input work, then asynchronously reads the deployed cumulative `language.smile` file and generates only the three visible targets through the background compiler path. Both `language.smile` and focused `while.smile` are packaged beside build and publish output. The startup read applies its text only if the source revision and file association are still untouched, so typing or opening a document during that read cannot be overwritten. New is a synchronous, I/O-free blank-document reset: it cancels pending live work, advances the revision even when the source was already empty, clears the generated cache and all four visible code editors, and removes the file association. Exact-empty source is a stable fast path for startup completion, live generation, and language switching, so neither a delayed startup read nor the debounce can repopulate a New document with target scaffolds. Typing nonempty SMILE source, including finite or infinite WHILE text, schedules the same short debounced background transpilation for visible target languages only; it never runs the target. Each startup or live request captures immutable pane, selected-language, and learner-edit-revision state in addition to the source revision. A valid result enters the ordinary language/source cache, but presentation applies only to panes whose language and edit revision still match that request; a newer target edit during older WHILE generation therefore survives without blocking untouched or same-language siblings. A later SMILE edit clears earlier target ownership and creates a newer request, while a target edit after that request wins again. Manual Transpile All runs asynchronously and remains explicitly authoritative. Build & Run asks for the current source revision before invoking a toolchain, which prevents a compiler from running stale generated code. When the bound program contains INPUT, including INPUT-driven WHILE, the Desktop builds normally and launches exactly one visible interactive console so prompts appear before the learner types; it reports that launch without running a second hidden copy and keeps the WPF UI responsive while the console waits.
-
-`SMILE.Desktop` uses AvalonEdit for the editable SMILE source pane and the three editable target panes. Those four code panes show line numbers and lexical syntax highlighting, while the output area stays a plain append-only log. A centralized palette normalizes both embedded definitions and AvalonEdit's built-in language grammars: comment regions, including nested documentation/comment-marker rules, are green; every non-comment green category and every language keyword category becomes blue; lexical method/function-name rules and unsectioned learner identifiers are black; and purple-family foregrounds are removed. The SMILE definition highlights INPUT and WHILE case-insensitively alongside IF, THEN, ELSE, and END, so both keywords in `END WHILE` use the teaching keyword color. Its dedicated Comment span is anchored at the first space/tab-trimmed position and uses the same REM boundary shape as the front end. Modeling the complete comment as a span prevents INPUT/WHILE-looking comment text from becoming a keyword. String spans likewise own INPUT and WHILE text inside ordinary, interpolated, and LET/SET Block Strings. The multiline quote-at-line-end Block String span remains first and active until a whitespace-only closing delimiter, so marker-looking block lines stay String-colored and comment spans never take ownership inside the block. This remains a small lexical rule rather than running the compiler on the UI thread. Target definitions are loaded and palette-normalized lazily so nested IF/WHILE typing and rapid language switching stay responsive.
-
-Generated programs are cached by target language and source revision, while presentation and builds remain pane-owned. A target-language switch first tries that cache; live transpilation is scheduled only for visible targets that are missing for the current source revision. Direct target-pane edits increment only that pane's user-edit revision and append `*` to its title; the marker means divergence from generated SMILE output, not an unsaved file. Save, build, toolchain refresh, unrelated sibling changes, and Maximize/Restore preserve that state. Build & Run combines the pane's current primary text with the current SMILE snapshot's language, INPUT metadata, project file, and any companion files without mutating the cached preview. `Build & Run Visible Panes` enumerates Pane1, Pane2, and Pane3 sequentially without grouping by target language, so duplicate-language panes receive distinct `GeneratedProgram` values, output headers, and unique toolchain workspaces. When blank or invalid SMILE source cannot supply a current snapshot, a minimal empty-program container supplies only the target-owned build files and is not cached as generated source for an invalid revision. Authoritative generated replacement, a same-pane language switch, or New clears the marker. Maximize/Restore changes only the selected target host's Grid coordinates and sibling visibility, preserving the live AvalonEdit instance while the separately hosted output area remains untouched. This keeps rapid ComboBox changes, pane builds, and pane expansion responsive and avoids unnecessary compiler work or editor recreation on the WPF dispatcher path.
-
-C++ is the tenth and final planned destination language. Target-language expansion remains frozen unless Sin explicitly reopens it. With v0.8.0 WHILE Loops + LET/SET Block Strings implemented on top of v0.7.0.1 Target Editor Hardening, the next planned language-depth milestone is v0.9.0 Functions and scopes. Rust, Zig, and Go remain deferred rather than active targets.
-
-Recoverable desktop failures are contained at the operation boundary. Language-reference loading, toolchain detection, build/run, child-process output, command-state refresh, and folder-opening failures report concise output, write a diagnostic log when possible, and keep the IDE open.
-
-KISS keeps the architecture small: one engine project, one toolchain project, one CLI harness, one desktop app, and one test project. KISS v2 keeps the user experience responsive first.
+KISS keeps the system centered on one engine, one toolchain layer, one CLI, one responsive Desktop app, one test project, and learner-readable generated programs.

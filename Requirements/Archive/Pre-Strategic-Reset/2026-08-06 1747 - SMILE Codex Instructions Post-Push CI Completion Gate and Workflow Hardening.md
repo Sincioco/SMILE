@@ -1,5 +1,10 @@
 # Codex Implementation Instructions — SMILE Post-Push CI Completion Gate and Workflow Hardening
 
+> [!IMPORTANT]
+> **HISTORICAL / PARTIALLY SUPERSEDED**
+>
+> This document records the milestone that introduced hosted CI and its former exact-SHA completion gate. During current Velocity Mode, automatic push/pull-request triggers and the mandatory post-push gate are suspended. The workflow remains available through manual dispatch, and its security/reliability history remains useful. Current policy is governed by `AGENTS.md` and `docs/SMILE Core Principles.md`.
+
 ## Repository and workflow
 
 - Repository: `Sincioco/SMILE`

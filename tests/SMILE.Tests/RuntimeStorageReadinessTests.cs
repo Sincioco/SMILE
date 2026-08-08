@@ -373,29 +373,27 @@ PRINT {Text}
     }
 
     [TestMethod]
-    public void MASM_direct_variable_PRINT_reads_runtime_pointer_and_length_after_SET()
+    public void MASM_direct_variable_PRINT_reads_current_typed_storage_after_SET()
     {
         string generated = Generate(RuntimeAuthenticitySource, TargetLanguage.MasmX64).PrimaryFile.Content;
 
-        for (int variableIndex = 0; variableIndex < 3; variableIndex++)
-        {
-            Assert.AreEqual(
-                2,
-                CountOccurrences(
-                    generated,
-                    $"mov rdx, QWORD PTR [variable{variableIndex}Ptr]"),
-                generated);
-            Assert.AreEqual(
-                2,
-                CountOccurrences(
-                    generated,
-                    $"mov r8d, DWORD PTR [variable{variableIndex}Length]"),
-                generated);
-        }
+        Assert.AreEqual(
+            2,
+            CountOccurrences(generated, "mov rax, QWORD PTR [_smile_Text]"),
+            generated);
+        Assert.AreEqual(
+            2,
+            CountOccurrences(generated, "movsxd rax, DWORD PTR [_smile_Number]"),
+            generated);
+        Assert.AreEqual(
+            2,
+            CountOccurrences(generated, "movzx eax, BYTE PTR [_smile_Flag]"),
+            generated);
 
-        StringAssert.Contains(generated, "lea rax, set6Value");
-        StringAssert.Contains(generated, "mov QWORD PTR [variable0Ptr], rax");
-        StringAssert.Contains(generated, "mov DWORD PTR [variable0Length], set6ValueLength");
+        StringAssert.Contains(generated, "lea rax, smileText8");
+        StringAssert.Contains(generated, "mov QWORD PTR [_smile_Text], rax");
+        StringAssert.Contains(generated, "mov DWORD PTR [_smile_Number], eax");
+        StringAssert.Contains(generated, "mov BYTE PTR [_smile_Flag], al");
     }
 
     [TestMethod]

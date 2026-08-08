@@ -5,6 +5,10 @@ namespace SMILE.Engine;
 
 internal sealed class CCodeGenerator : ICodeGenerator
 {
+    // This is a C-target implementation choice, not a SMILE language limit.
+    // A small fixed buffer keeps beginner output readable and conventional.
+    private const int InputStringBufferSize = 256;
+
     internal sealed record RuntimeStringBuffer(string Name, int Capacity);
 
     public TargetLanguage Language => TargetLanguage.C;
@@ -14,12 +18,9 @@ internal sealed class CCodeGenerator : ICodeGenerator
         TargetIdentifierMap identifiers = TargetIdentifierMap.Create(program, Language);
         BoundProgramAnalysis analysis = BoundProgramAnalysis.Create(program);
         TargetIntegerProfile integers = TargetIntegerProfile.Analyze(program, analysis);
-        bool hasInput = TargetRuntimeFacts.HasInput(program);
+        bool hasStringInput = TargetRuntimeFacts.HasInput(program, SmileType.String);
+        bool hasBooleanInput = TargetRuntimeFacts.HasInput(program, SmileType.Boolean);
         bool checkedArithmetic = TargetRuntimeFacts.NeedsCheckedIntegerArithmetic(program);
-        if (TargetRuntimeFacts.HasInput(program, SmileType.Integer) || checkedArithmetic)
-        {
-            integers = new TargetIntegerProfile(RequiresSigned64Storage: true, RequiresJavaScriptBigInt: true);
-        }
         IReadOnlyDictionary<BoundStatement, RuntimeStringBuffer> runtimeStringBuffers =
             CreateRuntimeStringBuffers(program, identifiers, analysis);
         IReadOnlyDictionary<BoundExpression, RuntimeStringBuffer> runtimeExpressionBuffers =
@@ -34,43 +35,50 @@ internal sealed class CCodeGenerator : ICodeGenerator
                         BoundLetStatement let => let.Variable,
                         BoundSetStatement set => set.Variable,
                         _ => throw new InvalidOperationException("Unexpected C runtime String statement.")
-                    })
-                    .Concat(TargetRuntimeFacts.Inputs(program)
-                        .Where(input => input.Variable.Type is SmileType.String)
-                        .Select(input => input.Variable)));
+                    }),
+                nativeInputIsNulTerminated: true);
         var source = new StringBuilder();
         source.AppendLine("#include <stdio.h>");
-        if (integers.RequiresSigned64Storage || hasInput)
+        if (integers.RequiresSigned64Storage)
         {
             source.AppendLine("#include <stdint.h>");
         }
 
-        if (CGenerationFacts.NeedsBooleanHeader(program) || hasInput)
+        if (checkedArithmetic && !integers.RequiresSigned64Storage)
+        {
+            source.AppendLine("#include <limits.h>");
+        }
+
+        if (CGenerationFacts.NeedsBooleanHeader(program))
         {
             source.AppendLine("#include <stdbool.h>");
         }
 
         if (exactStringLengths.Count > 0 ||
-            CGenerationFacts.NeedsStringComparison(analysis))
+            CGenerationFacts.NeedsStringComparison(analysis) ||
+            hasStringInput ||
+            hasBooleanInput)
         {
             source.AppendLine("#include <string.h>");
         }
 
-        if (hasInput || checkedArithmetic)
+        if (hasBooleanInput)
+        {
+            source.AppendLine("#include <ctype.h>");
+        }
+
+        if (checkedArithmetic)
         {
             source.AppendLine("#include <stdlib.h>");
         }
 
-        if (hasInput)
-        {
-            source.AppendLine("#ifdef _WIN32");
-            source.AppendLine("#include <fcntl.h>");
-            source.AppendLine("#include <io.h>");
-            source.AppendLine("#endif");
-        }
-
         source.AppendLine();
-        CGeneratedRuntime.Append(source, program, checkedArithmetic);
+        CGeneratedRuntime.Append(
+            source,
+            program,
+            integers,
+            checkedArithmetic,
+            includeInput: false);
         source.AppendLine("int main(void)");
         source.AppendLine("{");
 
@@ -154,42 +162,29 @@ internal sealed class CCodeGenerator : ICodeGenerator
                 case BoundLetStatement let:
                     if (let.Variable.Type is SmileType.String && !facts.Value.IsKnown)
                     {
-                        if (let.Initializer is BoundVariableExpression letDirectSource)
-                        {
-                            source.AppendLine(
-                                $"{indent}const char *{identifiers.Get(let.Variable)} = {identifiers.Get(letDirectSource.Variable)};");
-                            if (exactStringLengths.TryGetValue(let.Variable, out string? directLetLength))
-                            {
-                                string sourceLength = exactStringLengths.TryGetValue(
-                                    letDirectSource.Variable,
-                                    out string? exactSourceLength)
-                                    ? exactSourceLength
-                                    : $"strlen({identifiers.Get(letDirectSource.Variable)})";
-                                source.AppendLine($"{indent}size_t {directLetLength} = {sourceLength};");
-                            }
-                        }
-                        else
-                        {
-                            RuntimeStringBuffer buffer = runtimeStringBuffers[let];
-                            source.AppendLine(
-                                $"{indent}static char {buffer.Name}[{buffer.Capacity + 1}] = {{ 0 }};");
-                            source.AppendLine(
-                                $"{indent}const char *{identifiers.Get(let.Variable)} = {buffer.Name};");
-                            source.AppendLine(
-                                $"{indent}size_t {exactStringLengths[let.Variable]} = 0;");
-                            AppendCRuntimeStringAssignment(
-                                source,
-                                indent,
-                                let.Variable,
-                                let.Initializer,
-                                buffer,
-                                identifiers,
-                                integers,
-                                exactStringLengths,
-                                runtimeExpressionBuffers,
-                                declareBuffer: false,
-                                checkedArithmetic);
-                        }
+                        // SMILE Strings have value semantics. Copy an Unknown
+                        // initializer into storage owned by the new variable;
+                        // pointing at a mutable INPUT buffer would let a later
+                        // INPUT silently change this LET without an assignment.
+                        RuntimeStringBuffer buffer = runtimeStringBuffers[let];
+                        source.AppendLine(
+                            $"{indent}static char {buffer.Name}[{buffer.Capacity + 1}] = {{ 0 }};");
+                        source.AppendLine(
+                            $"{indent}const char *{identifiers.Get(let.Variable)} = {buffer.Name};");
+                        source.AppendLine(
+                            $"{indent}size_t {exactStringLengths[let.Variable]} = 0;");
+                        AppendCRuntimeStringAssignment(
+                            source,
+                            indent,
+                            let.Variable,
+                            let.Initializer,
+                            buffer,
+                            identifiers,
+                            integers,
+                            exactStringLengths,
+                            runtimeExpressionBuffers,
+                            declareBuffer: false,
+                            checkedArithmetic);
                     }
                     else
                     {
@@ -238,8 +233,11 @@ internal sealed class CCodeGenerator : ICodeGenerator
 
                     if (set.Variable.Type is SmileType.String &&
                         !facts.Value.IsKnown &&
-                        set.Value is BoundVariableExpression directSource)
+                        set.Value is BoundVariableExpression directSource &&
+                        ReferenceEquals(directSource.Variable, set.Variable))
                     {
+                        // Preserve direct self-assignment as a real storage
+                        // update without copying a buffer onto itself.
                         AppendCDirectStringCopy(
                             source,
                             indent,
@@ -305,12 +303,13 @@ internal sealed class CCodeGenerator : ICodeGenerator
                         source.AppendLine();
                     }
 
-                    CGeneratedRuntime.AppendInputStatement(
+                    AppendNativeInputStatement(
                         source,
                         indent,
                         input,
                         facts.Ordinal,
                         identifiers,
+                        integers,
                         exactStringLengths);
                     emittedExecutable = true;
                     emittedBodyStatement = true;
@@ -385,6 +384,89 @@ internal sealed class CCodeGenerator : ICodeGenerator
                     emittedBodyStatement = true;
                     break;
             }
+        }
+    }
+
+    private static void AppendNativeInputStatement(
+        StringBuilder source,
+        string indent,
+        BoundInputStatement input,
+        int ordinal,
+        TargetIdentifierMap identifiers,
+        TargetIntegerProfile integers,
+        IReadOnlyDictionary<VariableSymbol, string> exactStringLengths)
+    {
+        string name = identifiers.Get(input.Variable);
+        switch (input.Variable.Type)
+        {
+            case SmileType.String:
+            {
+                string buffer = $"smileInput{ordinal}Buffer";
+                source.Append(indent).AppendLine("{");
+                source.Append(indent).Append("    static char ").Append(buffer).Append('[')
+                    .Append(InputStringBufferSize.ToString(CultureInfo.InvariantCulture))
+                    .AppendLine("];");
+                source.Append(indent).Append("    if (fgets(").Append(buffer).Append(", sizeof ")
+                    .Append(buffer).AppendLine(", stdin) == NULL) return 1;");
+                source.Append(indent).Append("    ").Append(buffer).Append("[strcspn(")
+                    .Append(buffer).AppendLine(", \"\\r\\n\")] = '\\0';");
+                source.Append(indent).Append("    ").Append(name).Append(" = ")
+                    .Append(buffer).AppendLine(";");
+                if (exactStringLengths.TryGetValue(input.Variable, out string? lengthName))
+                {
+                    source.Append(indent).Append("    ").Append(lengthName).Append(" = strlen(")
+                        .Append(name).AppendLine(");");
+                }
+
+                source.Append(indent).AppendLine("}");
+                break;
+            }
+
+            case SmileType.Integer:
+                if (integers.RequiresSigned64Storage)
+                {
+                    string inputValue = $"smileInput{ordinal}Value";
+                    source.Append(indent).AppendLine("{");
+                    source.Append(indent).Append("    long long ").Append(inputValue).AppendLine(";");
+                    source.Append(indent).Append("    if (scanf(\"%lld%*[\\r\\n]\", &").Append(inputValue)
+                        .AppendLine(") != 1) return 1;");
+                    source.Append(indent).Append("    ").Append(name).Append(" = (int64_t)")
+                        .Append(inputValue).AppendLine(";");
+                    source.Append(indent).AppendLine("}");
+                }
+                else
+                {
+                    source.Append(indent).Append("if (scanf(\"%d%*[\\r\\n]\", &").Append(name)
+                        .AppendLine(") != 1) return 1;");
+                }
+
+                break;
+
+            case SmileType.Boolean:
+            {
+                string buffer = $"smileInput{ordinal}Buffer";
+                string index = $"smileInput{ordinal}Index";
+                source.Append(indent).AppendLine("{");
+                source.Append(indent).Append("    char ").Append(buffer).AppendLine("[6];");
+                source.Append(indent).Append("    if (scanf(\"%5s%*[\\r\\n]\", ").Append(buffer)
+                    .AppendLine(") != 1) return 1;");
+                source.Append(indent).Append("    for (size_t ").Append(index).Append(" = 0; ")
+                    .Append(buffer).Append('[').Append(index).Append("] != '\\0'; ++")
+                    .Append(index).AppendLine(")");
+                source.Append(indent).Append("        ").Append(buffer).Append('[').Append(index)
+                    .Append("] = (char)toupper((unsigned char)").Append(buffer).Append('[')
+                    .Append(index).AppendLine("]);");
+                source.Append(indent).Append("    if (strcmp(").Append(buffer)
+                    .Append(", \"TRUE\") == 0) ").Append(name).AppendLine(" = true;");
+                source.Append(indent).Append("    else if (strcmp(").Append(buffer)
+                    .Append(", \"FALSE\") == 0) ").Append(name).AppendLine(" = false;");
+                source.Append(indent).AppendLine("    else return 1;");
+                source.Append(indent).AppendLine("}");
+                break;
+            }
+
+            default:
+                throw new InvalidOperationException("Unsupported C INPUT target type.");
         }
     }
 
@@ -888,7 +970,8 @@ internal sealed class CCodeGenerator : ICodeGenerator
         BoundProgram program,
         TargetIdentifierMap identifiers,
         BoundProgramAnalysis analysis,
-        IEnumerable<VariableSymbol>? additionalVariables = null)
+        IEnumerable<VariableSymbol>? additionalVariables = null,
+        bool nativeInputIsNulTerminated = false)
     {
         var names = new Dictionary<VariableSymbol, string>();
         var used = program.Variables
@@ -896,12 +979,70 @@ internal sealed class CCodeGenerator : ICodeGenerator
             .ToHashSet(StringComparer.Ordinal);
         IReadOnlySet<VariableSymbol> additional = additionalVariables?.ToHashSet() ??
             new HashSet<VariableSymbol>();
+        var sourceNulVariables = analysis.AssignedValues
+            .Where(pair => pair.Value.Any(value =>
+                value.Type is SmileType.String &&
+                value.StringValue.Contains('\0', StringComparison.Ordinal)))
+            .Select(pair => pair.Key)
+            .ToHashSet();
+
+        bool ContainsSourceNul(BoundExpression expression) =>
+            expression switch
+            {
+                BoundStringLiteralExpression literal =>
+                    literal.Value.Contains('\0', StringComparison.Ordinal),
+                BoundVariableExpression variable => sourceNulVariables.Contains(variable.Variable),
+                BoundUnaryExpression unary => ContainsSourceNul(unary.Operand),
+                BoundBinaryExpression binary =>
+                    ContainsSourceNul(binary.Left) || ContainsSourceNul(binary.Right),
+                BoundInterpolatedStringExpression interpolated => interpolated.Parts.Any(part =>
+                    part switch
+                    {
+                        BoundInterpolatedTextPart text =>
+                            text.Text.Contains('\0', StringComparison.Ordinal),
+                        BoundInterpolationExpressionPart hole => ContainsSourceNul(hole.Expression),
+                        _ => false
+                    }),
+                _ => false
+            };
+
+        if (nativeInputIsNulTerminated)
+        {
+            (VariableSymbol Variable, BoundExpression Value)[] assignments =
+                BoundStatementTree.Enumerate(program)
+                    .Select(statement => statement switch
+                    {
+                        BoundLetStatement let => (let.Variable, let.Initializer),
+                        BoundSetStatement set => (set.Variable, set.Value),
+                        _ => default
+                    })
+                    .Where(assignment => assignment.Variable is not null)
+                    .ToArray()!;
+            bool changed;
+            do
+            {
+                changed = false;
+                foreach ((VariableSymbol variable, BoundExpression value) in assignments)
+                {
+                    if (variable.Type is SmileType.String &&
+                        !sourceNulVariables.Contains(variable) &&
+                        ContainsSourceNul(value))
+                    {
+                        sourceNulVariables.Add(variable);
+                        changed = true;
+                    }
+                }
+            }
+            while (changed);
+        }
 
         for (int index = 0; index < program.Variables.Count; index++)
         {
             VariableSymbol variable = program.Variables[index];
+            bool mayNeedExactLength = analysis.AssignedValuesMayContainNul(variable) &&
+                (!nativeInputIsNulTerminated || sourceNulVariables.Contains(variable));
             if (variable.Type is not SmileType.String ||
-                !analysis.AssignedValuesMayContainNul(variable) &&
+                !mayNeedExactLength &&
                 !additional.Contains(variable))
             {
                 continue;
@@ -935,12 +1076,14 @@ internal sealed class CCodeGenerator : ICodeGenerator
             switch (statement)
             {
                 case BoundLetStatement { Variable.Type: SmileType.String } let when
-                    !facts.Value.IsKnown && let.Initializer is not BoundVariableExpression:
+                    !facts.Value.IsKnown:
                     needsBuffer.Add((let, let.Variable));
                     break;
 
                 case BoundSetStatement { Variable.Type: SmileType.String } set when
-                    !facts.Value.IsKnown && set.Value is not BoundVariableExpression:
+                    !facts.Value.IsKnown &&
+                    (set.Value is not BoundVariableExpression directSource ||
+                     !ReferenceEquals(directSource.Variable, set.Variable)):
                     needsBuffer.Add((set, set.Variable));
                     break;
             }

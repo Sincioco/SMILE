@@ -1,0 +1,46 @@
+option casemap:none
+
+includelib msvcrt.lib
+includelib kernel32.lib
+
+extern printf:proc
+extern scanf:proc
+extern ExitProcess:proc
+
+.data
+    prompt      db "How old are you? ", 0
+    inputFormat db "%d", 0
+    outputFormat db "You are %d years old.", 13, 10, 0
+
+    age dd 0
+
+.code
+
+main PROC
+    ; Windows x64 calling convention:
+    ; Reserve 32 bytes of shadow space plus alignment.
+    sub rsp, 40
+
+    ; printf("How old are you? ");
+    lea rcx, prompt
+    call printf
+
+    ; scanf("%d", &age);
+    lea rcx, inputFormat
+    lea rdx, age
+    call scanf
+
+    ; printf("You are %d years old.\n", age);
+    lea rcx, outputFormat
+    mov edx, age
+    call printf
+
+    add rsp, 40
+
+    ; ExitProcess(0)
+    xor ecx, ecx
+    call ExitProcess
+
+main ENDP
+
+END

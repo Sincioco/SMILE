@@ -17,6 +17,15 @@ internal sealed class MasmX64CodeGenerator : ICodeGenerator
 
     public GeneratedProgram Generate(BoundProgram program)
     {
+        // Ordinary learner programs take the native CRT path first. The older
+        // exact-byte path remains only as a compatibility fallback for advanced
+        // String expressions that still need dedicated lowering while the
+        // strategic reset continues to simplify those exceptional cases.
+        if (MasmX64NativeGeneration.TryGenerate(program, out GeneratedProgram? nativeProgram))
+        {
+            return nativeProgram!;
+        }
+
         BoundProgramAnalysis analysis = BoundProgramAnalysis.Create(program);
         BoundLetStatement[] lets = program.Statements.OfType<BoundLetStatement>().ToArray();
         BoundInputStatement[] inputs = TargetRuntimeFacts.Inputs(program).ToArray();

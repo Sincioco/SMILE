@@ -1,5 +1,10 @@
 # Codex Implementation Instructions — SMILE v0.5.1.1 Generated Warning Hygiene
 
+> [!IMPORTANT]
+> **HISTORICAL / PARTIALLY SUPERSEDED**
+>
+> This document records the original generated-warning milestone. Warning hygiene remains valuable for changed active targets and milestone validation. Requirements for routine Java/all-ten-target gates, duplicated full configurations, and paused-target maintenance are superseded by `docs/SMILE Core Principles.md`, the active three-target policy, and Velocity Mode.
+
 ## Repository and workflow
 
 - Repository: `Sincioco/SMILE`

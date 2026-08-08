@@ -35,8 +35,19 @@ internal sealed class TargetIdentifierMap
     private static bool IsSafeTargetIdentifier(
         string name,
         TargetLanguage language,
-        ISet<string> reserved) =>
-        IsTargetIdentifierShape(name, language) && !RequiresMapping(language, name, reserved);
+        ISet<string> reserved)
+    {
+        // MASM has one case-insensitive symbol namespace shared with a very
+        // large, evolving instruction/register/directive vocabulary. Prefixing
+        // every learner variable is both safer and easier to understand than
+        // pretending a hand-maintained keyword list can stay exhaustive.
+        if (language is TargetLanguage.MasmX64)
+        {
+            return false;
+        }
+
+        return IsTargetIdentifierShape(name, language) && !RequiresMapping(language, name, reserved);
+    }
 
     private static bool IsTargetIdentifierShape(string name, TargetLanguage language) =>
         language is TargetLanguage.Cobol
@@ -404,7 +415,8 @@ internal sealed class TargetIdentifierMap
         {
             "add", "addr", "and", "assume", "byte", "call", "code", "data", "dword", "end", "endp",
             "equ", "extern", "lea", "main", "mov", "none", "option", "proc", "ptr", "qword", "rax",
-            "rcx", "rdx", "rsp", "r8d", "r9", "xor"
+            "rcx", "rdx", "rsp", "r8d", "r9", "xor",
+            "printf", "scanf", "strcmp", "_stricmp", "ExitProcess"
         };
 
         private static readonly string[] Python =
@@ -438,7 +450,7 @@ internal sealed class TargetIdentifierMap
                     TargetLanguage.Cpp => Cpp,
                     _ => Array.Empty<string>()
                 },
-                language is TargetLanguage.Cobol
+                language is TargetLanguage.Cobol or TargetLanguage.MasmX64
                     ? StringComparer.OrdinalIgnoreCase
                     : StringComparer.Ordinal);
     }

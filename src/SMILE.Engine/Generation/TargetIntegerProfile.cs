@@ -13,6 +13,21 @@ internal sealed record TargetIntegerProfile(
         bool requiresSigned64 = false;
         bool requiresBigInt = false;
 
+        bool ContainsRuntimeUnknownVariable(BoundExpression expression) =>
+            expression switch
+            {
+                BoundVariableExpression variable =>
+                    analysis.VariablesWithInexactAssignedValues.Contains(variable.Variable),
+                BoundUnaryExpression unary => ContainsRuntimeUnknownVariable(unary.Operand),
+                BoundBinaryExpression binary =>
+                    ContainsRuntimeUnknownVariable(binary.Left) ||
+                    ContainsRuntimeUnknownVariable(binary.Right),
+                BoundInterpolatedStringExpression interpolated => interpolated.Parts.Any(part =>
+                    part is BoundInterpolationExpressionPart hole &&
+                    ContainsRuntimeUnknownVariable(hole.Expression)),
+                _ => false
+            };
+
         void Observe(long value)
         {
             requiresSigned64 |= value is < int.MinValue or > int.MaxValue;
@@ -24,7 +39,8 @@ internal sealed record TargetIntegerProfile(
             // The branch-aware range is compositional: it covers every path
             // without enumerating a Cartesian product, including an unselected
             // branch and a later arithmetic intermediate fed by a merged value.
-            if (expression.Type is SmileType.Integer)
+            if (expression.Type is SmileType.Integer &&
+                !ContainsRuntimeUnknownVariable(expression))
             {
                 AnalyzedIntegerRange range = analysis.GetPossibleIntegerRange(expression);
                 Observe(range.Minimum);
@@ -63,14 +79,6 @@ internal sealed record TargetIntegerProfile(
 
                 case BoundSetStatement set:
                     Visit(set.Value);
-                    break;
-
-                case BoundInputStatement input when input.Variable.Type is SmileType.Integer:
-                    // INPUT may produce any signed 64-bit value even when the
-                    // declaration used a small initializer. JavaScript must
-                    // likewise leave Number and use exact BigInt semantics.
-                    requiresSigned64 = true;
-                    requiresBigInt = true;
                     break;
 
                 case BoundPrintStatement print when !print.IsBlankLine:

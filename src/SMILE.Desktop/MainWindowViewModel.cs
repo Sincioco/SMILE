@@ -251,7 +251,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
         OperationStatus = "Detecting toolchains...";
 
-        foreach (TargetLanguage language in TargetLanguageInfo.All)
+        foreach (TargetLanguage language in ActiveTargetLanguages.All)
         {
             ToolchainStatus status;
             try
@@ -399,7 +399,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         long revision = _sourceRevision;
         IReadOnlyList<TranspileResult> results = await GenerateAsync(
             sourceSnapshot,
-            TargetLanguageInfo.All,
+            ActiveTargetLanguages.All,
             cancellationToken).ConfigureAwait(true);
 
         if (revision == _sourceRevision)

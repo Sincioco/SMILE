@@ -37,7 +37,7 @@ public sealed class TargetPaneViewModel : ViewModelBase
     public TargetPaneViewModel(string title, TargetLanguage defaultLanguage)
     {
         _baseTitle = title;
-        LanguageOptions = TargetLanguageInfo.All
+        LanguageOptions = ActiveTargetLanguages.All
             .Select(language => new TargetLanguageOption(language))
             .ToArray();
         _selectedLanguageOption = LanguageOptions.Single(option => option.Language == defaultLanguage);

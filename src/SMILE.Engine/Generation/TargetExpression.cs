@@ -166,7 +166,9 @@ internal static class TargetExpression
                 SmileType.String => Write(expression),
                 SmileType.Integer => _language switch
                 {
-                    TargetLanguage.CSharp => $"{MaybeParenthesizeForCall(Write(expression))}.ToString(CultureInfo.InvariantCulture)",
+                    // C# interpolation and Console.WriteLine already provide
+                    // the ordinary beginner-facing Integer conversion.
+                    TargetLanguage.CSharp => Write(expression),
                     TargetLanguage.JavaScript => $"({Write(expression)}).toString()",
                     TargetLanguage.Java => _integers.RequiresSigned64Storage
                         ? $"Long.toString({Write(expression)})"

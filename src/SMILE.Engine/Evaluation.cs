@@ -346,14 +346,6 @@ public sealed class SmileEvaluator
         {
             line = input.ReadLine();
         }
-        catch (InputLineTooLongException)
-        {
-            value = default;
-            error = InputError(
-                "SMILER1502",
-                $"Input for '{variable.Name}' exceeds the {SmileLanguage.MaximumInputLineUtf8Bytes}-byte UTF-8 limit.");
-            return false;
-        }
         catch (Exception exception) when (
             exception is IOException or
             DecoderFallbackException or
@@ -374,29 +366,6 @@ public sealed class SmileEvaluator
             error = InputError(
                 "SMILER1501",
                 $"Input ended before a value was received for '{variable.Name}'.");
-            return false;
-        }
-
-        int utf8ByteCount;
-        try
-        {
-            utf8ByteCount = StrictUtf8.GetByteCount(line);
-        }
-        catch (EncoderFallbackException)
-        {
-            value = default;
-            error = InputError(
-                "SMILER1506",
-                $"Input for '{variable.Name}' could not be read as valid UTF-8 text.");
-            return false;
-        }
-
-        if (utf8ByteCount > SmileLanguage.MaximumInputLineUtf8Bytes)
-        {
-            value = default;
-            error = InputError(
-                "SMILER1502",
-                $"Input for '{variable.Name}' exceeds the {SmileLanguage.MaximumInputLineUtf8Bytes}-byte UTF-8 limit.");
             return false;
         }
 
@@ -570,15 +539,7 @@ public sealed class SmileEvaluator
                 }
 
                 bytes.Add((byte)next);
-                if (bytes.Count > SmileLanguage.MaximumInputLineUtf8Bytes)
-                {
-                    throw new InputLineTooLongException();
-                }
             }
         }
-    }
-
-    private sealed class InputLineTooLongException : Exception
-    {
     }
 }

@@ -281,9 +281,14 @@ internal static class CGeneratedRuntime
     public static void Append(
         StringBuilder source,
         BoundProgram program,
-        bool checkedArithmetic)
+        TargetIntegerProfile integers,
+        bool checkedArithmetic,
+        bool includeInput = true)
     {
-        bool hasInput = TargetRuntimeFacts.HasInput(program);
+        // Objective-C still uses the historical shared INPUT runtime while it
+        // is paused. Active C opts out and emits the language's native input
+        // statements directly at each INPUT source position.
+        bool hasInput = includeInput && TargetRuntimeFacts.HasInput(program);
         if (hasInput)
         {
             AppendInput(source, program);
@@ -296,7 +301,7 @@ internal static class CGeneratedRuntime
                 source.AppendLine();
             }
 
-            AppendArithmetic(source, program);
+            AppendArithmetic(source, program, integers);
         }
 
         if (hasInput || checkedArithmetic)
@@ -490,18 +495,27 @@ internal static class CGeneratedRuntime
         }
     }
 
-    private static void AppendArithmetic(StringBuilder source, BoundProgram program)
+    private static void AppendArithmetic(
+        StringBuilder source,
+        BoundProgram program,
+        TargetIntegerProfile integers)
     {
+        // Checked helpers are part of the generated program's Integer profile.
+        // Keeping their type aligned with storage and printf avoids silently
+        // widening an ordinary int expression at the helper-call boundary.
+        string type = integers.RequiresSigned64Storage ? "int64_t" : "int";
+        string minimum = integers.RequiresSigned64Storage ? "INT64_MIN" : "INT_MIN";
+        string maximum = integers.RequiresSigned64Storage ? "INT64_MAX" : "INT_MAX";
         int depth = Math.Max(
             1,
             BoundStatementTree.EnumerateExpressions(program)
                 .Select(expression => CheckedArithmeticDepth(expression, 0))
                 .DefaultIfEmpty(1)
                 .Max());
-        source.Append("static int64_t _smile_arithmetic_left[")
+        source.Append("static ").Append(type).Append(" _smile_arithmetic_left[")
             .Append(depth.ToString(CultureInfo.InvariantCulture))
             .AppendLine("];");
-        source.Append("static int64_t _smile_arithmetic_right[")
+        source.Append("static ").Append(type).Append(" _smile_arithmetic_right[")
             .Append(depth.ToString(CultureInfo.InvariantCulture))
             .AppendLine("];");
         source.AppendLine("static void _smile_arithmetic_overflow(void)");
@@ -509,36 +523,53 @@ internal static class CGeneratedRuntime
         source.AppendLine("    fputs(\"SMILE Runtime Error SMILER1206: Integer arithmetic overflow.\\n\", stderr);");
         source.AppendLine("    exit(1);");
         source.AppendLine("}");
-        source.AppendLine("static int64_t _smile_add(int64_t left, int64_t right)");
+        source.Append("static ").Append(type).Append(" _smile_add(").Append(type)
+            .Append(" left, ").Append(type).AppendLine(" right)");
         source.AppendLine("{");
-        source.AppendLine("    if ((right > 0 && left > INT64_MAX - right) || (right < 0 && left < INT64_MIN - right)) _smile_arithmetic_overflow();");
+        source.Append("    if ((right > 0 && left > ").Append(maximum)
+            .Append(" - right) || (right < 0 && left < ").Append(minimum)
+            .AppendLine(" - right)) _smile_arithmetic_overflow();");
         source.AppendLine("    return left + right;");
         source.AppendLine("}");
-        source.AppendLine("static int64_t _smile_subtract(int64_t left, int64_t right)");
+        source.Append("static ").Append(type).Append(" _smile_subtract(").Append(type)
+            .Append(" left, ").Append(type).AppendLine(" right)");
         source.AppendLine("{");
-        source.AppendLine("    if ((right < 0 && left > INT64_MAX + right) || (right > 0 && left < INT64_MIN + right)) _smile_arithmetic_overflow();");
+        source.Append("    if ((right < 0 && left > ").Append(maximum)
+            .Append(" + right) || (right > 0 && left < ").Append(minimum)
+            .AppendLine(" + right)) _smile_arithmetic_overflow();");
         source.AppendLine("    return left - right;");
         source.AppendLine("}");
-        source.AppendLine("static int64_t _smile_multiply(int64_t left, int64_t right)");
+        source.Append("static ").Append(type).Append(" _smile_multiply(").Append(type)
+            .Append(" left, ").Append(type).AppendLine(" right)");
         source.AppendLine("{");
         source.AppendLine("    if (left == 0 || right == 0) return 0;");
-        source.AppendLine("    if ((left == -1 && right == INT64_MIN) || (right == -1 && left == INT64_MIN)) _smile_arithmetic_overflow();");
-        source.AppendLine("    if (left > 0 ? (right > 0 ? left > INT64_MAX / right : right < INT64_MIN / left) : (right > 0 ? left < INT64_MIN / right : left != 0 && right < INT64_MAX / left)) _smile_arithmetic_overflow();");
+        source.Append("    if ((left == -1 && right == ").Append(minimum)
+            .Append(") || (right == -1 && left == ").Append(minimum)
+            .AppendLine(")) _smile_arithmetic_overflow();");
+        source.Append("    if (left > 0 ? (right > 0 ? left > ").Append(maximum)
+            .Append(" / right : right < ").Append(minimum)
+            .Append(" / left) : (right > 0 ? left < ").Append(minimum)
+            .Append(" / right : left != 0 && right < ").Append(maximum)
+            .AppendLine(" / left)) _smile_arithmetic_overflow();");
         source.AppendLine("    return left * right;");
         source.AppendLine("}");
-        source.AppendLine("static int64_t _smile_negate(int64_t value)");
+        source.Append("static ").Append(type).Append(" _smile_negate(").Append(type)
+            .AppendLine(" value)");
         source.AppendLine("{");
-        source.AppendLine("    if (value == INT64_MIN) _smile_arithmetic_overflow();");
+        source.Append("    if (value == ").Append(minimum)
+            .AppendLine(") _smile_arithmetic_overflow();");
         source.AppendLine("    return -value;");
         source.AppendLine("}");
-        source.AppendLine("static int64_t _smile_divide(int64_t left, int64_t right)");
+        source.Append("static ").Append(type).Append(" _smile_divide(").Append(type)
+            .Append(" left, ").Append(type).AppendLine(" right)");
         source.AppendLine("{");
         source.AppendLine("    if (right == 0)");
         source.AppendLine("    {");
         source.AppendLine("        fputs(\"SMILE Runtime Error SMILER1207: Division by zero.\\n\", stderr);");
         source.AppendLine("        exit(1);");
         source.AppendLine("    }");
-        source.AppendLine("    if (left == INT64_MIN && right == -1) _smile_arithmetic_overflow();");
+        source.Append("    if (left == ").Append(minimum)
+            .AppendLine(" && right == -1) _smile_arithmetic_overflow();");
         source.AppendLine("    return left / right;");
         source.AppendLine("}");
     }

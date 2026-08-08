@@ -1,5 +1,10 @@
 # Codex Implementation Instructions — SMILE v0.8.0 WHILE Loops
 
+> [!IMPORTANT]
+> **HISTORICAL / PARTIALLY SUPERSEDED**
+>
+> This document records the original WHILE implementation milestone. Current WHILE syntax and semantics are governed by the official WHILE specification. Requirements here for all-ten-target maintenance, old exact INPUT/runtime parity, routine strict matrices, and exact-SHA post-push CI are superseded by `docs/SMILE Core Principles.md`, the current official INPUT specification, the active three-target policy, and Velocity Mode.
+
 ## Repository and workflow
 
 - Repository: `Sincioco/SMILE`

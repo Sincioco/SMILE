@@ -43,6 +43,11 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
             source.AppendLine("#include <stdint.h>");
         }
 
+        if (checkedArithmetic && !integers.RequiresSigned64Storage)
+        {
+            source.AppendLine("#include <limits.h>");
+        }
+
         if (CGenerationFacts.NeedsBooleanHeader(program) || hasInput)
         {
             source.AppendLine("#include <stdbool.h>");
@@ -68,7 +73,7 @@ internal sealed class ObjectiveCCodeGenerator : ICodeGenerator
         }
 
         source.AppendLine();
-        CGeneratedRuntime.Append(source, program, checkedArithmetic);
+        CGeneratedRuntime.Append(source, program, integers, checkedArithmetic);
         source.AppendLine("int main(void)");
         source.AppendLine("{");
 

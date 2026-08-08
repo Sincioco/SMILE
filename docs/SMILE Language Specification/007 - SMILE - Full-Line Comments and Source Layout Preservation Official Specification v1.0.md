@@ -6,6 +6,8 @@ This document is the complete official language specification for:
 
 > **SMILE v0.6.1 — Full-Line Comments and Source Layout Preservation**
 
+> **Strategic Reset note (2026-08-08):** Comment classification, source-order preservation, and native target comment syntax remain current. References later in this document to mandatory all-ten-target runtime parity describe the pre-reset validation policy; routine work now validates the three active targets under Velocity Mode, and target-native INPUT edge differences are permitted by specification `008`.
+
 It defines:
 
 1. four equivalent SMILE full-line comment forms;
@@ -845,7 +847,7 @@ Removing all full-line comments and blank source lines from a valid program must
 
 Generated source is expected to differ because comments and blank lines are intentionally preserved.
 
-All ten generated executables must continue to match the SMILE evaluator when given identical scripted stdin. Exact stdout, stderr, and exit code must remain unchanged by removing layout.
+For the three active targets, focused generated-executable checks must confirm that removing layout does not change stdout, stderr, exit code, or ordinary input consumption. Target-native INPUT differences defined by specification 008 are not layout differences. Paused targets receive equivalent catch-up coverage before re-enablement.
 
 ---
 
@@ -991,7 +993,7 @@ Generated source requirements:
 - all source comments outside the Block String are preserved using the target mapping;
 - marker-looking Block String content remains String data;
 - all source-authored blank lines are represented in the generated user-code layout;
-- runtime output matches the evaluator on all ten targets.
+- ordinary runtime behavior is validated for the active targets, with target-native INPUT edge differences governed by specification `008`.
 
 ---
 
