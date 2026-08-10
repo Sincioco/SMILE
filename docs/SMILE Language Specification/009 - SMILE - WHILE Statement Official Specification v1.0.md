@@ -1239,7 +1239,7 @@ Other loop forms may be specified later.
 
 # 45. Target-language mappings
 
-The three active targets must preserve pre-test loop behavior. The retained paused generators must meet the same structural rule when each target is deliberately re-enabled.
+All ten active targets must preserve pre-test loop behavior.
 
 Recommended structures:
 
@@ -1486,7 +1486,7 @@ Required exit code:
 0
 ```
 
-All three active targets must produce this result. Paused targets must add equivalent current conformance before re-enablement.
+All ten active targets must produce this result. Routine Velocity Mode work may run only the focused target subset relevant to the change.
 
 ---
 

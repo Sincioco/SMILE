@@ -1621,13 +1621,20 @@ A variable never assigned after declaration may remain `let`.
 
 It does not add another destination language.
 
-SMILE currently exposes exactly three active targets:
+SMILE currently exposes exactly ten active targets:
 
 1. C#
 2. C
 3. Windows x64 MASM Assembly
+4. JavaScript
+5. Java
+6. COBOL
+7. Objective-C
+8. Swift
+9. Python
+10. C++
 
-Seven completed generator implementations remain paused in the repository: JavaScript, Java, COBOL, Objective-C, Swift, Python, and C++. They are retained history and potential future re-enablement work, not current product choices or routine validation requirements.
+The central active-target policy exposes all ten through Desktop and CLI product paths. Routine Velocity Mode validation remains focused on the targets changed by a task rather than requiring a strict ten-toolchain matrix every time.
 
 No additional destination language may be added or recommended unless Sin explicitly reopens destination-language expansion.
 

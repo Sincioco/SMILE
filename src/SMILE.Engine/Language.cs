@@ -6,7 +6,7 @@ namespace SMILE.Engine;
 
 public static class SmileLanguage
 {
-    // Retained as a conservative planner capacity and for paused backends.
+    // Retained as a conservative planner capacity and for compatibility paths.
     // The Strategic Reset removed this value from the public INPUT contract.
     public const int MaximumInputLineUtf8Bytes = 4096;
 }
@@ -1107,18 +1107,11 @@ public enum TargetLanguage
     Cpp
 }
 
-// This temporary product policy is deliberately separate from the complete
-// target catalog below. Paused backends stay registered and parseable so they
-// can be brought up to date and re-enabled without reconstructing them.
+// Product surfaces share this one active-target policy. All implemented
+// destinations are active again, so the active set is the complete catalog.
 public static class ActiveTargetLanguages
 {
-    public static readonly IReadOnlyList<TargetLanguage> All = new ReadOnlyCollection<TargetLanguage>(
-        new[]
-        {
-            TargetLanguage.CSharp,
-            TargetLanguage.C,
-            TargetLanguage.MasmX64
-        });
+    public static readonly IReadOnlyList<TargetLanguage> All = TargetLanguageInfo.All;
 
     public static bool IsActive(TargetLanguage language) => All.Contains(language);
 }
@@ -1126,7 +1119,6 @@ public static class ActiveTargetLanguages
 // Stable IDs are for CLI arguments and saved data. Display names are for users.
 public static class TargetLanguageInfo
 {
-    // The complete implemented catalog includes temporarily paused backends.
     public static readonly IReadOnlyList<TargetLanguage> All = new ReadOnlyCollection<TargetLanguage>(
         new[]
         {

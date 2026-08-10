@@ -4,13 +4,9 @@
 
 Transpilation itself does not require a destination compiler or runtime. Build & Run requires the matching local toolchain.
 
-During the current three-target phase, normal detection, Desktop/CLI exposure, Build & Run work, and routine validation focus on:
+All ten implemented targets are active for normal detection, Desktop/CLI exposure, and Build & Run: C#, C, Windows x64 MASM Assembly, JavaScript, Java, COBOL, Objective-C, Swift, Python, and C++.
 
-1. C#
-2. C
-3. Windows x64 MASM Assembly
-
-JavaScript, Java, COBOL, Objective-C, Swift, Python, and C++ toolchain implementations remain in source but are paused. They are not normal prerequisites and must not block active-target work.
+Only the toolchains needed for the learner's selected targets are prerequisites. A missing toolchain disables that target's local Build & Run but does not disable transpilation or the other targets.
 
 The central `ActiveTargetLanguages` policy is the source that product, CLI, toolchain, and test enumeration share. Do not maintain independent target lists in each layer.
 
@@ -21,10 +17,17 @@ The central `ActiveTargetLanguages` policy is the source that product, CLI, tool
 | C# | `dotnet --version` | Generate, build, and run with the .NET SDK |
 | C | Visual Studio `vswhere.exe`, then `VC\Auxiliary\Build\vcvars64.bat` | Compile and link with the x64 C toolchain |
 | MASM x64 | Same Visual Studio environment, plus `ml64` and `link.exe` | Assemble and link a Windows x64 console program |
+| JavaScript | `node --version` | Run generated JavaScript with Node.js |
+| Java | Detect both `javac` and `java` | Compile and run with a full JDK |
+| COBOL | Detect MSYS2 GnuCOBOL `cobc` | Compile and run a Windows executable |
+| Objective-C | Detect MSYS2 MinGW64 `clang` | Compile and run a Windows executable |
+| Swift | Detect Windows `swiftc`, its SDK, and Visual Studio linker tools | Compile and run a Windows executable |
+| Python | Detect Python 3.10 or newer through `python` or `py` | Run generated Python without bytecode output |
+| C++ | Visual Studio `vswhere.exe`, then `VC\Auxiliary\Build\vcvars64.bat` | Compile and link with the x64 C++ toolchain |
 
 SMILE uses `vswhere.exe` from the normal Visual Studio Installer location and does not hard-code a Visual Studio year, edition, or install directory.
 
-Default detection should probe only active targets. A retained paused toolchain may still be detected by explicit re-enablement or focused maintenance work, but it is not part of ordinary startup readiness.
+Default detection probes all active targets asynchronously after first paint. An unavailable toolchain is reported per target and does not block the IDE.
 
 ## Active Build And Run Direction
 
@@ -56,11 +59,27 @@ Program.exe
 
 The reset's beginner-oriented MASM direction uses recognizable CRT/Win64 facilities such as `printf`, `scanf`, and `ExitProcess` when suitable. Current MSVC resolves the familiar plain `printf` and `scanf` spellings through `legacy_stdio_definitions.lib` backed by the Universal CRT (`ucrt.lib`). The known harmless `LNK4210` warning from direct UCRT use with a custom assembly entry point is suppressed by the focused MASM link command.
 
+### JavaScript, Java, COBOL, Objective-C, Swift, Python, And C++
+
+The remaining active toolchains use these direct target commands or their detected absolute-path equivalents:
+
+```text
+node Program.js
+javac -encoding UTF-8 Program.java && java Program
+cobc -x -free Program.cob [support.c] -o Program.exe
+clang -x objective-c Program.m -o Program.exe
+swiftc -sdk <Windows SDK> Program.swift -o Program.exe
+python -B Program.py
+cl.exe /nologo /EHsc /std:c++20 /utf-8 Program.cpp /Fe:Program.exe
+```
+
+COBOL, Objective-C, and Swift add their detected MSYS2 or Swift runtime paths. Swift and C++ also initialize the Visual Studio x64 environment. SMILE owns these process details in the toolchain layer rather than adding them to learner-facing generated source.
+
 ## Native INPUT Behavior
 
 The current INPUT specification no longer requires one byte-level runtime implementation across targets.
 
-Active generated programs should use normal destination facilities:
+Generated programs should use normal destination facilities. The reset-reference direction is:
 
 - C#: `Console.ReadLine()` with conventional conversion;
 - C: `scanf` for simple numeric input and `fgets` for line-oriented String input when appropriate;
@@ -120,7 +139,7 @@ dotnet test tests/SMILE.Tests/SMILE.Tests.csproj -c Debug --filter "FullyQualifi
 
 ### Tier 3 — Major milestone
 
-Restore and build the affected solution, then run the comprehensive suite appropriate to the active target set. Once paused tests are categorized, the intended milestone filter is:
+Restore and build the affected solution, then run the comprehensive suite appropriate to the milestone:
 
 ```powershell
 dotnet restore SMILE.sln
@@ -128,11 +147,11 @@ dotnet build SMILE.sln -c Debug --no-restore -nologo
 dotnet test tests/SMILE.Tests/SMILE.Tests.csproj -c Debug --no-build --no-restore --filter "TestCategory!=HistoricalExactInput" -nologo
 ```
 
-`HistoricalExactInput` keeps the superseded strict 4096-byte and exact all-target INPUT suite available for explicit historical or re-enablement checks without letting it override the current native INPUT contract. Categorize remaining paused-only coverage incrementally rather than delaying active work for a wholesale test reorganization.
+`HistoricalExactInput` keeps the superseded strict 4096-byte and exact INPUT suite available for explicit historical checks without letting it override the current native INPUT contract.
 
 Add Release validation when release risk justifies it. Do not automatically duplicate every Debug check in Release.
 
-Legacy all-target environment gates such as `SMILE_REQUIRE_JAVA`, `SMILE_REQUIRE_ALL_TARGETS`, and cross-target `SMILE_REQUIRE_ZERO_TARGET_WARNINGS` are not routine requirements. Use them only for explicit historical verification or a target re-enablement milestone where they remain relevant.
+Legacy environment gates such as `SMILE_REQUIRE_JAVA`, `SMILE_REQUIRE_ALL_TARGETS`, and cross-target `SMILE_REQUIRE_ZERO_TARGET_WARNINGS` are not routine requirements. Use them only for explicit milestone or historical verification where they remain relevant.
 
 ## Manual SMILE CI
 
@@ -169,35 +188,11 @@ on:
 
 Then update `AGENTS.md` and current documentation together if the exact-SHA completion gate is intentionally reactivated.
 
-## Paused Toolchain Reference
+## Ten-Target Reactivation
 
-These retained implementations are not normal current prerequisites:
+On 2026-08-10 the seven retained toolchains rejoined C#, C, and MASM in the central active-target policy. Desktop selectors, CLI target IDs, `--target all`, Transpile All, detection, and Build & Run now share the same ten-target set.
 
-| Paused target | Retained toolchain implementation |
-|---|---|
-| JavaScript | Node.js |
-| Java | A JDK containing both `javac` and `java` |
-| COBOL | MSYS2 GnuCOBOL |
-| Objective-C | MSYS2 MinGW64 Clang |
-| Swift | Swift.Toolchain for Windows plus Visual Studio linker tools |
-| Python | Python 3.10 or newer |
-| C++ | Visual Studio x64 C++ tools |
-
-Their detailed pre-reset commands and validation history are preserved under `Requirements/Archive/Pre-Strategic-Reset/` and in git history. Do not present a retained toolchain as currently supported until its backend completes re-enablement.
-
-## Target Re-Enablement
-
-For one paused target:
-
-1. add the target to the central active-target list;
-2. review every language and bound-tree change made while it was paused;
-3. revise generated output to satisfy beginner-first native generation;
-4. update detection and Build & Run for its current supported toolchain;
-5. add readability guardrails and focused runtime/toolchain tests;
-6. run the active milestone gate plus the target's catch-up conformance;
-7. restore Desktop/CLI exposure and current documentation.
-
-Do not re-enable a target only because its historical generator still produces a file.
+Velocity Mode remains in force. Routine changes validate the affected targets; a strict ten-toolchain matrix is reserved for milestones, releases, or explicit requests.
 
 ## Temporary Workspaces
 
@@ -231,4 +226,7 @@ Detection, build, run, timeout, cancellation, folder opening, and process-launch
 
 - Missing .NET SDK: install .NET SDK 10 or newer.
 - Missing C or MASM tools: install Visual Studio or Build Tools with Desktop development with C++ and the x64 tools.
+- Missing JavaScript, Java, or Python tools: install Node.js, a full JDK, or Python 3.10 or newer respectively.
+- Missing COBOL or Objective-C tools: install the corresponding MSYS2 MinGW64 GnuCOBOL or Clang package.
+- Missing Swift tools: install Swift.Toolchain for Windows and Visual Studio x64 linker tools.
 - Desktop diagnostic logs: check `%LOCALAPPDATA%\SMILE\Logs`; if unavailable, SMILE falls back to `%TEMP%\SMILE\Logs`.

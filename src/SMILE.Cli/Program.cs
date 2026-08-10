@@ -285,12 +285,6 @@ internal sealed record CliOptions(
         }
         else if (TargetLanguageInfo.TryParse(targetText, out TargetLanguage language))
         {
-            if (!ActiveTargetLanguages.IsActive(language))
-            {
-                error = $"{TargetLanguageInfo.GetDisplayName(language)} transpilation is temporarily paused in the current SMILE development phase.";
-                return null;
-            }
-
             targets = new[] { language };
         }
         else

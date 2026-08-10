@@ -29,13 +29,18 @@ Exact cross-runtime byte behavior is not automatically more correct than clear n
 
 ## Current Active Targets
 
-Routine generation work, product exposure, tests, and toolchain support currently focus on:
+All ten implemented destinations are active for generation, product exposure, tests, and toolchain support:
 
 1. C#
 2. C
 3. Windows x64 MASM Assembly
-
-JavaScript, Java, COBOL, Objective-C, Swift, Python, and C++ generators remain retained but paused. Their historical output is not the current style standard, and new language work does not update them by default.
+4. JavaScript
+5. Java
+6. COBOL
+7. Objective-C
+8. Swift
+9. Python
+10. C++
 
 The central `ActiveTargetLanguages` source of truth drives normal Desktop choices, CLI enumeration, Transpile All, toolchain detection, and routine target tests.
 
@@ -205,6 +210,13 @@ Comments and blank physical source lines are ordered non-semantic bound items. E
 | C# | `//` |
 | C | `//` |
 | Windows x64 MASM | `;` |
+| JavaScript | `//` |
+| Java | `//` |
+| COBOL | `*>` |
+| Objective-C | `//` |
+| Swift | `//` |
+| Python | `#` |
+| C++ | `//` |
 
 Payload rendering must remain target-safe and deterministic, but should not grow into a target-neutral runtime concern. A target-required no-op for an otherwise empty semantic body is allowed.
 
@@ -224,7 +236,7 @@ Preserve the learner's spelling when safe. Map it only when it conflicts with:
 
 Every reference to one SMILE symbol must use the same mapped target spelling. Never implement mapping through source-text replacement.
 
-Paused-target identifier data remains retained for future catch-up work.
+Identifier data remains complete and active for all ten destinations.
 
 ## Active Target Standards
 
@@ -271,20 +283,23 @@ Generated MASM should be understandable assembly, not merely correct machine-ori
 
 Assembly will naturally be longer than C# or C. Judge proportionality, native APIs, and clarity rather than enforcing an arbitrary line-count ceiling.
 
-## Paused And Future Targets
+### JavaScript, Java, COBOL, Objective-C, Swift, Python, And C++
 
-Paused backend source remains in the repository but is not current generated-output authority.
+The same native-first rule applies to the other active targets:
 
-Before re-enablement, a target must document:
+| Target | Normal beginner-facing direction |
+|---|---|
+| JavaScript | `console.log`, ordinary variables, native `if` and `while`, direct standard-input facilities |
+| Java | `System.out.println`, ordinary typed variables, native `if` and `while`, conventional JDK input |
+| COBOL | `DISPLAY`, `ACCEPT` where practical, normal data items, `IF`, and `PERFORM` |
+| Objective-C | `printf` or normal String APIs, ordinary variables, native `if` and `while` |
+| Swift | `print`, `readLine`, normal `var`/`let`, native `if` and `while` |
+| Python | `print`, `input`, normal assignments, native `if` and `while` |
+| C++ | `std::cout`, `std::cin`/`std::getline`, normal variables, native `if` and `while` |
 
-1. the normal beginner-level form for each supported SMILE concept;
-2. native APIs and constructs used;
-3. unavoidable helpers and why they are necessary;
-4. how output avoids obsolete cross-runtime assumptions;
-5. readability/golden tests equivalent to active-target guardrails;
-6. focused compiler/runtime/toolchain validation.
+Existing target-local helpers remain acceptable only when a current approved semantic rule genuinely requires them. Simplify inherited runtime-heavy machinery when working in that area; do not preserve it merely for obsolete exact cross-runtime edge parity.
 
-A target is not ready merely because its historical generator still compiles or matches stdout.
+## Future Targets
 
 Do not add another destination language unless Sin explicitly reopens target expansion.
 
@@ -319,7 +334,7 @@ Velocity Mode uses:
 - one appropriate active-target build/run smoke when practical;
 - MissionGuardrail after generator or output-policy changes.
 
-Broader active-target Debug/Release validation belongs to milestones. Paused-target suites run only for explicit maintenance or re-enablement.
+Broader all-target Debug/Release validation belongs to milestones. Routine work remains focused on the targets it changes.
 
 The hosted `SMILE CI` workflow remains manually dispatchable. It is not automatically triggered during Velocity Mode and does not impose an exact-SHA gate on normal pushes.
 

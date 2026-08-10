@@ -4,13 +4,9 @@
 
 SMILE is a beginner-first educational programming language. Generated source is learner-facing output, so architecture must make normal native destination-language code the easiest generator path.
 
-The permanent rules live in [SMILE Core Principles](SMILE%20Core%20Principles.md). The current implementation phase temporarily focuses active generation, product exposure, routine toolchains, and regression work on:
+The permanent rules live in [SMILE Core Principles](SMILE%20Core%20Principles.md). All ten implemented destinations are active: C#, C, Windows x64 MASM Assembly, JavaScript, Java, COBOL, Objective-C, Swift, Python, and C++.
 
-1. C#
-2. C
-3. Windows x64 MASM Assembly
-
-The existing JavaScript, Java, COBOL, Objective-C, Swift, Python, and C++ implementations remain in the repository but are paused. They are historical implementation assets, not current maintenance obligations, and must be brought up to current semantics and readability standards before re-enablement.
+One shared compiler pipeline feeds every generator. Product exposure, routine toolchain detection, Transpile All, and target enumeration use the same central active-target policy.
 
 ## Compiler Pipeline
 
@@ -93,12 +89,7 @@ Conceptually:
 ```csharp
 public static class ActiveTargetLanguages
 {
-    public static readonly IReadOnlyList<TargetLanguage> All =
-    [
-        TargetLanguage.CSharp,
-        TargetLanguage.C,
-        TargetLanguage.MasmX64
-    ];
+    public static readonly IReadOnlyList<TargetLanguage> All = TargetLanguageInfo.All;
 }
 ```
 
@@ -106,13 +97,12 @@ The central policy drives:
 
 - Desktop target selectors and default panes;
 - CLI target enumeration and `--target all`;
-- explicit handling of a named paused target;
 - Transpile All behavior;
 - routine generation tests;
 - normal toolchain detection;
 - active-target documentation.
 
-Do not scatter independent hard-coded active/paused checks across the UI, CLI, toolchains, and tests. A paused backend remains registered as retained implementation history but is not returned as a normal active choice.
+Do not scatter independent hard-coded target checks across the UI, CLI, toolchains, and tests. All ten implemented backends remain registered and returned as normal active choices.
 
 ## Native-First Generation
 
@@ -131,6 +121,10 @@ Prefer ordinary C facilities such as `printf`, `scanf`, and `fgets` where each i
 Assembly is naturally more verbose, but it must remain proportional to the source program. Prefer recognizable CRT/Win64 calls, clear `.data` storage, correct calling convention and stack alignment, direct `printf`/`scanf` where suitable, direct `ExitProcess`, and understandable labels for IF and WHILE.
 
 `MasmX64NativeGeneration.cs` owns this ordinary learner-facing path, including checked Integer arithmetic through direct x64 instructions and compact failure labels. `MasmX64CodeGenerator.cs` retains the proven compatibility lowering only for currently approved String cases the concise CRT path cannot yet represent safely, including exact source-authored embedded-NUL Strings. That fallback is not the default and must not be expanded to cover ordinary programs merely for historical parity.
+
+### Other Active Targets
+
+JavaScript, Java, COBOL, Objective-C, Swift, Python, and C++ consume the same bound tree and preserve normal destination control flow. Prefer `console.log`, `System.out.println`, `DISPLAY`, `printf`/normal Objective-C Strings, `print`, `print`, and `std::cout` respectively, together with each language's conventional variables, input, conditions, and loops.
 
 Custom helpers are exceptional. A helper must be required by a current approved language rule, small, target-local, and clearer than the available native alternative.
 
@@ -155,7 +149,7 @@ Target-local lowering may combine operations only when ordinary behavior remains
 
 Toolchain detection, generation, compilation, linking, execution, process output, and long file operations remain asynchronous and must not block the WPF dispatcher.
 
-The Desktop keeps three visible generated panes defaulted to C#, MASM x64, and C. Each pane remains an independent editable build unit with its own selected language, edit revision, divergence marker, generated cache relationship, and Build & Run operation. The active-target policy limits normal selector choices during the temporary freeze.
+The Desktop keeps three visible generated panes defaulted to C#, MASM x64, and C. Each pane remains an independent editable build unit with its own selected language, edit revision, divergence marker, generated cache relationship, and Build & Run operation. Every pane selector exposes all ten active targets.
 
 Startup completes first paint before loading the packaged cumulative `language.smile` reference. Startup and debounced live generation target only visible active languages. Older results must not overwrite later source changes, language changes, New, explicit Transpile All, or later target-pane edits according to the existing revision rules.
 
@@ -171,19 +165,17 @@ Generated workspaces remain isolated under:
 
 SMILE is in Velocity Mode. Routine validation uses the smallest focused tests and build that cover the changed subsystem.
 
-Fast `MissionGuardrail` tests inspect learner-facing source for C#, C, and MASM without requiring every toolchain. Functional tests cover the corresponding parser, binder, evaluator, generator, Desktop, or toolchain behavior that changed.
+Fast `MissionGuardrail` tests inspect learner-facing source without requiring every toolchain. The reset-reference checks remain detailed for C#, C, and MASM, while focused source and conformance tests protect the other active generators.
 
-Broader Debug/Release and active-target integration validation belongs to major milestones, release candidates, broad architecture changes, and target re-enablement. Paused targets do not block ordinary work.
+Broader Debug/Release and ten-toolchain integration validation belongs to major milestones, release candidates, broad architecture changes, and explicit requests. Routine work remains focused on the targets it changes.
 
 The hosted `SMILE CI` workflow retains its complete Windows Debug/Release job but is manually invoked through `workflow_dispatch` during Velocity Mode. Automatic push/pull-request triggers and the exact-SHA post-push completion gate are suspended.
 
-## Historical Ten-Target Architecture
+## Ten-Target Architecture History
 
-Before the Strategic Reset, SMILE maintained ten simultaneous backends and extensive exact cross-target runtime conformance. Those source files, toolchains, tests, identifier data, and milestone records remain valuable history.
+Before the Strategic Reset, SMILE maintained ten simultaneous backends and extensive exact cross-target runtime conformance. The reset temporarily focused three targets, then all ten were reactivated on 2026-08-10 through the same central policy.
 
-Historical descriptions of strict UTF-8 input, shared byte limits, exact NUL-capable console storage, generic runtime error dispatch, and mandatory all-ten matrices describe the pre-reset architecture. They are not current design authority.
-
-Re-enabling any retained backend requires catching it up to current front-end semantics and rebuilding its output around the permanent native beginner-first rule.
+Historical descriptions of strict UTF-8 input, shared byte limits, exact NUL-capable console storage, generic runtime error dispatch, and mandatory matrices still describe superseded architecture. They are not current design authority; all active generators follow the permanent native beginner-first rule and may retain documented target-native differences.
 
 ## Architectural Decision Rule
 

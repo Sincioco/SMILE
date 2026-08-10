@@ -2,7 +2,7 @@
 
 SMILE stands for Simple Modern Interactive Learning Environment. It is a modern programming language inspired by BASIC, designed to help newcomers learn both how to write code and how programming languages work by transpiling and compiling the same logic across multiple target languages.
 
-Write a simple SMILE program once, then compare beginner-readable output in the current active targets: C#, C, and Windows x64 MASM Assembly. Seven additional implemented backends remain in the repository but are temporarily paused.
+Write a simple SMILE program once, then compare beginner-readable output across ten active targets: C#, C, Windows x64 MASM Assembly, JavaScript, Java, COBOL, Objective-C, Swift, Python, and C++.
 
 ## Mission
 
@@ -27,10 +27,9 @@ Permanent direction:
 - old complexity and old tests are not requirements by themselves;
 - KISS and KISS v2, “The Sin Way,” continue to govern the project.
 
-Temporary development policy:
+Current development policy:
 
-- C#, C, and Windows x64 MASM are active;
-- JavaScript, Java, COBOL, Objective-C, Swift, Python, and C++ are retained but paused;
+- all ten implemented targets are active;
 - normal work uses focused validation under Velocity Mode;
 - the `SMILE CI` workflow is manually dispatchable and is not triggered by every push.
 
@@ -201,41 +200,30 @@ A Block String Literal is valid only as the complete value of `LET` or `SET`. Th
 - [008 — INPUT Statement](docs/SMILE%20Language%20Specification/008%20-%20SMILE%20-%20INPUT%20Statement%20Official%20Specification%20v1.0.md)
 - [009 — WHILE Statement](docs/SMILE%20Language%20Specification/009%20-%20SMILE%20-%20WHILE%20Statement%20Official%20Specification%20v1.0.md)
 
-## Active And Paused Targets
-
-### Active
+## Active Targets
 
 | Stable ID | Display name | Generated files | Build & Run toolchain |
 |---|---|---|---|
 | `csharp` | C# | `Program.cs`, `GeneratedProgram.csproj` | .NET SDK 10 or newer |
 | `c` | C | `Program.c` | Visual Studio C++ x64 tools |
 | `masm-x64` | Assembly — Windows x64 MASM | `Program.asm` | Visual Studio C++ x64 tools with `ml64` and `link.exe` |
+| `javascript` | JavaScript | `Program.js` | Node.js |
+| `java` | Java | `Program.java` | JDK |
+| `cobol` | COBOL | `Program.cob`, optional support `.c` | MSYS2 GnuCOBOL |
+| `objective-c` | Objective-C | `Program.m` | MSYS2 MinGW64 Clang |
+| `swift` | Swift | `Program.swift` | Swift.Toolchain for Windows plus Visual Studio linker tools |
+| `python` | Python | `Program.py` | Python 3.10 or newer |
+| `cpp` | C++ | `Program.cpp` | Visual Studio x64 C++ tools |
 
-One central `ActiveTargetLanguages` policy governs product exposure, default toolchain detection, `--target all`, and routine test enumeration. `all` means all active targets, not every backend retained in source.
+One central `ActiveTargetLanguages` policy governs product exposure, default toolchain detection, `--target all`, Transpile All, and routine test enumeration. `all` means all ten implemented targets. Build & Run requires the matching local toolchain; transpilation itself does not.
 
-### Paused
-
-| Stable ID | Display name | Historical local toolchain |
-|---|---|---|
-| `javascript` | JavaScript | Node.js |
-| `java` | Java | JDK |
-| `cobol` | COBOL | MSYS2 GnuCOBOL |
-| `objective-c` | Objective-C | MSYS2 MinGW64 Clang |
-| `swift` | Swift | Swift.Toolchain for Windows plus Visual Studio linker tools |
-| `python` | Python | Python 3.10 or newer |
-| `cpp` | C++ | Visual Studio x64 C++ tools |
-
-The paused backends, toolchains, tests, highlighting, and history remain in the repository. Normal Desktop and CLI paths must not silently generate stale paused-target output. Explicitly requesting a paused target should explain that it is retained but unavailable during the reset.
-
-Historical milestone: before the reset, SMILE implemented ten destination backends and extensive all-target conformance. That achievement remains part of project history; it is not the current support or validation promise.
-
-Re-enabling one paused target requires a deliberate catch-up review, native beginner-first generation, readability guardrails, current toolchain validation, and restoration to the central active-target policy. No new destination language may be added or recommended unless Sin explicitly reopens target expansion.
+No eleventh destination language may be added or recommended unless Sin explicitly reopens target expansion.
 
 ## Generated Output Direction
 
 Generated source is a primary teaching artifact. It must be minimal, proportional to the SMILE program, recognizable to a beginner, deterministic, and dependency-light.
 
-For the active targets, the normal direction is:
+The reset-reference targets illustrate the normal direction:
 
 | SMILE concept | C# | C | Windows x64 MASM |
 |---|---|---|---|
@@ -256,9 +244,9 @@ Normal current development requires:
 
 - Windows;
 - .NET SDK 10 or newer;
-- Visual Studio or Build Tools with Desktop development with C++, the x64 C tools, `ml64`, and `link.exe` for C and MASM Build & Run.
+- the matching local toolchain for each target you want to Build & Run.
 
-SMILE discovers Visual Studio with `vswhere.exe`; it does not hard-code a year, edition, or install directory. Paused target toolchains are not normal prerequisites. See [Toolchains](docs/Toolchains.md) for active commands, stdin modes, temporary workspaces, and troubleshooting.
+SMILE discovers Visual Studio with `vswhere.exe`; it does not hard-code a year, edition, or install directory. See [Toolchains](docs/Toolchains.md) for the ten active toolchains, stdin modes, temporary workspaces, and troubleshooting.
 
 ## Build, Test, And Run
 
@@ -284,7 +272,7 @@ dotnet test tests/SMILE.Tests/SMILE.Tests.csproj -c Debug --filter "FullyQualifi
 
 ### Velocity Tier 3 — Major Milestone
 
-Restore and build the affected solution, then run the comprehensive active-target suite. Once paused-target tests are fully categorized, the intended milestone filter is:
+Restore and build the affected solution, then run the comprehensive suite appropriate to the milestone:
 
 ```powershell
 dotnet restore SMILE.sln
@@ -292,7 +280,7 @@ dotnet build SMILE.sln -c Debug --no-restore -nologo
 dotnet test tests/SMILE.Tests/SMILE.Tests.csproj -c Debug --no-build --no-restore --filter "TestCategory!=HistoricalExactInput" -nologo
 ```
 
-`HistoricalExactInput` preserves the superseded strict 4096-byte/all-target INPUT suite for explicit historical or target-re-enablement work. It is intentionally outside current milestone and manual-CI gates. Paused-target categorization can continue incrementally; retained paused-backend tests are not a current support promise.
+`HistoricalExactInput` preserves the superseded strict 4096-byte INPUT suite for explicit historical checks. It is intentionally outside current milestone and manual-CI gates because target-native INPUT edge behavior is now allowed.
 
 Add Release validation when release risk justifies it. Legacy gates such as `SMILE_REQUIRE_JAVA`, `SMILE_REQUIRE_ALL_TARGETS`, and cross-target `SMILE_REQUIRE_ZERO_TARGET_WARNINGS` are not routine reset requirements.
 
@@ -315,7 +303,7 @@ dotnet run --project src/SMILE.Cli -- examples/language.smile --target all
 dotnet run --project src/SMILE.Cli -- examples/input.smile --target csharp --run
 ```
 
-Current target IDs are `csharp`, `c`, `masm-x64`, and `all`. CLI execution containing `INPUT` inherits the invoking terminal and streams output normally. Compiler and linker processes receive closed stdin; only the generated program receives interactive or scripted input.
+Current target IDs are `csharp`, `c`, `masm-x64`, `javascript`, `java`, `cobol`, `objective-c`, `swift`, `python`, `cpp`, and `all`. CLI execution containing `INPUT` inherits the invoking terminal and streams output normally. Compiler and linker processes receive closed stdin; only the generated program receives interactive or scripted input.
 
 ## Desktop Application
 
@@ -409,7 +397,7 @@ Generated build/run workspaces are created under `%TEMP%\SMILE\Runs`, never insi
 - C and MASM Build & Run currently focus on Windows local toolchains.
 - Ordinary MASM programs use the concise CRT path, including direct checked Integer instructions. Exact source-authored embedded-NUL Strings may still select the older compatibility lowering because those values cannot be represented by plain C-string calls alone.
 - Full Desktop UI automation is not included; release-level work still requires appropriate manual WPF smoke testing.
-- Paused backends may not reflect language changes made during the reset until they complete re-enablement.
+- Target-native INPUT and unusual host edge behavior can differ across the ten runtimes; ordinary valid programs remain the shared conformance focus.
 
 ## Roadmap
 
@@ -421,13 +409,13 @@ The 2026-08-08 Strategic Reset was implemented in this dependency order:
 4. rewrite C#, C, and MASM output for beginner readability;
 5. add `MissionGuardrail` readability tests and focused active-target conformance;
 6. align Desktop, CLI, toolchains, examples, and current documentation;
-7. complete focused source guardrails plus native build/run validation for all three active targets.
+7. complete focused source guardrails plus native build/run validation for the three reset-reference targets.
 
-Broader automation and paused targets may be restored only by explicit decision.
+On 2026-08-10 all seven retained targets were reactivated through the central policy, restoring ten-target Desktop/CLI exposure, detection, transpilation, and Build & Run. Velocity Mode remains focused: ordinary changes validate the affected targets rather than repeating a strict ten-toolchain matrix.
 
 Future language ideas remain functions and scopes, additional numeric types, structured loop control, debugging/source mapping, richer editor assistance, and a reusable web interface. These are roadmap items, not implemented features.
 
-See [Roadmap](docs/Roadmap.md) for the implemented reset sequence, paused-target re-enablement gate, and clearly labeled historical milestones.
+See [Roadmap](docs/Roadmap.md) for the implemented reset sequence, all-target reactivation, and clearly labeled historical milestones.
 
 ## License
 

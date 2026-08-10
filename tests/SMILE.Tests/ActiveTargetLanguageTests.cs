@@ -8,14 +8,21 @@ namespace SMILE.Tests;
 public sealed class ActiveTargetLanguageTests
 {
     [TestMethod]
-    public void Active_target_policy_contains_only_CSharp_C_and_MASM()
+    public void Active_target_policy_contains_all_ten_implemented_languages()
     {
         CollectionAssert.AreEqual(
             new[]
             {
                 TargetLanguage.CSharp,
                 TargetLanguage.C,
-                TargetLanguage.MasmX64
+                TargetLanguage.MasmX64,
+                TargetLanguage.JavaScript,
+                TargetLanguage.Java,
+                TargetLanguage.Cobol,
+                TargetLanguage.ObjectiveC,
+                TargetLanguage.Swift,
+                TargetLanguage.Python,
+                TargetLanguage.Cpp
             },
             ActiveTargetLanguages.All.ToArray());
         Assert.IsTrue(ActiveTargetLanguages.All.All(ActiveTargetLanguages.IsActive));
@@ -23,17 +30,19 @@ public sealed class ActiveTargetLanguageTests
     }
 
     [TestMethod]
-    public void Complete_catalog_keeps_paused_targets_parseable_but_inactive()
+    public void Complete_catalog_keeps_every_target_parseable_and_active()
     {
         Assert.HasCount(10, TargetLanguageInfo.All);
         Assert.IsTrue(TargetLanguageInfo.TryParse("python", out TargetLanguage language));
         Assert.AreEqual(TargetLanguage.Python, language);
-        Assert.IsFalse(ActiveTargetLanguages.IsActive(language));
-        Assert.IsTrue(ActiveTargetLanguages.All.All(TargetLanguageInfo.All.Contains));
+        Assert.IsTrue(ActiveTargetLanguages.IsActive(language));
+        CollectionAssert.AreEqual(
+            TargetLanguageInfo.All.ToArray(),
+            ActiveTargetLanguages.All.ToArray());
     }
 
     [TestMethod]
-    public void Desktop_target_selectors_expose_only_active_targets()
+    public void Desktop_target_selectors_expose_all_active_targets()
     {
         var pane = new TargetPaneViewModel("Pane", TargetLanguage.CSharp);
 
@@ -58,7 +67,7 @@ public sealed class ActiveTargetLanguageTests
     }
 
     [TestMethod]
-    public async Task Desktop_initialization_detects_only_active_toolchains()
+    public async Task Desktop_initialization_detects_all_active_toolchains()
     {
         RecordingToolchain[] toolchains = TargetLanguageInfo.All
             .Select(language => new RecordingToolchain(language))
@@ -74,10 +83,7 @@ public sealed class ActiveTargetLanguageTests
 
         foreach (RecordingToolchain toolchain in toolchains)
         {
-            Assert.AreEqual(
-                ActiveTargetLanguages.IsActive(toolchain.Language) ? 1 : 0,
-                toolchain.DetectionCount,
-                toolchain.Language.ToString());
+            Assert.AreEqual(1, toolchain.DetectionCount, toolchain.Language.ToString());
         }
     }
 

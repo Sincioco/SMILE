@@ -285,9 +285,9 @@ internal static class CGeneratedRuntime
         bool checkedArithmetic,
         bool includeInput = true)
     {
-        // Objective-C still uses the historical shared INPUT runtime while it
-        // is paused. Active C opts out and emits the language's native input
-        // statements directly at each INPUT source position.
+        // Objective-C still uses the historical shared INPUT compatibility
+        // path. C opts out and emits native input statements directly at each
+        // INPUT source position.
         bool hasInput = includeInput && TargetRuntimeFacts.HasInput(program);
         if (hasInput)
         {

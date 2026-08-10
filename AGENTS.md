@@ -29,20 +29,18 @@ Do not silently average conflicting requirements. Historical requirements may ex
 
 ## Current Development Mode
 
-The permanent mission applies to every target now and in the future. The current three-target focus is temporary.
+The permanent mission applies to every target now and in the future.
 
-- Active targets: C#, C, and Windows x64 MASM Assembly.
-- Paused targets retained in the repository: JavaScript, Java, COBOL, Objective-C, Swift, Python, and C++.
-- Do not delete paused generators, toolchains, tests, highlighting, or history.
-- Do not expose paused targets as normal Desktop or CLI choices, update them for routine language work, or let them block active-target progress.
-- Re-enabling a target requires deliberate catch-up work, focused tests, milestone validation, UI/CLI exposure, and the permanent beginner-readability gate.
+- Active targets: C#, C, Windows x64 MASM Assembly, JavaScript, Java, COBOL, Objective-C, Swift, Python, and C++.
+- Keep all ten generators, toolchains, tests, highlighting, Desktop/CLI exposure, and history available.
+- Routine work remains focused on the targets it changes; activating all ten does not require a full ten-toolchain matrix for every unrelated edit.
 - Do not add, recommend, prototype, or scaffold another destination language unless Sin explicitly changes the strategy.
 
 SMILE is also in temporary **Velocity Mode**:
 
 - Run the smallest focused validation that gives reasonable confidence in the changed code.
-- Do not run paused-target, all-target, duplicated Debug/Release, or strict toolchain matrices by default.
-- Full active-target validation belongs at major milestones, releases, broad architecture changes, target re-enablement, or when Sin explicitly requests it.
+- Do not run duplicated Debug/Release or strict ten-toolchain matrices by default.
+- Full all-target validation belongs at major milestones, releases, broad architecture changes, or when Sin explicitly requests it.
 - Automatic GitHub Actions triggers and the exact-SHA post-push completion gate are suspended. `SMILE CI` remains manually runnable with `workflow_dispatch`.
 - Velocity Mode never permits knowingly broken builds, skipped directly relevant tests, hidden failures, or weakened semantics by accident.
 

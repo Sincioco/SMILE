@@ -17,9 +17,9 @@ internal static class TargetRuntimeFacts
             statement is BoundInputStatement input && input.Variable.Type == type);
 
     public static bool RequiresUtf8Output(BoundProgram program) =>
-        // Retained paused backends still use this fact to import their legacy
-        // INPUT support. Keep that path stable until each backend is
-        // deliberately re-enabled and rewritten under the native-first rule.
+        // Some active backends still use this fact for target-local INPUT
+        // compatibility support. Keep it stable until that output is directly
+        // simplified under the native-first rule.
         HasInput(program) ||
         RequiresUtf8OutputFromSource(program);
 

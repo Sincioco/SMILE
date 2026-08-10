@@ -113,36 +113,32 @@ Do not add new abstraction layers merely to remove old abstraction layers.
 
 ## 8. Current Active Targets
 
-The current active targets are:
+All ten implemented targets are active:
 
 1. C#
 2. C
 3. Windows x64 MASM Assembly
+4. JavaScript
+5. Java
+6. COBOL
+7. Objective-C
+8. Swift
+9. Python
+10. C++
 
-These receive current language features, readability work, routine regression tests, Desktop/CLI exposure, normal toolchain detection, and Build & Run support.
+They are available through the central active-target policy, Desktop and CLI selectors, normal toolchain detection, Transpile All, and Build & Run when the matching local toolchain is installed.
 
-The current three-target focus is temporary. The permanent principles in this document apply to every target whenever it is active.
+The permanent beginner-first native-code principles apply equally to all ten. Routine work remains focused on the targets it changes; the active set does not force an exhaustive ten-toolchain matrix for every unrelated edit.
 
-## 9. Paused Targets May Return
+## 9. Destination-Language Set
 
-JavaScript, Java, COBOL, Objective-C, Swift, Python, and C++ are retained but temporarily paused.
+C++ remains the tenth implemented destination. Keep all ten generators, toolchains, tests, identifiers, highlighting, and documentation history intact and available.
 
-Do not delete their source, toolchains, historical tests, identifiers, highlighting, or documentation history. Do not silently generate stale paused-target output through normal product paths.
-
-Re-enabling a target requires:
-
-1. adding it to the central active-target policy;
-2. catching it up with every language change made while paused;
-3. applying this document's native beginner-first design;
-4. adding equivalent readability guardrails;
-5. running its focused and milestone conformance tests;
-6. restoring its intended Desktop and CLI exposure.
-
-No new destination language may be added, recommended, prototyped, or scaffolded unless Sin explicitly reopens target expansion.
+No eleventh destination language may be added, recommended, prototyped, or scaffolded unless Sin explicitly reopens target expansion.
 
 ## 10. Future Targets Inherit These Principles
 
-A paused or future target is not ready merely because it compiles or matches stdout. Before activation, document:
+A future target is not ready merely because it compiles or matches stdout. Before activation, document:
 
 1. the normal beginner-level expression of every supported SMILE feature;
 2. the native APIs and constructs used;
@@ -156,7 +152,7 @@ Tests exist to protect the language and teaching experience. They are guardrails
 
 When a test protects an intentionally superseded requirement, update the test. Never preserve obsolete behavior merely to keep an old test green, and never delete a failing test without understanding what requirement it represents.
 
-Fast `MissionGuardrail` tests must inspect generated source for C#, C, and MASM without requiring every target toolchain. They protect at least:
+Fast `MissionGuardrail` tests inspect generated source without requiring every target toolchain. The reset-reference C#, C, and MASM checks plus focused target tests protect at least:
 
 - LET plus PRINT;
 - INPUT;
@@ -166,7 +162,7 @@ Fast `MissionGuardrail` tests must inspect generated source for C#, C, and MASM 
 - WHILE;
 - Block Strings.
 
-Routine work uses focused validation. Broader active-target Debug/Release and integration validation belongs to major milestones, releases, broad architecture changes, target re-enablement, or explicit requests.
+Routine work uses focused validation. Broader all-target Debug/Release and integration validation belongs to major milestones, releases, broad architecture changes, or explicit requests.
 
 ## 12. Historical Requirements May Be Superseded
 
@@ -210,4 +206,4 @@ Known target-native tradeoffs:
 
 When choosing between preserving compiler machinery and preserving SMILE's educational clarity, first ask whether that machinery is still required by the current approved language design. If it is not, remove or simplify it. If it is required, implement it in the most idiomatic and least intrusive way practical.
 
-A learner should learn C# by looking at normal C#, C by looking at normal C, Assembly by looking at understandable Assembly, and any re-enabled or future language by looking at normal code for that language—not by learning SMILE compiler internals.
+A learner should learn C# by looking at normal C#, C by looking at normal C, Assembly by looking at understandable Assembly, and every other destination by looking at normal code for that language—not by learning SMILE compiler internals.

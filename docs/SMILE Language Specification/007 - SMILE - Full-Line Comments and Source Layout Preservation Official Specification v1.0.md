@@ -6,7 +6,7 @@ This document is the complete official language specification for:
 
 > **SMILE v0.6.1 — Full-Line Comments and Source Layout Preservation**
 
-> **Strategic Reset note (2026-08-08):** Comment classification, source-order preservation, and native target comment syntax remain current. References later in this document to mandatory all-ten-target runtime parity describe the pre-reset validation policy; routine work now validates the three active targets under Velocity Mode, and target-native INPUT edge differences are permitted by specification `008`.
+> **Strategic Reset note (updated 2026-08-10):** Comment classification, source-order preservation, and native target comment syntax remain current. All ten implemented targets are active again. References later in this document to mandatory exact all-target runtime parity describe the pre-reset validation policy; routine work remains focused under Velocity Mode, and target-native INPUT edge differences are permitted by specification `008`.
 
 It defines:
 
@@ -847,7 +847,7 @@ Removing all full-line comments and blank source lines from a valid program must
 
 Generated source is expected to differ because comments and blank lines are intentionally preserved.
 
-For the three active targets, focused generated-executable checks must confirm that removing layout does not change stdout, stderr, exit code, or ordinary input consumption. Target-native INPUT differences defined by specification 008 are not layout differences. Paused targets receive equivalent catch-up coverage before re-enablement.
+For all ten active targets, focused generated-executable checks must confirm that removing layout does not change stdout, stderr, exit code, or ordinary input consumption. Target-native INPUT differences defined by specification 008 are not layout differences. Routine work may run this coverage only for the targets it changes.
 
 ---
 

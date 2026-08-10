@@ -920,7 +920,7 @@ Only the selected branch updates runtime state or consumes input.
 - COBOL: valid `IF / ELSE / END-IF`
 - MASM x64: deterministic compare/jump labels
 
-The active C#, C, and MASM targets retain every branch-local INPUT at its source position, evaluate runtime-dependent conditions from current storage, and preserve genuine branch structure. The seven other generator implementations are paused and do not form part of the current support or routine conformance promise; each must complete catch-up validation before re-enablement.
+All ten active targets retain every branch-local INPUT at its source position, evaluate runtime-dependent conditions from current storage, and preserve genuine branch structure. Routine Velocity Mode conformance may remain focused on the targets changed by the current work.
 
 ---
 

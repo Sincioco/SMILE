@@ -248,13 +248,12 @@ Permanent direction:
 - protect the mission with fast C#/C/MASM readability guardrails;
 - keep tests subordinate to current approved language requirements.
 
-Temporary development policy:
+Current development policy:
 
-- active targets are C#, C, and Windows x64 MASM;
-- JavaScript, Java, COBOL, Objective-C, Swift, Python, and C++ remain retained but paused;
+- all ten implemented targets are active through one central policy;
 - normal work uses focused validation under Velocity Mode;
 - `SMILE CI` is manually dispatched rather than automatically triggered;
-- routine all-target and duplicated Debug/Release matrices are paused.
+- routine strict ten-toolchain and duplicated Debug/Release matrices remain paused.
 
 ## Strategic Reset Dependency Order — Implemented 2026-08-08
 
@@ -269,30 +268,30 @@ Temporary development policy:
 
 ## Reset Completion And Next Milestones
 
-The Strategic Reset milestone delivered:
+The Strategic Reset milestone delivered on 2026-08-08:
 
 - tiny SMILE programs generate small normal-looking C#, C, and MASM programs;
-- Desktop and CLI normal choices are limited to the active three targets;
+- Desktop and CLI normal choices were temporarily limited to three targets;
 - a central active-target policy controls enumeration;
 - ordinary INPUT no longer emits byte readers, UTF-8 state machines, shared 4096-byte contracts, or generic error dispatch;
 - MissionGuardrail tests protect learner-facing output;
-- paused source remains intact;
+- the other seven target implementations remained intact for reactivation;
 - current documentation and official specifications match implementation;
 - manual CI and future trigger restoration are documented.
 
 After the reset is stable, language-depth work may resume. Previously proposed ideas such as functions and scopes, additional numeric types, more loop forms, debugging/source mapping, semantic highlighting, autocomplete, diagnostic squiggles, and a reusable web interface remain future ideas rather than current commitments.
 
-## Paused-Target Re-Enablement
+## Ten-Target Reactivation — Implemented 2026-08-10
 
-A paused target may return only through a deliberate milestone:
+All seven retained targets rejoined C#, C, and MASM through the central `ActiveTargetLanguages` policy. This restored:
 
-1. add it to the central active list;
-2. catch it up with every language/specification change made while paused;
-3. replace inherited cross-runtime machinery with normal native target constructs where practical;
-4. add equivalent readability/golden tests;
-5. run its focused functional and toolchain validation;
-6. run the broader milestone gate;
-7. restore Desktop and CLI exposure and current documentation.
+1. all ten Desktop selector choices;
+2. all ten CLI target IDs and `--target all` enumeration;
+3. normal toolchain detection and Build & Run;
+4. Transpile All generation across the complete implemented catalog;
+5. focused policy and all-target compile validation.
+
+The reactivation does not restore obsolete strict byte-for-byte cross-runtime INPUT rules or require a ten-toolchain matrix for every change. All generators remain governed by the permanent native beginner-first rule and are simplified incrementally when their output is changed.
 
 ## Destination-Language Freeze
 
