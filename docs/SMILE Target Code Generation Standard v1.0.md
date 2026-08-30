@@ -283,7 +283,7 @@ Generated MASM should be understandable assembly, not merely correct machine-ori
 
 Assembly will naturally be longer than C# or C. Judge proportionality, native APIs, and clarity rather than enforcing an arbitrary line-count ceiling.
 
-### JavaScript, Java, COBOL, Objective-C, Swift, Python, And C++
+### JavaScript, Java, COBOL, Objective-C, Swift, And C++
 
 The same native-first rule applies to the other active targets:
 
@@ -294,10 +294,25 @@ The same native-first rule applies to the other active targets:
 | COBOL | `DISPLAY`, `ACCEPT` where practical, normal data items, `IF`, and `PERFORM` |
 | Objective-C | `printf` or normal String APIs, ordinary variables, native `if` and `while` |
 | Swift | `print`, `readLine`, normal `var`/`let`, native `if` and `while` |
-| Python | `print`, `input`, normal assignments, native `if` and `while` |
 | C++ | `std::cout`, `std::cin`/`std::getline`, normal variables, native `if` and `while` |
 
 Existing target-local helpers remain acceptable only when a current approved semantic rule genuinely requires them. Simplify inherited runtime-heavy machinery when working in that area; do not preserve it merely for obsolete exact cross-runtime edge parity.
+
+### Python
+
+Generated Python is a direct executable script:
+
+- ordinary learner statements are emitted at module top level;
+- required imports appear first and required helper functions follow them;
+- two generator-owned blank lines separate the final top-level helper definition from the learner-code region;
+- no generated `main()` function or `if __name__ == "__main__":` guard is added as generic boilerplate;
+- learner variables are ordinary module-level script variables;
+- `if`, `elif`, `else`, and `while` suites use normal four-space indentation;
+- a semantically empty branch or loop suite uses `pass` because Python requires an executable suite;
+- an empty whole program does not need `pass` and contains only the canonical final newline plus any source-authored layout;
+- importing a generated program may execute it, because `Program.py` is intended to run as a script and is not promised to be free of import-time side effects.
+
+This shape keeps direct mappings such as `PRINT "Hello World"` to `print("Hello World")` visible to a beginner. Required helpers remain top-level functions and must not force learner statements into an artificial outer scope.
 
 ## Future Targets
 

@@ -104,23 +104,13 @@ internal sealed class PythonCodeGenerator : ICodeGenerator
             source.AppendLine();
         }
 
-        source.AppendLine("def main() -> None:");
         AppendSourceItems(
             source,
             program.SourceItems,
-            "    ",
+            string.Empty,
             identifiers,
             knownValues,
             checkedArithmetic);
-        if (program.Statements.Count == 0)
-        {
-            source.AppendLine("    pass");
-        }
-
-        source.AppendLine();
-        source.AppendLine();
-        source.AppendLine("if __name__ == \"__main__\":");
-        source.AppendLine("    main()");
 
         return new GeneratedProgram(
             Language,

@@ -425,7 +425,7 @@ internal sealed class TargetIdentifierMap
             "case", "class", "continue", "def", "del", "elif", "else", "except", "finally",
             "for", "from", "global", "if", "import", "in", "is", "lambda", "match",
             "nonlocal", "not", "or", "pass", "raise", "return", "try", "while", "with",
-            "yield", "print", "str", "bool", "int", "abs", "isinstance", "main",
+            "yield", "print", "str", "bool", "int", "abs", "isinstance",
             "_smile_text", "_smile_div", "_smile_input", "_smile_read_line", "_smile_fail",
             "_smile_add", "_smile_subtract", "_smile_multiply", "_smile_negate",
             "_smile_divide", "_smile_checked", "_smile_next_byte", "_smile_pending_byte", "_smile_skip_lf",

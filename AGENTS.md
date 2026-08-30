@@ -35,6 +35,7 @@ The permanent mission applies to every target now and in the future.
 - Keep all ten generators, toolchains, tests, highlighting, Desktop/CLI exposure, and history available.
 - Routine work remains focused on the targets it changes; activating all ten does not require a full ten-toolchain matrix for every unrelated edit.
 - Do not add, recommend, prototype, or scaffold another destination language unless Sin explicitly changes the strategy.
+- Use a single-agent workflow by default. Do not delegate or spawn sub-agents unless Sin explicitly requests it.
 
 SMILE is also in temporary **Velocity Mode**:
 
@@ -57,6 +58,7 @@ Also run the narrow functional tests and smallest build appropriate to the chang
 - KISS and KISS v2, "The Sin Way," govern architecture, UI, runtime behavior, documentation, tests, and generated code.
 - Prefer the simplest complete native target construct. Add a helper only when it is genuinely necessary and does not hide the concept being taught.
 - Keep generated source minimal, readable, deterministic, educational, dependency-light, and proportional to the SMILE program.
+- Python target output is a direct executable script. Emit learner statements at module top level after only the imports and helpers actually required. Do not generate a `main()` function or `if __name__ == "__main__":` guard solely as boilerplate. Preserve normal indentation only for real Python suites such as helper functions, IF clauses, and WHILE bodies.
 - Preserve clear SMILE language semantics, expression intent, genuine IF/WHILE structure, current runtime storage, and the shared lexer/parser/binder/bound-tree pipeline.
 - Keep `Parser.cs` focused on parsing, `Binder.cs` focused on binding, `Generation.cs` as the small public facade, shared helpers under `src/SMILE.Engine/Generation`, and each destination generator focused.
 - The WPF UI thread must never be blocked by toolchain detection, compilation, linking, execution, process output, long file operations, or other noticeable work.

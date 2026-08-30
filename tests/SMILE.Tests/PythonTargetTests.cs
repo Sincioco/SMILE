@@ -37,7 +37,18 @@ public sealed class PythonTargetTests
     }
 
     [TestMethod]
-    public void Python_generator_emits_minimal_conventional_string_program()
+    public void Python_generator_emits_direct_top_level_PRINT_script()
+    {
+        GeneratedProgram program = Generate("PRINT \"Hello World\"");
+
+        Assert.AreEqual(
+            Lines("print(\"Hello World\")"),
+            program.PrimaryFile.Content);
+        AssertHasNoProgramWrapper(program.PrimaryFile.Content);
+    }
+
+    [TestMethod]
+    public void Python_generator_emits_minimal_top_level_string_script()
     {
         GeneratedProgram program = Generate("""
 LET Name = "Sin"
@@ -49,16 +60,12 @@ PRINT
         Assert.AreEqual("Program.py", program.PrimaryFile.RelativePath);
         Assert.AreEqual(
             Lines(
-                "def main() -> None:",
-                "    Name = \"Sin\"",
-                "    print(Name)",
-                "    print(\"Name\")",
-                "    print()",
-                "",
-                "",
-                "if __name__ == \"__main__\":",
-                "    main()"),
+                "Name = \"Sin\"",
+                "print(Name)",
+                "print(\"Name\")",
+                "print()"),
             program.PrimaryFile.Content);
+        AssertHasNoProgramWrapper(program.PrimaryFile.Content);
         Assert.IsFalse(program.PrimaryFile.Content.Contains("_smile_text", StringComparison.Ordinal));
         Assert.IsFalse(program.PrimaryFile.Content.Contains("_smile_div", StringComparison.Ordinal));
         Assert.IsFalse(program.PrimaryFile.Content.Contains("import ", StringComparison.Ordinal));
@@ -99,6 +106,7 @@ PRINT {Safe}
         StringAssert.Contains(python, "print(_smile_text(Same))");
         Assert.IsFalse(python.Contains(" / ", StringComparison.Ordinal));
         Assert.IsFalse(python.Contains("import ", StringComparison.Ordinal));
+        AssertHasNoProgramWrapper(python);
     }
 
     [TestMethod]
@@ -115,6 +123,119 @@ PRINT {Safe}
         string displayOnly = Generate("PRINT {49}").PrimaryFile.Content;
         StringAssert.Contains(displayOnly, "def _smile_text(value: object) -> str:");
         Assert.IsFalse(displayOnly.Contains("_smile_div", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void Python_generator_places_required_helpers_before_unindented_learner_statements()
+    {
+        string python = Generate("LET Ready = TRUE\nPRINT {Ready}").PrimaryFile.Content;
+
+        Assert.AreEqual(
+            Lines(
+                "def _smile_text(value: object) -> str:",
+                "    if isinstance(value, bool):",
+                "        return \"TRUE\" if value else \"FALSE\"",
+                "",
+                "    return str(value)",
+                "",
+                "",
+                "Ready = True",
+                "print(_smile_text(Ready))"),
+            python);
+        AssertHasNoProgramWrapper(python);
+    }
+
+    [TestMethod]
+    public void Python_generator_never_wraps_representative_program_shapes()
+    {
+        string[] sources =
+        {
+            "PRINT \"Hello\"",
+            "LET Name = \"Sin\"\nPRINT {Name}",
+            "LET Ready = TRUE\nPRINT {Ready}",
+            "LET Name = \"\"\nINPUT Name\nPRINT {Name}",
+            "LET Age = 49\nIF Age >= 18 THEN\n    PRINT \"Adult\"\nEND IF",
+            "LET Ready = FALSE\nWHILE Ready = TRUE\n    PRINT \"Waiting\"\nEND WHILE"
+        };
+
+        foreach (string source in sources)
+        {
+            AssertHasNoProgramWrapper(Generate(source).PrimaryFile.Content);
+        }
+
+        string input = NormalizeLineEndings(
+            Generate("LET Name = \"\"\nINPUT Name\nPRINT {Name}").PrimaryFile.Content);
+        StringAssert.Contains(
+            input,
+            "\n\nName = \"\"\nName = _smile_input_string(\"Name\")\nprint(Name)\n");
+        Assert.IsFalse(input.Contains("\n    Name = \"\"", StringComparison.Ordinal), input);
+    }
+
+    [TestMethod]
+    public void Python_IF_and_WHILE_use_only_normal_suite_indentation()
+    {
+        string conditional = Generate("""
+LET Age = 49
+
+IF Age >= 18 THEN
+    PRINT "Adult"
+ELSE
+    PRINT "Minor"
+END IF
+""").PrimaryFile.Content;
+
+        Assert.AreEqual(
+            Lines(
+                "Age = 49",
+                "",
+                "if Age >= 18:",
+                "    print(\"Adult\")",
+                "else:",
+                "    print(\"Minor\")"),
+            conditional);
+
+        string loop = NormalizeLineEndings(Generate("""
+LET Counter = 0
+
+WHILE Counter < 3
+    PRINT {Counter}
+    SET Counter = Counter + 1
+END WHILE
+""").PrimaryFile.Content);
+
+        StringAssert.Contains(
+            loop,
+            "Counter = 0\n\nwhile Counter < 3:\n" +
+            "    print(_smile_text(Counter))\n" +
+            "    Counter = _smile_add(Counter, 1)\n");
+        Assert.IsFalse(loop.Contains("\n    while Counter < 3:", StringComparison.Ordinal), loop);
+        AssertHasNoProgramWrapper(conditional);
+        AssertHasNoProgramWrapper(loop);
+    }
+
+    [TestMethod]
+    public void Python_empty_comment_only_and_layout_only_programs_need_no_program_level_pass()
+    {
+        string empty = Generate(string.Empty).PrimaryFile.Content;
+        Assert.AreEqual(Environment.NewLine, empty);
+        Assert.IsFalse(empty.Contains("pass", StringComparison.Ordinal));
+        AssertHasNoProgramWrapper(empty);
+
+        string commentOnly = Generate("REM Greeting").PrimaryFile.Content;
+        Assert.AreEqual(Lines("# Greeting"), commentOnly);
+        Assert.IsFalse(commentOnly.Contains("pass", StringComparison.Ordinal));
+        AssertHasNoProgramWrapper(commentOnly);
+
+        string laidOut = Generate("\nREM Greeting\n\nPRINT \"Hello World\"\n").PrimaryFile.Content;
+        Assert.AreEqual(
+            Lines(
+                "",
+                "# Greeting",
+                "",
+                "print(\"Hello World\")"),
+            laidOut);
+        Assert.IsFalse(laidOut.Contains("    # Greeting", StringComparison.Ordinal));
+        AssertHasNoProgramWrapper(laidOut);
     }
 
     [TestMethod]
@@ -158,6 +279,8 @@ LET G = NOT (49 = 49)
 LET class = "class"
 LET match = "match"
 LET main = "main"
+LET __name__ = "__name__"
+LET sys = "sys"
 LET str = "str"
 LET isinstance = "isinstance"
 LET _smile_text = "_smile_text"
@@ -167,6 +290,8 @@ LET _ = "underscore"
 PRINT {class}
 PRINT {match}
 PRINT {main}
+PRINT {__name__}
+PRINT {sys}
 PRINT {str}
 PRINT {isinstance}
 PRINT {_smile_text}
@@ -176,13 +301,17 @@ PRINT {_}
 
         StringAssert.Contains(python, "_smile_class = \"class\"");
         StringAssert.Contains(python, "_smile_match = \"match\"");
-        StringAssert.Contains(python, "_smile_main = \"main\"");
+        StringAssert.Contains(python, "main = \"main\"");
+        StringAssert.Contains(python, "print(main)");
+        StringAssert.Contains(python, "_smile___name__ = \"__name__\"");
+        StringAssert.Contains(python, "_smile_sys = \"sys\"");
         StringAssert.Contains(python, "_smile_str = \"str\"");
         StringAssert.Contains(python, "_smile_isinstance = \"isinstance\"");
         StringAssert.Contains(python, "_smile__smile_text = \"_smile_text\"");
         StringAssert.Contains(python, "_smile__smile_div = \"_smile_div\"");
         StringAssert.Contains(python, "_ = \"underscore\"");
         StringAssert.Contains(python, "print(_smile__smile_text)");
+        AssertHasNoProgramWrapper(python);
     }
 
     [TestMethod]
@@ -263,6 +392,13 @@ PRINT {Message}
 
     private static string Lines(params string[] lines) =>
         string.Join(Environment.NewLine, lines) + Environment.NewLine;
+
+    private static void AssertHasNoProgramWrapper(string python)
+    {
+        Assert.IsFalse(python.Contains("def main() -> None:", StringComparison.Ordinal), python);
+        Assert.IsFalse(python.Contains("if __name__ == \"__main__\":", StringComparison.Ordinal), python);
+        Assert.IsFalse(python.Contains("\n    main()", StringComparison.Ordinal), python);
+    }
 
     private static string NormalizeLineEndings(string text) =>
         text.Replace("\r\n", "\n", StringComparison.Ordinal);

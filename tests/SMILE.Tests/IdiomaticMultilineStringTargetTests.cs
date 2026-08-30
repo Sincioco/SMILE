@@ -188,8 +188,8 @@ PRINT {Value}
         Assert.IsFalse(swift.Contains("let Value: String = \"\"\"", StringComparison.Ordinal));
 
         string python = Generate(source, TargetLanguage.Python);
-        StringAssert.Contains(python, "Value = (\n        \"A\\x00B\\n\"");
-        StringAssert.Contains(python, "        \"C\"\n    )");
+        StringAssert.Contains(python, "Value = (\n    \"A\\x00B\\n\"");
+        StringAssert.Contains(python, "    \"C\"\n)");
 
         string cpp = Generate(source, TargetLanguage.Cpp);
         StringAssert.Contains(cpp, "std::string Value = std::string{\"A\\000B\\nC\", 5};");

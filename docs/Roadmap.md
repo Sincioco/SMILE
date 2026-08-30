@@ -101,7 +101,7 @@
 ## Implemented In v0.4.2
 
 - Add Python as the ninth first-class target with stable ID `python` and primary file `Program.py`.
-- Generate conventional dependency-free Python 3.10+ source directly from `BoundProgram`, including `main()` and the standard main guard.
+- Generate conventional dependency-free Python 3.10+ source directly from `BoundProgram`. The original v0.4.2 release used a function-and-guard wrapper; the current Strategic Reset policy supersedes that shape with direct top-level executable scripts.
 - Preserve truncation-toward-zero Integer division with an on-demand `_smile_div` helper and canonical Integer/Boolean display with an on-demand `_smile_text` helper.
 - Preserve Python f-string interpolation, literal braces, official string escapes, short-circuit `and`/`or`, case-sensitive string equality, and precedence-aware bound-tree rendering.
 - Add collision-safe Python identifier mapping for keywords, soft keywords, built-ins, and generated helper names.
@@ -242,6 +242,7 @@ SMILE is now re-centered on beginner-readable native target code. Generated sour
 Permanent direction:
 
 - use normal idiomatic destination-language constructs;
+- emit Python learner statements directly at module top level after only required imports and helpers;
 - prefer native input, output, variables, expressions, conditions, loops, and interpolation;
 - avoid generated runtime machinery whose main purpose is obscure cross-runtime parity;
 - keep curly braces limited to interpolation holes in text-oriented syntax;

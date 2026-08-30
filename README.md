@@ -223,6 +223,20 @@ No eleventh destination language may be added or recommended unless Sin explicit
 
 Generated source is a primary teaching artifact. It must be minimal, proportional to the SMILE program, recognizable to a beginner, deterministic, and dependency-light.
 
+Python is intentionally generated as a direct executable script so the teaching correspondence stays visible. A one-statement SMILE program:
+
+```basic
+PRINT "Hello World"
+```
+
+becomes the ordinary top-level Python statement:
+
+```python
+print("Hello World")
+```
+
+SMILE adds Python imports and helper functions before learner statements only when the bound program requires them. It does not add a boilerplate function or module-entry guard merely to make a runnable script.
+
 The reset-reference targets illustrate the normal direction:
 
 | SMILE concept | C# | C | Windows x64 MASM |

@@ -558,7 +558,12 @@ PRINT {Grade}
             StringAssert.Contains(generated.PrimaryFile.Content, "quiet");
         }
 
-        StringAssert.Contains(Generate(source, TargetLanguage.Python).PrimaryFile.Content, "pass");
+        string python = Generate(source, TargetLanguage.Python).PrimaryFile.Content;
+        Assert.IsFalse(python.Contains("pass", StringComparison.Ordinal), python);
+        Assert.IsFalse(python.Contains("def main", StringComparison.Ordinal), python);
+        StringAssert.Contains(python, "# quiet");
+        StringAssert.Contains(python, "# still quiet");
+        Assert.IsFalse(python.Contains("    # quiet", StringComparison.Ordinal), python);
 
         const string blankOnlySource = "\n \t\n";
         BindResult blankBinding = _transpiler.Bind(blankOnlySource);
@@ -717,7 +722,7 @@ PRINT {Result}
                     "SMILE PRINT reads current storage when it directly names a variable.\n\n    DISPLAY \"a\".",
                 TargetLanguage.ObjectiveC => "int a = 49;\n\n\n    printf(\"a\\n\");",
                 TargetLanguage.Swift => "let a: Int = 49\n\nprint(\"a\")",
-                TargetLanguage.Python => "a = 49\n\n    print(\"a\")",
+                TargetLanguage.Python => "a = 49\n\nprint(\"a\")",
                 TargetLanguage.Cpp => "int a = 49;\n\n\n    std::cout << \"a\" << '\\n';",
                 _ => throw new ArgumentOutOfRangeException(nameof(language), language, null)
             };
@@ -727,7 +732,7 @@ PRINT {Result}
     }
 
     [TestMethod]
-    public void Split_targets_place_layout_in_the_one_correct_user_code_region()
+    public void Structured_targets_place_layout_in_the_one_correct_user_code_region()
     {
         const string source = """
 LET a = 49
@@ -742,10 +747,12 @@ PRINT a
 """;
 
         string python = Generate(source, TargetLanguage.Python).PrimaryFile.Content;
-        int pythonMain = python.IndexOf("def main", StringComparison.Ordinal);
+        int pythonIf = python.IndexOf("if a == 49:", StringComparison.Ordinal);
         int pythonComment = python.IndexOf("branch comment", StringComparison.Ordinal);
-        Assert.IsGreaterThan(-1, pythonMain, python);
-        Assert.IsGreaterThan(pythonMain, pythonComment, python);
+        Assert.IsGreaterThan(-1, pythonIf, python);
+        Assert.IsGreaterThan(pythonIf, pythonComment, python);
+        Assert.IsFalse(python.Contains("def main", StringComparison.Ordinal), python);
+        StringAssert.Contains(python, "    # branch comment");
         StringAssert.Contains(python, "pass");
 
         string masm = Generate(source, TargetLanguage.MasmX64).PrimaryFile.Content;
