@@ -1,0 +1,58 @@
+{
+  "manifestFormatVersion": 1,
+  "profileId": "smile-core-basic",
+  "profileVersion": "2.0",
+  "authority": {
+    "repository": "Sincioco/SMILE-2.0",
+    "commit": "9aa9583a651eab452ea3af80772b08b68fc03220"
+  },
+  "includedFeatures": [
+    "SMILE Core BASIC Profile 1.0",
+    "Option Explicit",
+    "Sub and Function routines",
+    "Call and Return",
+    "typed ByVal parameters",
+    "routine-local scope and recursion",
+    "Select Case",
+    "fixed one-dimensional arrays"
+  ],
+  "excludedFeatureFamilies": [
+    "console Input",
+    "ByRef, Optional, ParamArray, and named arguments",
+    "multidimensional and dynamic arrays",
+    "modules and imports",
+    "user-defined and object types",
+    "graphics, audio, files, and data",
+    "historical SMILE 1.0 source forms"
+  ],
+  "outputComparison": "CRLF and CR normalize to LF.",
+  "fixtures": [
+    {
+      "path": "canonical.smile",
+      "sha256": "508cd6032e712f3497872476583cda058505bde747670dcb3c541b4dd0d89249",
+      "expectedStandardOutput": "canonical.stdout"
+    },
+    {
+      "path": "canonical.stdout",
+      "sha256": "8fefdcd14242d1fc4d24de5d4460f38259b8c1b24c87de8584930a02f1985dc3"
+    },
+    {
+      "path": "byval-scope.smile",
+      "sha256": "b6dc161edc8803b4970d2f0d80f47d4f27132c68de1b0d71e880134103869985",
+      "expectedStandardOutput": "byval-scope.stdout"
+    },
+    {
+      "path": "byval-scope.stdout",
+      "sha256": "b15600d5ed3d5d0b6e2b8d307327594009c93947f138dd83d528cbd6a218bd07"
+    },
+    {
+      "path": "recursion.smile",
+      "sha256": "2e54f90ba52a417fe21a8107e111152b4eb4b6463eca2fc6af40d8b9cc1c37f4",
+      "expectedStandardOutput": "recursion.stdout"
+    },
+    {
+      "path": "recursion.stdout",
+      "sha256": "1d7c601de16f9dca5c3da6174464e71184414ae979e425203079e30b1c9f4ba7"
+    }
+  ]
+}

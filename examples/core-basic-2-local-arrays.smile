@@ -1,0 +1,26 @@
+Option Explicit
+
+Print LocalArrayTotal(3)
+Print LocalArrayTotal(5)
+Print RecursiveArrayTotal(3)
+
+End Program
+
+Function LocalArrayTotal(ByVal Seed As Number) As Number
+    Dim Values[3] As Number
+    Values[0] = Seed
+    Values[1] = Seed + 1
+    Values[2] = Seed + 2
+    Return Values[0] + Values[1] + Values[2]
+End Function
+
+Function RecursiveArrayTotal(ByVal Depth As Number) As Number
+    Dim Values[2] As Number
+    Values[0] = Depth
+    Values[1] = Depth * 10
+    If Depth = 0 Then
+        Return Values[0] + Values[1]
+    Else
+        Return Values[0] + Values[1] + RecursiveArrayTotal(Depth - 1)
+    End If
+End Function

@@ -43,4 +43,24 @@ Print Total
             Assert.IsFalse(highlighter.HighlightLine(line).Sections.Any(section => section.Color.Name == "Keyword"));
         }
     }
+
+    [TestMethod]
+    public void Profile_two_routines_select_and_arrays_are_highlighted()
+    {
+        const string source = "Option Explicit\nFunction Pick(ByVal Values[3] As Number) As Number\nSelect Case Values[0]\nCase 1\nReturn Values[1]\nEnd Select\nEnd Function";
+        var document = new TextDocument(source);
+        IHighlightingDefinition definition = SyntaxHighlightingCatalog.GetDefinition("smile")!;
+        var highlighter = new DocumentHighlighter(document, definition);
+
+        foreach (int line in new[] { 1, 2, 3, 4, 5, 6, 7 })
+        {
+            Assert.IsTrue(
+                highlighter.HighlightLine(line).Sections.Any(section => section.Color.Name == "Keyword"),
+                $"Expected a Profile 2 keyword on line {line}.");
+        }
+
+        Assert.IsTrue(
+            highlighter.HighlightLine(2).Sections.Any(section => section.Color.Name == "Operator"),
+            "Array brackets and parameter punctuation should use the operator color.");
+    }
 }

@@ -1,15 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
-using System.Text;
 
 namespace SMILE.Engine;
-
-public static class SmileLanguage
-{
-    // Retained as a conservative planner capacity and for compatibility paths.
-    // The Strategic Reset removed this value from the public INPUT contract.
-    public const int MaximumInputLineUtf8Bytes = 4096;
-}
 
 public enum DiagnosticSeverity
 {
@@ -40,11 +32,7 @@ public abstract record SyntaxNode(TextSpan Span);
 
 public enum FullLineCommentMarker
 {
-    Apostrophe,
-    Rem,
-    SlashSlash,
-    Hash,
-    DashDash
+    Apostrophe
 }
 
 // A source-item list retains the learner's authored layout in the same order
@@ -80,32 +68,6 @@ public sealed record FullLineCommentSyntax(
 
 public sealed record BlankLineSyntax(TextSpan Span)
     : SourceItemSyntax(Span);
-
-public sealed record PrintStatementSyntax(
-    ExpressionSyntax Value,
-    TextSpan Span,
-    bool IsBlankLine = false)
-    : StatementSyntax(Span);
-
-public sealed record LetStatementSyntax(
-    string Name,
-    TextSpan NameSpan,
-    ExpressionSyntax Initializer,
-    TextSpan Span)
-    : StatementSyntax(Span);
-
-public sealed record SetStatementSyntax(
-    string Name,
-    TextSpan NameSpan,
-    ExpressionSyntax Value,
-    TextSpan Span)
-    : StatementSyntax(Span);
-
-public sealed record InputStatementSyntax(
-    string Name,
-    TextSpan NameSpan,
-    TextSpan Span)
-    : StatementSyntax(Span);
 
 public sealed record ConditionalClauseSyntax
 {
@@ -153,30 +115,6 @@ public sealed record IfStatementSyntax : StatementSyntax
     public bool HasElseClause { get; }
 }
 
-public sealed record WhileStatementSyntax : StatementSyntax
-{
-    public WhileStatementSyntax(
-        ExpressionSyntax condition,
-        IReadOnlyList<SourceItemSyntax> sourceItems,
-        TextSpan keywordSpan,
-        TextSpan span)
-        : base(span)
-    {
-        Condition = condition;
-        SourceItems = sourceItems;
-        KeywordSpan = keywordSpan;
-        Statements = sourceItems.OfType<StatementSyntax>().ToArray();
-    }
-
-    public ExpressionSyntax Condition { get; }
-
-    public IReadOnlyList<SourceItemSyntax> SourceItems { get; }
-
-    public IReadOnlyList<StatementSyntax> Statements { get; }
-
-    public TextSpan KeywordSpan { get; }
-}
-
 public abstract record ExpressionSyntax(TextSpan Span)
     : SyntaxNode(Span);
 
@@ -184,14 +122,6 @@ public sealed record ErrorExpressionSyntax(TextSpan Span)
     : ExpressionSyntax(Span);
 
 public sealed record StringLiteralExpressionSyntax(
-    string Value,
-    TextSpan Span)
-    : ExpressionSyntax(Span);
-
-// The dedicated syntax form lets the parser enforce complete-value LET/SET
-// placement while the binder still lowers the already-normalized value to the
-// one canonical bound String literal used by every target.
-public sealed record BlockStringLiteralExpressionSyntax(
     string Value,
     TextSpan Span)
     : ExpressionSyntax(Span);
@@ -230,24 +160,6 @@ public sealed record ParenthesizedExpressionSyntax(
     SyntaxToken CloseParenthesis,
     TextSpan Span)
     : ExpressionSyntax(Span);
-
-public sealed record InterpolatedStringExpressionSyntax(
-    IReadOnlyList<InterpolatedPartSyntax> Parts,
-    TextSpan Span)
-    : ExpressionSyntax(Span);
-
-public abstract record InterpolatedPartSyntax(TextSpan Span)
-    : SyntaxNode(Span);
-
-public sealed record InterpolatedTextPartSyntax(
-    string Text,
-    TextSpan Span)
-    : InterpolatedPartSyntax(Span);
-
-public sealed record InterpolationExpressionPartSyntax(
-    ExpressionSyntax Expression,
-    TextSpan Span)
-    : InterpolatedPartSyntax(Span);
 
 // Expected source errors are returned as diagnostics instead of exceptions.
 // That lets the CLI and WPF app display friendly messages and keep running.
@@ -305,7 +217,7 @@ public readonly record struct SmileValue
         {
             SmileType.String => StringValue,
             SmileType.Integer => IntegerValue.ToString(CultureInfo.InvariantCulture),
-            SmileType.Boolean => BooleanValue ? "TRUE" : "FALSE",
+            SmileType.Boolean => BooleanValue ? "True" : "False",
             _ => string.Empty
         };
 }
@@ -314,7 +226,25 @@ public sealed record VariableSymbol(
     string Name,
     TextSpan DeclarationSpan,
     SmileType Type,
-    bool IsConstant = false);
+    bool IsConstant = false,
+    string? RoutineName = null,
+    int ArrayLength = 0,
+    bool IsParameter = false)
+{
+    public bool IsArray => ArrayLength > 0;
+
+    public bool IsGlobal => RoutineName is null;
+}
+
+public sealed record RoutineSymbol(
+    string Name,
+    TextSpan DeclarationSpan,
+    RoutineKind Kind,
+    IReadOnlyList<VariableSymbol> Parameters,
+    SmileType? ReturnType)
+{
+    public bool IsFunction => Kind is RoutineKind.Function;
+}
 
 // Bound nodes describe what the program means after name lookup and type
 // checking. Generators consume this layer so no backend has to reparse SMILE.
@@ -324,10 +254,14 @@ public sealed record BoundProgram
 {
     public BoundProgram(
         IReadOnlyList<BoundSourceItem> SourceItems,
-        IReadOnlyList<VariableSymbol> Variables)
+        IReadOnlyList<VariableSymbol> Variables,
+        IReadOnlyList<BoundRoutineDeclaration>? Routines = null,
+        bool OptionExplicit = false)
     {
         this.SourceItems = SourceItems;
         this.Variables = Variables;
+        this.Routines = Routines ?? Array.Empty<BoundRoutineDeclaration>();
+        this.OptionExplicit = OptionExplicit;
         Statements = SourceItems.OfType<BoundStatement>().ToArray();
     }
 
@@ -336,6 +270,13 @@ public sealed record BoundProgram
     public IReadOnlyList<BoundStatement> Statements { get; }
 
     public IReadOnlyList<VariableSymbol> Variables { get; }
+
+    public IReadOnlyList<BoundRoutineDeclaration> Routines { get; }
+
+    public bool OptionExplicit { get; }
+
+    public IEnumerable<VariableSymbol> AllVariables =>
+        Variables.Concat(Routines.SelectMany(routine => routine.Locals));
 
 }
 
@@ -349,11 +290,6 @@ public sealed record BoundFullLineComment(
 
 public sealed record BoundBlankLine()
     : BoundSourceItem;
-
-public sealed record BoundLetStatement(
-    VariableSymbol Variable,
-    BoundExpression Initializer)
-    : BoundStatement;
 
 public sealed record BoundSetStatement(
     VariableSymbol Variable,
@@ -369,12 +305,39 @@ public sealed record BoundConstStatement(
 public sealed record BoundDimStatement(VariableSymbol Variable)
     : BoundStatement;
 
-public sealed record BoundInputStatement(VariableSymbol Variable)
+public sealed record BoundRoutineDeclaration(
+    RoutineSymbol Symbol,
+    IReadOnlyList<BoundSourceItem> SourceItems,
+    IReadOnlyList<VariableSymbol> Locals)
+{
+    public IReadOnlyList<BoundStatement> Statements => SourceItems.OfType<BoundStatement>().ToArray();
+}
+
+public sealed record BoundArraySetStatement(
+    VariableSymbol Array,
+    BoundExpression Index,
+    BoundExpression Value)
     : BoundStatement;
 
-public sealed record BoundPrintStatement(
-    BoundExpression Value,
-    bool IsBlankLine = false)
+public sealed record BoundCallStatement(
+    RoutineSymbol Routine,
+    IReadOnlyList<BoundExpression> Arguments)
+    : BoundStatement;
+
+public sealed record BoundReturnStatement(BoundExpression? Value)
+    : BoundStatement;
+
+public sealed record BoundSelectCaseClause(
+    SmileValue? Value,
+    bool IsElse,
+    IReadOnlyList<BoundSourceItem> SourceItems)
+{
+    public IReadOnlyList<BoundStatement> Statements => SourceItems.OfType<BoundStatement>().ToArray();
+}
+
+public sealed record BoundSelectStatement(
+    BoundExpression Selector,
+    IReadOnlyList<BoundSelectCaseClause> Cases)
     : BoundStatement;
 
 public sealed record BoundCorePrintStatement(
@@ -420,28 +383,6 @@ public sealed record BoundIfStatement : BoundStatement
     public IReadOnlyList<BoundStatement> ElseStatements { get; }
 
     public bool HasElseClause { get; }
-}
-
-public sealed record BoundWhileStatement : BoundStatement
-{
-    public BoundWhileStatement(
-        BoundExpression condition,
-        IReadOnlyList<BoundSourceItem> sourceItems,
-        TextSpan keywordSpan)
-    {
-        Condition = condition;
-        SourceItems = sourceItems;
-        KeywordSpan = keywordSpan;
-        Statements = sourceItems.OfType<BoundStatement>().ToArray();
-    }
-
-    public BoundExpression Condition { get; }
-
-    public IReadOnlyList<BoundSourceItem> SourceItems { get; }
-
-    public IReadOnlyList<BoundStatement> Statements { get; }
-
-    public TextSpan KeywordSpan { get; }
 }
 
 public sealed record BoundForStatement(
@@ -493,6 +434,16 @@ public sealed record BoundBooleanLiteralExpression(bool Value)
 public sealed record BoundVariableExpression(VariableSymbol Variable)
     : BoundExpression(Variable.Type);
 
+public sealed record BoundArrayExpression(
+    VariableSymbol Array,
+    BoundExpression Index)
+    : BoundExpression(Array.Type);
+
+public sealed record BoundCallExpression(
+    RoutineSymbol Routine,
+    IReadOnlyList<BoundExpression> Arguments)
+    : BoundExpression(Routine.ReturnType ?? SmileType.Error);
+
 public sealed record BoundUnaryExpression(
     BoundUnaryOperator Operator,
     BoundExpression Operand,
@@ -505,18 +456,6 @@ public sealed record BoundBinaryExpression(
     BoundExpression Right,
     TextSpan OperatorSpan)
     : BoundExpression(Operator.ResultType);
-
-public sealed record BoundInterpolatedStringExpression(
-    IReadOnlyList<BoundInterpolatedPart> Parts)
-    : BoundExpression(SmileType.String);
-
-public abstract record BoundInterpolatedPart;
-
-public sealed record BoundInterpolatedTextPart(string Text)
-    : BoundInterpolatedPart;
-
-public sealed record BoundInterpolationExpressionPart(BoundExpression Expression)
-    : BoundInterpolatedPart;
 
 public enum BoundUnaryOperatorKind
 {
@@ -671,71 +610,6 @@ public sealed record BindResult(
         Diagnostics.All(diagnostic => diagnostic.Severity != DiagnosticSeverity.Error);
 }
 
-public abstract record PrintSegment;
-
-public sealed record LiteralPrintSegment(string Text)
-    : PrintSegment;
-
-public sealed record VariablePrintSegment(VariableSymbol Variable)
-    : PrintSegment;
-
-public static class BoundStringExpression
-{
-    public static IReadOnlyList<PrintSegment> FlattenForOutput(BoundExpression expression)
-    {
-        var segments = new List<PrintSegment>();
-        Append(expression, segments);
-        return segments;
-    }
-
-    public static IReadOnlyList<PrintSegment> Flatten(BoundExpression expression) =>
-        FlattenForOutput(expression);
-
-    private static void Append(BoundExpression expression, List<PrintSegment> segments)
-    {
-        switch (expression)
-        {
-            case BoundStringLiteralExpression literal:
-                if (literal.Value.Length > 0)
-                {
-                    segments.Add(new LiteralPrintSegment(literal.Value));
-                }
-
-                break;
-
-            case BoundVariableExpression variable:
-                segments.Add(new VariablePrintSegment(variable.Variable));
-                break;
-
-            case BoundBinaryExpression { Operator.Kind: BoundBinaryOperatorKind.StringConcatenation } binary:
-                Append(binary.Left, segments);
-                Append(binary.Right, segments);
-                break;
-
-            case BoundInterpolatedStringExpression interpolated:
-                foreach (BoundInterpolatedPart part in interpolated.Parts)
-                {
-                    switch (part)
-                    {
-                        case BoundInterpolatedTextPart textPart:
-                            if (textPart.Text.Length > 0)
-                            {
-                                segments.Add(new LiteralPrintSegment(textPart.Text));
-                            }
-
-                            break;
-
-                        case BoundInterpolationExpressionPart expressionPart:
-                            Append(expressionPart.Expression, segments);
-                            break;
-                    }
-                }
-
-                break;
-        }
-    }
-}
-
 public enum StaticEvaluationKind
 {
     Known,
@@ -812,13 +686,11 @@ public static class BoundExpressionEvaluator
             BoundVariableExpression => StaticEvaluationResult.Unknown(),
             BoundUnaryExpression unary => EvaluateUnary(unary, values),
             BoundBinaryExpression binary => EvaluateBinary(binary, values),
-            BoundInterpolatedStringExpression interpolated => EvaluateInterpolatedString(interpolated, values),
             _ => StaticEvaluationResult.Unknown()
         };
 
-    // This compatibility API remains useful for concrete-only callers. A
-    // result that is known only on successful runtime paths is deliberately not
-    // returned as a foldable value when reaching it may itself fail.
+    // A result that is known only on successful runtime paths is deliberately
+    // not returned as a foldable value when reaching it may itself fail.
     public static bool TryEvaluate(
         BoundExpression expression,
         IReadOnlyDictionary<VariableSymbol, SmileValue> values,
@@ -1054,53 +926,6 @@ public static class BoundExpressionEvaluator
         return StaticEvaluationResult.Unknown(mayFail);
     }
 
-    private static StaticEvaluationResult EvaluateInterpolatedString(
-        BoundInterpolatedStringExpression interpolated,
-        IReadOnlyDictionary<VariableSymbol, SmileValue> values)
-    {
-        var builder = new StringBuilder();
-        bool allKnown = true;
-        bool mayFail = false;
-
-        foreach (BoundInterpolatedPart part in interpolated.Parts)
-        {
-            if (part is BoundInterpolatedTextPart text)
-            {
-                if (allKnown)
-                {
-                    builder.Append(text.Text);
-                }
-
-                continue;
-            }
-
-            var interpolation = (BoundInterpolationExpressionPart)part;
-            StaticEvaluationResult value = Evaluate(interpolation.Expression, values);
-            if (value.IsInvalid)
-            {
-                return mayFail
-                    ? StaticEvaluationResult.Unknown(mayFailAtRuntime: true)
-                    : value;
-            }
-
-            mayFail |= value.MayFailAtRuntime;
-            if (!value.IsKnown)
-            {
-                allKnown = false;
-                continue;
-            }
-
-            if (allKnown)
-            {
-                builder.Append(value.Value.ToDisplayText());
-            }
-        }
-
-        return allKnown
-            ? StaticEvaluationResult.Known(SmileValue.FromString(builder.ToString()), mayFail)
-            : StaticEvaluationResult.Unknown(mayFail);
-    }
-
     private static SmileValue ApplyBinary(
         BoundBinaryOperatorKind kind,
         SmileValue left,
@@ -1211,7 +1036,7 @@ public static class TargetLanguageInfo
             TargetLanguage.CSharp => "C#",
             TargetLanguage.C => "C",
             TargetLanguage.MasmX64 => "Assembly - Windows x64 MASM",
-            TargetLanguage.JavaScript => "JavaScript",
+            TargetLanguage.JavaScript => "JavaScript (Node.js)",
             TargetLanguage.Java => "Java",
             TargetLanguage.Cobol => "COBOL",
             TargetLanguage.ObjectiveC => "Objective-C",

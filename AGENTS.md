@@ -2,13 +2,13 @@
 
 ## NON-NEGOTIABLE SMILE MISSION
 
-SMILE means **Simple Modern Interactive Learning Environment**. It is a beginner-first educational programming language.
+SMILE means **Simple Modern and Intuitive Language for Everyone**. It is a beginner-first educational programming language.
 
 Generated target code is part of the teaching experience. It **MUST** use the normal, idiomatic, beginner-readable way a programmer would ordinarily express the same idea in the destination language whenever practical.
 
 Do not introduce compiler-generated runtime machinery when the destination language already provides a normal native construct for the feature. Existing implementation complexity is not itself a requirement, and an old test does not make a superseded behavior permanent.
 
-Curly braces `{ }` identify interpolation holes in text-oriented syntax such as raw `PRINT` templates and `$"..."` strings. They are not general variable-reference delimiters. Write variables directly in statement and expression positions, including `INPUT Name`, `SET Name = "Sin"`, and `IF Name = "Sin" THEN`.
+SMILE 1.0 accepts one canonical Core BASIC 2 grammar. Write variables directly in statement and expression positions, including `Name = "Sin"`, `Print Name`, and `If Name = "Sin" Then`. Apostrophes start comments; historical raw Print templates, interpolation, `LET`, `SET`, `INPUT`, and `WHILE` forms are not active language syntax.
 
 Before changing the compiler, generators, language specifications, runtime behavior, or target tests, read [docs/SMILE Core Principles.md](docs/SMILE%20Core%20Principles.md) and the relevant current official specification.
 
@@ -18,12 +18,13 @@ When sources conflict, the higher source governs:
 
 1. Direct current instruction from Sin.
 2. This root `AGENTS.md`.
-3. `docs/SMILE Core Principles.md`.
-4. Current official specifications under `docs/SMILE Language Specification/`.
-5. Current architecture, generation, and toolchain standards.
-6. Current milestone implementation instructions.
-7. Historical files under `Requirements/`.
-8. Historical commit messages and old implementation notes.
+3. The current SMILE 2.0 source language implementation for shared syntax and semantics; inspect it read-only when behavior differs.
+4. `docs/SMILE Core Principles.md`.
+5. Current official specifications under `docs/SMILE Language Specification/`.
+6. Current architecture, generation, and toolchain standards.
+7. Current milestone implementation instructions.
+8. Historical files under `Requirements/`.
+9. Historical commit messages and old implementation notes.
 
 Do not silently average conflicting requirements. Historical requirements may explain how SMILE reached its current state, but they cannot override current governance or specifications.
 
@@ -31,7 +32,7 @@ Do not silently average conflicting requirements. Historical requirements may ex
 
 The permanent mission applies to every target now and in the future.
 
-- Active targets: C#, C, Windows x64 MASM Assembly, JavaScript, Java, COBOL, Objective-C, Swift, Python, and C++.
+- Active targets: C#, C, Windows x64 MASM Assembly, JavaScript (Node.js), Java, COBOL, Objective-C, Swift, Python, and C++.
 - Keep all ten generators, toolchains, tests, highlighting, Desktop/CLI exposure, and history available.
 - Routine work remains focused on the targets it changes; activating all ten does not require a full ten-toolchain matrix for every unrelated edit.
 - Do not add, recommend, prototype, or scaffold another destination language unless Sin explicitly changes the strategy.
@@ -45,7 +46,7 @@ SMILE is also in temporary **Velocity Mode**:
 - Automatic GitHub Actions triggers and the exact-SHA post-push completion gate are suspended. `SMILE CI` remains manually runnable with `workflow_dispatch`.
 - Velocity Mode never permits knowingly broken builds, skipped directly relevant tests, hidden failures, or weakened semantics by accident.
 
-After changing an active generator, `INPUT`, `PRINT`, `LET`, `SET`, `IF`, `WHILE`, interpolation, target expression rendering, or runtime-generation policy, run the fast mission guardrail:
+After changing an active generator, assignment, `Print`, `If`, `For`, `Do`, routines, `Select Case`, arrays, target expression rendering, or runtime-generation policy, run the fast mission guardrail:
 
 ```powershell
 dotnet test tests/SMILE.Tests/SMILE.Tests.csproj -c Debug --filter TestCategory=MissionGuardrail -nologo
@@ -58,8 +59,8 @@ Also run the narrow functional tests and smallest build appropriate to the chang
 - KISS and KISS v2, "The Sin Way," govern architecture, UI, runtime behavior, documentation, tests, and generated code.
 - Prefer the simplest complete native target construct. Add a helper only when it is genuinely necessary and does not hide the concept being taught.
 - Keep generated source minimal, readable, deterministic, educational, dependency-light, and proportional to the SMILE program.
-- Python target output is a direct executable script. Emit learner statements at module top level after only the imports and helpers actually required. Do not generate a `main()` function or `if __name__ == "__main__":` guard solely as boilerplate. Preserve normal indentation only for real Python suites such as helper functions, IF clauses, and WHILE bodies.
-- Preserve clear SMILE language semantics, expression intent, genuine IF/WHILE structure, current runtime storage, and the shared lexer/parser/binder/bound-tree pipeline.
+- Python target output is a direct executable script. Emit learner statements at module top level after only the imports and helpers actually required. Do not generate a `main()` function or `if __name__ == "__main__":` guard solely as boilerplate. Preserve normal indentation only for real Python suites such as routines, `If`, `For`, and `Do` bodies.
+- Preserve clear SMILE language semantics, expression intent, genuine `If`/`For`/`Do` structure, current runtime storage, and the shared lexer/parser/binder/bound-tree pipeline.
 - Keep `Parser.cs` focused on parsing, `Binder.cs` focused on binding, `Generation.cs` as the small public facade, shared helpers under `src/SMILE.Engine/Generation`, and each destination generator focused.
 - The WPF UI thread must never be blocked by toolchain detection, compilation, linking, execution, process output, long file operations, or other noticeable work.
 - Recoverable Desktop failures must report a concise visible message, record diagnostics when possible, and keep the IDE open.

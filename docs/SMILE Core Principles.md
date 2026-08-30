@@ -2,15 +2,15 @@
 
 ## Status and authority
 
-This document is the canonical current product strategy beneath `AGENTS.md`. The [Core BASIC 1 Official Specification](SMILE%20Language%20Specification/001%20-%20SMILE%20Core%20BASIC%201%20Official%20Specification.md) governs language behavior. Historical requirement files explain past research but cannot restore superseded syntax or workflow.
+This document is the canonical current product strategy beneath `AGENTS.md`. The read-only SMILE 2.0 source implementation is authoritative whenever shared language behavior differs; the [Core BASIC 2 Official Specification](SMILE%20Language%20Specification/002%20-%20SMILE%20Core%20BASIC%202%20Official%20Specification.md) records the selected SMILE 1.0 profile. Historical requirement files explain past research but cannot restore superseded syntax or workflow.
 
 ## 1. Beginner first
 
-SMILE means **Simple Modern Interactive Learning Environment**. The source language and generated code are teaching materials. Prefer the smallest complete design a beginner can read, explain, and change.
+SMILE means **Simple Modern and Intuitive Language for Everyone**. The source language and generated code are teaching materials. Prefer the smallest complete design a beginner can read, explain, and change.
 
 ## 2. One canonical source language
 
-SMILE 1.0 implements only SMILE Core BASIC 1, frozen from SMILE 2.0. Every public surface—engine, evaluator, CLI, Desktop, highlighting, examples, and tests—uses the same parser and binder.
+SMILE 1.0 implements only SMILE Core BASIC 2, frozen from SMILE 2.0. Every public surface—engine, evaluator, CLI, Desktop, highlighting, examples, and tests—uses the same parser and binder.
 
 There is no language selector, compatibility profile, source auto-detection, or fallback. Unsupported source receives a diagnostic. A breaking error is safer and more teachable than silently changing its meaning.
 
@@ -25,6 +25,9 @@ Generated code should express the source using the normal destination-language c
 | `If` | genuine structured conditional |
 | `For` | genuine counted loop or ordinary range loop |
 | `Do` | genuine post-test loop, or the clearest equivalent |
+| `Sub` / `Function` | ordinary native routine and call frame |
+| `Select Case` | native selection or a readable selector-once conditional chain |
+| fixed array | normal fixed storage plus an explicit bounds check where needed |
 | typed `Exit` | native break/label when it preserves lexical meaning |
 | `End Program` | normal successful process termination |
 
@@ -44,11 +47,11 @@ All targets consume the same bound program. Parsing establishes canonical struct
 
 A helper is acceptable only when the destination lacks a clear direct construct or when the helper is necessary to preserve the language rule. Keep it local, deterministic, plainly named, and absent from programs that do not need it.
 
-Current justified examples are C Text concatenation and Python control transfer for `Exit For` or `Exit Do` across a differently nested loop kind. Ordinary loops without those exits receive ordinary Python only.
+Current justified examples include C Text concatenation, deterministic array bounds helpers where target behavior is unsafe, and Python control transfer for `Exit For` or `Exit Do` across a differently nested loop kind. Ordinary programs that do not need a helper do not receive it.
 
 ## 7. Ten active destinations
 
-C#, C, Windows x64 MASM Assembly, JavaScript, Java, COBOL, Objective-C, Swift, Python, and C++ are active. Keep their generator, toolchain, Desktop/CLI exposure, tests, and documentation available.
+C#, C, Windows x64 MASM Assembly, JavaScript (Node.js), Java, COBOL, Objective-C, Swift, Python, and C++ are active. Keep their generator, toolchain, Desktop/CLI exposure, tests, and documentation available. `javascript` remains the stable target ID and output remains dependency-free `.js`.
 
 Do not add, recommend, prototype, or scaffold another destination until Sin explicitly changes the target strategy.
 
@@ -66,7 +69,7 @@ Tests may require a helper only when the specification makes it necessary. An ol
 
 ## 10. Parity is reproducible
 
-The frozen profile records its authoritative SMILE 2.0 commit. One unchanged fixture must compile in both repositories and produce the recorded output. Verification must check that SMILE 2.0 is clean and still at the pinned commit before and after; the authority repository is read-only.
+The frozen profiles record their authoritative SMILE 2.0 commit. Unchanged Profile 1 and Profile 2 fixtures compile in both repositories and produce recorded output. Verification checks that SMILE 2.0 is clean and still pinned before and after; the authority repository is read-only.
 
 ## 11. Documentation is living behavior
 

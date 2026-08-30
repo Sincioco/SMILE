@@ -18,8 +18,8 @@ public interface ICodeGenerator
     TargetLanguage Language { get; }
 
     // Generators consume the bound program, not source text. That keeps target
-    // backends honest: they all see the same variables, literals, and
-    // interpolation parts resolved by the binder.
+    // backends honest: they all see the same typed variables, calls, arrays,
+    // and expressions resolved by the binder.
     GeneratedProgram Generate(BoundProgram program);
 }
 
@@ -77,16 +77,10 @@ public sealed class SmileTranspiler
                 .ToArray();
         }
 
-        // Simplification belongs between binding and target generation. The
-        // binder remains the source of truth for SMILE's signed 64-bit
-        // semantics, while every backend receives the same smaller, pure
-        // bound tree and therefore cannot invent target-specific identities.
-        BoundProgram simplifiedProgram = bindResult.Program;
-
         return languages
             .Select(language =>
             {
-                GeneratedProgram generatedProgram = CodeGeneratorRegistry.Get(language).Generate(simplifiedProgram);
+                GeneratedProgram generatedProgram = CodeGeneratorRegistry.Get(language).Generate(bindResult.Program);
                 return new TranspileResult(language, generatedProgram, bindResult.Diagnostics);
             })
             .ToArray();

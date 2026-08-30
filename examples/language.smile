@@ -1,4 +1,4 @@
-' SMILE Core BASIC 1 cumulative language reference.
+' SMILE Core BASIC Profile 2 cumulative language reference.
 ' Apostrophe comments may use their own line or follow a statement.
 
 Const ProductName = "SMILE"
@@ -8,6 +8,21 @@ Dim FirstName As Text
 Dim LastName As Text
 Dim Age As Number
 Dim Ready As Boolean
+Dim FullName As Text
+Dim Adult As Boolean
+Dim WorkingAge As Boolean
+Dim Total As Number
+Dim Grouped As Number
+Dim Quotient As Number
+Dim Remainder As Number
+Dim Grade As Text
+Dim Sum As Number
+Dim Counter As Number
+Dim Outer As Number
+Dim Tally As Number
+Dim Inner As Number
+Dim SampleValues[3] As Number
+Dim SamplePosition As Number
 
 FirstName = "Sin"
 LastName = "Cioco"
@@ -69,6 +84,31 @@ Do
     Exit Do
 Loop
 
+Call StoreSample(0, 5)
+Call StoreSample(1, 8)
+Call StoreSample(2, 13)
+Print "Array total="; SampleTotal()
+
+Select Case SampleTotal()
+    Case 26
+        Print "Select Case matched a constant value."
+    Case Else
+        Print "Select Case used its fallback."
+End Select
+
 Print "End Program stops before the next statement."
 End Program
 Print "unreachable"
+
+Sub StoreSample(ByVal SamplePosition As Number, ByVal Value As Number)
+    SampleValues[SamplePosition] = Value
+End Sub
+
+Function SampleTotal() As Number
+    Dim Position As Number
+    Dim Result As Number
+    For Position = 0 To 2
+        Result = Result + SampleValues[Position]
+    End For
+    Return Result
+End Function

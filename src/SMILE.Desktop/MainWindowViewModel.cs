@@ -1610,7 +1610,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         const string mission = "SMILE is a modern programming language inspired by BASIC, designed to help newcomers learn not only how to write code, but also how programming languages work at a fundamental level. Building on BASIC’s simplicity and accessibility, SMILE allows students to transpile their code into multiple programming languages and compile the resulting programs. This enables learners to see how the same logic and concepts are expressed using different languages and syntaxes. Through this comparative approach, students can recognize an essential principle: despite their surface-level differences, all programming languages share the same core fundamentals. The primary goal is therefore not to memorize the syntax of a particular language, but to develop logical thinking, problem-solving skills, and a strong understanding of programming concepts. By combining simplicity, experimentation, and cross-language learning, SMILE provides a fun and educational environment that teaches students how to think like programmers.";
 
         MessageBox.Show(
-            $"SMILE - Simple Modern Interactive Learning Environment{Environment.NewLine}Version {version}{Environment.NewLine}Session {SessionId}{Environment.NewLine}{Environment.NewLine}{mission}",
+            $"SMILE - Simple Modern and Intuitive Language for Everyone{Environment.NewLine}Version {version}{Environment.NewLine}Session {SessionId}{Environment.NewLine}{Environment.NewLine}{mission}",
             "About SMILE",
             MessageBoxButton.OK,
             MessageBoxImage.Information);

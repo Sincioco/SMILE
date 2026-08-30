@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Offline student reference for SMILE 1.0 Core BASIC 2 and ten destination targets.">
+<title>SMILE 1.0 — Core BASIC 2 Student Reference</title>
+<style>
+:root{--navy:#17233b;--blue:#1769aa;--cyan:#158b98;--gold:#f2b134;--page:#edf2f7;--paper:#fff;--ink:#202838;--muted:#627086;--rule:#cad8e5;--code:#eef6fb;--good:#eaf8f1;--warn:#fff7df;--bad:#fff0ef;--shadow:0 14px 40px rgba(23,35,59,.08)}
+[data-theme="dark"]{--page:#101725;--paper:#17233b;--ink:#edf5ff;--muted:#b9c7d8;--rule:#40516b;--code:#101d31;--good:#14382d;--warn:#3c3217;--bad:#3e2225;--blue:#66b9f2;--cyan:#55d0da;--shadow:0 14px 40px rgba(0,0,0,.25)}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;color:var(--ink);background:var(--page);font-family:Inter,"Segoe UI",Arial,sans-serif;line-height:1.6}a{color:var(--blue);text-underline-offset:3px}.skip{position:fixed;left:12px;top:-60px;z-index:50;padding:10px 14px;color:#fff;background:#000}.skip:focus{top:12px}.hero{position:relative;overflow:hidden;padding:88px max(6vw,24px);color:#fff;background:var(--navy)}.hero:after{content:"";position:absolute;width:380px;height:380px;right:-120px;top:-190px;border-radius:50%;background:#1769aa}.hero-inner{position:relative;z-index:1;max-width:1080px}.eyebrow{color:#bcd9f2;font-size:.8rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase}h1{max-width:820px;margin:10px 0;font-size:clamp(2.8rem,5vw,5.4rem);line-height:1;letter-spacing:-.05em}.subtitle{max-width:720px;color:#ddebfa;font-size:clamp(1rem,2vw,1.3rem)}.gold-rule{width:160px;height:5px;margin:28px 0;background:var(--gold);border-radius:4px}.toolbar{display:flex;gap:8px;flex-wrap:wrap}.button,button{padding:8px 11px;border:1px solid var(--rule);border-radius:7px;color:var(--ink);background:var(--paper);font:700 .82rem "Segoe UI",sans-serif;cursor:pointer}.layout{width:min(1320px,calc(100% - 32px));margin:28px auto 70px;display:grid;grid-template-columns:290px minmax(0,1fr);gap:28px;align-items:start}.toc{position:sticky;top:14px;max-height:calc(100vh - 28px);overflow:auto;padding:20px;border:1px solid var(--rule);border-radius:14px;background:var(--paper);box-shadow:var(--shadow)}.toc h2{margin:0 0 10px}.search{width:100%;padding:9px 10px;border:1px solid var(--rule);border-radius:7px;color:var(--ink);background:var(--page)}.toc ul{margin:14px 0 0;padding:0;list-style:none}.toc li{margin:3px 0;list-style:none}.toc li::before,.toc li::marker{content:none}.toc a{display:block;padding:5px 7px;border-radius:6px;text-decoration:none;font-size:.82rem}.toc a.active{color:#fff;background:#1769aa}.nav-toggle{display:none;margin:0 0 10px}main{min-width:0}.reference-section{margin:0 0 26px;padding:32px 36px;scroll-margin-top:18px;border:1px solid var(--rule);border-radius:14px;background:var(--paper);box-shadow:var(--shadow)}h2{margin:0 0 18px;padding-bottom:10px;border-bottom:4px solid var(--cyan);color:var(--ink);line-height:1.2}h3{margin:20px 0 8px;color:var(--blue)}p{margin:0 0 13px}.cards,.feature-grid,.compare{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:16px 0}.cards.three{grid-template-columns:repeat(3,minmax(0,1fr))}.card,.tip,.mistake{padding:16px 18px;border:1px solid var(--rule);border-radius:9px;background:var(--code)}.tip{border-left:5px solid #15956e;background:var(--good)}.mistake{border-left:5px solid #c3584f;background:var(--bad)}.callout{padding:16px 18px;border-left:5px solid var(--gold);border-radius:8px;background:var(--warn)}.code-wrap{position:relative;margin:10px 0 17px;border:1px solid var(--rule);border-left:5px solid var(--cyan);border-radius:8px;background:var(--code);overflow:hidden}pre{margin:0;padding:18px 20px;overflow:auto;tab-size:4}code{font-family:Consolas,"Cascadia Mono","Courier New",monospace;font-size:.88rem;line-height:1.5}.copy{position:absolute;right:8px;top:8px;padding:5px 8px;opacity:.25}.code-wrap:hover .copy,.copy:focus{opacity:1}table{width:100%;margin:12px 0 20px;border-collapse:collapse;font-size:.88rem}th,td{padding:9px 11px;border:1px solid var(--rule);vertical-align:top;text-align:left}th{color:#fff;background:#17233b}.diagram{width:100%;height:auto;margin:16px 0;border:1px solid var(--rule);border-radius:10px;background:#fff}.diagram text{font-family:"Segoe UI",Arial,sans-serif;fill:#17233b}.diagram .box{fill:#eef6fb;stroke:#1769aa;stroke-width:2}.diagram .arrow{fill:none;stroke:#1769aa;stroke-width:2;marker-end:url(#arrowhead)}.target-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}.target{padding:12px;border-top:4px solid var(--cyan);border-radius:7px;background:var(--code)}.back{display:inline-block;margin-top:10px;font-size:.8rem}.muted{color:var(--muted)}:focus-visible{outline:3px solid var(--gold);outline-offset:2px}footer{padding:32px;color:#ddebfa;background:#17233b;text-align:center}.top{position:fixed;right:18px;bottom:18px;z-index:20;text-decoration:none}
+@media(max-width:960px){.layout{grid-template-columns:1fr}.toc{position:relative;top:0;max-height:none}.nav-toggle{display:inline-block}.toc.collapsed ul,.toc.collapsed .search{display:none}.cards.three,.target-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.layout{width:calc(100% - 16px)}.reference-section{padding:24px 16px;border-radius:9px}.cards,.feature-grid,.compare,.cards.three,.target-grid{grid-template-columns:1fr}code{font-size:.78rem}.hero{padding:68px 24px}.copy{opacity:1}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important}}
+@media print{@page{size:letter;margin:.65in}body{background:#fff;color:#111;font-size:9.5pt}.hero{padding:.5in;break-after:page}.layout{display:block;width:auto;margin:0}.toc{position:static;max-height:none;border:0;box-shadow:none;break-after:page}.toc ul{columns:2}.reference-section{padding:.15in 0;margin:0;border:0;box-shadow:none}.reference-section h2{break-after:avoid}.code-wrap,.card,.tip,.mistake,table,.diagram{break-inside:avoid}.copy,.toolbar,.nav-toggle,.top,.skip,.toc label,.search{display:none!important}pre{white-space:pre-wrap;overflow:visible}.target-grid{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body id="top">
+<a class="skip" href="#main">Skip to the language reference</a>
+<header class="hero"><div class="hero-inner"><p class="eyebrow">Offline student language reference</p><h1>SMILE Core BASIC 2</h1><p class="subtitle">A small language for learning big ideas—and seeing those ideas become readable code in ten destination languages.</p><div class="gold-rule"></div><p>SMILE means <strong>Simple Modern and Intuitive Language for Everyone</strong>.</p><div class="toolbar"><button id="theme-toggle" type="button" aria-label="Switch color theme">Switch theme</button><button id="nav-button" type="button" aria-controls="contents" aria-expanded="true">Toggle contents</button></div></div></header>
+<div class="layout">
+<nav id="contents" class="toc" aria-label="Reference contents">
+<button class="nav-toggle" type="button" aria-controls="nav-links" aria-expanded="true">Show or hide sections</button><h2>Contents</h2><label for="section-search">Find a section</label><input id="section-search" class="search" type="search" placeholder="Try arrays or functions">
+<ul id="nav-links">
+<li><a href="#welcome">01 · Welcome</a></li><li><a href="#mission">02 · Learning mission</a></li><li><a href="#journey">03 · Code journey</a></li><li><a href="#tools">04 · Desktop and CLI</a></li>
+<li><a href="#source">05 · Source rules</a></li><li><a href="#types">06 · Types and literals</a></li><li><a href="#variables">07 · Variables and constants</a></li><li><a href="#explicit">08 · Explicit declarations</a></li>
+<li><a href="#arithmetic">09 · Arithmetic</a></li><li><a href="#text">10 · Text</a></li><li><a href="#logic">11 · Logic</a></li><li><a href="#print">12 · Print</a></li>
+<li><a href="#if">13 · Decisions</a></li><li><a href="#for">14 · Counted loops</a></li><li><a href="#do">15 · Post-test loops</a></li><li><a href="#exits">16 · Exits</a></li>
+<li><a href="#subs">17 · Procedures</a></li><li><a href="#functions">18 · Functions</a></li><li><a href="#scope">19 · Scope and recursion</a></li><li><a href="#select">20 · Selection</a></li>
+<li><a href="#arrays">21 · Arrays</a></li><li><a href="#bounds">22 · Bounds and defaults</a></li><li><a href="#javascript">23 · JavaScript and Node</a></li><li><a href="#targets">24 · Ten targets</a></li>
+<li><a href="#generated">25 · Generated comparisons</a></li><li><a href="#diagnostics">26 · Diagnostics</a></li><li><a href="#programs">27 · Complete programs</a></li><li><a href="#cumulative">28 · Cumulative program</a></li>
+<li><a href="#grammar">29 · Grammar</a></li><li><a href="#keywords">30 · Keywords</a></li><li><a href="#excluded">31 · Deliberate limits</a></li><li><a href="#glossary">32 · Glossary</a></li>
+</ul></nav>
+<main id="main">
+<section id="welcome" class="reference-section"><h2>1. Welcome to SMILE</h2><p>SMILE is a beginner-first programming language. Its name—<strong>Simple Modern and Intuitive Language for Everyone</strong>—is a promise: the language stays small enough to understand while teaching real ideas such as types, functions, recursion, and arrays.</p><div class="tip"><strong>Your first program</strong><div class="code-wrap"><button class="copy" type="button">Copy</button><pre><code data-smile-valid="true" data-example-id="hello">Print "Hello, world!"</code></pre></div><p>Output:</p><pre><code data-smile-output="hello">Hello, world!</code></pre></div><a class="back" href="#top">Back to top</a></section>
+
+<section id="mission" class="reference-section"><h2>2. The learning mission</h2><p>You write one SMILE program. The compiler can show the same idea in ten destinations. A loop is still a loop and a function is still a function, but you learn how each community normally writes it.</p><div class="cards three"><div class="card"><h3>Read</h3><p>Start with short, case-insensitive BASIC-like source.</p></div><div class="card"><h3>Compare</h3><p>Open C#, JavaScript (Node.js), Python, COBOL, or another target pane.</p></div><div class="card"><h3>Experiment</h3><p>Change the source and watch every generated program change.</p></div></div><p class="callout">Generated code is teaching material. SMILE prefers ordinary destination constructs over a hidden runtime.</p><a class="back" href="#top">Back to top</a></section>
+
+<section id="journey" class="reference-section"><h2>3. The compilation journey</h2><p>The <strong>lexer</strong> recognizes words and symbols. The <strong>parser</strong> checks their arrangement. The <strong>binder</strong> connects names to typed declarations. The evaluator can run the bound meaning, while a generator translates it.</p>
+<svg class="diagram" viewBox="0 0 900 390" role="img"><title>SMILE source-to-target pipeline</title><desc>SMILE source moves through parser and binder, then fans out to ten destination languages using straight and right-angle arrows.</desc><defs><marker id="arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0,0 8,4 0,8" fill="#1769aa"/></marker></defs><rect class="box" x="325" y="20" width="250" height="48" rx="8"/><text x="450" y="50" text-anchor="middle">SMILE source</text><rect class="box" x="325" y="100" width="250" height="48" rx="8"/><text x="450" y="130" text-anchor="middle">Lexer + parser</text><rect class="box" x="325" y="180" width="250" height="48" rx="8"/><text x="450" y="210" text-anchor="middle">Binder + bound program</text><line class="arrow" x1="450" y1="68" x2="450" y2="100"/><line class="arrow" x1="450" y1="148" x2="450" y2="180"/><polyline class="arrow" points="450,228 450,260 90,260 90,310"/><polyline class="arrow" points="450,228 450,260 270,260 270,310"/><line class="arrow" x1="450" y1="228" x2="450" y2="310"/><polyline class="arrow" points="450,228 450,260 630,260 630,310"/><polyline class="arrow" points="450,228 450,260 810,260 810,310"/><text x="90" y="338" text-anchor="middle">C# · C</text><text x="270" y="338" text-anchor="middle">MASM · JS</text><text x="450" y="338" text-anchor="middle">Java · COBOL</text><text x="630" y="338" text-anchor="middle">Obj-C · Swift</text><text x="810" y="338" text-anchor="middle">Python · C++</text></svg>
+<a class="back" href="#top">Back to top</a></section>
+
+<section id="tools" class="reference-section"><h2>4. Desktop and command line</h2><h3>Desktop</h3><p>Open a <code>.smile</code> file, choose a target in a pane, then use Build &amp; Run when that toolchain is installed. Work happens asynchronously, so the editor stays responsive.</p><h3>CLI</h3><div class="code-wrap"><pre><code>dotnet run --project src\SMILE.Cli -- examples\core-basic-2-canonical.smile --target python --run
+dotnet run --project src\SMILE.Cli -- examples\core-basic-2-canonical.smile --target all</code></pre></div><p>The stable target ID for JavaScript (Node.js) is <code>javascript</code>. Diagnostics include a code, line, column, and a plain-language message.</p><a class="back" href="#top">Back to top</a></section>
+
+<section id="source" class="reference-section"><h2>5. Source layout, comments, and names</h2><p>Statements normally end at a newline. Keywords and identifiers ignore case, so <code>Score</code> and <code>score</code> are the same name. An apostrophe starts a comment.</p><div class="feature-grid"><div><h3>Smallest example</h3><div class="code-wrap"><button class="copy" type="button">Copy</button><pre><code data-smile-valid="true">' A full-line comment
+Score = 10  ' An end-of-line comment
+Print score</code></pre></div><p>Output: <code>10</code></p></div><div class="mistake"><h3>Common mistake</h3><pre><code>// not a SMILE comment</code></pre><p>Use an apostrophe instead. Alternate comment markers are rejected.</p></div></div><p><strong>Pattern:</strong> <code>identifier = expression</code>. A name begins with a Unicode letter or underscore and continues with letters, decimal digits, or underscores.</p><a class="back" href="#top">Back to top</a></section>
+
+<section id="types" class="reference-section"><h2>6. Number, Boolean, Text, and literals</h2><table><thead><tr><th>Type</th><th>Examples</th><th>Default</th></tr></thead><tbody><tr><td>Number</td><td><code>0</code>, <code>42</code>, <code>-7</code></td><td><code>0</code></td></tr><tr><td>Boolean</td><td><code>True</code>, <code>False</code></td><td><code>False</code></td></tr><tr><td>Text</td><td><code>"Hello"</code></td><td>empty Text</td></tr></tbody></table><div class="code-wrap"><button class="copy" type="button">Copy</button><pre><code data-smile-valid="true" data-example-id="types-demo">Option Explicit
+Dim Age As Number
+Dim Ready As Boolean
+Dim Message As Text
+Age = 14
+Ready = True
+Message = "She said ""Hello""."
+Print Age; " "; Ready; " "; Message</code></pre></div><pre><code data-smile-output="types-demo">14 True She said "Hello".</code></pre><div class="mistake"><strong>Common mistake:</strong> <code>Age = "14"</code> is Text, not Number. Correct it to <code>Age = 14</code>; SMILE never guesses a conversion.</div><a class="back" href="#top">Back to top</a></section>
+
+<section id="variables" class="reference-section"><h2>7. Variables, Dim, and Const</h2><p><strong>Pattern:</strong> <code>Name = expression</code>, <code>Dim Name As Type</code>, or <code>Const Name = constant-expression</code>.</p><div class="code-wrap"><button class="copy" type="button">Copy</button><pre><code data-smile-valid="true">Const Bonus = 5
+Dim Score As Number
+Name = "Sin"
+Score = 10 + Bonus
+Print Name; ": "; Score</code></pre></div><p>First assignment can create a variable when Option Explicit is absent. Dim creates typed default storage. Const is compile-time and immutable.</p><div class="mistake"><strong>Common mistake:</strong> assigning <code>Bonus = 6</code>. Constants cannot change. Put changing data in a variable declared by Dim.</div><a class="back" href="#top">Back to top</a></section>
+
+<section id="explicit" class="reference-section"><h2>8. Option Explicit</h2><p><strong>Pattern:</strong> <code>Option Explicit</code> once, as the first nonblank, noncomment item. It turns misspelled or undeclared variable names into errors.</p><div class="code-wrap"><button class="copy" type="button">Copy</button><pre><code data-smile-valid="true">Option Explicit
+Dim Score As Number
+Score = 100
+Print Score</code></pre></div><div class="mistake"><strong>Common mistake:</strong> writing <code>Scroe = 100</code> without a declaration. Correct the spelling or add the intended Dim. The directive produces no runtime code.</div><a class="back" href="#top">Back to top</a></section>
+
+<section id="arithmetic" class="reference-section"><h2>9. Arithmetic and precedence</h2><p>Unary <code>-</code>; then <code>* / Mod</code>; then <code>+ -</code>; then comparisons; then <code>And</code>; then <code>Or</code>. Parentheses make intent explicit. Division truncates toward zero.</p><div class="code-wrap"><button class="copy" type="button">Copy</button><pre><code data-smile-valid="true" data-example-id="math-demo">Print 2 + 3 * 4
+Print (2 + 3) * 4
+Print -7 / 2
+Print -7 Mod 2</code></pre></div><pre><code data-smile-output="math-demo">14
+20
+-3
+-1</code></pre><div class="mistake"><strong>Common mistake:</strong> expecting a decimal answer from <code>7 / 2</code>. Number is a whole-number type; the result is <code>3</code>.</div><a class="back" href="#top">Back to top</a></section>
+
+<section id="text" class="reference-section"><h2>10. Text and concatenation</h2><p><strong>Pattern:</strong> <code>TextExpression + TextExpression</code>. A doubled quote inside a literal becomes one quote.</p><div class="code-wrap"><button class="copy" type="button">Copy</button><pre><code data-smile-valid="true">First = "Simple"
+Last = "Environment"
+Print First + " Modern Interactive Learning " + Last
+Print "She said ""Hi""."</code></pre></div><div class="mistake"><strong>Common mistake:</strong> <code>"Score=" + 10</code>. Types are exact. Print unlike types as separate expressions: <code>Print "Score="; 10</code>.</div><a class="back" href="#top">Back to top</a></section>
+
+<section id="logic" class="reference-section"><h2>11. Comparisons and Boolean logic</h2><p>Number supports ordering. Like-typed values support <code>=</code> and <code>&lt;&gt;</code>. <code>Not</code>, <code>And</code>, and <code>Or</code> work on Boolean. And/Or short-circuit.</p><div class="code-wrap"><button class="copy" type="button">Copy</button><pre><code data-smile-valid="true">Age = 14
+HasPermission = True
+CanEnter = Age &gt;= 13 And HasPermission
+Print CanEnter</code></pre></div><p>Output: <code>True</code>.</p><div class="mistake"><strong>Common mistake:</strong> <code>If Score Then</code>. A Number is not a condition. Write <code>If Score &gt; 0 Then</code>.</div><a class="back" href="#top">Back to top</a></section>
+
+<section id="print" class="reference-section"><h2>12. Print</h2><p><strong>Pattern:</strong> <code>Print [expression {; expression} [;]]</code>. Print inserts no spaces. A trailing semicolon keeps the cursor on the same line.</p><div class="code-wrap"><button class="copy" type="button">Copy</button><pre><code data-smile-valid="true" data-example-id="print-demo">Print "A"; 1; True
+Print "loading";
+Print "."
+Print</code></pre></div><pre><code data-smile-output="print-demo">A1True
+loading.
+
+</code></pre><div class="mistake"><strong>Common mistake:</strong> <code>Print Hello</code> prints the variable Hello. For literal text, write <code>Print "Hello"</code>.</div><a class="back" href="#top">Back to top</a></section>
+
+<section id="if" class="reference-section"><h2>13. If / Else If / Else</h2><p>The first true clause runs. Else is the fallback.</p><div class="code-wrap"><button class="copy" type="button">Copy</button><pre><code data-smile-valid="true" data-example-id="grade">Score = 87
+If Score &gt;= 90 Then
+    Grade = "A"
+Else If Score &gt;= 80 Then
+    Grade = "B"
+Else
+    Grade = "C"
+End If
+Print Grade</code></pre></div><pre><code data-smile-output="grade">B</code></pre><div class="mistake"><strong>Common mistake:</strong> forgetting <code>Then</code> or <code>End If</code>. The parser reports the block boundary.</div>
+<svg class="diagram" viewBox="0 0 700 210" role="img"><title>If decision flow</title><desc>A straight-arrow flow tests a condition, runs one of two bodies, then rejoins.</desc><defs><marker id="arrowhead-if" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0,0 8,4 0,8" fill="#1769aa"/></marker></defs><rect class="box" x="260" y="15" width="180" height="44" rx="8"/><text x="350" y="43" text-anchor="middle">Boolean condition</text><rect class="box" x="80" y="105" width="180" height="44" rx="8"/><text x="170" y="133" text-anchor="middle">True body</text><rect class="box" x="440" y="105" width="180" height="44" rx="8"/><text x="530" y="133" text-anchor="middle">Else body</text><polyline points="350,59 350,82 170,82 170,105" fill="none" stroke="#1769aa" stroke-width="2" marker-end="url(#arrowhead-if)"/><polyline points="350,59 350,82 530,82 530,105" fill="none" stroke="#1769aa" stroke-width="2" marker-end="url(#arrowhead-if)"/><polyline points="170,149 170,180 350,180" fill="none" stroke="#1769aa" stroke-width="2"/><polyline points="530,149 530,180 350,180" fill="none" stroke="#1769aa" stroke-width="2"/></svg><a class="back" href="#top">Back to top</a></section>
+
+<section id="for" class="reference-section"><h2>14. Ascending and descending For</h2><p>For evaluates both bounds once, includes the final bound, and steps by one.</p><div class="code-wrap"><button class="copy" type="button">Copy</button><pre><code data-smile-valid="true" data-example-id="loops">For Index = 1 To 3
+    Print Index;
+End For
+Print
+For Index = 3 Down To 1
+    Print Index;
+End For
+Print</code></pre></div><pre><code data-smile-output="loops">123
+321</code></pre><div class="mistake"><strong>Common mistake:</strong> adding your own counter increment. SMILE already changes it once per iteration.</div><a class="back" href="#top">Back to top</a></section>
+
+<section id="do" class="reference-section"><h2>15. Do / Loop Until</h2><p>Do is post-tested, so the body runs at least once. Omit Until for an intentional infinite loop containing Exit Do.</p><div class="code-wrap"><button class="copy" type="button">Copy</button><pre><code data-smile-valid="true">Tally = 0
+Do
+    Tally = Tally + 1
+Loop Until Tally = 3
+Print Tally</code></pre></div><p>Output: <code>3</code>.</p><div class="mistake"><strong>Common mistake:</strong> expecting zero iterations when the condition starts true. Do checks only after its body.</div><a class="back" href="#top">Back to top</a></section>
+
+<section id="exits" class="reference-section"><h2>16. Exit For, Exit Do, and End Program</h2><p>Typed exits find the nearest surrounding loop of the named kind. <code>End Program</code> ends the whole program—even from a routine.</p><div class="code-wrap"><button class="copy" type="button">Copy</button><pre><code data-smile-valid="true">For Outer = 1 To 3
+    Do
+        Print Outer
+        Exit For
+    Loop
+End For
+End Program
+Print "unreachable"</code></pre></div><div class="mistake"><strong>Common mistake:</strong> using Return to end the program. Return exits one routine; End Program exits everything.</div><a class="back" href="#top">Back to top</a></section>
+
+<section id="subs" class="reference-section"><h2>17. Sub, ByVal, and Call</h2><p><strong>Pattern:</strong> <code>Sub Name([ByVal] P As Type) ... End Sub</code>, called by <code>Call Name(argument)</code>. Every parameter is ByVal.</p><div class="code-wrap"><button class="copy" type="button">Copy</button><pre><code data-smile-valid="true" data-example-id="byval">Option Explicit
+Dim Score As Number
+Score = 10
+Call AddFive(Score)
+Print Score
+End Program
+Sub AddFive(ByVal Score As Number)
+    Score = Score + 5
+    Print Score
+End Sub</code></pre></div><pre><code data-smile-output="byval">15
+10</code></pre><div class="mistake"><strong>Common mistake:</strong> expecting AddFive to change the caller. ByVal gives the Sub an independent value.</div><a class="back" href="#top">Back to top</a></section>
+
+<section id="functions" class="reference-section"><h2>18. Function and Return</h2><p>A Function has an exact return type and is called inside an expression. Every normal path must return.</p><div class="code-wrap"><button class="copy" type="button">Copy</button><pre><code data-smile-valid="true" data-example-id="calculator">Print Calculate(8, 3, "+")
+Print Calculate(8, 3, "-")
+End Program
+Function Calculate(LeftValue As Number, RightValue As Number, Operation As Text) As Number
+    If Operation = "+" Then
+        Return LeftValue + RightValue
+    Else
+        Return LeftValue - RightValue
+    End If
+End Function</code></pre></div><pre><code data-smile-output="calculator">11
+5</code></pre><div class="mistake"><strong>Common mistake:</strong> <code>Call Calculate(...)</code>. Call is for a Sub; use a Function where its result is needed.</div>
+<svg class="diagram" viewBox="0 0 700 160" role="img"><title>Function call and return</title><desc>A straight call arrow moves from caller to function and a second straight arrow returns a value.</desc><defs><marker id="arrowhead-call" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0,0 8,4 0,8" fill="#1769aa"/></marker></defs><rect class="box" x="60" y="48" width="180" height="54" rx="8"/><text x="150" y="80" text-anchor="middle">Caller expression</text><rect class="box" x="460" y="48" width="180" height="54" rx="8"/><text x="550" y="80" text-anchor="middle">Function frame</text><line x1="240" y1="62" x2="460" y2="62" stroke="#1769aa" stroke-width="2" marker-end="url(#arrowhead-call)"/><text x="350" y="51" text-anchor="middle">arguments</text><line x1="460" y1="91" x2="240" y2="91" stroke="#1769aa" stroke-width="2" marker-end="url(#arrowhead-call)"/><text x="350" y="119" text-anchor="middle">Return value</text></svg><a class="back" href="#top">Back to top</a></section>
+
+<section id="scope" class="reference-section"><h2>19. Global scope, local scope, shadowing, recursion</h2><p>Top-level variables are global. Parameters and local Dim variables belong to one call frame and are fresh for every call. A local may shadow a same-named global.</p><div class="code-wrap"><button class="copy" type="button">Copy</button><pre><code data-smile-valid="true" data-example-id="shadow">Dim Score As Number
+Score = 10
+Call DemonstrateScope(5)
+Print Score
+End Program
+Sub DemonstrateScope(Score As Number)
+    Dim Doubled As Number
+    Doubled = Score * 2
+    Print Doubled
+End Sub</code></pre></div><pre><code data-smile-output="shadow">10
+10</code></pre><div class="mistake"><strong>Common mistake:</strong> assuming a local survives the next call. Each invocation starts with fresh local defaults.</div>
+<svg class="diagram" viewBox="0 0 760 230" role="img"><title>Global and routine-local scope</title><desc>Straight arrows show a routine seeing globals unless a parameter or local shadows the name.</desc><defs><marker id="arrowhead-scope" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0,0 8,4 0,8" fill="#1769aa"/></marker></defs><rect class="box" x="250" y="15" width="260" height="48" rx="8"/><text x="380" y="45" text-anchor="middle">Program globals</text><rect class="box" x="60" y="140" width="250" height="55" rx="8"/><text x="185" y="173" text-anchor="middle">Call frame 1: params + locals</text><rect class="box" x="450" y="140" width="250" height="55" rx="8"/><text x="575" y="173" text-anchor="middle">Call frame 2: fresh storage</text><polyline points="330,63 330,100 185,100 185,140" fill="none" stroke="#1769aa" stroke-width="2" marker-end="url(#arrowhead-scope)"/><polyline points="430,63 430,100 575,100 575,140" fill="none" stroke="#1769aa" stroke-width="2" marker-end="url(#arrowhead-scope)"/></svg><a class="back" href="#top">Back to top</a></section>
+
+<section id="select" class="reference-section"><h2>20. Select Case</h2><p>Select evaluates its selector once, checks constant cases in order, and runs the first match. Case Else is optional and last.</p><div class="code-wrap"><button class="copy" type="button">Copy</button><pre><code data-smile-valid="true" data-example-id="menu">Command = "Defend"
+Select Case Command
+    Case "Attack"
+        Print "attack"
+    Case "Defend"
+        Print "defend"
+    Case Else
+        Print "unknown"
+End Select</code></pre></div><pre><code data-smile-output="menu">defend</code></pre><div class="mistake"><strong>Common mistake:</strong> using a variable as a Case value. A Case must be a compile-time constant of the exact selector type. Keep the first Case directly after the Select header; the authoritative compiler rejects an intervening blank source item.</div><a class="back" href="#top">Back to top</a></section>
+
+<section id="arrays" class="reference-section"><h2>21. Fixed one-dimensional arrays</h2><p><strong>Pattern:</strong> <code>Dim Names[element-count] As Text</code>. Indexes start at zero.</p><div class="code-wrap"><button class="copy" type="button">Copy</button><pre><code data-smile-valid="true" data-example-id="scores">Option Explicit
+Const PlayerTotal = 3
+Dim Scores[PlayerTotal] As Number
+Dim Index As Number
+Scores[0] = 75
+Scores[1] = 88
+Scores[2] = 92
+For Index = 0 To PlayerTotal - 1
+    Print Index; ": "; Scores[Index]
+End For</code></pre></div><pre><code data-smile-output="scores">0: 75
+1: 88
+2: 92</code></pre><div class="mistake"><strong>Common mistake:</strong> using index 3 in a three-cell array. Its valid indexes are 0, 1, and 2.</div><a class="back" href="#top">Back to top</a></section>
+
+<section id="bounds" class="reference-section"><h2>22. Array defaults and bounds</h2><p>Number cells start at 0, Boolean cells at False, and Text cells at empty Text. A known invalid index is a compile error. A dynamic invalid index fails before memory access.</p><svg class="diagram" viewBox="0 0 740 170" role="img"><title>Zero-based array cells</title><desc>Four straight adjacent cells are labeled with zero-based indexes zero through three.</desc><rect class="box" x="90" y="50" width="140" height="60"/><rect class="box" x="230" y="50" width="140" height="60"/><rect class="box" x="370" y="50" width="140" height="60"/><rect class="box" x="510" y="50" width="140" height="60"/><text x="160" y="85" text-anchor="middle">Scores[0]</text><text x="300" y="85" text-anchor="middle">Scores[1]</text><text x="440" y="85" text-anchor="middle">Scores[2]</text><text x="580" y="85" text-anchor="middle">Scores[3]</text><line x1="90" y1="130" x2="650" y2="130" stroke="#1769aa" stroke-width="2"/><text x="370" y="154" text-anchor="middle">Dim Scores[4] As Number</text></svg><div class="code-wrap"><button class="copy" type="button">Copy</button><pre><code data-smile-valid="true">Dim Values[2] As Number
+Dim Flags[2] As Boolean
+Dim Words[2] As Text
+Print Values[0]; Flags[0]; "["; Words[0]; "]"</code></pre></div><p>Output: <code>0False[]</code>.</p><a class="back" href="#top">Back to top</a></section>
+
+<section id="javascript" class="reference-section"><h2>23. JavaScript versus Node.js</h2><p><strong>JavaScript</strong> is the language. <strong>Node.js</strong> is the runtime used to execute generated console programs. That is why the UI says <strong>JavaScript (Node.js)</strong>.</p><ul><li>Stable target ID: <code>javascript</code></li><li>Primary file: <code>Program.js</code></li><li>Run command: <code>node Program.js</code></li><li>Dependencies: none—no npm package, module, or TypeScript layer</li></ul><p>Use a current supported Node.js LTS release.</p><a class="back" href="#top">Back to top</a></section>
+
+<section id="targets" class="reference-section"><h2>24. The ten targets and toolchains</h2><p>Generation always works. Build &amp; Run becomes available independently when the target toolchain is detected.</p><div class="target-grid"><div class="target" data-target="csharp"><strong>C#</strong><br>.NET SDK</div><div class="target" data-target="c"><strong>C</strong><br>MSVC</div><div class="target" data-target="masm-x64"><strong>MASM x64</strong><br>ml64/link</div><div class="target" data-target="javascript"><strong>JavaScript (Node.js)</strong><br>Node.js</div><div class="target" data-target="java"><strong>Java</strong><br>JDK</div><div class="target" data-target="cobol"><strong>COBOL</strong><br>GnuCOBOL</div><div class="target" data-target="objective-c"><strong>Objective-C</strong><br>Clang</div><div class="target" data-target="swift"><strong>Swift</strong><br>Swift for Windows</div><div class="target" data-target="python"><strong>Python</strong><br>CPython</div><div class="target" data-target="cpp"><strong>C++</strong><br>MSVC</div></div><p class="muted">There is no eleventh target and no missing tool removes a generator.</p><a class="back" href="#top">Back to top</a></section>
+
+<section id="generated" class="reference-section"><h2>25. Representative generated code</h2><p>For <code>Function Double(Value As Number) As Number</code>, SMILE emits ordinary target routines. These are shortened excerpts from the actual generator.</p><div class="compare"><div><h3>C#</h3><pre><code>private static long Double(long Value)
+{
+    return Value * 2;
+}</code></pre></div><div><h3>JavaScript (Node.js)</h3><pre><code>function Double(Value) {
+    return Value * 2n;
+}</code></pre></div><div><h3>Python</h3><pre><code>def Double(Value):
+    return Value * 2</code></pre></div><div><h3>COBOL</h3><pre><code>PROGRAM-ID. STUDENT-Double IS RECURSIVE.
+PROCEDURE DIVISION USING ...
+    COMPUTE SMILE-RETURN-VALUE = ...</code></pre></div><div><h3>MASM x64</h3><pre><code>_smile_Double PROC
+    push rbp
+    mov rbp, rsp
+    ...
+    ret
+_smile_Double ENDP</code></pre></div></div><p>Names may be mapped to avoid target keywords. Helpers appear only for a real semantic need, such as bounds checks or C Text concatenation.</p><a class="back" href="#top">Back to top</a></section>
+
+<section id="diagnostics" class="reference-section"><h2>26. Diagnostics and troubleshooting</h2><table><thead><tr><th>Problem</th><th>What to check</th></tr></thead><tbody><tr><td>Unknown name</td><td>Spelling, declaration order, and Option Explicit</td></tr><tr><td>Wrong argument</td><td>Exact count, position, and scalar type</td></tr><tr><td>Function may not return</td><td>Every normal path needs a matching Return value</td></tr><tr><td>Array bounds</td><td>Use indexes 0 through count minus one</td></tr><tr><td>Toolchain unavailable</td><td>Generation still works; install only the compiler/runtime you want to run</td></tr></tbody></table><p>Read the first diagnostic, fix it, and compile again. Later errors can be side effects of the first malformed block.</p><div class="mistake"><strong>Do not “fix” an error with legacy syntax.</strong> LET, SET, old INPUT, WHILE, raw Print templates, and alternate comments are unsupported.</div><a class="back" href="#top">Back to top</a></section>
+
+<section id="programs" class="reference-section"><h2>27. Complete practice programs</h2><h3>Multiplication table</h3><div class="code-wrap"><button class="copy" type="button">Copy</button><pre><code data-smile-valid="true" data-example-id="table">Option Explicit
+Dim Row As Number
+Dim Column As Number
+For Row = 1 To 3
+    For Column = 1 To 3
+        Print Row * Column;
+        If Column &lt; 3 Then
+            Print " ";
+        End If
+    End For
+    Print
+End For</code></pre></div><pre><code data-smile-output="table">1 2 3
+2 4 6
+3 6 9</code></pre>
+<h3>Recursive factorial</h3><div class="code-wrap"><button class="copy" type="button">Copy</button><pre><code data-smile-valid="true" data-example-id="factorial">Print Factorial(6)
+End Program
+Function Factorial(Value As Number) As Number
+    If Value &lt;= 1 Then
+        Return 1
+    Else
+        Return Value * Factorial(Value - 1)
+    End If
+End Function</code></pre></div><pre><code data-smile-output="factorial">720</code></pre>
+<h3>Mutual recursion</h3><div class="code-wrap"><button class="copy" type="button">Copy</button><pre><code data-smile-valid="true" data-example-id="mutual">Print IsEven(10)
+Print IsOdd(11)
+End Program
+Function IsEven(Value As Number) As Boolean
+    If Value = 0 Then
+        Return True
+    Else
+        Return IsOdd(Value - 1)
+    End If
+End Function
+Function IsOdd(Value As Number) As Boolean
+    If Value = 0 Then
+        Return False
+    Else
+        Return IsEven(Value - 1)
+    End If
+End Function</code></pre></div><pre><code data-smile-output="mutual">True
+True</code></pre><a class="back" href="#top">Back to top</a></section>
+
+<section id="cumulative" class="reference-section"><h2>28. Cumulative Core BASIC 2 program</h2><p>This program combines declarations, arrays, routines, selection, and output. The larger checked-in <code>examples/language.smile</code> is packaged beside Desktop.</p><div class="code-wrap"><button class="copy" type="button">Copy</button><pre><code data-smile-valid="true" data-example-id="cumulative">Option Explicit
+Const PlayerTotal = 3
+Dim Names[PlayerTotal] As Text
+Dim Scores[PlayerTotal] As Number
+Dim Index As Number
+Names[0] = "Alyssa"
+Names[1] = "Borin"
+Names[2] = "Cyra"
+Scores[0] = 75
+Scores[1] = 88
+Scores[2] = 92
+Call AddBonus(1, 5)
+For Index = 0 To PlayerTotal - 1
+    Call ShowPlayer(Index)
+End For
+Select Case BestScore()
+    Case 93
+        Print "Top score confirmed"
+    Case Else
+        Print "Check the scores"
+End Select
+End Program
+Sub AddBonus(Index As Number, Amount As Number)
+    Scores[Index] = Scores[Index] + Amount
+End Sub
+Sub ShowPlayer(Index As Number)
+    Print Names[Index]; ": "; Scores[Index]
+End Sub
+Function BestScore() As Number
+    Dim Position As Number
+    Dim Best As Number
+    For Position = 0 To PlayerTotal - 1
+        If Scores[Position] &gt; Best Then
+            Best = Scores[Position]
+        End If
+    End For
+    Return Best
+End Function</code></pre></div><pre><code data-smile-output="cumulative">Alyssa: 75
+Borin: 93
+Cyra: 92
+Top score confirmed</code></pre>
+<svg class="diagram" viewBox="0 0 760 150" role="img"><title>Core BASIC profile relationship</title><desc>A straight arrow shows every Core BASIC 1 program remaining inside the larger Core BASIC 2 language.</desc><defs><marker id="arrowhead-profile" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0,0 8,4 0,8" fill="#1769aa"/></marker></defs><rect class="box" x="70" y="48" width="230" height="54" rx="8"/><text x="185" y="80" text-anchor="middle">Core BASIC 1 subset</text><rect class="box" x="460" y="30" width="240" height="90" rx="8"/><text x="580" y="66" text-anchor="middle">Core BASIC 2</text><text x="580" y="92" text-anchor="middle">routines · Select · arrays</text><line x1="300" y1="75" x2="460" y2="75" stroke="#1769aa" stroke-width="2" marker-end="url(#arrowhead-profile)"/></svg><a class="back" href="#top">Back to top</a></section>
+
+<section id="grammar" class="reference-section"><h2>29. Quick grammar</h2><pre><code>item       := Option Explicit | Dim | Const | Sub | Function | statement
+parameter  := [ByVal] name As (Number | Boolean | Text)
+statement  := assignment | Call | Return | Print | If | Select | For | Do | Exit | End Program
+array      := Dim name[constant-count] As scalar-type
+call       := name(argument-list)
+select     := Select Case expression · Case constant · [Case Else] · End Select</code></pre><p>Parentheses are required for routine declarations and calls, including zero arguments. Square brackets are for the one array dimension and its index.</p><a class="back" href="#top">Back to top</a></section>
+
+<section id="keywords" class="reference-section"><h2>30. Keyword table</h2><table><thead><tr><th>Group</th><th>Current words</th></tr></thead><tbody><tr><td>Types/declarations</td><td>Option, Explicit, Dim, As, Const, Number, Boolean, Text</td></tr><tr><td>Routines</td><td>Sub, Function, ByVal, Call, Return, End</td></tr><tr><td>Decisions</td><td>If, Then, Else, Select, Case</td></tr><tr><td>Loops/control</td><td>For, Down, To, Do, Loop, Until, Exit, Program</td></tr><tr><td>Expressions/output</td><td>True, False, Not, And, Or, Mod, Print</td></tr></tbody></table><p>SMILE 2.0 words for deferred features remain reserved. A reserved word cannot be reused as a variable or routine name.</p><a class="back" href="#top">Back to top</a></section>
+
+<section id="excluded" class="reference-section"><h2>31. Intentionally excluded and deferred</h2><p>Small is a feature. This milestone does <strong>not</strong> implement console Input, ByRef, Optional/ParamArray/named arguments, dynamic or multidimensional arrays, array parameters/returns, Enum, Type, Module, Import, classes, OOP, files/data, timing/randomness, graphics, games, media, or audio.</p><p>There is no TypeScript or npm layer, no hidden legacy mode, and no eleventh target. Console Input requires a separate authority-first design.</p><div class="callout">Documentation for a future idea is not implementation. If it is in this list, the compiler correctly rejects it today.</div><a class="back" href="#top">Back to top</a></section>
+
+<section id="glossary" class="reference-section"><h2>32. Friendly compiler glossary</h2><dl><dt><strong>Lexer</strong></dt><dd>Finds words, numbers, strings, punctuation, and comments.</dd><dt><strong>Parser</strong></dt><dd>Checks how tokens are arranged and builds a syntax tree.</dd><dt><strong>Binder</strong></dt><dd>Connects each name to a declaration and checks exact types and scopes.</dd><dt><strong>Bound program</strong></dt><dd>The shared, already-checked meaning consumed by evaluation and generation.</dd><dt><strong>Evaluator</strong></dt><dd>Runs that meaning directly and serves as the expected-output oracle.</dd><dt><strong>Transpiler</strong></dt><dd>Translates source in one language into source in another.</dd><dt><strong>Generator</strong></dt><dd>The target-specific writer that produces readable C#, Python, COBOL, and so on.</dd><dt><strong>Toolchain</strong></dt><dd>The destination compiler or runtime that builds and runs generated files.</dd><dt><strong>Scope</strong></dt><dd>The part of a program where a name refers to a declaration.</dd><dt><strong>Call frame</strong></dt><dd>Fresh parameters and local storage for one routine invocation.</dd></dl><p>You now have the vocabulary to read a diagnostic, inspect generated code, and explain the journey from one SMILE line to ten real targets.</p><a class="back" href="#top">Back to top</a></section>
+</main></div>
+<a class="button top" href="#top" aria-label="Back to the top">↑ Top</a>
+<footer><p>SMILE 1.0 · Core BASIC Profile 2.0 · Self-contained student reference</p><p>Authority: read-only SMILE 2.0 commit <code>9aa9583a651eab452ea3af80772b08b68fc03220</code>.</p></footer>
+<script>
+(()=>{const root=document.documentElement,toc=document.querySelector('.toc'),links=[...document.querySelectorAll('.toc a')],sections=links.map(a=>document.querySelector(a.getAttribute('href'))).filter(Boolean),search=document.getElementById('section-search');document.getElementById('theme-toggle').addEventListener('click',()=>{const dark=root.getAttribute('data-theme')==='dark';dark?root.removeAttribute('data-theme'):root.setAttribute('data-theme','dark')});const toggle=()=>{toc.classList.toggle('collapsed');const open=!toc.classList.contains('collapsed');document.getElementById('nav-button').setAttribute('aria-expanded',String(open));document.querySelector('.nav-toggle').setAttribute('aria-expanded',String(open))};document.getElementById('nav-button').addEventListener('click',toggle);document.querySelector('.nav-toggle').addEventListener('click',toggle);search.addEventListener('input',()=>{const q=search.value.toLowerCase();links.forEach(a=>a.parentElement.hidden=!a.textContent.toLowerCase().includes(q))});document.querySelectorAll('.copy').forEach(button=>button.addEventListener('click',async()=>{const value=button.parentElement.querySelector('code').textContent;await navigator.clipboard.writeText(value);button.textContent='Copied';setTimeout(()=>button.textContent='Copy',1200)}));if('IntersectionObserver'in window){const observer=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){links.forEach(a=>a.classList.toggle('active',a.getAttribute('href')==='#'+entry.target.id))}}),{rootMargin:'-15% 0px -75%'});sections.forEach(section=>observer.observe(section))}})();
+</script>
+</body>
+</html>

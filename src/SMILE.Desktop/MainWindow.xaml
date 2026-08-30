@@ -6,7 +6,7 @@
         xmlns:controls="clr-namespace:SMILE.Desktop.Controls"
         xmlns:vm="clr-namespace:SMILE.Desktop"
         mc:Ignorable="d"
-        Title="SMILE - Simple Modern Interactive Learning Environment"
+        Title="SMILE - Simple Modern and Intuitive Language for Everyone"
         Height="820"
         Width="1180"
         MinHeight="620"

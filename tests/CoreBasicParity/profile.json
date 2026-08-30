@@ -4,7 +4,7 @@
   "profileVersion": "1.0",
   "authority": {
     "repository": "Sincioco/SMILE-2.0",
-    "commit": "ec61dfa6324de7b22ea5ca0959828ff40e5e3902"
+    "commit": "9aa9583a651eab452ea3af80772b08b68fc03220"
   },
   "includedLexicalFeatures": [
     "case-insensitive-keywords-and-identifiers",

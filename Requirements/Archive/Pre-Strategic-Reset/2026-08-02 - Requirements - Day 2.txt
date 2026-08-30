@@ -203,7 +203,7 @@ IDE Improvements - Color Coding / Syntax Highlighting
 
 SMILE - What it Stands For
 --------------------------
-31.) Remember this permanently that SMILE stands for "Simple Modern Interactive Learning Environment".  Please update all documentations and the IDE.  On the IDE's Title Bar, put "SMILE - Simple Modern Interactive Learning Environment".
+31.) Remember this permanently that SMILE stands for "Simple Modern and Intuitive Language for Everyone".  Please update all documentations and the IDE.  On the IDE's Title Bar, put "SMILE - Simple Modern and Intuitive Language for Everyone".
 
 Codex Completion Notes
 ----------------------
@@ -211,7 +211,7 @@ Codex Completion Notes
 
 **30 ready for testing:** The four code panes now use AvalonEdit. The SMILE source pane and all three generated target panes display line numbers and syntax highlighting for SMILE, C#, C, MASM x64, JavaScript, Java, Objective-C, and Swift. The output window remains a plain scrolling build/program log.
 
-**31 ready for testing:** SMILE is now documented as "Simple Modern Interactive Learning Environment." The IDE title bar shows `SMILE - Simple Modern Interactive Learning Environment`, About SMILE shows the same full name and the current build version, and the README/project docs have been updated for the new meaning.
+**31 ready for testing:** SMILE is now documented as "Simple Modern and Intuitive Language for Everyone." The IDE title bar shows `SMILE - Simple Modern and Intuitive Language for Everyone`, About SMILE shows the same full name and the current build version, and the README/project docs have been updated for the new meaning.
 
 SMILE IDE Stuck
 ---------------

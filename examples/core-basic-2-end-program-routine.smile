@@ -1,0 +1,12 @@
+Option Explicit
+
+Print "before"
+Call StopNow()
+Print "unreachable"
+
+End Program
+
+Sub StopNow()
+    Print "inside"
+    End Program
+End Sub

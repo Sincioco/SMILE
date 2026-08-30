@@ -2,7 +2,7 @@
 
 ## Status
 
-This standard governs generation for SMILE Core BASIC 1 across the ten active destinations. `AGENTS.md`, [Core Principles](SMILE%20Core%20Principles.md), and the [Official Specification](SMILE%20Language%20Specification/001%20-%20SMILE%20Core%20BASIC%201%20Official%20Specification.md) have higher authority.
+This standard governs generation for SMILE Core BASIC 2 across the ten active destinations. `AGENTS.md`, [Core Principles](SMILE%20Core%20Principles.md), and the [Official Specification](SMILE%20Language%20Specification/002%20-%20SMILE%20Core%20BASIC%202%20Official%20Specification.md) have higher authority.
 
 ## Governing rule
 
@@ -17,6 +17,7 @@ Every backend receives the same bound Core BASIC program. A generator must not:
 - execute or unroll learner loops during generation;
 - replace runtime storage with stale compile-time values;
 - change short-circuiting, post-test behavior, bound evaluation, or typed-exit destination;
+- change left-to-right argument/operand evaluation, ByVal isolation, recursive frame behavior, selector-once Select, or checked array indexing;
 - add support for syntax outside the official profile.
 
 Generated files are deterministic. Imports, helpers, declarations, labels, and companion files appear only when required by the actual source or destination toolchain.
@@ -49,20 +50,24 @@ A target should make the variable, counted loop, post-test loop, conditional, an
 - Map Text to the ordinary dependency-light text representation.
 - Preserve truncating division and signed `Mod` semantics. A helper is acceptable only where the destination operator differs.
 - Preserve short-circuit `And` and `Or` with native operators or explicit low-level branches.
-- Preserve case-sensitive Text equality/inequality and Text concatenation. Text ordering is outside Profile 1.0. Emit C-family support only for programs that use it.
+- Preserve case-sensitive Text equality/inequality and Text concatenation. Text ordering is outside Profile 2.0. Emit C-family support only for programs that use it.
 - Escape target literals from the bound Text value; never reinterpret source delimiters.
 
 Target-native integer overflow behavior can differ at extreme values because this beginner-first profile does not require a generated arbitrary precision or checked-arithmetic runtime in every destination. Ordinary signed-64 inputs and the pinned parity corpus remain cross-target conformance requirements.
 
+Calls use normal destination routines and native call frames. Destinations without a guaranteed left-to-right native argument order capture source arguments in readable temporaries first. Parameters remain independent ByVal copies, including when assigned by the callee.
+
 ## Storage
 
-Implicit assignment, `Dim`, constants, and loop counters become clear target declarations and assignments. Declarations may be hoisted where the destination requires it, but learner reads and writes stay visible. Constants should use a destination constant when its declaration model permits; otherwise use the smallest faithful immutable representation.
+Implicit assignment, `Dim`, constants, parameters, local/global variables, arrays, and loop counters become clear target declarations and assignments. Declarations may be hoisted where the destination requires it, but learner reads and writes stay visible. Constants should use a destination constant when its declaration model permits; otherwise use the smallest faithful immutable representation.
+
+Fixed arrays use native fixed storage where practical. Every dynamic index is checked against the SMILE zero-based range before access, even when the target would otherwise allow negative indexing, sparse extension, one-based subscripts, or unchecked memory. Text cells start as empty Text. Routine-local arrays are new/defaulted per call.
 
 Do not generate unused declarations. Preserve case-insensitive SMILE identity while mapping names deterministically away from destination reserved words and collisions.
 
 ## Print
 
-Values print in order with no inserted separator. Number uses invariant decimal text, Boolean uses uppercase `TRUE`/`FALSE`, and Text writes its value. A normal Print ends with one newline; a trailing source semicolon suppresses it; blank Print writes only a newline.
+Values print in order with no inserted separator. Number uses invariant decimal text, Boolean uses `True`/`False`, and Text writes its value. A normal Print ends with one newline; a trailing source semicolon suppresses it; blank Print writes only a newline.
 
 Use familiar output:
 
@@ -82,18 +87,18 @@ Use familiar output:
 
 `Exit For` and `Exit Do` target the nearest lexically enclosing loop of that kind, not merely the innermost loop. Use ordinary `break` when those are the same loop. Java and JavaScript may use labeled `break`; C-family and Swift may use a clear target label where required. Python may use a tiny generated exception scoped to the targeted loop because Python has no labeled break. Generate that exception only when such a cross-kind exit exists.
 
-`End Program` uses the destination's normal successful termination path.
+`Select Case` evaluates one selector then uses the destination's native selection when it directly supports the exact types/rules, or a readable first-match conditional chain. `End Program` uses the destination's normal successful termination path and propagates out of calls.
 
 ## Target direction
 
 | Target | Required recognizable direction |
 |---|---|
-| C# | minimal console program, native types, `for`, `do`, `if`, `Console.Write` |
+| C# | minimal console program, static routines/globals, native arrays, `for`, `do`, `if`, `Console.Write` |
 | C | `int main(void)`, fixed-width Number, `for`, `do`, `if`, standard C output |
-| MASM x64 | clear data, ABI-correct calls, compare/branch labels, direct `ExitProcess` |
-| JavaScript | `let`/`const`, structured blocks, native output stream |
+| MASM x64 | clear data, ABI-correct recursive `PROC` frames/calls, local stack arrays, compare/branch labels, direct `ExitProcess` |
+| JavaScript (Node.js) | dependency-free `.js`, functions, native arrays, `let`/`const`, structured blocks, Node output stream |
 | Java | small `Program` class, primitive/String storage, structured blocks |
-| COBOL | conventional divisions, working storage, `DISPLAY`, structured `PERFORM` |
+| COBOL | recursive program units, linkage/local storage, `OCCURS`, `EVALUATE`, `DISPLAY`, structured `PERFORM` |
 | Objective-C | dependency-light C-compatible console source in `.m` |
 | Swift | top-level script statements, `for`/`stride`, `repeat`, native `print` |
 | Python | direct module-level script, `for`, `while True`, `if`, native `print` |

@@ -3,15 +3,15 @@ using System.Text;
 
 namespace SMILE.Engine;
 
-// This is SMILE's sole source front end. Keeping tokenization beside parsing
-// makes it impossible for a public entry point to retry source through a
-// second grammar after canonical diagnostics have been produced.
+// SMILE has one source front end. Tokenization lives beside parsing so every
+// public entry point receives the same syntax tree and canonical diagnostics.
 internal sealed class Parser
 {
     private readonly IReadOnlyList<Token> _tokens;
     private readonly List<Diagnostic> _diagnostics = new();
     private int _position;
-    private int _parenthesisDepth;
+    private int _delimiterDepth;
+    private int _routineDepth;
 
     public Parser(string source)
     {
@@ -72,46 +72,102 @@ internal sealed class Parser
 
     private StatementSyntax? ParseStatement() => Current.Kind switch
     {
+        TokenKind.Option => ParseOptionExplicit(),
         TokenKind.Identifier => ParseAssignment(),
         TokenKind.Dim => ParseDim(),
         TokenKind.Const => ParseConst(),
+        TokenKind.Sub => ParseRoutine(RoutineKind.Sub),
+        TokenKind.Function => ParseRoutine(RoutineKind.Function),
+        TokenKind.Call => ParseCallStatement(),
+        TokenKind.Return => ParseReturn(),
+        TokenKind.Select => ParseSelect(),
         TokenKind.Print => ParsePrint(),
         TokenKind.If => ParseIf(),
         TokenKind.For => ParseFor(),
         TokenKind.Do => ParseDo(),
         TokenKind.Exit => ParseExit(),
         TokenKind.End => ParseEndProgram(),
-        TokenKind.UnsupportedKeyword => ParseUnsupported(),
+        TokenKind.UnsupportedKeyword or TokenKind.ByRef or TokenKind.Optional => ParseUnsupported(),
         _ => ParseUnexpectedStatement()
     };
+
+    private StatementSyntax ParseOptionExplicit()
+    {
+        Token start = Next();
+        Token explicitToken = Match(TokenKind.Explicit, "Expected 'Explicit' after 'Option'.");
+        return new OptionExplicitStatementSyntax(Combine(start.Span, explicitToken.Span));
+    }
 
     private StatementSyntax ParseAssignment()
     {
         Token name = Next();
+        if (Current.Kind is TokenKind.OpenBracket)
+        {
+            Next();
+            _delimiterDepth++;
+            ExpressionSyntax index = ParseExpression();
+            if (Current.Kind is TokenKind.Comma)
+            {
+                Report("SMILE2010", "Core BASIC 2 arrays are fixed and one-dimensional.", Current.Span);
+                while (Current.Kind is TokenKind.Comma)
+                {
+                    Next();
+                    ParseExpression();
+                }
+            }
+
+            Token close = Match(TokenKind.CloseBracket, "Expected ']' after the array index.");
+            _delimiterDepth--;
+            Match(TokenKind.Equals, "Expected '=' after the array element target.");
+            ExpressionSyntax value = ParseExpression();
+            return new CoreArrayAssignmentStatementSyntax(
+                name.Text,
+                name.Span,
+                index,
+                value,
+                Combine(name.Span, value.Span.Length == 0 ? close.Span : value.Span));
+        }
+
         Match(TokenKind.Equals, "Expected '=' after the assignment target.");
-        ExpressionSyntax value = ParseExpression();
+        ExpressionSyntax scalarValue = ParseExpression();
         return new CoreAssignmentStatementSyntax(
             name.Text,
             name.Span,
-            value,
-            Combine(name.Span, value.Span));
+            scalarValue,
+            Combine(name.Span, scalarValue.Span));
     }
 
     private StatementSyntax ParseDim()
     {
         Token start = Next();
         Token name = Match(TokenKind.Identifier, "Expected an identifier after 'Dim'.");
-        Match(TokenKind.As, "Core BASIC scalar declarations require 'As Number', 'As Boolean', or 'As Text'.");
-        Token type = Current.Kind is TokenKind.NumberType or TokenKind.BooleanType or TokenKind.TextType
-            ? Next()
-            : Match(TokenKind.NumberType, "Expected Number, Boolean, or Text after 'As'.");
-        SmileType declaredType = type.Kind switch
+        ExpressionSyntax? arraySize = null;
+        TextSpan endSpan = name.Span;
+        if (Current.Kind is TokenKind.OpenBracket)
         {
-            TokenKind.BooleanType => SmileType.Boolean,
-            TokenKind.TextType => SmileType.String,
-            _ => SmileType.Integer
-        };
-        return new DimStatementSyntax(name.Text, name.Span, declaredType, Combine(start.Span, type.Span));
+            Next();
+            _delimiterDepth++;
+            arraySize = ParseExpression();
+            if (Current.Kind is TokenKind.Comma)
+            {
+                Report("SMILE2010", "Core BASIC 2 arrays are fixed and one-dimensional.", Current.Span);
+                while (Current.Kind is TokenKind.Comma)
+                {
+                    Next();
+                    ParseExpression();
+                }
+            }
+
+            Token close = Match(TokenKind.CloseBracket, "Expected ']' after the array size.");
+            _delimiterDepth--;
+            endSpan = close.Span;
+        }
+
+        Match(TokenKind.As, "Declarations require 'As Number', 'As Boolean', or 'As Text'.");
+        Token type = ParseType("Expected Number, Boolean, or Text after 'As'.");
+        SmileType declaredType = ToSmileType(type.Kind);
+        endSpan = type.Span.Length == 0 ? endSpan : type.Span;
+        return new DimStatementSyntax(name.Text, name.Span, declaredType, arraySize, Combine(start.Span, endSpan));
     }
 
     private StatementSyntax ParseConst()
@@ -125,6 +181,149 @@ internal sealed class Parser
             name.Span,
             initializer,
             Combine(start.Span, initializer.Span));
+    }
+
+    private StatementSyntax ParseRoutine(RoutineKind kind)
+    {
+        Token start = Next();
+        Token name = Match(TokenKind.Identifier, $"Expected a name after '{start.Text}'.");
+        Match(TokenKind.OpenParenthesis, "Routine declarations require '('.");
+        _delimiterDepth++;
+        var parameters = new List<ParameterSyntax>();
+        if (Current.Kind is not TokenKind.CloseParenthesis)
+        {
+            while (true)
+            {
+                Token parameterStart = Current;
+                bool explicitByVal = false;
+                if (Current.Kind is TokenKind.ByVal)
+                {
+                    explicitByVal = true;
+                    parameterStart = Next();
+                }
+                else if (Current.Kind is TokenKind.ByRef)
+                {
+                    parameterStart = Next();
+                    Report("SMILE2011", "Core BASIC 2 parameters are ByVal; ByRef is not supported.", parameterStart.Span);
+                }
+                else if (Current.Kind is TokenKind.Optional)
+                {
+                    parameterStart = Next();
+                    Report("SMILE2012", "Core BASIC 2 does not support Optional parameters.", parameterStart.Span);
+                }
+
+                Token parameterName = Match(TokenKind.Identifier, "Expected a parameter name.");
+                Match(TokenKind.As, "Typed parameters require 'As Number', 'As Boolean', or 'As Text'.");
+                Token type = ParseType("Expected Number, Boolean, or Text for the parameter type.");
+                parameters.Add(new ParameterSyntax(
+                    parameterName.Text,
+                    parameterName.Span,
+                    ToSmileType(type.Kind),
+                    explicitByVal,
+                    Combine(parameterStart.Span, type.Span)));
+
+                if (Current.Kind is not TokenKind.Comma)
+                {
+                    break;
+                }
+
+                Next();
+            }
+        }
+
+        Token close = Match(TokenKind.CloseParenthesis, "Expected ')' after the parameter list.");
+        _delimiterDepth--;
+        SmileType? returnType = null;
+        TextSpan headerEnd = close.Span;
+        if (kind is RoutineKind.Function)
+        {
+            Match(TokenKind.As, "Function declarations require a return type after 'As'.");
+            Token type = ParseType("Expected Number, Boolean, or Text for the Function return type.");
+            returnType = ToSmileType(type.Kind);
+            headerEnd = type.Span;
+        }
+
+        ConsumeRequiredLineEnd($"The {kind} header must end after its declaration.");
+        _routineDepth++;
+        IReadOnlyList<SourceItemSyntax> body = ParseItems(() => IsRoutineTerminator(kind) || Current.Kind is TokenKind.Sub or TokenKind.Function);
+        _routineDepth--;
+
+        TextSpan endSpan = LastSpan(body, headerEnd);
+        if (IsRoutineTerminator(kind))
+        {
+            Token end = Next();
+            Token closeKind = Next();
+            endSpan = closeKind.Span.Length == 0 ? end.Span : closeKind.Span;
+        }
+        else
+        {
+            Report("SMILE2013", $"Routines cannot be nested; expected 'End {kind}' before the next routine declaration or end of file.", Current.Span);
+        }
+
+        return new RoutineDeclarationSyntax(kind, name.Text, name.Span, parameters, returnType, body, Combine(start.Span, endSpan));
+    }
+
+    private bool IsRoutineTerminator(RoutineKind kind) =>
+        Current.Kind is TokenKind.End && Peek(1).Kind == (kind is RoutineKind.Sub ? TokenKind.Sub : TokenKind.Function);
+
+    private StatementSyntax ParseCallStatement()
+    {
+        Token start = Next();
+        Token name = Match(TokenKind.Identifier, "Expected a Sub name after 'Call'.");
+        IReadOnlyList<ExpressionSyntax> arguments = ParseArgumentList("Call statements require a parenthesized argument list.");
+        TextSpan end = arguments.Count > 0 ? arguments[^1].Span : Previous.Span;
+        return new CallStatementSyntax(name.Text, name.Span, arguments, Combine(start.Span, end));
+    }
+
+    private StatementSyntax ParseReturn()
+    {
+        Token start = Next();
+        ExpressionSyntax? value = AtLineEnd() ? null : ParseExpression();
+        return new ReturnStatementSyntax(value, Combine(start.Span, value?.Span ?? start.Span));
+    }
+
+    private StatementSyntax ParseSelect()
+    {
+        Token start = Next();
+        Match(TokenKind.Case, "Expected 'Case' after 'Select'.");
+        ExpressionSyntax selector = ParseExpression();
+        ConsumeRequiredLineEnd("The Select Case header must end after its selector.");
+
+        // This deliberately follows the pinned SMILE 2.0 parser: the first Case
+        // follows the header directly. Recover after diagnosing blank lines.
+        while (Current.Kind is TokenKind.EndOfLine)
+        {
+            Report("SMILE2014", "Expected 'Case' directly after the Select Case header.", Current.Span);
+            Next();
+        }
+
+        var clauses = new List<SelectCaseClauseSyntax>();
+        while (Current.Kind is TokenKind.Case)
+        {
+            Token caseToken = Next();
+            bool isElse = false;
+            ExpressionSyntax? value = null;
+            if (Current.Kind is TokenKind.Else)
+            {
+                isElse = true;
+                Next();
+            }
+            else
+            {
+                value = ParseExpression();
+            }
+
+            ConsumeRequiredLineEnd("The Case header must end after its value.");
+            IReadOnlyList<SourceItemSyntax> body = ParseItems(() =>
+                Current.Kind is TokenKind.Case ||
+                (Current.Kind is TokenKind.End && Peek(1).Kind is TokenKind.Select));
+            TextSpan clauseEnd = LastSpan(body, value?.Span ?? caseToken.Span);
+            clauses.Add(new SelectCaseClauseSyntax(value, isElse, body, Combine(caseToken.Span, clauseEnd)));
+        }
+
+        Token end = Match(TokenKind.End, "Expected 'End Select'.");
+        Token select = Match(TokenKind.Select, "Expected 'Select' after 'End'.");
+        return new SelectStatementSyntax(selector, clauses, Combine(start.Span, select.Span.Length == 0 ? end.Span : select.Span));
     }
 
     private StatementSyntax ParsePrint()
@@ -184,7 +383,7 @@ internal sealed class Parser
 
         Token end = Match(TokenKind.End, "Expected 'End If'.");
         Token ifToken = Match(TokenKind.If, "Expected 'If' after 'End'.");
-        return new IfStatementSyntax(clauses, elseItems, hasElse, Combine(start.Span, ifToken.Kind is TokenKind.If ? ifToken.Span : end.Span));
+        return new IfStatementSyntax(clauses, elseItems, hasElse, Combine(start.Span, ifToken.Span.Length == 0 ? end.Span : ifToken.Span));
     }
 
     private bool IsIfTerminator() =>
@@ -258,14 +457,20 @@ internal sealed class Parser
     private StatementSyntax? ParseUnsupported()
     {
         Token token = Next();
-        Report("SMILE2002", $"'{token.Text}' is outside the Core BASIC 1 profile.", token.Span);
+        string message = token.Kind switch
+        {
+            TokenKind.ByRef => "Core BASIC 2 parameters are ByVal; ByRef is not supported.",
+            TokenKind.Optional => "Core BASIC 2 does not support Optional parameters.",
+            _ => $"'{token.Text}' is outside the Core BASIC 2 profile."
+        };
+        Report("SMILE2002", message, token.Span);
         SkipToLineEnd();
         return null;
     }
 
     private StatementSyntax? ParseUnexpectedStatement()
     {
-        Report("SMILE2001", "Expected an assignment, Dim, Const, Print, If, For, Do, Exit, or End Program statement.", Current.Span);
+        Report("SMILE2001", "Expected a Core BASIC 2 statement.", Current.Span);
         SkipToLineEnd();
         return null;
     }
@@ -279,8 +484,7 @@ internal sealed class Parser
         {
             Token op = Next();
             ExpressionSyntax operand = ParseExpression(unaryPrecedence);
-            SyntaxToken syntaxOperator = ToSyntaxToken(op);
-            left = new UnaryExpressionSyntax(syntaxOperator, operand, Combine(op.Span, operand.Span));
+            left = new UnaryExpressionSyntax(ToSyntaxToken(op), operand, Combine(op.Span, operand.Span));
         }
         else
         {
@@ -322,32 +526,92 @@ internal sealed class Parser
                 return new BooleanLiteralExpressionSyntax(token.Kind is TokenKind.True, token.Span);
             case TokenKind.Identifier:
                 Next();
+                if (Current.Kind is TokenKind.OpenParenthesis)
+                {
+                    IReadOnlyList<ExpressionSyntax> arguments = ParseArgumentList("Function calls require a parenthesized argument list.");
+                    TextSpan end = arguments.Count > 0 ? arguments[^1].Span : Previous.Span;
+                    return new CallExpressionSyntax(token.Text, token.Span, arguments, Combine(token.Span, end));
+                }
+
+                if (Current.Kind is TokenKind.OpenBracket)
+                {
+                    Next();
+                    _delimiterDepth++;
+                    ExpressionSyntax index = ParseExpression();
+                    if (Current.Kind is TokenKind.Comma)
+                    {
+                        Report("SMILE2010", "Core BASIC 2 arrays are fixed and one-dimensional.", Current.Span);
+                        while (Current.Kind is TokenKind.Comma)
+                        {
+                            Next();
+                            ParseExpression();
+                        }
+                    }
+
+                    Token close = Match(TokenKind.CloseBracket, "Expected ']' after the array index.");
+                    _delimiterDepth--;
+                    return new ArrayAccessExpressionSyntax(token.Text, token.Span, index, Combine(token.Span, close.Span));
+                }
+
                 return new NameExpressionSyntax(token.Text, token.Span);
             case TokenKind.OpenParenthesis:
                 Token open = Next();
-                _parenthesisDepth++;
+                _delimiterDepth++;
                 ExpressionSyntax inner = ParseExpression();
-                Token close = Match(TokenKind.CloseParenthesis, "Expected ')' to close the expression.");
-                _parenthesisDepth--;
+                Token closeParenthesis = Match(TokenKind.CloseParenthesis, "Expected ')' to close the expression.");
+                _delimiterDepth--;
                 return new ParenthesizedExpressionSyntax(
                     ToSyntaxToken(open),
                     inner,
-                    ToSyntaxToken(close),
-                    Combine(open.Span, close.Span));
+                    ToSyntaxToken(closeParenthesis),
+                    Combine(open.Span, closeParenthesis.Span));
             case TokenKind.UnsupportedKeyword:
+            case TokenKind.ByRef:
+            case TokenKind.Optional:
                 Next();
-                Report("SMILE2002", $"'{token.Text}' is reserved and outside the Core BASIC 1 profile.", token.Span);
+                Report("SMILE2002", $"'{token.Text}' is reserved and outside the Core BASIC 2 profile.", token.Span);
                 return new ErrorExpressionSyntax(token.Span);
             default:
                 Next();
-                Report("SMILE2003", "Expected a Number, Boolean, Text, identifier, or parenthesized expression.", token.Span);
+                Report("SMILE2003", "Expected a Number, Boolean, Text, identifier, call, array access, or parenthesized expression.", token.Span);
                 return new ErrorExpressionSyntax(token.Span);
         }
     }
 
+    private IReadOnlyList<ExpressionSyntax> ParseArgumentList(string openMessage)
+    {
+        Match(TokenKind.OpenParenthesis, openMessage);
+        _delimiterDepth++;
+        var arguments = new List<ExpressionSyntax>();
+        if (Current.Kind is not TokenKind.CloseParenthesis)
+        {
+            while (true)
+            {
+                if (Current.Kind is TokenKind.Identifier && Peek(1).Kind is TokenKind.ColonEquals)
+                {
+                    Token name = Next();
+                    Next();
+                    Report("SMILE2015", "Core BASIC 2 does not support named arguments.", name.Span);
+                }
+
+                arguments.Add(ParseExpression());
+                if (Current.Kind is not TokenKind.Comma)
+                {
+                    break;
+                }
+
+                Next();
+            }
+        }
+
+        Match(TokenKind.CloseParenthesis, "Expected ')' after the argument list.");
+        _delimiterDepth--;
+        return arguments;
+    }
+
     private void SkipExpressionContinuations()
     {
-        if (_parenthesisDepth == 0)
+        if (_delimiterDepth == 0)
         {
             return;
         }
@@ -399,6 +663,18 @@ internal sealed class Parser
         };
         return new SyntaxToken(kind, token.Text, token.Value, token.Span);
     }
+
+    private Token ParseType(string message) =>
+        Current.Kind is TokenKind.NumberType or TokenKind.BooleanType or TokenKind.TextType
+            ? Next()
+            : Match(TokenKind.NumberType, message);
+
+    private static SmileType ToSmileType(TokenKind kind) => kind switch
+    {
+        TokenKind.BooleanType => SmileType.Boolean,
+        TokenKind.TextType => SmileType.String,
+        _ => SmileType.Integer
+    };
 
     private bool AtLineEnd() => Current.Kind is TokenKind.EndOfLine or TokenKind.EndOfFile or TokenKind.Comment;
 
@@ -468,12 +744,17 @@ internal sealed class Parser
         }
 
         Report("SMILE2005", message, Current.Span);
-        return new Token(kind, string.Empty, null, Current.Span);
+        return new Token(kind, string.Empty, null, new TextSpan(Current.Span.Start, 0, Current.Span.Line, Current.Span.Column));
     }
 
     private Token Current => Peek(0);
+    private Token Previous => Peek(-1);
 
-    private Token Peek(int offset) => _tokens[Math.Min(_position + offset, _tokens.Count - 1)];
+    private Token Peek(int offset)
+    {
+        int index = Math.Clamp(_position + offset, 0, _tokens.Count - 1);
+        return _tokens[index];
+    }
 
     private Token Next()
     {
@@ -500,9 +781,11 @@ internal sealed class Parser
         Bad, EndOfFile, EndOfLine, Comment, Identifier, Number, String,
         Dim, If, Then, Else, End, For, To, Down, Do, Loop, Until, Print,
         True, False, And, Or, Not, Const, Mod, Exit, Program, As,
-        NumberType, BooleanType, TextType, UnsupportedKeyword,
+        NumberType, BooleanType, TextType, Option, Explicit, Sub, Function,
+        Call, Return, Select, Case, ByVal, ByRef, Optional, UnsupportedKeyword,
         Plus, Minus, Star, Slash, Equals, NotEquals, Less, LessOrEquals,
-        Greater, GreaterOrEquals, OpenParenthesis, CloseParenthesis, Semicolon
+        Greater, GreaterOrEquals, OpenParenthesis, CloseParenthesis,
+        OpenBracket, CloseBracket, Semicolon, Comma, ColonEquals
     }
 
     private sealed record Token(TokenKind Kind, string Text, object? Value, TextSpan Span);
@@ -519,7 +802,13 @@ internal sealed class Parser
             ["Or"] = TokenKind.Or, ["Not"] = TokenKind.Not, ["Const"] = TokenKind.Const,
             ["Mod"] = TokenKind.Mod, ["Exit"] = TokenKind.Exit, ["Program"] = TokenKind.Program,
             ["As"] = TokenKind.As, ["Number"] = TokenKind.NumberType,
-            ["Boolean"] = TokenKind.BooleanType, ["Text"] = TokenKind.TextType
+            ["Boolean"] = TokenKind.BooleanType, ["Text"] = TokenKind.TextType,
+            ["Option"] = TokenKind.Option, ["Explicit"] = TokenKind.Explicit,
+            ["Sub"] = TokenKind.Sub, ["Function"] = TokenKind.Function,
+            ["Call"] = TokenKind.Call, ["Return"] = TokenKind.Return,
+            ["Select"] = TokenKind.Select, ["Case"] = TokenKind.Case,
+            ["ByVal"] = TokenKind.ByVal, ["ByRef"] = TokenKind.ByRef,
+            ["Optional"] = TokenKind.Optional
         };
 
         private static readonly HashSet<string> ReservedWords = new(StringComparer.OrdinalIgnoreCase)
@@ -684,9 +973,18 @@ internal sealed class Parser
 
             TokenKind single = Current switch
             {
-                '+' => TokenKind.Plus, '-' => TokenKind.Minus, '*' => TokenKind.Star,
-                '/' => TokenKind.Slash, '=' => TokenKind.Equals, '(' => TokenKind.OpenParenthesis,
-                ')' => TokenKind.CloseParenthesis, ';' => TokenKind.Semicolon,
+                '+' => TokenKind.Plus,
+                '-' => TokenKind.Minus,
+                '*' => TokenKind.Star,
+                '/' => TokenKind.Slash,
+                '=' => TokenKind.Equals,
+                '(' => TokenKind.OpenParenthesis,
+                ')' => TokenKind.CloseParenthesis,
+                '[' => TokenKind.OpenBracket,
+                ']' => TokenKind.CloseBracket,
+                ';' => TokenKind.Semicolon,
+                ',' => TokenKind.Comma,
+                ':' when PeekChar(1) == '=' => TokenKind.ColonEquals,
                 '<' when PeekChar(1) == '=' => TokenKind.LessOrEquals,
                 '<' when PeekChar(1) == '>' => TokenKind.NotEquals,
                 '<' => TokenKind.Less,
@@ -695,7 +993,7 @@ internal sealed class Parser
                 _ => TokenKind.Bad
             };
             Advance();
-            if (single is TokenKind.LessOrEquals or TokenKind.NotEquals or TokenKind.GreaterOrEquals)
+            if (single is TokenKind.ColonEquals or TokenKind.LessOrEquals or TokenKind.NotEquals or TokenKind.GreaterOrEquals)
             {
                 Advance();
             }

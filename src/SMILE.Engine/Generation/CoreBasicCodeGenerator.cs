@@ -11,10 +11,10 @@ internal static class CoreBasicCodeGenerator
         {
             TargetLanguage.CSharp => new StructuredWriter(program, language).WriteCSharp(),
             TargetLanguage.C => new StructuredWriter(program, language).WriteC(),
-            TargetLanguage.MasmX64 => new MasmWriter(program).Write(),
+            TargetLanguage.MasmX64 => new CoreBasicMasmWriter(program).Write(),
             TargetLanguage.JavaScript => new StructuredWriter(program, language).WriteJavaScript(),
             TargetLanguage.Java => new StructuredWriter(program, language).WriteJava(),
-            TargetLanguage.Cobol => new StructuredWriter(program, language).WriteCobol(),
+            TargetLanguage.Cobol => new CobolWriter(program).Write(),
             TargetLanguage.ObjectiveC => new StructuredWriter(program, language).WriteObjectiveC(),
             TargetLanguage.Swift => new StructuredWriter(program, language).WriteSwift(),
             TargetLanguage.Python => new StructuredWriter(program, language).WritePython(),
@@ -66,6 +66,8 @@ internal static class CoreBasicCodeGenerator
         private int _indent;
         private int _loopId;
         private int _forTempId;
+        private int _selectTempId;
+        private int _orderedTempId;
 
         public StructuredWriter(BoundProgram program, TargetLanguage language)
         {
@@ -81,10 +83,13 @@ internal static class CoreBasicCodeGenerator
             Line("internal static class Program");
             Line("{");
             _indent++;
+            WriteGlobalDeclarations(fieldContext: true);
+            WriteIndexHelper();
+            WriteRoutines();
             Line("private static void Main()");
             Line("{");
             _indent++;
-            WriteDeclarations();
+            WriteArrayInitializers(_program.Variables);
             WriteItems(_program.SourceItems);
             _indent--;
             Line("}");
@@ -97,7 +102,9 @@ internal static class CoreBasicCodeGenerator
         {
             Line("\"use strict\";");
             Line();
-            WriteDeclarations();
+            WriteIndexHelper();
+            WriteGlobalDeclarations();
+            WriteRoutines();
             WriteItems(_program.SourceItems);
             return Finish();
         }
@@ -106,9 +113,12 @@ internal static class CoreBasicCodeGenerator
         {
             Line("public final class Program {");
             _indent++;
+            WriteGlobalDeclarations(fieldContext: true);
+            WriteIndexHelper();
+            WriteRoutines();
             Line("public static void main(String[] args) {");
             _indent++;
-            WriteDeclarations();
+            WriteArrayInitializers(_program.Variables);
             WriteItems(_program.SourceItems);
             _indent--;
             Line("}");
@@ -119,21 +129,29 @@ internal static class CoreBasicCodeGenerator
 
         public string WriteSwift()
         {
-            if (HasEndProgram(_program.SourceItems))
+            if (ProgramStatements().Any(statement => statement is BoundEndProgramStatement) || ProgramHasArrays())
             {
                 Line("import Foundation");
                 Line();
             }
 
-            WriteDeclarations();
+            WriteIndexHelper();
+            WriteGlobalDeclarations();
+            WriteRoutines();
             WriteItems(_program.SourceItems);
             return Finish();
         }
 
         public string WritePython()
         {
-            bool hasModulo = HasModulo(_program.SourceItems);
-            if (HasDivision(_program.SourceItems) || hasModulo)
+            bool hasModulo = ProgramExpressions().Any(expression => expression is BoundBinaryExpression
+            {
+                Operator.Kind: BoundBinaryOperatorKind.Modulo
+            });
+            if (ProgramExpressions().Any(expression => expression is BoundBinaryExpression
+                {
+                    Operator.Kind: BoundBinaryOperatorKind.Division
+                }) || hasModulo)
             {
                 Line("def _smile_div(left, right):");
                 _indent++;
@@ -156,7 +174,7 @@ internal static class CoreBasicCodeGenerator
                 Line();
             }
 
-            foreach (int id in GetPythonExitLoopIds(_program.SourceItems))
+            foreach (int id in GetPythonExitLoopIds(AllExecutableItemSets().SelectMany(items => items).ToArray()))
             {
                 Line($"class _SmileExitLoop{id}(Exception):");
                 _indent++;
@@ -165,21 +183,28 @@ internal static class CoreBasicCodeGenerator
                 Line();
             }
 
-            WriteDeclarations();
+            WriteIndexHelper();
+            WriteGlobalDeclarations();
+            WriteRoutines();
             WriteItems(_program.SourceItems);
             return Finish();
         }
 
         public string WriteCpp()
         {
+            Line("#include <array>");
             Line("#include <cstdint>");
+            Line("#include <cstdlib>");
             Line("#include <iostream>");
             Line("#include <string>");
             Line();
+            WriteIndexHelper();
+            WriteGlobalDeclarations();
+            WriteRoutinePrototypes();
+            WriteRoutines();
             Line("int main()");
             Line("{");
             _indent++;
-            WriteDeclarations();
             WriteItems(_program.SourceItems);
             Line("return 0;");
             _indent--;
@@ -192,23 +217,27 @@ internal static class CoreBasicCodeGenerator
             Line("#include <inttypes.h>");
             Line("#include <stdbool.h>");
             Line("#include <stdio.h>");
-            if (HasTextComparison(_program.SourceItems) && !HasTextConcatenation(_program.SourceItems))
+            Line("#include <stdlib.h>");
+            if (ProgramHasTextComparison() && !ProgramHasTextConcatenation())
             {
                 Line("#include <string.h>");
             }
-            if (HasTextConcatenation(_program.SourceItems))
+            if (ProgramHasTextConcatenation())
             {
-                Line("#include <stdlib.h>");
                 Line("#include <string.h>");
                 Line();
                 WriteCTextConcatHelper();
             }
 
             Line();
+            WriteIndexHelper();
+            WriteGlobalDeclarations();
+            WriteRoutinePrototypes();
+            WriteRoutines();
             Line("int main(void)");
             Line("{");
             _indent++;
-            WriteDeclarations();
+            WriteArrayInitializers(_program.Variables);
             WriteItems(_program.SourceItems);
             Line("return 0;");
             _indent--;
@@ -221,22 +250,26 @@ internal static class CoreBasicCodeGenerator
             Line("#include <inttypes.h>");
             Line("#include <stdbool.h>");
             Line("#include <stdio.h>");
-            if (HasTextComparison(_program.SourceItems) && !HasTextConcatenation(_program.SourceItems))
+            Line("#include <stdlib.h>");
+            if (ProgramHasTextComparison() && !ProgramHasTextConcatenation())
             {
                 Line("#include <string.h>");
             }
-            if (HasTextConcatenation(_program.SourceItems))
+            if (ProgramHasTextConcatenation())
             {
-                Line("#include <stdlib.h>");
                 Line("#include <string.h>");
                 Line();
                 WriteCTextConcatHelper();
             }
             Line();
+            WriteIndexHelper();
+            WriteGlobalDeclarations();
+            WriteRoutinePrototypes();
+            WriteRoutines();
             Line("int main(void)");
             Line("{");
             _indent++;
-            WriteDeclarations();
+            WriteArrayInitializers(_program.Variables);
             WriteItems(_program.SourceItems);
             Line("return 0;");
             _indent--;
@@ -244,50 +277,7 @@ internal static class CoreBasicCodeGenerator
             return Finish();
         }
 
-        public string WriteCobol()
-        {
-            Line("       IDENTIFICATION DIVISION.");
-            Line("       PROGRAM-ID. Program.");
-            Line("       DATA DIVISION.");
-            Line("       WORKING-STORAGE SECTION.");
-            foreach (VariableSymbol variable in _program.Variables)
-            {
-                string name = Name(variable);
-                if (variable.IsConstant)
-                {
-                    BoundConstStatement? constant = FindConstant(variable);
-                    if (constant is not null)
-                    {
-                        Line($"       78 {name} VALUE {CobolLiteral(constant.Value)}.");
-                    }
-                }
-                else
-                {
-                    string declaration = variable.Type switch
-                    {
-                        SmileType.Integer => $"       01 {name} PIC S9(18) VALUE 0.",
-                        SmileType.Boolean => $"       01 {name} PIC 9 VALUE 0.",
-                        _ => $"       01 {name} PIC X(4096) VALUE SPACES."
-                    };
-                    Line(declaration);
-                }
-            }
-
-            if (EnumerateStatements(_program.SourceItems)
-                .OfType<BoundCorePrintStatement>()
-                .SelectMany(print => print.Values)
-                .Any(value => value.Type is SmileType.Integer))
-            {
-                Line("       01 SMILE-DISPLAY-NUMBER PIC -(17)9.");
-            }
-
-            Line("       PROCEDURE DIVISION.");
-            WriteItems(_program.SourceItems);
-            Line("           STOP RUN.");
-            return Finish();
-        }
-
-        private void WriteDeclarations()
+        private void WriteGlobalDeclarations(bool fieldContext = false)
         {
             foreach (VariableSymbol variable in _program.Variables)
             {
@@ -299,17 +289,295 @@ internal static class CoreBasicCodeGenerator
                         continue;
                     }
 
-                    Line(ConstantDeclaration(variable, constant.Value));
+                    string declaration = ConstantDeclaration(variable, constant.Value);
+                    if (fieldContext)
+                    {
+                        declaration = _language switch
+                        {
+                            TargetLanguage.CSharp => "private " + declaration,
+                            TargetLanguage.Java => "private static " + declaration,
+                            _ => declaration
+                        };
+                    }
+
+                    Line(declaration);
                 }
                 else
                 {
-                    Line(VariableDeclaration(variable));
+                    string declaration = VariableDeclaration(variable);
+                    if (fieldContext)
+                    {
+                        declaration = _language switch
+                        {
+                            TargetLanguage.CSharp => "private static " + declaration,
+                            TargetLanguage.Java => "private static " + declaration,
+                            _ => declaration
+                        };
+                    }
+
+                    Line(declaration);
                 }
             }
 
             if (_program.Variables.Count > 0)
             {
                 Line();
+            }
+        }
+
+        private void WriteRoutinePrototypes()
+        {
+            if (_language is not (TargetLanguage.C or TargetLanguage.ObjectiveC or TargetLanguage.Cpp))
+            {
+                return;
+            }
+
+            foreach (BoundRoutineDeclaration routine in _program.Routines)
+            {
+                Line($"static {RoutineReturnType(routine.Symbol)} {RoutineName(routine.Symbol)}({ParameterList(routine.Symbol)});");
+            }
+
+            if (_program.Routines.Count > 0)
+            {
+                Line();
+            }
+        }
+
+        private void WriteRoutines()
+        {
+            foreach (BoundRoutineDeclaration routine in _program.Routines)
+            {
+                WriteRoutine(routine);
+                Line();
+            }
+        }
+
+        private void WriteRoutine(BoundRoutineDeclaration routine)
+        {
+            RoutineSymbol symbol = routine.Symbol;
+            string name = RoutineName(symbol);
+            string parameters = ParameterList(symbol);
+            switch (_language)
+            {
+                case TargetLanguage.CSharp:
+                    Line($"private static {RoutineReturnType(symbol)} {name}({parameters})");
+                    Line("{");
+                    break;
+                case TargetLanguage.C:
+                case TargetLanguage.ObjectiveC:
+                case TargetLanguage.Cpp:
+                    Line($"static {RoutineReturnType(symbol)} {name}({parameters})");
+                    Line("{");
+                    break;
+                case TargetLanguage.JavaScript:
+                    Line($"function {name}({parameters}) {{");
+                    break;
+                case TargetLanguage.Java:
+                    Line($"private static {RoutineReturnType(symbol)} {name}({parameters}) {{");
+                    break;
+                case TargetLanguage.Swift:
+                    string arrow = symbol.IsFunction ? $" -> {RoutineReturnType(symbol)}" : string.Empty;
+                    Line($"func {name}({parameters}){arrow} {{");
+                    break;
+                case TargetLanguage.Python:
+                    Line($"def {name}({parameters}):");
+                    _indent++;
+                    string[] globals = AssignedGlobals(routine.SourceItems)
+                        .Select(Name)
+                        .Distinct(StringComparer.Ordinal)
+                        .ToArray();
+                    if (globals.Length > 0)
+                    {
+                        Line("global " + string.Join(", ", globals));
+                    }
+
+                    WriteLocalDeclarations(routine);
+                    if (!routine.SourceItems.OfType<BoundStatement>().Any() &&
+                        !routine.SourceItems.OfType<BoundFullLineComment>().Any())
+                    {
+                        Line("pass");
+                    }
+                    else
+                    {
+                        WriteItems(routine.SourceItems);
+                    }
+
+                    _indent--;
+                    return;
+                default:
+                    return;
+            }
+
+            _indent++;
+            if (_language is TargetLanguage.Swift)
+            {
+                for (int index = 0; index < symbol.Parameters.Count; index++)
+                {
+                    VariableSymbol parameter = symbol.Parameters[index];
+                    string binding = IsAssigned(parameter, routine.SourceItems) ? "var" : "let";
+                    Line($"{binding} {Name(parameter)}: {TypeName(parameter.Type)} = _smileParameter{index + 1}");
+                }
+
+                if (symbol.Parameters.Count > 0)
+                {
+                    Line();
+                }
+            }
+
+            WriteLocalDeclarations(routine);
+            WriteItems(routine.SourceItems);
+            _indent--;
+            Line("}");
+        }
+
+        private void WriteLocalDeclarations(BoundRoutineDeclaration routine)
+        {
+            VariableSymbol[] locals = routine.Locals.Where(variable => !variable.IsParameter).ToArray();
+            foreach (VariableSymbol local in locals)
+            {
+                Line(VariableDeclaration(local));
+            }
+
+            WriteArrayInitializers(locals);
+            if (locals.Length > 0)
+            {
+                Line();
+            }
+        }
+
+        private void WriteArrayInitializers(IEnumerable<VariableSymbol> variables)
+        {
+            foreach (VariableSymbol variable in variables.Where(item => item.IsArray && item.Type is SmileType.String))
+            {
+                string name = Name(variable);
+                switch (_language)
+                {
+                    case TargetLanguage.CSharp:
+                        Line($"Array.Fill({name}, string.Empty);");
+                        break;
+                    case TargetLanguage.Java:
+                        Line($"java.util.Arrays.fill({name}, \"\");");
+                        break;
+                    case TargetLanguage.C:
+                    case TargetLanguage.ObjectiveC:
+                        Line($"for (size_t _smile_index_{Math.Abs(variable.DeclarationSpan.Start)} = 0; _smile_index_{Math.Abs(variable.DeclarationSpan.Start)} < {variable.ArrayLength}; _smile_index_{Math.Abs(variable.DeclarationSpan.Start)}++)");
+                        Line("{");
+                        _indent++;
+                        Line($"{name}[_smile_index_{Math.Abs(variable.DeclarationSpan.Start)}] = \"\";");
+                        _indent--;
+                        Line("}");
+                        break;
+                }
+            }
+        }
+
+        private void WriteIndexHelper()
+        {
+            if (!ProgramHasArrays())
+            {
+                return;
+            }
+
+            switch (_language)
+            {
+                case TargetLanguage.CSharp:
+                    Line("private static int SmileIndex(long index, int length, string name)");
+                    Line("{");
+                    _indent++;
+                    Line("if (index < 0 || index >= length)");
+                    Line("{");
+                    _indent++;
+                    Line("throw new IndexOutOfRangeException($\"SMILE Runtime Error SMILER1210: Array index {index} is outside the bounds of '{name}'.\");");
+                    _indent--;
+                    Line("}");
+                    Line("return (int)index;");
+                    _indent--;
+                    Line("}");
+                    Line();
+                    break;
+                case TargetLanguage.C:
+                case TargetLanguage.ObjectiveC:
+                    Line("static size_t smile_index(int64_t index, size_t length, const char *name)");
+                    Line("{");
+                    _indent++;
+                    Line("if (index < 0 || (uint64_t)index >= length)");
+                    Line("{");
+                    _indent++;
+                    Line("fprintf(stderr, \"SMILE Runtime Error SMILER1210: Array index %\" PRId64 \" is outside the bounds of '%s'.\\n\", index, name);");
+                    Line("exit(1);");
+                    _indent--;
+                    Line("}");
+                    Line("return (size_t)index;");
+                    _indent--;
+                    Line("}");
+                    Line();
+                    break;
+                case TargetLanguage.JavaScript:
+                    Line("function smileIndex(index, length, name) {");
+                    _indent++;
+                    Line("if (index < 0n || index >= BigInt(length)) {");
+                    _indent++;
+                    Line("throw new RangeError(`SMILE Runtime Error SMILER1210: Array index ${index} is outside the bounds of '${name}'.`);");
+                    _indent--;
+                    Line("}");
+                    Line("return Number(index);");
+                    _indent--;
+                    Line("}");
+                    Line();
+                    break;
+                case TargetLanguage.Java:
+                    Line("private static int smileIndex(long index, int length, String name) {");
+                    _indent++;
+                    Line("if (index < 0 || index >= length) {");
+                    _indent++;
+                    Line("throw new IndexOutOfBoundsException(\"SMILE Runtime Error SMILER1210: Array index \" + index + \" is outside the bounds of '\" + name + \"'.\");");
+                    _indent--;
+                    Line("}");
+                    Line("return (int)index;");
+                    _indent--;
+                    Line("}");
+                    Line();
+                    break;
+                case TargetLanguage.Swift:
+                    Line("func smileIndex(_ index: Int64, _ length: Int, _ name: String) -> Int {");
+                    _indent++;
+                    Line("if index < 0 || index >= Int64(length) {");
+                    _indent++;
+                    Line("fatalError(\"SMILE Runtime Error SMILER1210: Array index \\(index) is outside the bounds of '\\(name)'.\")");
+                    _indent--;
+                    Line("}");
+                    Line("return Int(index)");
+                    _indent--;
+                    Line("}");
+                    Line();
+                    break;
+                case TargetLanguage.Python:
+                    Line("def smile_index(index, length, name):");
+                    _indent++;
+                    Line("if index < 0 or index >= length:");
+                    _indent++;
+                    Line("raise IndexError(f\"SMILE Runtime Error SMILER1210: Array index {index} is outside the bounds of '{name}'.\")");
+                    _indent--;
+                    Line("return index");
+                    _indent--;
+                    Line();
+                    break;
+                case TargetLanguage.Cpp:
+                    Line("static std::size_t smile_index(std::int64_t index, std::size_t length, const std::string& name)");
+                    Line("{");
+                    _indent++;
+                    Line("if (index < 0 || static_cast<std::size_t>(index) >= length)");
+                    Line("{");
+                    _indent++;
+                    Line("std::cerr << \"SMILE Runtime Error SMILER1210: Array index \" << index << \" is outside the bounds of '\" << name << \"'.\\n\";");
+                    Line("std::exit(1);");
+                    _indent--;
+                    Line("}");
+                    Line("return static_cast<std::size_t>(index);");
+                    _indent--;
+                    Line("}");
+                    Line();
+                    break;
             }
         }
 
@@ -339,6 +607,22 @@ internal static class CoreBasicCodeGenerator
         {
             string name = Name(variable);
             string value = DefaultLiteral(variable.Type);
+            if (variable.IsArray)
+            {
+                return _language switch
+                {
+                    TargetLanguage.CSharp => $"{TypeName(variable.Type)}[] {name} = new {TypeName(variable.Type)}[{variable.ArrayLength}];",
+                    TargetLanguage.C => $"{TypeName(variable.Type)} {name}[{variable.ArrayLength}] = {{0}};",
+                    TargetLanguage.JavaScript => $"let {name} = Array({variable.ArrayLength}).fill({value});",
+                    TargetLanguage.Java => $"{TypeName(variable.Type)}[] {name} = new {TypeName(variable.Type)}[{variable.ArrayLength}];",
+                    TargetLanguage.ObjectiveC => $"{TypeName(variable.Type)} {name}[{variable.ArrayLength}] = {{0}};",
+                    TargetLanguage.Swift => $"var {name}: [{TypeName(variable.Type)}] = Array(repeating: {value}, count: {variable.ArrayLength})",
+                    TargetLanguage.Python => $"{name} = [{value}] * {variable.ArrayLength}",
+                    TargetLanguage.Cpp => $"std::array<{TypeName(variable.Type)}, {variable.ArrayLength}> {name}{{}};",
+                    _ => string.Empty
+                };
+            }
+
             return _language switch
             {
                 TargetLanguage.CSharp => $"{TypeName(variable.Type)} {name} = {value};",
@@ -352,6 +636,29 @@ internal static class CoreBasicCodeGenerator
                 _ => string.Empty
             };
         }
+
+        private string RoutineReturnType(RoutineSymbol routine) => routine.IsFunction
+            ? TypeName(routine.ReturnType ?? SmileType.Error)
+            : _language switch
+            {
+                TargetLanguage.CSharp or TargetLanguage.C or TargetLanguage.Java or
+                    TargetLanguage.ObjectiveC or TargetLanguage.Cpp => "void",
+                _ => string.Empty
+            };
+
+        private string ParameterList(RoutineSymbol routine) => string.Join(", ", routine.Parameters.Select((parameter, index) =>
+        {
+            string name = Name(parameter);
+            return _language switch
+            {
+                TargetLanguage.CSharp or TargetLanguage.C or TargetLanguage.Java or
+                    TargetLanguage.ObjectiveC or TargetLanguage.Cpp => $"{TypeName(parameter.Type)} {name}",
+                TargetLanguage.Swift => $"_ _smileParameter{index + 1}: {TypeName(parameter.Type)}",
+                _ => name
+            };
+        }));
+
+        private string RoutineName(RoutineSymbol routine) => _identifiers.Get(routine);
 
         private void WriteItems(IReadOnlyList<BoundSourceItem> items)
         {
@@ -386,6 +693,18 @@ internal static class CoreBasicCodeGenerator
                 case BoundSetStatement assignment:
                     WriteAssignment(assignment);
                     return;
+                case BoundArraySetStatement assignment:
+                    WriteArrayAssignment(assignment);
+                    return;
+                case BoundCallStatement call:
+                    WriteCall(call);
+                    return;
+                case BoundReturnStatement returnStatement:
+                    WriteReturn(returnStatement);
+                    return;
+                case BoundSelectStatement select:
+                    WriteSelect(select);
+                    return;
                 case BoundCorePrintStatement print:
                     WritePrint(print);
                     return;
@@ -410,39 +729,136 @@ internal static class CoreBasicCodeGenerator
         private void WriteAssignment(BoundSetStatement assignment)
         {
             string name = Name(assignment.Variable);
-            string expression = Expression(assignment.Value);
-            if (_language is TargetLanguage.Cobol)
-            {
-                if (assignment.Variable.Type is SmileType.Boolean)
-                {
-                    Line($"           IF {expression}");
-                    Line($"               MOVE 1 TO {name}");
-                    Line("           ELSE");
-                    Line($"               MOVE 0 TO {name}");
-                    Line("           END-IF");
-                }
-                else if (assignment.Variable.Type is SmileType.Integer)
-                {
-                    Line($"           COMPUTE {name} = {expression}");
-                }
-                else
-                {
-                    Line($"           MOVE {expression} TO {name}");
-                }
-
-                return;
-            }
-
+            string expression = PreparedExpression(assignment.Value);
             Line(_language is TargetLanguage.Swift or TargetLanguage.Python
                 ? $"{name} = {expression}"
                 : $"{name} = {expression};");
+        }
+
+        private void WriteArrayAssignment(BoundArraySetStatement assignment)
+        {
+            if (UsesOrderedCExpressions)
+            {
+                string index = PreparedExpression(assignment.Index);
+                string indexType = _language is TargetLanguage.Cpp ? "std::size_t" : "size_t";
+                string checkedIndex = $"_smileIndex{++_orderedTempId}";
+                Line($"{indexType} {checkedIndex} = {CheckedArrayIndex(assignment.Array, index)};");
+                string valueExpression = PreparedExpression(assignment.Value);
+                Line($"{Name(assignment.Array)}[{checkedIndex}] = {valueExpression};");
+                return;
+            }
+
+            string target = ArrayElement(assignment.Array, assignment.Index);
+            string value = PreparedExpression(assignment.Value);
+            Line(_language is TargetLanguage.Swift or TargetLanguage.Python
+                ? $"{target} = {value}"
+                : $"{target} = {value};");
+        }
+
+        private void WriteCall(BoundCallStatement call)
+        {
+            string invocation = $"{RoutineName(call.Routine)}({string.Join(", ", call.Arguments.Select(PreparedExpression))})";
+            Line(_language is TargetLanguage.Swift or TargetLanguage.Python
+                ? invocation
+                : invocation + ";");
+        }
+
+        private void WriteReturn(BoundReturnStatement returnStatement)
+        {
+            string suffix = returnStatement.Value is null ? string.Empty : " " + PreparedExpression(returnStatement.Value);
+            Line(_language is TargetLanguage.Swift or TargetLanguage.Python
+                ? "return" + suffix
+                : "return" + suffix + ";");
+        }
+
+        private void WriteSelect(BoundSelectStatement select)
+        {
+            int id = ++_selectTempId;
+            string temporary = $"_smileSelect{id}";
+            string selector = PreparedExpression(select.Selector);
+            string declaration = _language switch
+            {
+                TargetLanguage.CSharp or TargetLanguage.C or TargetLanguage.Java or
+                    TargetLanguage.ObjectiveC or TargetLanguage.Cpp => $"{TypeName(select.Selector.Type)} {temporary} = {selector};",
+                TargetLanguage.JavaScript => $"const {temporary} = {selector};",
+                TargetLanguage.Swift => $"let {temporary}: {TypeName(select.Selector.Type)} = {selector}",
+                TargetLanguage.Python => $"{temporary} = {selector}",
+                _ => string.Empty
+            };
+            Line(declaration);
+
+            bool wroteCondition = false;
+            foreach (BoundSelectCaseClause clause in select.Cases)
+            {
+                if (clause.IsElse)
+                {
+                    if (_language is TargetLanguage.Python)
+                    {
+                        Line("else:");
+                        WritePythonSuite(clause.SourceItems);
+                    }
+                    else
+                    {
+                        Line("else");
+                        Line("{");
+                        _indent++;
+                        WriteItems(clause.SourceItems);
+                        _indent--;
+                        Line("}");
+                    }
+
+                    continue;
+                }
+
+                string condition = SelectCondition(temporary, clause.Value!.Value);
+                if (_language is TargetLanguage.Python)
+                {
+                    Line($"{(wroteCondition ? "elif" : "if")} {condition}:");
+                    WritePythonSuite(clause.SourceItems);
+                }
+                else if (_language is TargetLanguage.Swift)
+                {
+                    Line($"{(wroteCondition ? "else if" : "if")} {condition} {{");
+                    _indent++;
+                    WriteItems(clause.SourceItems);
+                    _indent--;
+                    Line("}");
+                }
+                else
+                {
+                    Line($"{(wroteCondition ? "else if" : "if")} ({condition})");
+                    Line("{");
+                    _indent++;
+                    WriteItems(clause.SourceItems);
+                    _indent--;
+                    Line("}");
+                }
+
+                wroteCondition = true;
+            }
+        }
+
+        private string SelectCondition(string selector, SmileValue value)
+        {
+            string literal = Literal(value);
+            if (value.Type is SmileType.String)
+            {
+                return _language switch
+                {
+                    TargetLanguage.C or TargetLanguage.ObjectiveC => $"strcmp({selector}, {literal}) == 0",
+                    TargetLanguage.Java => $"{selector}.equals({literal})",
+                    _ => $"{selector} == {literal}"
+                };
+            }
+
+            return $"{selector} == {literal}";
         }
 
         private void WritePrint(BoundCorePrintStatement print)
         {
             foreach (BoundExpression value in print.Values)
             {
-                string display = DisplayExpression(value);
+                string display = DisplayExpression(value, PreparedExpression(value));
                 switch (_language)
                 {
                     case TargetLanguage.CSharp:
@@ -469,29 +885,6 @@ internal static class CoreBasicCodeGenerator
                     case TargetLanguage.ObjectiveC:
                         WriteCPrint(value, display, objectiveC: false);
                         break;
-                    case TargetLanguage.Cobol:
-                        if (value.Type is SmileType.Integer)
-                        {
-                            Line($"           MOVE {Expression(value)} TO SMILE-DISPLAY-NUMBER");
-                            Line("           DISPLAY FUNCTION TRIM(SMILE-DISPLAY-NUMBER) WITH NO ADVANCING");
-                        }
-                        else if (value.Type is SmileType.Boolean)
-                        {
-                            Line($"           IF {Expression(value)}");
-                            Line("               DISPLAY \"TRUE\" WITH NO ADVANCING");
-                            Line("           ELSE");
-                            Line("               DISPLAY \"FALSE\" WITH NO ADVANCING");
-                            Line("           END-IF");
-                        }
-                        else
-                        {
-                            bool hasExactDisplay = value is BoundStringLiteralExpression ||
-                                value is BoundVariableExpression { Variable.IsConstant: true };
-                            Line(hasExactDisplay
-                                ? $"           DISPLAY {Expression(value)} WITH NO ADVANCING"
-                                : $"           DISPLAY FUNCTION TRIM({Expression(value)}, TRAILING) WITH NO ADVANCING");
-                        }
-                        break;
                 }
             }
 
@@ -510,7 +903,6 @@ internal static class CoreBasicCodeGenerator
                 TargetLanguage.Cpp => "std::cout << '\\n';",
                 TargetLanguage.C => "fputc('\\n', stdout);",
                 TargetLanguage.ObjectiveC => "fputc('\\n', stdout);",
-                TargetLanguage.Cobol => "           DISPLAY X\"0A\" WITH NO ADVANCING",
                 _ => string.Empty
             });
         }
@@ -535,28 +927,9 @@ internal static class CoreBasicCodeGenerator
 
         private void WriteIf(BoundIfStatement conditional)
         {
-            if (_language is TargetLanguage.Cobol)
+            if (UsesOrderedCExpressions)
             {
-                for (int index = 0; index < conditional.Clauses.Count; index++)
-                {
-                    BoundConditionalClause clause = conditional.Clauses[index];
-                    Line(index == 0
-                        ? $"           IF {Expression(clause.Condition)}"
-                        : $"           ELSE IF {Expression(clause.Condition)}");
-                    WriteItems(clause.SourceItems);
-                }
-
-                if (conditional.HasElseClause)
-                {
-                    Line("           ELSE");
-                    WriteItems(conditional.ElseSourceItems);
-                }
-
-                for (int index = 0; index < conditional.Clauses.Count; index++)
-                {
-                    Line("           END-IF");
-                }
-
+                WriteOrderedCIf(conditional, 0);
                 return;
             }
 
@@ -566,12 +939,12 @@ internal static class CoreBasicCodeGenerator
                 string keyword = index == 0 ? "if" : _language is TargetLanguage.Python ? "elif" : "else if";
                 if (_language is TargetLanguage.Python)
                 {
-                    Line($"{keyword} {Expression(clause.Condition)}:");
+                    Line($"{keyword} {PreparedExpression(clause.Condition)}:");
                     WritePythonSuite(clause.SourceItems);
                 }
                 else if (_language is TargetLanguage.Swift)
                 {
-                    Line($"{keyword} {Expression(clause.Condition)} {{");
+                    Line($"{keyword} {PreparedExpression(clause.Condition)} {{");
                     _indent++;
                     WriteItems(clause.SourceItems);
                     _indent--;
@@ -579,7 +952,7 @@ internal static class CoreBasicCodeGenerator
                 }
                 else
                 {
-                    Line($"{keyword} ({Expression(clause.Condition)})");
+                    Line($"{keyword} ({PreparedExpression(clause.Condition)})");
                     Line("{");
                     _indent++;
                     WriteItems(clause.SourceItems);
@@ -616,12 +989,12 @@ internal static class CoreBasicCodeGenerator
             string label = $"smile_for_{id}";
             string endLabel = $"{label}_end";
             string counter = Name(loop.Counter);
-            string lower = Expression(loop.LowerBound);
-            string upper = Expression(loop.UpperBound);
+            string lower = PreparedExpression(loop.LowerBound);
+            string upper = PreparedExpression(loop.UpperBound);
             string comparison = loop.IsDescending ? ">=" : "<=";
             string step = loop.IsDescending ? "--" : "++";
             bool hasCrossKindExit = HasCrossKindExitTargetingLoop(loop.SourceItems, LoopKind.For);
-            string? completionFlag = _language is TargetLanguage.Swift
+            string? completionFlag = _language is TargetLanguage.Swift && HasExitTargetingLoop(loop.SourceItems, LoopKind.For)
                 ? $"_smileForCompleted{temp}"
                 : null;
             var frame = new LoopFrame(LoopKind.For, id, label, completionFlag);
@@ -679,18 +1052,28 @@ internal static class CoreBasicCodeGenerator
                     string range = loop.IsDescending
                         ? $"stride(from: {lower}, through: {end}, by: -1)"
                         : $"stride(from: {lower}, through: {end}, by: 1)";
-                    Line($"var {completionFlag} = true");
+                    if (completionFlag is not null)
+                    {
+                        Line($"var {completionFlag} = true");
+                    }
                     Line($"{(hasCrossKindExit ? label + ": " : string.Empty)}for _smileCounter in {range} {{");
                     _indent++;
                     Line($"{counter} = _smileCounter");
                     WriteItems(loop.SourceItems);
                     _indent--;
                     Line("}");
-                    Line($"if {completionFlag} {{");
-                    _indent++;
-                    Line($"{counter} = {end} {(loop.IsDescending ? "-" : "+")} 1");
-                    _indent--;
-                    Line("}");
+                    if (completionFlag is null)
+                    {
+                        Line($"{counter} = {end} {(loop.IsDescending ? "-" : "+")} 1");
+                    }
+                    else
+                    {
+                        Line($"if {completionFlag} {{");
+                        _indent++;
+                        Line($"{counter} = {end} {(loop.IsDescending ? "-" : "+")} 1");
+                        _indent--;
+                        Line("}");
+                    }
                     break;
                 }
                 case TargetLanguage.Python:
@@ -732,16 +1115,6 @@ internal static class CoreBasicCodeGenerator
 
                     break;
                 }
-                case TargetLanguage.Cobol:
-                    Line($"           PERFORM VARYING {counter} FROM {lower} BY {(loop.IsDescending ? "-1" : "1")} UNTIL {counter} {(loop.IsDescending ? "<" : ">")} {upper}");
-                    WriteItems(loop.SourceItems);
-                    Line(hasCrossKindExit ? "           END-PERFORM." : "           END-PERFORM");
-                    if (hasCrossKindExit)
-                    {
-                        Line($"       {endLabel.Replace('_', '-').ToUpperInvariant()}.");
-                        Line("           CONTINUE.");
-                    }
-                    break;
             }
 
             _loops.RemoveAt(_loops.Count - 1);
@@ -754,6 +1127,34 @@ internal static class CoreBasicCodeGenerator
             string endLabel = $"{label}_end";
             bool hasCrossKindExit = HasCrossKindExitTargetingLoop(loop.SourceItems, LoopKind.Do);
             _loops.Add(new LoopFrame(LoopKind.Do, id, label));
+
+            if (UsesOrderedCExpressions)
+            {
+                Line("do");
+                Line("{");
+                _indent++;
+                WriteItems(loop.SourceItems);
+                if (loop.UntilCondition is not null)
+                {
+                    string condition = PreparedExpression(loop.UntilCondition);
+                    Line($"if ({condition})");
+                    Line("{");
+                    _indent++;
+                    Line("break;");
+                    _indent--;
+                    Line("}");
+                }
+
+                _indent--;
+                Line("} while (true);");
+                if (hasCrossKindExit)
+                {
+                    Line($"{endLabel}:;");
+                }
+
+                _loops.RemoveAt(_loops.Count - 1);
+                return;
+            }
 
             switch (_language)
             {
@@ -768,7 +1169,7 @@ internal static class CoreBasicCodeGenerator
                     _indent--;
                     Line(loop.UntilCondition is null
                         ? "} while (true);"
-                        : $"}} while (!({Expression(loop.UntilCondition)}));");
+                        : $"}} while (!({PreparedExpression(loop.UntilCondition)}));");
                     if (hasCrossKindExit)
                     {
                         Line($"{endLabel}:;");
@@ -782,7 +1183,7 @@ internal static class CoreBasicCodeGenerator
                     _indent--;
                     Line(loop.UntilCondition is null
                         ? "} while (true);"
-                        : $"}} while (!({Expression(loop.UntilCondition)}));");
+                        : $"}} while (!({PreparedExpression(loop.UntilCondition)}));");
                     break;
                 case TargetLanguage.Swift:
                     Line($"{(hasCrossKindExit ? label + ": " : string.Empty)}repeat {{");
@@ -791,7 +1192,7 @@ internal static class CoreBasicCodeGenerator
                     _indent--;
                     Line(loop.UntilCondition is null
                         ? "} while true"
-                        : $"}} while !({Expression(loop.UntilCondition)})");
+                        : $"}} while !({PreparedExpression(loop.UntilCondition)})");
                     break;
                 case TargetLanguage.Python:
                     if (hasCrossKindExit)
@@ -805,7 +1206,7 @@ internal static class CoreBasicCodeGenerator
                     WriteItems(loop.SourceItems);
                     if (loop.UntilCondition is not null)
                     {
-                        Line($"if {Expression(loop.UntilCondition)}:");
+                        Line($"if {PreparedExpression(loop.UntilCondition)}:");
                         _indent++;
                         Line("break");
                         _indent--;
@@ -825,17 +1226,6 @@ internal static class CoreBasicCodeGenerator
                         _indent--;
                     }
 
-                    break;
-                case TargetLanguage.Cobol:
-                    Line("           PERFORM WITH TEST AFTER UNTIL " +
-                        (loop.UntilCondition is null ? "1 = 0" : Expression(loop.UntilCondition)));
-                    WriteItems(loop.SourceItems);
-                    Line(hasCrossKindExit ? "           END-PERFORM." : "           END-PERFORM");
-                    if (hasCrossKindExit)
-                    {
-                        Line($"       {endLabel.Replace('_', '-').ToUpperInvariant()}.");
-                        Line("           CONTINUE.");
-                    }
                     break;
             }
 
@@ -867,17 +1257,6 @@ internal static class CoreBasicCodeGenerator
             {
                 Line(targetsInnermostLoop ? "break" : $"raise _SmileExitLoop{target.Id}()");
             }
-            else if (_language is TargetLanguage.Cobol)
-            {
-                if (ReferenceEquals(_loops[^1], target))
-                {
-                    Line("           EXIT PERFORM");
-                }
-                else
-                {
-                    Line($"           GO TO {target.Label.Replace('_', '-').ToUpperInvariant()}-END");
-                }
-            }
             else
             {
                 Line(targetsInnermostLoop ? "break;" : $"goto {target.Label}_end;");
@@ -888,12 +1267,12 @@ internal static class CoreBasicCodeGenerator
         {
             Line(_language switch
             {
-                TargetLanguage.CSharp or TargetLanguage.Java => "return;",
-                TargetLanguage.C or TargetLanguage.ObjectiveC or TargetLanguage.Cpp => "return 0;",
+                TargetLanguage.CSharp => "Environment.Exit(0);",
+                TargetLanguage.Java => "System.exit(0);",
+                TargetLanguage.C or TargetLanguage.ObjectiveC or TargetLanguage.Cpp => "exit(0);",
                 TargetLanguage.JavaScript => "process.exit(0);",
                 TargetLanguage.Swift => "exit(0)",
                 TargetLanguage.Python => "raise SystemExit(0)",
-                TargetLanguage.Cobol => "           STOP RUN",
                 _ => string.Empty
             });
         }
@@ -906,10 +1285,160 @@ internal static class CoreBasicCodeGenerator
                 BoundIntegerLiteralExpression number => IntegerLiteral(number.Value),
                 BoundBooleanLiteralExpression boolean => BooleanLiteral(boolean.Value),
                 BoundVariableExpression variable => Name(variable.Variable),
+                BoundArrayExpression array => ArrayElement(array.Array, array.Index),
+                BoundCallExpression call => $"{RoutineName(call.Routine)}({string.Join(", ", call.Arguments.Select(Expression))})",
                 BoundUnaryExpression unary => Unary(unary),
                 BoundBinaryExpression binary => Binary(binary),
                 _ => DefaultLiteral(expression.Type)
             };
+        }
+
+        private bool UsesOrderedCExpressions =>
+            _language is TargetLanguage.C or TargetLanguage.ObjectiveC or TargetLanguage.Cpp;
+
+        private string PreparedExpression(BoundExpression expression) =>
+            UsesOrderedCExpressions ? LowerOrderedCExpression(expression) : Expression(expression);
+
+        private string LowerOrderedCExpression(BoundExpression expression)
+        {
+            switch (expression)
+            {
+                case BoundStringLiteralExpression or BoundIntegerLiteralExpression or BoundBooleanLiteralExpression or BoundVariableExpression:
+                    return Expression(expression);
+                case BoundArrayExpression array:
+                {
+                    string index = LowerOrderedCExpression(array.Index);
+                    string indexType = _language is TargetLanguage.Cpp ? "std::size_t" : "size_t";
+                    string checkedIndex = $"_smileIndex{++_orderedTempId}";
+                    Line($"{indexType} {checkedIndex} = {CheckedArrayIndex(array.Array, index)};");
+                    return NewOrderedValue(array.Type, $"{Name(array.Array)}[{checkedIndex}]");
+                }
+                case BoundCallExpression call:
+                {
+                    string[] arguments = call.Arguments.Select(LowerOrderedCExpression).ToArray();
+                    return NewOrderedValue(call.Type, $"{RoutineName(call.Routine)}({string.Join(", ", arguments)})");
+                }
+                case BoundUnaryExpression unary:
+                {
+                    string operand = LowerOrderedCExpression(unary.Operand);
+                    string rendered = unary.Operator.Kind switch
+                    {
+                        BoundUnaryOperatorKind.Identity => operand,
+                        BoundUnaryOperatorKind.Negation => $"(-{operand})",
+                        BoundUnaryOperatorKind.LogicalNegation => $"(!{operand})",
+                        _ => operand
+                    };
+                    return NewOrderedValue(unary.Type, rendered);
+                }
+                case BoundBinaryExpression binary when binary.Operator.Kind is
+                    BoundBinaryOperatorKind.LogicalAnd or BoundBinaryOperatorKind.LogicalOr:
+                {
+                    string left = LowerOrderedCExpression(binary.Left);
+                    string result = NewOrderedValue(SmileType.Boolean, left);
+                    Line(binary.Operator.Kind is BoundBinaryOperatorKind.LogicalAnd
+                        ? $"if ({result})"
+                        : $"if (!{result})");
+                    Line("{");
+                    _indent++;
+                    string right = LowerOrderedCExpression(binary.Right);
+                    Line($"{result} = {right};");
+                    _indent--;
+                    Line("}");
+                    return result;
+                }
+                case BoundBinaryExpression binary:
+                {
+                    string left = LowerOrderedCExpression(binary.Left);
+                    string right = LowerOrderedCExpression(binary.Right);
+                    string rendered;
+                    if (binary.Operator.Kind is BoundBinaryOperatorKind.StringConcatenation)
+                    {
+                        rendered = _language is TargetLanguage.Cpp
+                            ? $"({left} + {right})"
+                            : $"smile_text_concat({left}, {right})";
+                    }
+                    else if (binary.Left.Type is SmileType.String &&
+                             binary.Operator.Kind is BoundBinaryOperatorKind.Equality or BoundBinaryOperatorKind.Inequality)
+                    {
+                        rendered = $"(strcmp({left}, {right}) {(binary.Operator.Kind is BoundBinaryOperatorKind.Equality ? "==" : "!=")} 0)";
+                    }
+                    else
+                    {
+                        rendered = $"({left} {Operator(binary.Operator.Kind)} {right})";
+                    }
+
+                    return NewOrderedValue(binary.Type, rendered);
+                }
+                default:
+                    return Expression(expression);
+            }
+        }
+
+        private string NewOrderedValue(SmileType type, string expression)
+        {
+            string name = $"_smileValue{++_orderedTempId}";
+            Line($"{TypeName(type)} {name} = {expression};");
+            return name;
+        }
+
+        private string CheckedArrayIndex(VariableSymbol array, string index) => _language switch
+        {
+            TargetLanguage.C or TargetLanguage.ObjectiveC =>
+                $"smile_index({index}, {array.ArrayLength}, {TargetEscapes.CString(array.Name)})",
+            TargetLanguage.Cpp =>
+                $"smile_index({index}, {array.ArrayLength}, {TargetEscapes.CString(array.Name)})",
+            _ => index
+        };
+
+        private void WriteOrderedCIf(BoundIfStatement conditional, int clauseIndex)
+        {
+            BoundConditionalClause clause = conditional.Clauses[clauseIndex];
+            string condition = PreparedExpression(clause.Condition);
+            Line($"if ({condition})");
+            Line("{");
+            _indent++;
+            WriteItems(clause.SourceItems);
+            _indent--;
+            Line("}");
+
+            bool hasNext = clauseIndex + 1 < conditional.Clauses.Count;
+            if (!hasNext && !conditional.HasElseClause)
+            {
+                return;
+            }
+
+            Line("else");
+            Line("{");
+            _indent++;
+            if (hasNext)
+            {
+                WriteOrderedCIf(conditional, clauseIndex + 1);
+            }
+            else
+            {
+                WriteItems(conditional.ElseSourceItems);
+            }
+
+            _indent--;
+            Line("}");
+        }
+
+        private string ArrayElement(VariableSymbol array, BoundExpression index)
+        {
+            string name = Name(array);
+            string indexExpression = Expression(index);
+            string checkedIndex = _language switch
+            {
+                TargetLanguage.CSharp => $"SmileIndex({indexExpression}, {array.ArrayLength}, {TargetEscapes.CSharpString(array.Name)})",
+                TargetLanguage.C or TargetLanguage.ObjectiveC => $"smile_index({indexExpression}, {array.ArrayLength}, {TargetEscapes.CString(array.Name)})",
+                TargetLanguage.JavaScript => $"smileIndex({indexExpression}, {array.ArrayLength}, {TargetEscapes.JavaScriptString(array.Name)})",
+                TargetLanguage.Java => $"smileIndex({indexExpression}, {array.ArrayLength}, {TargetEscapes.JavaString(array.Name)})",
+                TargetLanguage.Swift => $"smileIndex({indexExpression}, {array.ArrayLength}, {TargetEscapes.SwiftString(array.Name)})",
+                TargetLanguage.Python => $"smile_index({indexExpression}, {array.ArrayLength}, {TargetEscapes.PythonString(array.Name)})",
+                TargetLanguage.Cpp => $"smile_index({indexExpression}, {array.ArrayLength}, {TargetEscapes.CString(array.Name)})",
+                _ => indexExpression
+            };
+            return $"{name}[{checkedIndex}]";
         }
 
         private string Unary(BoundUnaryExpression unary)
@@ -919,9 +1448,7 @@ internal static class CoreBasicCodeGenerator
             {
                 BoundUnaryOperatorKind.Identity => operand,
                 BoundUnaryOperatorKind.Negation => $"(-{operand})",
-                BoundUnaryOperatorKind.LogicalNegation => _language is TargetLanguage.Cobol
-                    ? $"(NOT {operand})"
-                    : _language is TargetLanguage.Python
+                BoundUnaryOperatorKind.LogicalNegation => _language is TargetLanguage.Python
                         ? $"(not {operand})"
                         : $"(!{operand})",
                 _ => operand
@@ -938,7 +1465,6 @@ internal static class CoreBasicCodeGenerator
                 {
                     TargetLanguage.C => $"smile_text_concat({left}, {right})",
                     TargetLanguage.ObjectiveC => $"smile_text_concat({left}, {right})",
-                    TargetLanguage.Cobol => $"FUNCTION CONCATENATE({left}, {right})",
                     _ => $"({left} + {right})"
                 };
             }
@@ -954,7 +1480,6 @@ internal static class CoreBasicCodeGenerator
                     TargetLanguage.Java => equal
                         ? $"{left}.equals({right})"
                         : $"(!{left}.equals({right}))",
-                    TargetLanguage.Cobol => $"({left} {(equal ? "=" : "NOT =")} {right})",
                     _ => $"({left} {(equal ? "==" : "!=")} {right})"
                 };
             }
@@ -979,31 +1504,28 @@ internal static class CoreBasicCodeGenerator
             BoundBinaryOperatorKind.Subtraction => "-",
             BoundBinaryOperatorKind.Multiplication => "*",
             BoundBinaryOperatorKind.Division => "/",
-            BoundBinaryOperatorKind.Modulo => _language is TargetLanguage.Cobol ? "REM" : "%",
-            BoundBinaryOperatorKind.Equality => _language is TargetLanguage.Cobol ? "=" : "==",
-            BoundBinaryOperatorKind.Inequality => _language is TargetLanguage.Cobol ? "NOT =" : "!=",
+            BoundBinaryOperatorKind.Modulo => "%",
+            BoundBinaryOperatorKind.Equality => "==",
+            BoundBinaryOperatorKind.Inequality => "!=",
             BoundBinaryOperatorKind.Less => "<",
             BoundBinaryOperatorKind.LessOrEquals => "<=",
             BoundBinaryOperatorKind.Greater => ">",
             BoundBinaryOperatorKind.GreaterOrEquals => ">=",
             BoundBinaryOperatorKind.LogicalAnd => _language switch
             {
-                TargetLanguage.Cobol => "AND",
                 TargetLanguage.Python => "and",
                 _ => "&&"
             },
             BoundBinaryOperatorKind.LogicalOr => _language switch
             {
-                TargetLanguage.Cobol => "OR",
                 TargetLanguage.Python => "or",
                 _ => "||"
             },
             _ => string.Empty
         };
 
-        private string DisplayExpression(BoundExpression expression)
+        private string DisplayExpression(BoundExpression expression, string value)
         {
-            string value = Expression(expression);
             if (expression.Type is not SmileType.Boolean)
             {
                 return _language is TargetLanguage.JavaScript ? $"String({value})" : value;
@@ -1011,10 +1533,9 @@ internal static class CoreBasicCodeGenerator
 
             return _language switch
             {
-                TargetLanguage.Cobol => value,
-                TargetLanguage.Python => $"(\"TRUE\" if {value} else \"FALSE\")",
-                TargetLanguage.C or TargetLanguage.ObjectiveC or TargetLanguage.Cpp => $"({value} ? \"TRUE\" : \"FALSE\")",
-                _ => $"({value} ? \"TRUE\" : \"FALSE\")"
+                TargetLanguage.Python => $"(\"True\" if {value} else \"False\")",
+                TargetLanguage.C or TargetLanguage.ObjectiveC or TargetLanguage.Cpp => $"({value} ? \"True\" : \"False\")",
+                _ => $"({value} ? \"True\" : \"False\")"
             };
         }
 
@@ -1073,7 +1594,6 @@ internal static class CoreBasicCodeGenerator
         private string BooleanLiteral(bool value) => _language switch
         {
             TargetLanguage.ObjectiveC => value ? "true" : "false",
-            TargetLanguage.Cobol => value ? "1 = 1" : "1 = 0",
             TargetLanguage.Python => value ? "True" : "False",
             _ => value ? "true" : "false"
         };
@@ -1084,7 +1604,6 @@ internal static class CoreBasicCodeGenerator
             TargetLanguage.C => TargetEscapes.CString(value),
             TargetLanguage.JavaScript => TargetEscapes.JavaScriptString(value),
             TargetLanguage.Java => TargetEscapes.JavaString(value),
-            TargetLanguage.Cobol => TargetEscapes.CobolString(value),
             TargetLanguage.ObjectiveC => TargetEscapes.CString(value),
             TargetLanguage.Swift => TargetEscapes.SwiftString(value),
             TargetLanguage.Python => TargetEscapes.PythonString(value),
@@ -1095,7 +1614,6 @@ internal static class CoreBasicCodeGenerator
         private string CommentPrefix() => _language switch
         {
             TargetLanguage.Python => "#",
-            TargetLanguage.Cobol => "       *>",
             _ => "//"
         };
 
@@ -1105,13 +1623,6 @@ internal static class CoreBasicCodeGenerator
             EnumerateStatements(_program.SourceItems)
                 .OfType<BoundConstStatement>()
                 .FirstOrDefault(statement => statement.Variable.Equals(variable));
-
-        private string CobolLiteral(SmileValue value) => value.Type switch
-        {
-            SmileType.Integer => value.IntegerValue.ToString(CultureInfo.InvariantCulture),
-            SmileType.Boolean => value.BooleanValue ? "1" : "0",
-            _ => TargetEscapes.CobolString(value.StringValue)
-        };
 
         private void WritePythonSuite(IReadOnlyList<BoundSourceItem> items)
         {
@@ -1144,7 +1655,7 @@ internal static class CoreBasicCodeGenerator
 
         private void Line(string text = "")
         {
-            if (text.Length > 0 && _language is not TargetLanguage.Cobol)
+            if (text.Length > 0)
             {
                 _builder.Append(' ', _indent * 4);
             }
@@ -1195,6 +1706,16 @@ internal static class CoreBasicCodeGenerator
                         }
 
                         break;
+                    case BoundSelectStatement select:
+                        foreach (BoundSelectCaseClause clause in select.Cases)
+                        {
+                            foreach (BoundStatement nested in EnumerateStatements(clause.SourceItems))
+                            {
+                                yield return nested;
+                            }
+                        }
+
+                        break;
                 }
 
                 if (statement is BoundExitStatement or BoundEndProgramStatement)
@@ -1233,9 +1754,13 @@ internal static class CoreBasicCodeGenerator
                 IEnumerable<BoundExpression> roots = statement switch
                 {
                     BoundSetStatement set => new[] { set.Value },
+                    BoundArraySetStatement set => new[] { set.Index, set.Value },
                     BoundConstStatement constant => new[] { constant.Initializer },
+                    BoundCallStatement call => call.Arguments,
+                    BoundReturnStatement { Value: not null } returnStatement => new[] { returnStatement.Value },
                     BoundCorePrintStatement print => print.Values,
                     BoundIfStatement conditional => conditional.Clauses.Select(clause => clause.Condition),
+                    BoundSelectStatement select => new[] { select.Selector },
                     BoundForStatement loop => new[] { loop.LowerBound, loop.UpperBound },
                     BoundDoStatement { UntilCondition: not null } loop => new[] { loop.UntilCondition },
                     _ => Array.Empty<BoundExpression>()
@@ -1262,8 +1787,70 @@ internal static class CoreBasicCodeGenerator
                     foreach (BoundExpression child in WalkExpression(binary.Left)) yield return child;
                     foreach (BoundExpression child in WalkExpression(binary.Right)) yield return child;
                     break;
+                case BoundArrayExpression array:
+                    foreach (BoundExpression child in WalkExpression(array.Index)) yield return child;
+                    break;
+                case BoundCallExpression call:
+                    foreach (BoundExpression argument in call.Arguments)
+                    {
+                        foreach (BoundExpression child in WalkExpression(argument)) yield return child;
+                    }
+
+                    break;
             }
         }
+
+        private IEnumerable<IReadOnlyList<BoundSourceItem>> AllExecutableItemSets()
+        {
+            foreach (BoundRoutineDeclaration routine in _program.Routines)
+            {
+                yield return routine.SourceItems;
+            }
+
+            yield return _program.SourceItems;
+        }
+
+        private IEnumerable<BoundStatement> ProgramStatements() =>
+            AllExecutableItemSets().SelectMany(EnumerateStatements);
+
+        private IEnumerable<BoundExpression> ProgramExpressions() =>
+            AllExecutableItemSets().SelectMany(EnumerateExpressions);
+
+        private bool ProgramHasArrays() => _program.AllVariables.Any(variable => variable.IsArray);
+
+        private bool ProgramHasTextConcatenation() => ProgramExpressions().Any(expression => expression is BoundBinaryExpression
+        {
+            Operator.Kind: BoundBinaryOperatorKind.StringConcatenation
+        });
+
+        private bool ProgramHasTextComparison() => ProgramExpressions().Any(expression => expression is BoundBinaryExpression binary &&
+            binary.Left.Type is SmileType.String &&
+            binary.Operator.Kind is BoundBinaryOperatorKind.Equality or BoundBinaryOperatorKind.Inequality) ||
+            ProgramStatements().OfType<BoundSelectStatement>().Any(select => select.Selector.Type is SmileType.String);
+
+        private static IEnumerable<VariableSymbol> AssignedGlobals(IReadOnlyList<BoundSourceItem> items)
+        {
+            foreach (BoundStatement statement in EnumerateStatements(items))
+            {
+                switch (statement)
+                {
+                    case BoundSetStatement { Variable.IsGlobal: true } set:
+                        yield return set.Variable;
+                        break;
+                    case BoundForStatement { Counter.IsGlobal: true } loop:
+                        yield return loop.Counter;
+                        break;
+                }
+            }
+        }
+
+        private static bool IsAssigned(VariableSymbol variable, IReadOnlyList<BoundSourceItem> items) =>
+            EnumerateStatements(items).Any(statement => statement switch
+            {
+                BoundSetStatement set => ReferenceEquals(set.Variable, variable),
+                BoundForStatement loop => ReferenceEquals(loop.Counter, variable),
+                _ => false
+            });
 
         private static IReadOnlyList<int> GetPythonExitLoopIds(IReadOnlyList<BoundSourceItem> items)
         {
@@ -1386,358 +1973,63 @@ internal static class CoreBasicCodeGenerator
 
             return false;
         }
-    }
 
-    private sealed class MasmWriter
-    {
-        private readonly BoundProgram _program;
-        private readonly TargetIdentifierMap _identifiers;
-        private readonly StringBuilder _builder = new();
-        private readonly Dictionary<string, string> _strings = new(StringComparer.Ordinal);
-        private readonly List<LoopFrame> _loops = new();
-        private readonly bool _hasTextConcatenation;
-        private int _labelId;
-
-        public MasmWriter(BoundProgram program)
-        {
-            _program = program;
-            _identifiers = TargetIdentifierMap.Create(program, TargetLanguage.MasmX64);
-            _hasTextConcatenation = EnumerateExpressions(program.SourceItems).Any(expression =>
-                expression is BoundBinaryExpression
-                {
-                    Operator.Kind: BoundBinaryOperatorKind.StringConcatenation
-                });
-            InternString(string.Empty);
-            InternString("%lld");
-            InternString("%s");
-            if (_hasTextConcatenation) InternString("%s%s");
-            InternString("TRUE");
-            InternString("FALSE");
-            InternString("\n");
-            foreach (BoundExpression expression in EnumerateExpressions(program.SourceItems))
-            {
-                if (expression is BoundStringLiteralExpression text) InternString(text.Value);
-            }
-        }
-
-        public string Write()
-        {
-            Line("option casemap:none");
-            Line("ExitProcess PROTO :DWORD");
-            Line("printf PROTO :PTR BYTE, :VARARG");
-            Line("strcmp PROTO :PTR BYTE, :PTR BYTE");
-            if (_hasTextConcatenation) Line("sprintf PROTO :PTR BYTE, :PTR BYTE, :VARARG");
-            Line("includelib kernel32.lib");
-            Line("includelib msvcrt.lib");
-            Line();
-            Line(".const");
-            foreach ((string value, string label) in _strings)
-            {
-                Line($"{label} BYTE {TargetEscapes.MasmByteInitializers(value)}, 0");
-            }
-
-            Line();
-            Line(".data");
-            foreach (VariableSymbol variable in _program.Variables)
-            {
-                string name = _identifiers.Get(variable);
-                if (variable.IsConstant && FindConstant(variable) is BoundConstStatement constant)
-                {
-                    string value = constant.Value.Type switch
-                    {
-                        SmileType.Integer => constant.Value.IntegerValue.ToString(CultureInfo.InvariantCulture),
-                        SmileType.Boolean => constant.Value.BooleanValue ? "1" : "0",
-                        _ => $"OFFSET {InternString(constant.Value.StringValue)}"
-                    };
-                    Line($"{name} QWORD {value}");
-                }
-                else
-                {
-                    string value = variable.Type is SmileType.String ? $"OFFSET {InternString(string.Empty)}" : "0";
-                    Line($"{name} QWORD {value}");
-                }
-            }
-
-            if (_hasTextConcatenation) Line("smileTextBuffer BYTE 65536 DUP(0)");
-            Line();
-            Line(".code");
-            Line("main PROC");
-            Line("    sub rsp, 40");
-            WriteItems(_program.SourceItems, 1);
-            Line("smile_program_end:");
-            Line("    xor ecx, ecx");
-            Line("    call ExitProcess");
-            Line("main ENDP");
-            Line("END");
-            return _builder.ToString().Replace("\r\n", "\n", StringComparison.Ordinal);
-        }
-
-        private void WriteItems(IReadOnlyList<BoundSourceItem> items, int indent)
+        private static bool HasExitTargetingLoop(
+            IReadOnlyList<BoundSourceItem> items,
+            LoopKind targetKind,
+            int nestedSameKindDepth = 0)
         {
             foreach (BoundSourceItem item in items)
             {
-                switch (item)
+                if (item is not BoundStatement statement)
                 {
-                    case BoundBlankLine:
-                        Line();
-                        break;
-                    case BoundFullLineComment comment:
-                        Line(new string(' ', indent * 4) + ";" + comment.Payload);
-                        break;
-                    case BoundSetStatement set:
-                        EmitExpression(set.Value, indent);
-                        Line($"{Pad(indent)}mov QWORD PTR [{_identifiers.Get(set.Variable)}], rax");
-                        break;
-                    case BoundCorePrintStatement print:
-                        foreach (BoundExpression value in print.Values) EmitPrint(value, indent);
-                        if (!print.SuppressNewLine) EmitPrint(new BoundStringLiteralExpression("\n"), indent);
-                        break;
+                    continue;
+                }
+
+                if (statement is BoundExitStatement exit &&
+                    nestedSameKindDepth == 0 &&
+                    ((targetKind is LoopKind.For && exit.Kind is BoundExitKind.For) ||
+                     (targetKind is LoopKind.Do && exit.Kind is BoundExitKind.Do)))
+                {
+                    return true;
+                }
+
+                switch (statement)
+                {
                     case BoundIfStatement conditional:
-                        WriteIf(conditional, indent);
+                        if (conditional.Clauses.Any(clause => HasExitTargetingLoop(clause.SourceItems, targetKind, nestedSameKindDepth)) ||
+                            HasExitTargetingLoop(conditional.ElseSourceItems, targetKind, nestedSameKindDepth))
+                        {
+                            return true;
+                        }
+
+                        break;
+                    case BoundSelectStatement select:
+                        if (select.Cases.Any(clause => HasExitTargetingLoop(clause.SourceItems, targetKind, nestedSameKindDepth)))
+                        {
+                            return true;
+                        }
+
                         break;
                     case BoundForStatement loop:
-                        WriteFor(loop, indent);
+                        if (HasExitTargetingLoop(loop.SourceItems, targetKind, nestedSameKindDepth + (targetKind is LoopKind.For ? 1 : 0)))
+                        {
+                            return true;
+                        }
+
                         break;
                     case BoundDoStatement loop:
-                        WriteDo(loop, indent);
-                        break;
-                    case BoundExitStatement exit:
-                        LoopKind kind = exit.Kind is BoundExitKind.For ? LoopKind.For : LoopKind.Do;
-                        LoopFrame? target = _loops.LastOrDefault(frame => frame.Kind == kind);
-                        if (target is not null) Line($"{Pad(indent)}jmp {target.Label}_end");
-                        break;
-                    case BoundEndProgramStatement:
-                        Line($"{Pad(indent)}jmp smile_program_end");
-                        return;
-                }
+                        if (HasExitTargetingLoop(loop.SourceItems, targetKind, nestedSameKindDepth + (targetKind is LoopKind.Do ? 1 : 0)))
+                        {
+                            return true;
+                        }
 
-                if (item is BoundExitStatement)
-                {
-                    return;
+                        break;
                 }
             }
+
+            return false;
         }
-
-        private void WriteIf(BoundIfStatement conditional, int indent)
-        {
-            int id = ++_labelId;
-            string end = $"smile_if_{id}_end";
-            for (int index = 0; index < conditional.Clauses.Count; index++)
-            {
-                string next = $"smile_if_{id}_next_{index}";
-                EmitExpression(conditional.Clauses[index].Condition, indent);
-                Line($"{Pad(indent)}test rax, rax");
-                Line($"{Pad(indent)}jz {next}");
-                WriteItems(conditional.Clauses[index].SourceItems, indent);
-                Line($"{Pad(indent)}jmp {end}");
-                Line($"{next}:");
-            }
-
-            if (conditional.HasElseClause) WriteItems(conditional.ElseSourceItems, indent);
-            Line($"{end}:");
-        }
-
-        private void WriteFor(BoundForStatement loop, int indent)
-        {
-            int id = ++_labelId;
-            string label = $"smile_for_{id}";
-            string endValue = $"smile_for_{id}_bound";
-            Line(".data");
-            Line($"{endValue} QWORD 0");
-            Line(".code");
-            EmitExpression(loop.LowerBound, indent);
-            Line($"{Pad(indent)}mov QWORD PTR [{_identifiers.Get(loop.Counter)}], rax");
-            EmitExpression(loop.UpperBound, indent);
-            Line($"{Pad(indent)}mov QWORD PTR [{endValue}], rax");
-            _loops.Add(new LoopFrame(LoopKind.For, id, label));
-            Line($"{label}:");
-            Line($"{Pad(indent)}mov rax, QWORD PTR [{_identifiers.Get(loop.Counter)}]");
-            Line($"{Pad(indent)}cmp rax, QWORD PTR [{endValue}]");
-            Line($"{Pad(indent)}{(loop.IsDescending ? "jl" : "jg")} {label}_end");
-            WriteItems(loop.SourceItems, indent);
-            Line($"{Pad(indent)}{(loop.IsDescending ? "dec" : "inc")} QWORD PTR [{_identifiers.Get(loop.Counter)}]");
-            Line($"{Pad(indent)}jmp {label}");
-            Line($"{label}_end:");
-            _loops.RemoveAt(_loops.Count - 1);
-        }
-
-        private void WriteDo(BoundDoStatement loop, int indent)
-        {
-            int id = ++_labelId;
-            string label = $"smile_do_{id}";
-            _loops.Add(new LoopFrame(LoopKind.Do, id, label));
-            Line($"{label}:");
-            WriteItems(loop.SourceItems, indent);
-            if (loop.UntilCondition is not null)
-            {
-                EmitExpression(loop.UntilCondition, indent);
-                Line($"{Pad(indent)}test rax, rax");
-                Line($"{Pad(indent)}jz {label}");
-            }
-            else
-            {
-                Line($"{Pad(indent)}jmp {label}");
-            }
-
-            Line($"{label}_end:");
-            _loops.RemoveAt(_loops.Count - 1);
-        }
-
-        private void EmitPrint(BoundExpression value, int indent)
-        {
-            EmitExpression(value, indent);
-            if (value.Type is SmileType.Boolean)
-            {
-                string falseLabel = $"smile_bool_{++_labelId}_false";
-                string ready = $"smile_bool_{_labelId}_ready";
-                Line($"{Pad(indent)}test rax, rax");
-                Line($"{Pad(indent)}jz {falseLabel}");
-                Line($"{Pad(indent)}lea rax, {InternString("TRUE")}");
-                Line($"{Pad(indent)}jmp {ready}");
-                Line($"{falseLabel}:");
-                Line($"{Pad(indent)}lea rax, {InternString("FALSE")}");
-                Line($"{ready}:");
-            }
-
-            if (value.Type is SmileType.Integer)
-            {
-                Line($"{Pad(indent)}mov rdx, rax");
-                Line($"{Pad(indent)}lea rcx, {InternString("%lld")}");
-            }
-            else
-            {
-                Line($"{Pad(indent)}mov rdx, rax");
-                Line($"{Pad(indent)}lea rcx, {InternString("%s")}");
-            }
-
-            Line($"{Pad(indent)}call printf");
-        }
-
-        private void EmitExpression(BoundExpression expression, int indent)
-        {
-            string pad = Pad(indent);
-            switch (expression)
-            {
-                case BoundIntegerLiteralExpression number:
-                    Line($"{pad}mov rax, {number.Value.ToString(CultureInfo.InvariantCulture)}");
-                    return;
-                case BoundBooleanLiteralExpression boolean:
-                    Line($"{pad}mov rax, {(boolean.Value ? 1 : 0)}");
-                    return;
-                case BoundStringLiteralExpression text:
-                    Line($"{pad}lea rax, {InternString(text.Value)}");
-                    return;
-                case BoundVariableExpression variable:
-                    Line($"{pad}mov rax, QWORD PTR [{_identifiers.Get(variable.Variable)}]");
-                    return;
-                case BoundUnaryExpression unary:
-                    EmitExpression(unary.Operand, indent);
-                    if (unary.Operator.Kind is BoundUnaryOperatorKind.Negation) Line($"{pad}neg rax");
-                    if (unary.Operator.Kind is BoundUnaryOperatorKind.LogicalNegation) Line($"{pad}xor rax, 1");
-                    return;
-                case BoundBinaryExpression binary:
-                    if (binary.Operator.Kind is BoundBinaryOperatorKind.LogicalAnd or BoundBinaryOperatorKind.LogicalOr)
-                    {
-                        EmitShortCircuit(binary, indent);
-                        return;
-                    }
-
-                    EmitExpression(binary.Left, indent);
-                    Line($"{pad}push rax");
-                    EmitExpression(binary.Right, indent);
-                    Line($"{pad}mov r10, rax");
-                    Line($"{pad}pop rax");
-                    EmitBinaryOperation(binary, indent);
-                    return;
-                default:
-                    Line($"{pad}xor eax, eax");
-                    return;
-            }
-        }
-
-        private void EmitShortCircuit(BoundBinaryExpression binary, int indent)
-        {
-            string pad = Pad(indent);
-            string done = $"smile_logic_{++_labelId}_done";
-            EmitExpression(binary.Left, indent);
-            Line($"{pad}test rax, rax");
-            Line($"{pad}{(binary.Operator.Kind is BoundBinaryOperatorKind.LogicalAnd ? "jz" : "jnz")} {done}");
-            EmitExpression(binary.Right, indent);
-            Line($"{done}:");
-        }
-
-        private void EmitBinaryOperation(BoundBinaryExpression binary, int indent)
-        {
-            string pad = Pad(indent);
-            if (binary.Operator.Kind is BoundBinaryOperatorKind.StringConcatenation)
-            {
-                Line($"{pad}lea rcx, smileTextBuffer");
-                Line($"{pad}lea rdx, {InternString("%s%s")}");
-                Line($"{pad}mov r8, rax");
-                Line($"{pad}mov r9, r10");
-                Line($"{pad}call sprintf");
-                Line($"{pad}lea rax, smileTextBuffer");
-                return;
-            }
-
-            if (binary.Left.Type is SmileType.String &&
-                binary.Operator.Kind is BoundBinaryOperatorKind.Equality or BoundBinaryOperatorKind.Inequality)
-            {
-                Line($"{pad}mov rcx, rax");
-                Line($"{pad}mov rdx, r10");
-                Line($"{pad}call strcmp");
-                Line($"{pad}test eax, eax");
-                Line($"{pad}{(binary.Operator.Kind is BoundBinaryOperatorKind.Equality ? "sete" : "setne")} al");
-                Line($"{pad}movzx rax, al");
-                return;
-            }
-
-            switch (binary.Operator.Kind)
-            {
-                case BoundBinaryOperatorKind.Addition: Line($"{pad}add rax, r10"); break;
-                case BoundBinaryOperatorKind.Subtraction: Line($"{pad}sub rax, r10"); break;
-                case BoundBinaryOperatorKind.Multiplication: Line($"{pad}imul rax, r10"); break;
-                case BoundBinaryOperatorKind.Division:
-                case BoundBinaryOperatorKind.Modulo:
-                    Line($"{pad}cqo");
-                    Line($"{pad}idiv r10");
-                    if (binary.Operator.Kind is BoundBinaryOperatorKind.Modulo) Line($"{pad}mov rax, rdx");
-                    break;
-                default:
-                    string set = binary.Operator.Kind switch
-                    {
-                        BoundBinaryOperatorKind.Equality => "sete", BoundBinaryOperatorKind.Inequality => "setne",
-                        BoundBinaryOperatorKind.Less => "setl", BoundBinaryOperatorKind.LessOrEquals => "setle",
-                        BoundBinaryOperatorKind.Greater => "setg", BoundBinaryOperatorKind.GreaterOrEquals => "setge",
-                        _ => "sete"
-                    };
-                    Line($"{pad}cmp rax, r10");
-                    Line($"{pad}{set} al");
-                    Line($"{pad}movzx rax, al");
-                    break;
-            }
-        }
-
-        private string InternString(string value)
-        {
-            if (_strings.TryGetValue(value, out string? label)) return label;
-            label = $"smileText{_strings.Count}";
-            _strings.Add(value, label);
-            return label;
-        }
-
-        private BoundConstStatement? FindConstant(VariableSymbol variable) =>
-            EnumerateStatements(_program.SourceItems).OfType<BoundConstStatement>()
-                .FirstOrDefault(statement => statement.Variable.Equals(variable));
-
-        private static string Pad(int indent) => new(' ', indent * 4);
-
-        private void Line(string text = "") => _builder.AppendLine(text);
-
-        private static IEnumerable<BoundStatement> EnumerateStatements(IReadOnlyList<BoundSourceItem> items) =>
-            StructuredWriter.EnumerateStatements(items);
-
-        private static IEnumerable<BoundExpression> EnumerateExpressions(IReadOnlyList<BoundSourceItem> items) =>
-            StructuredWriter.EnumerateExpressions(items);
     }
+
 }

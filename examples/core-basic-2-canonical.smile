@@ -1,0 +1,74 @@
+Option Explicit
+
+Const PlayerCount = 3
+
+Dim Names[PlayerCount] As Text
+Dim Scores[PlayerCount] As Number
+Dim Active[PlayerCount] As Boolean
+Dim Index As Number
+Dim BestIndex As Number
+Dim Total As Number
+
+Names[0] = "Alyssa"
+Names[1] = "Borin"
+Names[2] = "Cyra"
+
+Scores[0] = 75
+Scores[1] = 88
+Scores[2] = 92
+
+Call AddBonus(1, 5)
+
+For Index = 0 To PlayerCount - 1
+    Active[Index] = Scores[Index] >= 80
+    Total = Total + Scores[Index]
+    Call PrintPlayer(Index)
+End For
+
+BestIndex = FindBestPlayer()
+
+Print "Best player: "; Names[BestIndex]
+Print "Average score: "; Total / PlayerCount
+
+Select Case Names[BestIndex]
+    Case "Alyssa"
+        Print "Selected Alyssa"
+
+    Case "Borin"
+        Print "Selected Borin"
+
+    Case Else
+        Print "Selected another player"
+
+End Select
+
+End Program
+
+Sub AddBonus(ByVal Index As Number, Amount As Number)
+
+    Scores[Index] = Scores[Index] + Amount
+
+End Sub
+
+Sub PrintPlayer(Index As Number)
+
+    Print Names[Index]; ": "; Scores[Index]
+
+End Sub
+
+Function FindBestPlayer() As Number
+
+    Dim Candidate As Number
+    Dim Best As Number
+
+    Best = 0
+
+    For Candidate = 1 To PlayerCount - 1
+        If Scores[Candidate] > Scores[Best] Then
+            Best = Candidate
+        End If
+    End For
+
+    Return Best
+
+End Function

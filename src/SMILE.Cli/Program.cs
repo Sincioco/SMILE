@@ -145,6 +145,7 @@ internal static class Program
 
         Console.Error.WriteLine("Usage:");
         Console.Error.WriteLine($"  dotnet run --project src\\SMILE.Cli -- <file.smile> --target {targetList} [--run]");
+        Console.Error.WriteLine("  javascript generates dependency-free JavaScript (Node.js) in Program.js.");
     }
 }
 

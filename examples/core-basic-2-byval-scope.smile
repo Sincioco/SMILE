@@ -1,0 +1,21 @@
+Option Explicit
+
+Dim Score As Number
+
+Score = 10
+Call Demonstrate(Score)
+Print Score
+
+End Program
+
+Sub Demonstrate(ByVal Score As Number)
+
+    Dim Doubled As Number
+
+    Score = Score + 5
+    Doubled = Score * 2
+
+    Print Score
+    Print Doubled
+
+End Sub

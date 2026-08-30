@@ -1,0 +1,37 @@
+Option Explicit
+
+Dim Result As Number
+
+Call Announce()
+Result = Identity(7)
+Print Result
+Print SumFour(1, 2, 3, 4)
+Print SumFive(1, 2, 3, 4, 5)
+Print SumEight(1, 2, 3, 4, 5, 6, 7, 8)
+Print SumSixteen(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)
+
+End Program
+
+Sub Announce()
+    Print "parameter counts"
+End Sub
+
+Function Identity(ByVal Value As Number) As Number
+    Return Value
+End Function
+
+Function SumFour(P01 As Number, P02 As Number, P03 As Number, P04 As Number) As Number
+    Return P01 + P02 + P03 + P04
+End Function
+
+Function SumFive(P01 As Number, P02 As Number, P03 As Number, P04 As Number, P05 As Number) As Number
+    Return P01 + P02 + P03 + P04 + P05
+End Function
+
+Function SumEight(P01 As Number, P02 As Number, P03 As Number, P04 As Number, P05 As Number, P06 As Number, P07 As Number, P08 As Number) As Number
+    Return P01 + P02 + P03 + P04 + P05 + P06 + P07 + P08
+End Function
+
+Function SumSixteen(P01 As Number, P02 As Number, P03 As Number, P04 As Number, P05 As Number, P06 As Number, P07 As Number, P08 As Number, P09 As Number, P10 As Number, P11 As Number, P12 As Number, P13 As Number, P14 As Number, P15 As Number, P16 As Number) As Number
+    Return P01 + P02 + P03 + P04 + P05 + P06 + P07 + P08 + P09 + P10 + P11 + P12 + P13 + P14 + P15 + P16
+End Function

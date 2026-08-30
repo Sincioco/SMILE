@@ -23,6 +23,11 @@ public sealed record EvaluationResult(
 public sealed class SmileEvaluator
 {
     private readonly SmileTranspiler _transpiler = new();
+    private readonly Dictionary<VariableSymbol, SmileValue> _globalValues = new();
+    private readonly Dictionary<VariableSymbol, SmileValue[]> _globalArrays = new();
+    private readonly Dictionary<RoutineSymbol, BoundRoutineDeclaration> _routines = new();
+    private readonly StringBuilder _output = new();
+    private CancellationToken _cancellationToken;
 
     public EvaluationResult Evaluate(string source) =>
         Evaluate(source, CancellationToken.None);
@@ -42,23 +47,17 @@ public sealed class SmileEvaluator
                 ExitCode: 1);
         }
 
-        var output = new StringBuilder();
-        var values = new Dictionary<VariableSymbol, SmileValue>();
-        foreach (VariableSymbol variable in bindResult.Program.Variables)
-        {
-            values[variable] = variable.IsConstant
-                ? FindConstantValue(bindResult.Program.SourceItems, variable)
-                : DefaultValue(variable.Type);
-        }
+        _globalValues.Clear();
+        _globalArrays.Clear();
+        _routines.Clear();
+        _output.Clear();
+        _cancellationToken = cancellationToken;
+        InitializeProgram(bindResult.Program);
 
         SmileRuntimeError? runtimeError;
         try
         {
-            runtimeError = ExecuteStatements(
-                bindResult.Program.Statements,
-                values,
-                output,
-                cancellationToken);
+            runtimeError = ExecuteStatements(bindResult.Program.Statements, frame: null);
         }
         catch (ProgramEndSignal)
         {
@@ -68,72 +67,128 @@ public sealed class SmileEvaluator
         return runtimeError is null
             ? new EvaluationResult(
                 Success: true,
-                Output: output.ToString(),
+                Output: _output.ToString(),
                 Diagnostics: bindResult.Diagnostics)
             : new EvaluationResult(
                 Success: false,
-                Output: output.ToString(),
+                Output: _output.ToString(),
                 Diagnostics: bindResult.Diagnostics,
                 ErrorOutput: runtimeError + "\n",
                 ExitCode: 1,
                 RuntimeError: runtimeError);
     }
 
-    private static SmileRuntimeError? ExecuteStatements(
-        IReadOnlyList<BoundStatement> statements,
-        Dictionary<VariableSymbol, SmileValue> values,
-        StringBuilder output,
-        CancellationToken cancellationToken)
+    private void InitializeProgram(BoundProgram program)
+    {
+        var constants = program.SourceItems
+            .OfType<BoundConstStatement>()
+            .ToDictionary(item => item.Variable, item => item.Value);
+
+        foreach (VariableSymbol variable in program.Variables)
+        {
+            if (variable.IsArray)
+            {
+                _globalArrays[variable] = CreateArray(variable);
+            }
+            else
+            {
+                _globalValues[variable] = constants.TryGetValue(variable, out SmileValue value)
+                    ? value
+                    : DefaultValue(variable.Type);
+            }
+        }
+
+        foreach (BoundRoutineDeclaration routine in program.Routines)
+        {
+            _routines[routine.Symbol] = routine;
+        }
+    }
+
+    private SmileRuntimeError? ExecuteStatements(IReadOnlyList<BoundStatement> statements, CallFrame? frame)
     {
         foreach (BoundStatement statement in statements)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            _cancellationToken.ThrowIfCancellationRequested();
             switch (statement)
             {
                 case BoundDimStatement or BoundConstStatement:
                     break;
 
                 case BoundSetStatement assignment:
-                    if (!TryEvaluateExpression(
-                            assignment.Value,
-                            values,
-                            out SmileValue assignedValue,
-                            out SmileRuntimeError? assignmentError))
+                    if (!TryEvaluateExpression(assignment.Value, frame, out SmileValue assignedValue, out SmileRuntimeError? assignmentError))
                     {
                         return assignmentError;
                     }
 
-                    values[assignment.Variable] = assignedValue;
+                    SetValue(assignment.Variable, frame, assignedValue);
                     break;
+
+                case BoundArraySetStatement assignment:
+                    if (!TryEvaluateExpression(assignment.Index, frame, out SmileValue indexValue, out SmileRuntimeError? indexError))
+                    {
+                        return indexError;
+                    }
+
+                    if (!TryGetArrayElement(assignment.Array, indexValue.IntegerValue, frame, out SmileValue[]? array, out int index, out SmileRuntimeError? boundsError))
+                    {
+                        return boundsError;
+                    }
+
+                    if (!TryEvaluateExpression(assignment.Value, frame, out SmileValue arrayValue, out SmileRuntimeError? valueError))
+                    {
+                        return valueError;
+                    }
+
+                    array![index] = arrayValue;
+                    break;
+
+                case BoundCallStatement call:
+                    if (!TryEvaluateArguments(call.Arguments, frame, out SmileValue[]? callArguments, out SmileRuntimeError? argumentError))
+                    {
+                        return argumentError;
+                    }
+
+                    if (!TryInvoke(call.Routine, callArguments!, out _, out SmileRuntimeError? callError))
+                    {
+                        return callError;
+                    }
+
+                    break;
+
+                case BoundReturnStatement returnStatement:
+                    SmileValue? returnValue = null;
+                    if (returnStatement.Value is not null)
+                    {
+                        if (!TryEvaluateExpression(returnStatement.Value, frame, out SmileValue value, out SmileRuntimeError? returnError))
+                        {
+                            return returnError;
+                        }
+
+                        returnValue = value;
+                    }
+
+                    throw new RoutineReturnSignal(returnValue);
 
                 case BoundCorePrintStatement print:
                     foreach (BoundExpression expression in print.Values)
                     {
-                        if (!TryEvaluateExpression(
-                                expression,
-                                values,
-                                out SmileValue printedValue,
-                                out SmileRuntimeError? printError))
+                        if (!TryEvaluateExpression(expression, frame, out SmileValue printedValue, out SmileRuntimeError? printError))
                         {
                             return printError;
                         }
 
-                        output.Append(printedValue.ToDisplayText());
+                        _output.Append(printedValue.ToDisplayText());
                     }
 
                     if (!print.SuppressNewLine)
                     {
-                        output.Append('\n');
+                        _output.Append('\n');
                     }
 
                     break;
 
                 case BoundIfStatement conditional:
-                    SmileRuntimeError? ifError = ExecuteIf(
-                        conditional,
-                        values,
-                        output,
-                        cancellationToken);
+                    SmileRuntimeError? ifError = ExecuteIf(conditional, frame);
                     if (ifError is not null)
                     {
                         return ifError;
@@ -141,12 +196,17 @@ public sealed class SmileEvaluator
 
                     break;
 
+                case BoundSelectStatement select:
+                    SmileRuntimeError? selectError = ExecuteSelect(select, frame);
+                    if (selectError is not null)
+                    {
+                        return selectError;
+                    }
+
+                    break;
+
                 case BoundForStatement loop:
-                    SmileRuntimeError? forError = ExecuteFor(
-                        loop,
-                        values,
-                        output,
-                        cancellationToken);
+                    SmileRuntimeError? forError = ExecuteFor(loop, frame);
                     if (forError is not null)
                     {
                         return forError;
@@ -155,11 +215,7 @@ public sealed class SmileEvaluator
                     break;
 
                 case BoundDoStatement loop:
-                    SmileRuntimeError? doError = ExecuteDo(
-                        loop,
-                        values,
-                        output,
-                        cancellationToken);
+                    SmileRuntimeError? doError = ExecuteDo(loop, frame);
                     if (doError is not null)
                     {
                         return doError;
@@ -182,71 +238,72 @@ public sealed class SmileEvaluator
         return null;
     }
 
-    private static SmileRuntimeError? ExecuteIf(
-        BoundIfStatement conditional,
-        Dictionary<VariableSymbol, SmileValue> values,
-        StringBuilder output,
-        CancellationToken cancellationToken)
+    private SmileRuntimeError? ExecuteIf(BoundIfStatement conditional, CallFrame? frame)
     {
         foreach (BoundConditionalClause clause in conditional.Clauses)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!TryEvaluateExpression(
-                    clause.Condition,
-                    values,
-                    out SmileValue condition,
-                    out SmileRuntimeError? conditionError))
+            _cancellationToken.ThrowIfCancellationRequested();
+            if (!TryEvaluateExpression(clause.Condition, frame, out SmileValue condition, out SmileRuntimeError? conditionError))
             {
                 return conditionError;
             }
 
             if (condition.BooleanValue)
             {
-                return ExecuteStatements(
-                    clause.Statements,
-                    values,
-                    output,
-                    cancellationToken);
+                return ExecuteStatements(clause.Statements, frame);
             }
         }
 
         return conditional.HasElseClause
-            ? ExecuteStatements(
-                conditional.ElseStatements,
-                values,
-                output,
-                cancellationToken)
+            ? ExecuteStatements(conditional.ElseStatements, frame)
             : null;
     }
 
-    private static SmileRuntimeError? ExecuteFor(
-        BoundForStatement loop,
-        Dictionary<VariableSymbol, SmileValue> values,
-        StringBuilder output,
-        CancellationToken cancellationToken)
+    private SmileRuntimeError? ExecuteSelect(BoundSelectStatement select, CallFrame? frame)
     {
-        if (!TryEvaluateExpression(loop.LowerBound, values, out SmileValue lower, out SmileRuntimeError? lowerError))
+        if (!TryEvaluateExpression(select.Selector, frame, out SmileValue selector, out SmileRuntimeError? selectorError))
+        {
+            return selectorError;
+        }
+
+        BoundSelectCaseClause? fallback = null;
+        foreach (BoundSelectCaseClause clause in select.Cases)
+        {
+            if (clause.IsElse)
+            {
+                fallback = clause;
+                continue;
+            }
+
+            if (clause.Value is SmileValue value && ValuesEqual(selector, value))
+            {
+                return ExecuteStatements(clause.Statements, frame);
+            }
+        }
+
+        return fallback is null ? null : ExecuteStatements(fallback.Statements, frame);
+    }
+
+    private SmileRuntimeError? ExecuteFor(BoundForStatement loop, CallFrame? frame)
+    {
+        if (!TryEvaluateExpression(loop.LowerBound, frame, out SmileValue lower, out SmileRuntimeError? lowerError))
         {
             return lowerError;
         }
 
-        if (!TryEvaluateExpression(loop.UpperBound, values, out SmileValue upper, out SmileRuntimeError? upperError))
+        if (!TryEvaluateExpression(loop.UpperBound, frame, out SmileValue upper, out SmileRuntimeError? upperError))
         {
             return upperError;
         }
 
         long counter = lower.IntegerValue;
-        values[loop.Counter] = SmileValue.FromInteger(counter);
+        SetValue(loop.Counter, frame, SmileValue.FromInteger(counter));
         while (loop.IsDescending ? counter >= upper.IntegerValue : counter <= upper.IntegerValue)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            _cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                SmileRuntimeError? bodyError = ExecuteStatements(
-                    loop.Statements,
-                    values,
-                    output,
-                    cancellationToken);
+                SmileRuntimeError? bodyError = ExecuteStatements(loop.Statements, frame);
                 if (bodyError is not null)
                 {
                     return bodyError;
@@ -263,31 +320,23 @@ public sealed class SmileEvaluator
             }
             catch (OverflowException)
             {
-                return new SmileRuntimeError("SMILER1206", "Number arithmetic overflow.");
+                return OverflowError();
             }
 
-            values[loop.Counter] = SmileValue.FromInteger(counter);
+            SetValue(loop.Counter, frame, SmileValue.FromInteger(counter));
         }
 
         return null;
     }
 
-    private static SmileRuntimeError? ExecuteDo(
-        BoundDoStatement loop,
-        Dictionary<VariableSymbol, SmileValue> values,
-        StringBuilder output,
-        CancellationToken cancellationToken)
+    private SmileRuntimeError? ExecuteDo(BoundDoStatement loop, CallFrame? frame)
     {
         while (true)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            _cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                SmileRuntimeError? bodyError = ExecuteStatements(
-                    loop.Statements,
-                    values,
-                    output,
-                    cancellationToken);
+                SmileRuntimeError? bodyError = ExecuteStatements(loop.Statements, frame);
                 if (bodyError is not null)
                 {
                     return bodyError;
@@ -303,11 +352,7 @@ public sealed class SmileEvaluator
                 continue;
             }
 
-            if (!TryEvaluateExpression(
-                    loop.UntilCondition,
-                    values,
-                    out SmileValue condition,
-                    out SmileRuntimeError? conditionError))
+            if (!TryEvaluateExpression(loop.UntilCondition, frame, out SmileValue condition, out SmileRuntimeError? conditionError))
             {
                 return conditionError;
             }
@@ -319,47 +364,272 @@ public sealed class SmileEvaluator
         }
     }
 
-    private static SmileValue FindConstantValue(
-        IReadOnlyList<BoundSourceItem> items,
-        VariableSymbol variable)
+    private bool TryEvaluateExpression(
+        BoundExpression expression,
+        CallFrame? frame,
+        out SmileValue value,
+        out SmileRuntimeError? error)
     {
-        foreach (BoundSourceItem item in items)
+        _cancellationToken.ThrowIfCancellationRequested();
+        switch (expression)
         {
-            switch (item)
+            case BoundStringLiteralExpression literal:
+                value = SmileValue.FromString(literal.Value);
+                return Success(out error);
+            case BoundIntegerLiteralExpression literal:
+                value = SmileValue.FromInteger(literal.Value);
+                return Success(out error);
+            case BoundBooleanLiteralExpression literal:
+                value = SmileValue.FromBoolean(literal.Value);
+                return Success(out error);
+            case BoundVariableExpression variable:
+                value = GetValue(variable.Variable, frame);
+                return Success(out error);
+            case BoundArrayExpression arrayExpression:
+                if (!TryEvaluateExpression(arrayExpression.Index, frame, out SmileValue indexValue, out error))
+                {
+                    value = default;
+                    return false;
+                }
+
+                if (!TryGetArrayElement(arrayExpression.Array, indexValue.IntegerValue, frame, out SmileValue[]? array, out int index, out error))
+                {
+                    value = default;
+                    return false;
+                }
+
+                value = array![index];
+                return true;
+            case BoundCallExpression call:
+                if (!TryEvaluateArguments(call.Arguments, frame, out SmileValue[]? arguments, out error))
+                {
+                    value = default;
+                    return false;
+                }
+
+                return TryInvoke(call.Routine, arguments!, out value, out error);
+            case BoundUnaryExpression unary:
+                if (!TryEvaluateExpression(unary.Operand, frame, out SmileValue operand, out error))
+                {
+                    value = default;
+                    return false;
+                }
+
+                try
+                {
+                    value = unary.Operator.Kind switch
+                    {
+                        BoundUnaryOperatorKind.Identity => operand,
+                        BoundUnaryOperatorKind.Negation => SmileValue.FromInteger(checked(-operand.IntegerValue)),
+                        BoundUnaryOperatorKind.LogicalNegation => SmileValue.FromBoolean(!operand.BooleanValue),
+                        _ => throw new InvalidOperationException("Unknown unary operator.")
+                    };
+                    return true;
+                }
+                catch (OverflowException)
+                {
+                    value = default;
+                    error = OverflowError();
+                    return false;
+                }
+            case BoundBinaryExpression binary:
+                return TryEvaluateBinary(binary, frame, out value, out error);
+            default:
+                throw new InvalidOperationException(
+                    $"Unsupported expression reached the Core BASIC evaluator: {expression.GetType().Name}.");
+        }
+    }
+
+    private bool TryEvaluateBinary(
+        BoundBinaryExpression binary,
+        CallFrame? frame,
+        out SmileValue value,
+        out SmileRuntimeError? error)
+    {
+        if (!TryEvaluateExpression(binary.Left, frame, out SmileValue left, out error))
+        {
+            value = default;
+            return false;
+        }
+
+        if (binary.Operator.Kind is BoundBinaryOperatorKind.LogicalAnd && !left.BooleanValue)
+        {
+            value = SmileValue.FromBoolean(false);
+            return Success(out error);
+        }
+
+        if (binary.Operator.Kind is BoundBinaryOperatorKind.LogicalOr && left.BooleanValue)
+        {
+            value = SmileValue.FromBoolean(true);
+            return Success(out error);
+        }
+
+        if (!TryEvaluateExpression(binary.Right, frame, out SmileValue right, out error))
+        {
+            value = default;
+            return false;
+        }
+
+        try
+        {
+            value = binary.Operator.Kind switch
             {
-                case BoundConstStatement constant when constant.Variable.Equals(variable):
-                    return constant.Value;
-                case BoundIfStatement conditional:
-                    foreach (BoundConditionalClause clause in conditional.Clauses)
-                    {
-                        SmileValue found = FindConstantValue(clause.SourceItems, variable);
-                        if (found.Type == variable.Type)
-                        {
-                            return found;
-                        }
-                    }
+                BoundBinaryOperatorKind.Addition => SmileValue.FromInteger(checked(left.IntegerValue + right.IntegerValue)),
+                BoundBinaryOperatorKind.Subtraction => SmileValue.FromInteger(checked(left.IntegerValue - right.IntegerValue)),
+                BoundBinaryOperatorKind.Multiplication => SmileValue.FromInteger(checked(left.IntegerValue * right.IntegerValue)),
+                BoundBinaryOperatorKind.Division => right.IntegerValue == 0
+                    ? throw new DivideByZeroException()
+                    : SmileValue.FromInteger(CheckedDivision(left.IntegerValue, right.IntegerValue)),
+                BoundBinaryOperatorKind.Modulo => right.IntegerValue == 0
+                    ? throw new DivideByZeroException()
+                    : SmileValue.FromInteger(CheckedModulo(left.IntegerValue, right.IntegerValue)),
+                BoundBinaryOperatorKind.StringConcatenation => SmileValue.FromString(left.StringValue + right.StringValue),
+                BoundBinaryOperatorKind.Equality => SmileValue.FromBoolean(ValuesEqual(left, right)),
+                BoundBinaryOperatorKind.Inequality => SmileValue.FromBoolean(!ValuesEqual(left, right)),
+                BoundBinaryOperatorKind.Less => SmileValue.FromBoolean(Compare(left, right) < 0),
+                BoundBinaryOperatorKind.LessOrEquals => SmileValue.FromBoolean(Compare(left, right) <= 0),
+                BoundBinaryOperatorKind.Greater => SmileValue.FromBoolean(Compare(left, right) > 0),
+                BoundBinaryOperatorKind.GreaterOrEquals => SmileValue.FromBoolean(Compare(left, right) >= 0),
+                BoundBinaryOperatorKind.LogicalAnd => SmileValue.FromBoolean(left.BooleanValue && right.BooleanValue),
+                BoundBinaryOperatorKind.LogicalOr => SmileValue.FromBoolean(left.BooleanValue || right.BooleanValue),
+                _ => throw new InvalidOperationException("Unknown binary operator.")
+            };
+            return Success(out error);
+        }
+        catch (DivideByZeroException)
+        {
+            value = default;
+            error = new SmileRuntimeError("SMILER1207", "Division by zero.");
+            return false;
+        }
+        catch (OverflowException)
+        {
+            value = default;
+            error = OverflowError();
+            return false;
+        }
+    }
 
-                    break;
-                case BoundForStatement loop:
-                    SmileValue forValue = FindConstantValue(loop.SourceItems, variable);
-                    if (forValue.Type == variable.Type)
-                    {
-                        return forValue;
-                    }
-
-                    break;
-                case BoundDoStatement loop:
-                    SmileValue doValue = FindConstantValue(loop.SourceItems, variable);
-                    if (doValue.Type == variable.Type)
-                    {
-                        return doValue;
-                    }
-
-                    break;
+    private bool TryEvaluateArguments(
+        IReadOnlyList<BoundExpression> expressions,
+        CallFrame? caller,
+        out SmileValue[]? values,
+        out SmileRuntimeError? error)
+    {
+        values = new SmileValue[expressions.Count];
+        for (int index = 0; index < expressions.Count; index++)
+        {
+            if (!TryEvaluateExpression(expressions[index], caller, out values[index], out error))
+            {
+                values = null;
+                return false;
             }
         }
 
-        return DefaultValue(variable.Type);
+        error = null;
+        return true;
+    }
+
+    private bool TryInvoke(
+        RoutineSymbol symbol,
+        IReadOnlyList<SmileValue> arguments,
+        out SmileValue value,
+        out SmileRuntimeError? error)
+    {
+        BoundRoutineDeclaration routine = _routines[symbol];
+        var frame = new CallFrame();
+        foreach (VariableSymbol local in routine.Locals)
+        {
+            if (local.IsArray)
+            {
+                frame.Arrays[local] = CreateArray(local);
+            }
+            else
+            {
+                frame.Values[local] = DefaultValue(local.Type);
+            }
+        }
+
+        for (int index = 0; index < symbol.Parameters.Count; index++)
+        {
+            frame.Values[symbol.Parameters[index]] = arguments[index];
+        }
+
+        try
+        {
+            error = ExecuteStatements(routine.Statements, frame);
+            if (error is not null)
+            {
+                value = default;
+                return false;
+            }
+        }
+        catch (RoutineReturnSignal signal)
+        {
+            value = signal.Value ?? DefaultValue(symbol.ReturnType ?? SmileType.Integer);
+            error = null;
+            return true;
+        }
+
+        if (symbol.IsFunction)
+        {
+            value = default;
+            error = new SmileRuntimeError("SMILER1212", $"Function '{symbol.Name}' completed without returning a value.");
+            return false;
+        }
+
+        value = default;
+        error = null;
+        return true;
+    }
+
+    private SmileValue GetValue(VariableSymbol variable, CallFrame? frame) =>
+        variable.IsGlobal ? _globalValues[variable] : frame!.Values[variable];
+
+    private void SetValue(VariableSymbol variable, CallFrame? frame, SmileValue value)
+    {
+        if (variable.IsGlobal)
+        {
+            _globalValues[variable] = value;
+        }
+        else
+        {
+            frame!.Values[variable] = value;
+        }
+    }
+
+    private SmileValue[] GetArray(VariableSymbol variable, CallFrame? frame) =>
+        variable.IsGlobal ? _globalArrays[variable] : frame!.Arrays[variable];
+
+    private bool TryGetArrayElement(
+        VariableSymbol variable,
+        long requestedIndex,
+        CallFrame? frame,
+        out SmileValue[]? array,
+        out int index,
+        out SmileRuntimeError? error)
+    {
+        if (requestedIndex < 0 || requestedIndex >= variable.ArrayLength)
+        {
+            array = null;
+            index = 0;
+            error = new SmileRuntimeError(
+                "SMILER1210",
+                $"Array index {requestedIndex} is outside the valid range 0 through {variable.ArrayLength - 1} for '{variable.Name}'.");
+            return false;
+        }
+
+        array = GetArray(variable, frame);
+        index = (int)requestedIndex;
+        error = null;
+        return true;
+    }
+
+    private static SmileValue[] CreateArray(VariableSymbol variable)
+    {
+        SmileValue[] values = new SmileValue[variable.ArrayLength];
+        Array.Fill(values, DefaultValue(variable.Type));
+        return values;
     }
 
     private static SmileValue DefaultValue(SmileType type) => type switch
@@ -369,34 +639,49 @@ public sealed class SmileEvaluator
         _ => SmileValue.FromString(string.Empty)
     };
 
-    private static bool TryEvaluateExpression(
-        BoundExpression expression,
-        IReadOnlyDictionary<VariableSymbol, SmileValue> values,
-        out SmileValue value,
-        out SmileRuntimeError? error)
+    private static bool ValuesEqual(SmileValue left, SmileValue right) => left.Type switch
     {
-        StaticEvaluationResult result = BoundExpressionEvaluator.Evaluate(expression, values);
-        if (result.IsKnown && !result.MayFailAtRuntime)
-        {
-            value = result.Value;
-            error = null;
-            return true;
-        }
+        SmileType.Integer => left.IntegerValue == right.IntegerValue,
+        SmileType.Boolean => left.BooleanValue == right.BooleanValue,
+        SmileType.String => string.Equals(left.StringValue, right.StringValue, StringComparison.Ordinal),
+        _ => false
+    };
 
-        if (result.IsInvalid && result.Error is SmileArithmeticError arithmeticError)
-        {
-            value = default;
-            error = new SmileRuntimeError(arithmeticError.RuntimeCode, arithmeticError.Message);
-            return false;
-        }
+    private static int Compare(SmileValue left, SmileValue right) => left.Type switch
+    {
+        SmileType.Integer => left.IntegerValue.CompareTo(right.IntegerValue),
+        SmileType.String => string.CompareOrdinal(left.StringValue, right.StringValue),
+        _ => throw new InvalidOperationException("Only Number and Text values can be ordered.")
+    };
 
-        throw new InvalidOperationException(
-            "A reached bound expression remained unknown during evaluation.");
+    private static long CheckedDivision(long left, long right) => checked(left / right);
+
+    private static long CheckedModulo(long left, long right) => checked(left % right);
+
+    private static SmileRuntimeError OverflowError() =>
+        new("SMILER1206", "Number arithmetic overflow.");
+
+    private static bool Success(out SmileRuntimeError? error)
+    {
+        error = null;
+        return true;
+    }
+
+    private sealed class CallFrame
+    {
+        public Dictionary<VariableSymbol, SmileValue> Values { get; } = new();
+
+        public Dictionary<VariableSymbol, SmileValue[]> Arrays { get; } = new();
     }
 
     private sealed class LoopExitSignal(BoundExitKind kind) : Exception
     {
         public BoundExitKind Kind { get; } = kind;
+    }
+
+    private sealed class RoutineReturnSignal(SmileValue? value) : Exception
+    {
+        public SmileValue? Value { get; } = value;
     }
 
     private sealed class ProgramEndSignal : Exception;

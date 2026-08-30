@@ -13,7 +13,7 @@ Detection, compilation, linking, and execution are asynchronous and cancellation
 | C# | .NET SDK builds the generated minimal project | generated console executable |
 | C | Visual Studio x64 C compiler | generated executable |
 | MASM x64 | Visual Studio `ml64` plus `link` and UCRT/Kernel32 libraries | generated executable |
-| JavaScript | Node.js | `node program.js` |
+| JavaScript (Node.js) | Node.js | `node Program.js` |
 | Java | JDK `javac` and `java` | generated `Program` class |
 | COBOL | GnuCOBOL | generated executable |
 | Objective-C | MSYS2/MinGW Clang | generated executable |
@@ -41,15 +41,15 @@ link.exe /nologo /ignore:4210 Program.obj kernel32.lib legacy_stdio_definitions.
 
 Generated assembly follows the Windows x64 ABI, including required shadow space and stack alignment. It uses recognizable CRT output and `ExitProcess`. The known `LNK4210` warning associated with direct UCRT use and a custom assembly entry point is suppressed by the focused link command.
 
-## JavaScript and Python
+## JavaScript (Node.js) and Python
 
-These are direct-run targets. Detection still validates an available supported runtime, and run results use the same timeout/cancellation model as compiled destinations. Python source remains a top-level executable script.
+These are direct-run targets. `javascript` remains the stable CLI ID, the display name is JavaScript (Node.js), and generation produces dependency-free `Program.js` with no npm package or module requirement. Use a current supported Node.js LTS release. Detection validates the local runtime, and run results use the same timeout/cancellation model as compiled destinations. Python remains a top-level executable script.
 
 ## Build/run result model
 
 Every toolchain returns the target, detected status, build output, stdout, stderr, exit code, duration, timeout/cancellation flags, temporary working directory, and stage. A failed compiler or program does not crash Desktop.
 
-Compiler/linker stdin is closed. Core BASIC 1 has no input statement, so generated programs do not request interactive stdin.
+Compiler/linker stdin is closed. Core BASIC 2 deliberately has no console Input statement, so generated programs do not request interactive stdin.
 
 ## Validation tiers
 
@@ -72,6 +72,7 @@ Run canonical conformance, deterministic generation for all ten, installed all-t
 ```powershell
 dotnet test tests/SMILE.Tests/SMILE.Tests.csproj -c Debug --filter TestCategory=CoreBasic -nologo
 dotnet test tests/SMILE.Tests/SMILE.Tests.csproj -c Debug --filter TestCategory=Toolchain -nologo
+dotnet test tests/SMILE.Tests/SMILE.Tests.csproj -c Debug --filter TestCategory=MilestoneMatrix -nologo
 powershell -ExecutionPolicy Bypass -File scripts/Test-CoreBasicParity.ps1
 ```
 

@@ -36,9 +36,18 @@
       <Word>UNTIL</Word>
       <Word>EXIT</Word>
       <Word>PROGRAM</Word>
+      <Word>OPTION</Word>
+      <Word>EXPLICIT</Word>
+      <Word>SUB</Word>
+      <Word>FUNCTION</Word>
+      <Word>CALL</Word>
+      <Word>RETURN</Word>
+      <Word>SELECT</Word>
+      <Word>CASE</Word>
+      <Word>BYVAL</Word>
     </Keywords>
 
     <Rule color="Number">\b\d+\b</Rule>
-    <Rule color="Operator">&lt;&gt;|&lt;=|&gt;=|[=+\-*/();&lt;&gt;]</Rule>
+    <Rule color="Operator">&lt;&gt;|&lt;=|&gt;=|[=+\-*/();\[\],&lt;&gt;]</Rule>
   </RuleSet>
 </SyntaxDefinition>

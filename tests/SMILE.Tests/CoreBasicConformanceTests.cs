@@ -82,7 +82,7 @@ Print "A" + "B" = "AB"
         EvaluationResult result = _evaluator.Evaluate(source);
 
         Assert.IsTrue(result.Success, Join(result.Diagnostics));
-        Assert.AreEqual("14\n20\n-2\n-1\nFALSE\nTRUE\nTRUE\n", result.Output);
+        Assert.AreEqual("14\n20\n-2\n-1\nFalse\nTrue\nTrue\n", result.Output);
     }
 
     [TestMethod]
@@ -119,7 +119,7 @@ Print "A" <> "a"
 """);
 
         Assert.IsTrue(result.Success, Join(result.Diagnostics));
-        Assert.AreEqual("TRUE\nTRUE\n", result.Output);
+        Assert.AreEqual("True\nTrue\n", result.Output);
         AssertRejected("Print \"A\" < \"B\"", "not defined for Text and Text");
     }
 
@@ -142,7 +142,7 @@ Print Tally; Ready; Name
         EvaluationResult result = _evaluator.Evaluate(valid);
 
         Assert.IsTrue(result.Success, Join(result.Diagnostics));
-        Assert.AreEqual("0FALSE[]5\n5TRUESin\n", result.Output);
+        Assert.AreEqual("0False[]5\n5TrueSin\n", result.Output);
         AssertRejected("Value = 1\nValue = \"one\"", "Cannot assign Text");
         AssertRejected("Const Limit = 3\nLimit = 4", "cannot be assigned");
         AssertRejected("Const Alpha = Beta\nConst Beta = Alpha", "circular");
@@ -301,15 +301,17 @@ Print "unreachable"
     }
 
     [TestMethod]
-    public void Excluded_SMILE_2_superset_forms_are_rejected()
+    public void Features_outside_Core_BASIC_2_are_rejected()
     {
         string[] excluded =
         {
-            "Option Explicit",
             "Dim Values(3) As Number",
-            "Select Case 1\nEnd Select",
             "Sub Work\nEnd Sub",
             "Call Work",
+            "Sub Change(ByRef Value As Number)\nEnd Sub",
+            "Sub Greet(Optional Name As Text)\nEnd Sub",
+            "Sub Greet(Name As Text)\nEnd Sub\nCall Greet(Name:=\"Sin\")",
+            "Dim Grid[2, 2] As Number",
             "Module Demo",
             "Game Window 800 By 600"
         };

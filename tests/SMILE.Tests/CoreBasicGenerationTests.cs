@@ -46,7 +46,7 @@ End If
     {
         string examplesDirectory = FindExamplesDirectory();
         string[] examples = Directory.GetFiles(examplesDirectory, "*.smile").Order().ToArray();
-        Assert.HasCount(4, examples);
+        Assert.IsGreaterThanOrEqualTo(12, examples.Length);
 
         foreach (string example in examples)
         {
@@ -117,6 +117,37 @@ End If
         Assert.IsFalse(nearestExit.Contains("_SmileExitLoop", StringComparison.Ordinal));
         StringAssert.Contains(nearestExit, "break");
         StringAssert.Contains(crossKindExit, "class _SmileExitLoop1(Exception):");
+    }
+
+    [TestMethod]
+    public void MASM_runtime_declarations_are_emitted_only_for_features_that_need_them()
+    {
+        string simple = _transpiler.Transpile("Value = 1", TargetLanguage.MasmX64)
+            .GeneratedProgram!.PrimaryFile.Content;
+        string printed = _transpiler.Transpile("Print 1", TargetLanguage.MasmX64)
+            .GeneratedProgram!.PrimaryFile.Content;
+        string indexed = _transpiler.Transpile(
+            "Dim Values[2] As Number\nIndex = 0\nPrint Values[Index]",
+            TargetLanguage.MasmX64).GeneratedProgram!.PrimaryFile.Content;
+        string concatenated = _transpiler.Transpile(
+            "Print \"A\" + \"B\"",
+            TargetLanguage.MasmX64).GeneratedProgram!.PrimaryFile.Content;
+        string compared = _transpiler.Transpile(
+            "Print \"A\" = \"B\"",
+            TargetLanguage.MasmX64).GeneratedProgram!.PrimaryFile.Content;
+
+        Assert.IsFalse(simple.Contains("printf PROTO", StringComparison.Ordinal));
+        Assert.IsFalse(simple.Contains("strcmp PROTO", StringComparison.Ordinal));
+        Assert.IsFalse(simple.Contains("sprintf PROTO", StringComparison.Ordinal));
+        Assert.IsFalse(simple.Contains("malloc PROTO", StringComparison.Ordinal));
+        Assert.IsFalse(simple.Contains("smile_bounds_fail", StringComparison.Ordinal));
+        Assert.IsFalse(simple.Contains("includelib msvcrt.lib", StringComparison.Ordinal));
+
+        StringAssert.Contains(printed, "printf PROTO");
+        StringAssert.Contains(indexed, "smile_bounds_fail PROC");
+        StringAssert.Contains(concatenated, "malloc PROTO");
+        StringAssert.Contains(concatenated, "sprintf PROTO");
+        StringAssert.Contains(compared, "strcmp PROTO");
     }
 
     [TestMethod]

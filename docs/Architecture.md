@@ -2,7 +2,7 @@
 
 ## Current strategy
 
-SMILE 1.0 is a single-language, ten-target transpiler. Its only source language is the frozen SMILE Core BASIC 1 profile. The architecture intentionally has no compatibility layer: all public entry points construct the same parser and binder.
+SMILE 1.0 is a single-language, ten-target transpiler. Its only source language is the frozen SMILE Core BASIC 2 profile. The architecture intentionally has no compatibility layer: all public entry points construct the same parser and binder.
 
 ## Compiler pipeline
 
@@ -10,7 +10,7 @@ SMILE 1.0 is a single-language, ten-target transpiler. Its only source language 
 Core BASIC source
     -> canonical lexer/parser
     -> ordered syntax tree and diagnostics
-    -> canonical binder and program-wide symbol table
+    -> multipass binder, global/routine scopes, and typed symbols
     -> bound program
        -> evaluator
        -> registered target backend (one of ten)
@@ -18,7 +18,7 @@ Core BASIC source
     -> optional toolchain build/run
 ```
 
-`SmileTranspiler` is the small public facade. `Parser` owns lexical and grammatical structure. `Binder` owns names, exact types, constants, writable counters, and typed-exit validity. Generators never select or detect a source language.
+`SmileTranspiler` is the small public facade. `Parser` owns lexical and grammatical structure. `Binder` inventories declarations and routine signatures before binding bodies, then owns names, scopes, exact types, constants, calls, return paths, Select cases, arrays, writable counters, and typed-exit validity. Generators never select or detect a source language.
 
 ## Front end
 
@@ -26,20 +26,23 @@ The canonical lexer is nested with the parser so there is one reachable source-t
 
 All SMILE 2.0 reserved words remain reserved. A reserved feature outside the frozen profile receives a diagnostic rather than becoming an identifier. Earlier SMILE 1.0-only spellings are ordinary invalid input; there is no retry through another lexer.
 
-The parser preserves ordered comments and blank lines alongside statements, builds recursive `If`, `For`, and `Do` structure, and records physical spans for diagnostics. Newlines continue an expression only inside parentheses or an open Text literal.
+The parser preserves ordered comments and blank lines alongside statements, builds routines, calls, `If`, `Select`, `For`, `Do`, and array structure, and records physical spans for diagnostics. Newlines continue an expression only inside parentheses or an open Text literal.
 
 ## Binding and evaluation
 
-Binding is case-insensitive and program-wide:
+Binding is case-insensitive with a shared program namespace and per-routine scopes:
 
 - `Dim` creates fixed typed storage with a scalar default;
 - first direct assignment creates an implicit fixed-type variable;
 - `Const` resolves a compile-time scalar, including forward constant references, while rejecting cycles;
 - later assignments preserve exact type and cannot target constants;
 - expressions require declared or already assigned names;
-- conditions require Boolean, loop bounds/counters require Number, and typed exits require a matching enclosing loop.
+- signatures permit forward and mutually recursive calls with exact positional scalar arguments;
+- parameters and locals shadow globals, are fresh per invocation, and never leak;
+- Select values are exact-type compile-time constants and arrays have positive compile-time dimensions;
+- conditions require Boolean, loop bounds/counters/indexes require Number, and typed exits require a matching enclosing loop in the same routine.
 
-The evaluator initializes declared storage, evaluates selected branches and actual loop iterations, preserves short circuiting, handles typed exits lexically, and stops at `End Program`. It does not impose a hidden source-language profile or mutate the bound program.
+The evaluator keeps globals outside a stack of reentrant call frames. Each frame owns copied ByVal parameters, locals, and local arrays. It preserves left-to-right evaluation, short circuiting, selector-once Select behavior, checked indexes, routine Return, typed exits, recursion, and whole-program `End Program` propagation.
 
 ## Generation registry
 
@@ -50,7 +53,7 @@ The active policy is centralized in `TargetLanguageInfo.All` and `ActiveTargetLa
 1. C#
 2. C
 3. Windows x64 MASM Assembly
-4. JavaScript
+4. JavaScript (Node.js)
 5. Java
 6. COBOL
 7. Objective-C
@@ -62,13 +65,13 @@ CLI, Desktop panes, generation tests, and toolchain registration consume the sam
 
 ## Native target lowering
 
-Structured destinations receive their normal statements and control flow. `For` bounds are evaluated once. `Do` stays post-tested. Typed exits use native `break` when possible and a normal target label when crossing another loop kind requires one.
+Structured destinations receive normal native routines, local variables, fixed storage, calls, conditionals, selection chains, and control flow. `For` bounds and Select selectors are evaluated once. `Do` stays post-tested. Typed exits use native `break` when possible and a normal target label when crossing another loop kind requires one.
 
 Python uses module-level statements and its normal `for`, `while True`, and `if`. An exception class is generated only for a loop actually targeted by a typed exit that Python cannot express with an ordinary nearest-loop `break`.
 
 C uses direct scalar storage, `printf`/`fputs`, `for`, `do`, and `if`. A small Text concatenation helper is emitted only when Text `+` occurs. Objective-C deliberately uses portable C-compatible constructs for the same dependency-light teaching path.
 
-MASM uses `.data` storage, direct CRT/Win64 calls, and readable condition/loop labels. COBOL uses `DISPLAY`, `PERFORM VARYING`, and `PERFORM WITH TEST AFTER`. Their additional declarations and labels exist only because those targets require them.
+MASM uses ABI-correct `PROC` frames, register/stack arguments, global `.data`, local stack arrays, direct CRT/Win64 calls, and readable compare/branch labels. COBOL uses separate recursive program units, explicit shared global state, `LOCAL-STORAGE`, linkage parameters, `EVALUATE`, `OCCURS`, `DISPLAY`, and structured `PERFORM`. Their additional declarations exist only because those targets require them.
 
 `End Program` maps to normal successful target termination. C# receives a minimal companion project because local `dotnet` compilation requires it.
 
@@ -88,10 +91,11 @@ The test suite is organized around current behavior:
 - `CoreBasicGenerationTests` — deterministic all-target output and native construct markers;
 - Desktop and highlighting focused tests;
 - `CoreBasicToolchainSmokeTests` — installed all-target build/run comparison to the evaluator;
-- `CoreBasicParityTests` — unchanged fixture execution in both repositories and read-only authority verification;
+- `CoreBasicParityTests` and `CoreBasic2ParityTests` — unchanged fixture execution in both repositories and read-only authority verification;
+- `CoreBasic2ToolchainMatrixTests` — nine Profile 2 programs built and run by all ten required toolchains plus a ten-target expected bounds-failure matrix;
 - `MissionGuardrail` — the fast mandatory semantic and all-target guardrail.
 
-The fixture, expected stdout, rejected corpus, and authority manifest live in `tests/CoreBasicParity`. `scripts/Test-CoreBasicParity.ps1` is the reproducible cross-repository entry point.
+Profile 1 fixtures remain in `tests/CoreBasicParity`; Profile 2 source/stdout pairs and their hash manifest live in `tests/CoreBasic2Parity`. `scripts/Test-CoreBasicParity.ps1` runs both reproducible cross-repository gates.
 
 ## Architectural decision rule
 

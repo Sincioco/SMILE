@@ -1,0 +1,56 @@
+Option Explicit
+
+Dim FactorialResult As Number
+Dim EvenResult As Boolean
+Dim OddResult As Boolean
+
+FactorialResult = Factorial(6)
+EvenResult = IsEven(10)
+OddResult = IsOdd(11)
+
+Print FactorialResult
+Print EvenResult
+Print OddResult
+
+End Program
+
+Function Factorial(Value As Number) As Number
+
+    Dim Smaller As Number
+    Dim Result As Number
+
+    If Value <= 1 Then
+        Return 1
+    End If
+
+    Smaller = Factorial(Value - 1)
+    Result = Value * Smaller
+    Return Result
+
+End Function
+
+Function IsEven(Value As Number) As Boolean
+
+    Dim Result As Boolean
+
+    If Value = 0 Then
+        Return True
+    End If
+
+    Result = IsOdd(Value - 1)
+    Return Result
+
+End Function
+
+Function IsOdd(Value As Number) As Boolean
+
+    Dim Result As Boolean
+
+    If Value = 0 Then
+        Return False
+    End If
+
+    Result = IsEven(Value - 1)
+    Return Result
+
+End Function

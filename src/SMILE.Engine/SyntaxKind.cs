@@ -4,25 +4,10 @@ public enum SyntaxKind
 {
     BadToken,
     EndOfFileToken,
-    EndOfLineToken,
-    FullLineCommentToken,
-
     IdentifierToken,
     StringLiteralToken,
-    BlockStringLiteralToken,
     IntegerLiteralToken,
 
-    LetKeyword,
-    SetKeyword,
-    InputKeyword,
-    PrintKeyword,
-    IfKeyword,
-    WhileKeyword,
-    ThenKeyword,
-    ElseKeyword,
-    EndKeyword,
-    TrueKeyword,
-    FalseKeyword,
     NotKeyword,
     AndKeyword,
     OrKeyword,
@@ -41,6 +26,5 @@ public enum SyntaxKind
     GreaterOrEqualsToken,
 
     OpenParenthesisToken,
-    CloseParenthesisToken,
-    InterpolatedStringStartToken
+    CloseParenthesisToken
 }

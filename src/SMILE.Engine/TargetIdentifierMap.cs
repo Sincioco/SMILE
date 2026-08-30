@@ -4,10 +4,14 @@ internal sealed class TargetIdentifierMap
 {
     private const string MappedPrefix = "_smile_";
     private readonly IReadOnlyDictionary<VariableSymbol, string> _names;
+    private readonly IReadOnlyDictionary<RoutineSymbol, string> _routineNames;
 
-    private TargetIdentifierMap(IReadOnlyDictionary<VariableSymbol, string> names)
+    private TargetIdentifierMap(
+        IReadOnlyDictionary<VariableSymbol, string> names,
+        IReadOnlyDictionary<RoutineSymbol, string> routineNames)
     {
         _names = names;
+        _routineNames = routineNames;
     }
 
     public static TargetIdentifierMap Create(BoundProgram program, TargetLanguage language)
@@ -15,8 +19,9 @@ internal sealed class TargetIdentifierMap
         ISet<string> reserved = TargetReservedNames.For(language);
         var used = new HashSet<string>(StringComparer.Ordinal);
         var names = new Dictionary<VariableSymbol, string>();
+        var routineNames = new Dictionary<RoutineSymbol, string>();
 
-        foreach (VariableSymbol variable in program.Variables)
+        foreach (VariableSymbol variable in program.AllVariables.Distinct())
         {
             string preferred = IsSafeTargetIdentifier(variable.Name, language, reserved)
                 ? variable.Name
@@ -27,21 +32,33 @@ internal sealed class TargetIdentifierMap
             names.Add(variable, unique);
         }
 
-        return new TargetIdentifierMap(names);
+        foreach (BoundRoutineDeclaration declaration in program.Routines)
+        {
+            RoutineSymbol routine = declaration.Symbol;
+            string preferred = IsSafeTargetIdentifier(routine.Name, language, reserved)
+                ? routine.Name
+                : BuildMappedName(routine.Name, language);
+            string unique = MakeUnique(preferred, used, language);
+            used.Add(unique);
+            routineNames.Add(routine, unique);
+        }
+
+        return new TargetIdentifierMap(names, routineNames);
     }
 
     public string Get(VariableSymbol variable) => _names[variable];
+
+    public string Get(RoutineSymbol routine) => _routineNames[routine];
 
     private static bool IsSafeTargetIdentifier(
         string name,
         TargetLanguage language,
         ISet<string> reserved)
     {
-        // MASM has one case-insensitive symbol namespace shared with a very
-        // large, evolving instruction/register/directive vocabulary. Prefixing
-        // every learner variable is both safer and easier to understand than
-        // pretending a hand-maintained keyword list can stay exhaustive.
-        if (language is TargetLanguage.MasmX64)
+        // COBOL and MASM each have a very large, evolving, case-insensitive
+        // vocabulary. Prefix every learner symbol so ordinary names such as
+        // Position and Numbers cannot become target keywords.
+        if (language is TargetLanguage.Cobol or TargetLanguage.MasmX64)
         {
             return false;
         }
@@ -152,26 +169,8 @@ internal sealed class TargetIdentifierMap
         string readablePart = characters.Count == 0
             ? "VAR"
             : new string(characters.ToArray());
-        string candidate = "SMILE-" + readablePart;
-
-        // COBOL is case-insensitive, and several compiler-owned IF/runtime
-        // fields live in predictable SMILE-* namespaces. An underscore in the
-        // source becomes a hyphen here, so names such as IF_CONDITION_0 would
-        // otherwise become the exact scratch field emitted by the generator.
-        // Keep those namespaces exclusively compiler-owned while preserving a
-        // readable, deterministic spelling for the student's variable.
-        return IsCobolCompilerOwnedIdentifier(candidate)
-            ? "SMILE-VAR-" + readablePart
-            : candidate;
+        return "STUDENT-" + readablePart;
     }
-
-    private static bool IsCobolCompilerOwnedIdentifier(string name) =>
-        name.StartsWith("SMILE-IF-", StringComparison.OrdinalIgnoreCase) ||
-        name.StartsWith("SMILE-WHILE-", StringComparison.OrdinalIgnoreCase) ||
-        name.StartsWith("SMILE-RUNTIME-", StringComparison.OrdinalIgnoreCase) ||
-        name.StartsWith("SMILE-STATEMENT-", StringComparison.OrdinalIgnoreCase) ||
-        name.StartsWith("SMILE-EXPRESSION-", StringComparison.OrdinalIgnoreCase) ||
-        name.StartsWith("SMILE-SET-LENGTH-", StringComparison.OrdinalIgnoreCase);
 
     private static bool RequiresMapping(TargetLanguage language, string name, ISet<string> reserved)
     {
@@ -180,11 +179,12 @@ internal sealed class TargetIdentifierMap
             return true;
         }
 
-        // C-family INPUT statements own deterministic per-statement scratch
-        // names in main. Mapping the whole prefix keeps a learner spelling
-        // from being captured by its nested scratch declaration.
-        if (language is TargetLanguage.C or TargetLanguage.ObjectiveC &&
-            name.StartsWith("smileInput", StringComparison.Ordinal))
+        // Structured generators own the _smile* namespace for ordered
+        // expression temporaries, checked indexes, and Select selectors.
+        // Mapping the prefix prevents a perfectly legal learner identifier
+        // from colliding with a temporary introduced later in generation.
+        if (language is not (TargetLanguage.Cobol or TargetLanguage.MasmX64) &&
+            name.StartsWith("_smile", StringComparison.Ordinal))
         {
             return true;
         }
@@ -347,7 +347,7 @@ internal sealed class TargetIdentifierMap
         {
             "accept", "add", "all", "and", "any", "by", "call", "cancel", "class", "close", "compute", "configuration",
             "copy", "column", "count", "first",
-            "data", "display", "divide", "division", "else", "end", "entry", "environment", "error", "evaluate",
+            "data", "display", "divide", "division", "else", "end", "entry", "environment", "error", "evaluate", "index",
             "exit", "fd", "file", "from", "function", "global", "goback", "identification", "if", "in", "initialize",
             "input-output", "inspect", "into", "is", "left", "linkage", "merge", "message", "move", "multiply", "nested", "not", "number", "object",
             "negative", "of", "open", "or", "perform", "pic", "picture", "procedure", "program", "program-id", "quote", "read", "right",
