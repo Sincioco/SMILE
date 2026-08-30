@@ -53,17 +53,6 @@ public sealed class SmileTranspiler
         IReadOnlyList<Diagnostic> diagnostics = parseResult.Diagnostics
             .Concat(bindResult.Diagnostics)
             .ToArray();
-        if (bindResult.Success && bindResult.Program is not null)
-        {
-            // Some whole-program rules, such as WHILE's portable bounded-String
-            // requirement, can only be decided after the binder has built the
-            // complete control-flow tree. Keep that validation at the shared
-            // analysis boundary so every evaluator and target sees one answer.
-            diagnostics = diagnostics
-                .Concat(BoundProgramAnalysis.Create(bindResult.Program).Diagnostics)
-                .ToArray();
-        }
-
         return new BindResult(
             bindResult.Program,
             diagnostics);
@@ -92,19 +81,12 @@ public sealed class SmileTranspiler
         // binder remains the source of truth for SMILE's signed 64-bit
         // semantics, while every backend receives the same smaller, pure
         // bound tree and therefore cannot invent target-specific identities.
-        BoundProgram simplifiedProgram = BoundProgramSimplifier.Simplify(bindResult.Program);
-
-        bool requiresStandardInput = BoundStatementTree.Enumerate(simplifiedProgram)
-            .Any(statement => statement is BoundInputStatement);
+        BoundProgram simplifiedProgram = bindResult.Program;
 
         return languages
             .Select(language =>
             {
-                ICodeGenerator generator = CodeGeneratorRegistry.Get(language);
-                GeneratedProgram generatedProgram = generator.Generate(simplifiedProgram) with
-                {
-                    RequiresStandardInput = requiresStandardInput
-                };
+                GeneratedProgram generatedProgram = CodeGeneratorRegistry.Get(language).Generate(simplifiedProgram);
                 return new TranspileResult(language, generatedProgram, bindResult.Diagnostics);
             })
             .ToArray();

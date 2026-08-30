@@ -3,19 +3,17 @@ namespace SMILE.Engine;
 public static class CodeGeneratorRegistry
 {
     private static readonly IReadOnlyDictionary<TargetLanguage, ICodeGenerator> Generators =
-        new ICodeGenerator[]
-        {
-            new CSharpCodeGenerator(),
-            new CCodeGenerator(),
-            new MasmX64CodeGenerator(),
-            new JavaScriptCodeGenerator(),
-            new JavaCodeGenerator(),
-            new CobolCodeGenerator(),
-            new ObjectiveCCodeGenerator(),
-            new SwiftCodeGenerator(),
-            new PythonCodeGenerator(),
-            new CppCodeGenerator()
-        }.ToDictionary(generator => generator.Language);
+        TargetLanguageInfo.All
+            .Select(language => (ICodeGenerator)new CoreBasicTargetCodeGenerator(language))
+            .ToDictionary(generator => generator.Language);
 
     public static ICodeGenerator Get(TargetLanguage language) => Generators[language];
+
+    private sealed class CoreBasicTargetCodeGenerator(TargetLanguage language) : ICodeGenerator
+    {
+        public TargetLanguage Language { get; } = language;
+
+        public GeneratedProgram Generate(BoundProgram program) =>
+            CoreBasicCodeGenerator.Generate(program, Language);
+    }
 }

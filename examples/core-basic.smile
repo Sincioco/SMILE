@@ -1,0 +1,14 @@
+' A compact SMILE 2.0-compatible Core BASIC program.
+Const Greeting = "Hello"
+Name = "Sin"
+Score = 0
+
+For Round = 1 To 3
+    Score = Score + Round
+End For
+
+If Score = 6 Then
+    Print Greeting; ", "; Name; "! Score="; Score
+Else
+    Print "Unexpected score"
+End If

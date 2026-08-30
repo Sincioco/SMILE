@@ -26,6 +26,7 @@ public enum SyntaxKind
     NotKeyword,
     AndKeyword,
     OrKeyword,
+    ModKeyword,
 
     PlusToken,
     MinusToken,

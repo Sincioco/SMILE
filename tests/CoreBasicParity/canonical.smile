@@ -1,0 +1,41 @@
+' This exact source is compiled by both SMILE 1.0 and SMILE 2.0.
+Const Greeting = "Core ""BASIC"""
+Dim Total As Number
+Dim Enabled As Boolean
+Dim Name As Text
+
+Name = "Sin"
+Enabled = True
+Total = 0
+
+For I = 1 To 4
+    If I = 3 Then
+        Total = Total + I
+    Else
+        Total = Total + 1
+    End If
+End For
+
+Print Greeting; ": "; Name
+Print "Total="; Total
+
+For J = 3 Down To 1
+    Print J;
+End For
+Print
+
+Do
+    Total = Total - 1
+    If Total = 2 Then
+        Exit Do
+    End If
+Loop Until Total = 0
+
+If Enabled And Total = 2 Then
+    Print "Parity OK"
+Else
+    Print "Parity failed"
+End If
+
+End Program
+Print "unreachable"

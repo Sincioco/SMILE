@@ -1,4 +1,3 @@
-using System.Text;
 using SMILE.Engine;
 using SMILE.Toolchains;
 
@@ -47,11 +46,6 @@ internal static class Program
             return 1;
         }
 
-        using IDisposable? consoleEncoding = options.Run &&
-            results.Any(result => result.GeneratedProgram!.RequiresStandardInput)
-                ? TryUseUtf8InteractiveConsole()
-                : null;
-
         foreach (TranspileResult result in results)
         {
             PrintGeneratedProgram(result.GeneratedProgram!);
@@ -68,13 +62,10 @@ internal static class Program
         foreach (TranspileResult result in results)
         {
             IToolchain toolchain = toolchains.Get(result.Language);
-            BuildRunOptions buildOptions = result.GeneratedProgram!.RequiresStandardInput
-                ? BuildRunOptions.InteractiveInherited
-                : BuildRunOptions.Default;
             BuildRunResult buildRun = await toolchain.BuildAndRunAsync(
                 result.GeneratedProgram!,
                 CancellationToken.None,
-                buildOptions).ConfigureAwait(false);
+                BuildRunOptions.Default).ConfigureAwait(false);
 
             PrintBuildRunResult(buildRun);
 
@@ -87,76 +78,6 @@ internal static class Program
         }
 
         return exitCode;
-    }
-
-    private static IDisposable? TryUseUtf8InteractiveConsole()
-    {
-        if (!OperatingSystem.IsWindows() ||
-            (Console.IsInputRedirected && Console.IsOutputRedirected && Console.IsErrorRedirected))
-        {
-            return null;
-        }
-
-        Encoding originalInput = Console.InputEncoding;
-        Encoding originalOutput = Console.OutputEncoding;
-        try
-        {
-            if (!Console.IsInputRedirected)
-            {
-                Console.InputEncoding = new UTF8Encoding(
-                    encoderShouldEmitUTF8Identifier: false,
-                    throwOnInvalidBytes: true);
-            }
-
-            if (!Console.IsOutputRedirected || !Console.IsErrorRedirected)
-            {
-                Console.OutputEncoding = new UTF8Encoding(
-                    encoderShouldEmitUTF8Identifier: false);
-            }
-
-            return new ConsoleEncodingScope(originalInput, originalOutput);
-        }
-        catch (Exception exception) when (IsExpectedConsoleEncodingException(exception))
-        {
-            TryRestoreConsoleEncoding(originalInput, originalOutput);
-            Console.Error.WriteLine(
-                $"SMILE warning: the terminal could not be switched to UTF-8: {exception.Message}");
-            return null;
-        }
-    }
-
-    private static void TryRestoreConsoleEncoding(Encoding input, Encoding output)
-    {
-        try
-        {
-            if (!Console.IsInputRedirected)
-            {
-                Console.InputEncoding = input;
-            }
-
-            if (!Console.IsOutputRedirected || !Console.IsErrorRedirected)
-            {
-                Console.OutputEncoding = output;
-            }
-        }
-        catch (Exception exception) when (IsExpectedConsoleEncodingException(exception))
-        {
-            Console.Error.WriteLine(
-                $"SMILE warning: the terminal encoding could not be restored: {exception.Message}");
-        }
-    }
-
-    private static bool IsExpectedConsoleEncodingException(Exception exception) =>
-        exception is IOException or
-            ArgumentException or
-            NotSupportedException or
-            System.Security.SecurityException;
-
-    private sealed class ConsoleEncodingScope(
-        Encoding input,
-        Encoding output) : IDisposable
-    {
-        public void Dispose() => TryRestoreConsoleEncoding(input, output);
     }
 
     private static void PrintGeneratedProgram(GeneratedProgram program)

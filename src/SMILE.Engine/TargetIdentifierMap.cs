@@ -351,7 +351,7 @@ internal sealed class TargetIdentifierMap
             "exit", "fd", "file", "from", "function", "global", "goback", "identification", "if", "in", "initialize",
             "input-output", "inspect", "into", "is", "left", "linkage", "merge", "message", "move", "multiply", "nested", "not", "number", "object",
             "negative", "of", "open", "or", "perform", "pic", "picture", "procedure", "program", "program-id", "quote", "read", "right",
-            "record", "return", "rewrite", "run", "second", "section", "select", "self", "set", "sort", "source", "stop", "sum",
+            "record", "return", "reverse", "rewrite", "run", "second", "section", "select", "self", "set", "sort", "source", "stop", "sum",
             "same", "string", "subtract", "super", "text", "then", "to", "type", "until", "using", "value", "when",
             "working-storage", "write",
             "Program", "SMILE-NEWLINE", "SMILE-RUNTIME-POINTER", "SMILE-RUNTIME-INTEGER",

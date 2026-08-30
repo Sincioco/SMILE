@@ -1,0 +1,121 @@
+{
+  "manifestFormatVersion": 1,
+  "profileId": "smile-core-basic",
+  "profileVersion": "1.0",
+  "authority": {
+    "repository": "Sincioco/SMILE-2.0",
+    "commit": "ec61dfa6324de7b22ea5ca0959828ff40e5e3902"
+  },
+  "includedLexicalFeatures": [
+    "case-insensitive-keywords-and-identifiers",
+    "unicode-identifiers",
+    "line-oriented-source",
+    "apostrophe-comments",
+    "decimal-number-literals",
+    "doubled-quote-text-literals"
+  ],
+  "includedTypes": ["Number", "Boolean", "Text"],
+  "includedOperators": [
+    "unary -", "Not", "*", "/", "Mod", "+", "-",
+    "<", "<=", ">", ">=", "=", "<>", "And", "Or"
+  ],
+  "includedStatements": [
+    "direct assignment", "Dim", "Const", "Print", "If", "For",
+    "For Down To", "Do Loop", "Loop Until", "Exit For", "Exit Do",
+    "End Program"
+  ],
+  "excludedFeatureFamilies": [
+    "arrays", "Select Case", "procedures and functions", "Option Explicit",
+    "modules and imports", "user-defined and object types", "input",
+    "graphics and games", "timing and randomness", "audio", "files and data",
+    "runtime built-ins", "historical SMILE 1.0 source forms"
+  ],
+  "outputComparison": "CRLF and CR normalize to LF.",
+  "fixtures": [
+    {
+      "path": "canonical.smile",
+      "sha256": "de958319adb71c7d36ac32cc6bc751a9880c7fec89b7bfae9274262c0b518b94",
+      "expected": "success",
+      "expectedStandardOutput": "canonical.stdout"
+    },
+    {
+      "path": "canonical.stdout",
+      "sha256": "6c0787bfba3b37d97161fb5bbeca7ad74a682af52bfdaec39b7d4c4412a12e83",
+      "expected": "output"
+    },
+    {
+      "path": "counter-semantics.smile",
+      "sha256": "b737ab9b7584fa37dd37a9fb9ba97a6ab9e80108180cd5e01a0e8aca1531e529",
+      "expected": "success",
+      "expectedStandardOutput": "counter-semantics.stdout"
+    },
+    {
+      "path": "counter-semantics.stdout",
+      "sha256": "663f5b9f1d35c2633dab5ca48f47096639d5abdcc2d8e2e5543f81986bb7831d",
+      "expected": "output"
+    },
+    {
+      "path": "rejected/backslash-escape.smile",
+      "sha256": "f9d859fe9a765aeafa6be6d409a3dea8a279d2ae2b5180071aa43e54e785836f",
+      "expected": "failure",
+      "diagnosticCategory": "invalid Core BASIC Text form",
+      "line": 1
+    },
+    {
+      "path": "rejected/input.smile",
+      "sha256": "2521355a3710a35fe70def98c3ad83699190f285417ff248298e77d97371251e",
+      "expected": "failure",
+      "diagnosticCategory": "reserved feature outside profile",
+      "line": 1
+    },
+    {
+      "path": "rejected/interpolation.smile",
+      "sha256": "f05e8c5bd311aec1a3e3423c723ccad14d66f6edbddada6dc5dd55c5b2f508f6",
+      "expected": "failure",
+      "diagnosticCategory": "invalid Core BASIC Text form",
+      "line": 2
+    },
+    {
+      "path": "rejected/let.smile",
+      "sha256": "cc111170f06bec4945ee265d07701e0effeda1c62818d2b33bf5319786556592",
+      "expected": "failure",
+      "diagnosticCategory": "reserved feature outside profile",
+      "line": 1
+    },
+    {
+      "path": "rejected/old-comments.smile",
+      "sha256": "9733b0626f38b43c04644ec4442ec1dbda2d6d13b9a6fa6dc2dad150d7a952e9",
+      "expected": "failure",
+      "diagnosticCategory": "invalid comment marker",
+      "line": 1
+    },
+    {
+      "path": "rejected/raw-print.smile",
+      "sha256": "f945c995509fe8e02be45babfa1bf415c2db21b3deef5628502bd197ba17d321",
+      "expected": "failure",
+      "diagnosticCategory": "invalid expression Print form",
+      "line": 1
+    },
+    {
+      "path": "rejected/set.smile",
+      "sha256": "d95206fe570cc79e8d12e1bf2085b9552c375ac4760079221089e8e911bcd17e",
+      "expected": "failure",
+      "diagnosticCategory": "reserved feature outside profile",
+      "line": 1
+    },
+    {
+      "path": "rejected/text-ordering.smile",
+      "sha256": "66c9401d6647f1fa91aa57adb17418385624be9f2f8338d5666a8dee39f39cbc",
+      "expected": "failure",
+      "diagnosticCategory": "operator not defined for Text",
+      "line": 1
+    },
+    {
+      "path": "rejected/while.smile",
+      "sha256": "c0669fea541652238a30101712372ca6752e2ade0b0cdfa1d446d6cce3811932",
+      "expected": "failure",
+      "diagnosticCategory": "reserved feature outside profile",
+      "line": 1
+    }
+  ]
+}

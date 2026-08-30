@@ -1,2083 +1,736 @@
+using System.Globalization;
 using System.Text;
 
 namespace SMILE.Engine;
 
+// This is SMILE's sole source front end. Keeping tokenization beside parsing
+// makes it impossible for a public entry point to retry source through a
+// second grammar after canonical diagnostics have been produced.
 internal sealed class Parser
 {
-    private const int MaximumControlFlowNestingDepth = 128;
-    private readonly string _source;
-    private readonly IReadOnlyList<SourceLine> _lines;
+    private readonly IReadOnlyList<Token> _tokens;
     private readonly List<Diagnostic> _diagnostics = new();
-    private readonly List<BlockKind> _activeBlocks = new();
+    private int _position;
+    private int _parenthesisDepth;
 
     public Parser(string source)
     {
-        // Keep the parser's source byte-for-byte equivalent at the .NET String
-        // level. Actual left and right smart quotes are recognized directly by
-        // SyntaxFacts, while comment payloads, Block String data, and source
-        // spans must never be rewritten by a whole-source compatibility pass.
-        _source = source;
-        _lines = SourceLine.Split(_source);
+        var lexer = new Lexer(source);
+        _tokens = lexer.LexAll();
+        _diagnostics.AddRange(lexer.Diagnostics);
     }
 
     public ParseResult Parse()
     {
-        int lineIndex = 0;
-        IReadOnlyList<SourceItemSyntax> sourceItems = ParseStatementList(
-            ref lineIndex,
-            bodyKind: BlockKind.None,
-            controlFlowNestingDepth: 0);
-
-        TextSpan span = sourceItems.Count == 0
-            ? new TextSpan(0, 0, 1, 1)
-            : new TextSpan(
-                sourceItems[0].Span.Start,
-                sourceItems[^1].Span.Start + sourceItems[^1].Span.Length - sourceItems[0].Span.Start,
-                sourceItems[0].Span.Line,
-                sourceItems[0].Span.Column);
-
-        return new ParseResult(new SmileProgramSyntax(sourceItems, span), _diagnostics);
+        IReadOnlyList<SourceItemSyntax> items = ParseItems(() => Current.Kind is TokenKind.EndOfFile);
+        TextSpan span = items.Count == 0
+            ? Current.Span
+            : Combine(items[0].Span, items[^1].Span);
+        return new ParseResult(new SmileProgramSyntax(items, span), _diagnostics);
     }
 
-    private IReadOnlyList<SourceItemSyntax> ParseStatementList(
-        ref int lineIndex,
-        BlockKind bodyKind,
-        int controlFlowNestingDepth)
+    private IReadOnlyList<SourceItemSyntax> ParseItems(Func<bool> atTerminator)
     {
-        var sourceItems = new List<SourceItemSyntax>();
-        while (lineIndex < _lines.Count)
+        var items = new List<SourceItemSyntax>();
+        while (!atTerminator() && Current.Kind is not TokenKind.EndOfFile)
         {
-            SourceLine line = _lines[lineIndex];
-            int first = SkipHorizontalWhitespace(line.Text, 0);
-            if (first >= line.Text.Length)
+            if (Current.Kind is TokenKind.EndOfLine)
             {
-                sourceItems.Add(new BlankLineSyntax(line.Span(0, line.Text.Length)));
-                lineIndex++;
+                items.Add(new BlankLineSyntax(Next().Span));
                 continue;
             }
 
-            if (FullLineCommentFacts.TryClassify(
-                    line.Text,
-                    first,
-                    out FullLineCommentMarker marker,
-                    out int payloadStart))
+            if (Current.Kind is TokenKind.Comment)
             {
-                sourceItems.Add(new FullLineCommentSyntax(
-                    marker,
-                    line.Text[payloadStart..],
-                    line.Span(0, line.Text.Length)));
-                lineIndex++;
+                Token comment = Next();
+                items.Add(new FullLineCommentSyntax(
+                    FullLineCommentMarker.Apostrophe,
+                    (string?)comment.Value ?? string.Empty,
+                    comment.Span));
+                ConsumeLineEnd();
                 continue;
             }
 
-            BlockTerminatorKind terminator = ClassifyBlockTerminator(line, first);
-            if (ShouldReturnToBlockOwner(bodyKind, terminator))
-            {
-                return sourceItems;
-            }
-
-            if (terminator is not BlockTerminatorKind.None)
-            {
-                ReportMisplacedTerminator(terminator, line, first);
-                lineIndex++;
-                continue;
-            }
-
-            StatementSyntax? statement = ParseLine(
-                ref lineIndex,
-                bodyKind,
-                controlFlowNestingDepth);
+            int start = _position;
+            StatementSyntax? statement = ParseStatement();
             if (statement is not null)
             {
-                sourceItems.Add(statement);
+                items.Add(statement);
             }
 
-            lineIndex++;
+            if (_position == start)
+            {
+                Report("SMILE2001", "Expected a Core BASIC statement.", Current.Span);
+                Next();
+            }
+
+            ConsumeStatementEnd();
         }
 
-        return sourceItems;
+        return items;
     }
 
-    private StatementSyntax? ParseLine(
-        ref int lineIndex,
-        BlockKind bodyKind,
-        int controlFlowNestingDepth)
+    private StatementSyntax? ParseStatement() => Current.Kind switch
     {
-        SourceLine line = _lines[lineIndex];
-        int first = SkipHorizontalWhitespace(line.Text, 0);
-        if (first >= line.Text.Length)
-        {
-            return null;
-        }
+        TokenKind.Identifier => ParseAssignment(),
+        TokenKind.Dim => ParseDim(),
+        TokenKind.Const => ParseConst(),
+        TokenKind.Print => ParsePrint(),
+        TokenKind.If => ParseIf(),
+        TokenKind.For => ParseFor(),
+        TokenKind.Do => ParseDo(),
+        TokenKind.Exit => ParseExit(),
+        TokenKind.End => ParseEndProgram(),
+        TokenKind.UnsupportedKeyword => ParseUnsupported(),
+        _ => ParseUnexpectedStatement()
+    };
 
-        if (!SyntaxFacts.IsIdentifierStart(line.Text[first]))
-        {
-            AddDiagnostic(
-                "SMILE1005",
-                "Invalid or unexpected character.",
-                line.Span(first, 1));
-            return null;
-        }
+    private StatementSyntax ParseAssignment()
+    {
+        Token name = Next();
+        Match(TokenKind.Equals, "Expected '=' after the assignment target.");
+        ExpressionSyntax value = ParseExpression();
+        return new CoreAssignmentStatementSyntax(
+            name.Text,
+            name.Span,
+            value,
+            Combine(name.Span, value.Span));
+    }
 
-        IdentifierRead keyword = ReadIdentifier(line, first);
-        if (keyword.Text.Equals("PRINT", StringComparison.OrdinalIgnoreCase))
+    private StatementSyntax ParseDim()
+    {
+        Token start = Next();
+        Token name = Match(TokenKind.Identifier, "Expected an identifier after 'Dim'.");
+        Match(TokenKind.As, "Core BASIC scalar declarations require 'As Number', 'As Boolean', or 'As Text'.");
+        Token type = Current.Kind is TokenKind.NumberType or TokenKind.BooleanType or TokenKind.TextType
+            ? Next()
+            : Match(TokenKind.NumberType, "Expected Number, Boolean, or Text after 'As'.");
+        SmileType declaredType = type.Kind switch
         {
-            return ParsePrintStatement(line, keyword, ref lineIndex);
-        }
+            TokenKind.BooleanType => SmileType.Boolean,
+            TokenKind.TextType => SmileType.String,
+            _ => SmileType.Integer
+        };
+        return new DimStatementSyntax(name.Text, name.Span, declaredType, Combine(start.Span, type.Span));
+    }
 
-        if (keyword.Text.Equals("LET", StringComparison.OrdinalIgnoreCase))
-        {
-            return ParseLetStatement(line, keyword, ref lineIndex);
-        }
+    private StatementSyntax ParseConst()
+    {
+        Token start = Next();
+        Token name = Match(TokenKind.Identifier, "Expected an identifier after 'Const'.");
+        Match(TokenKind.Equals, "Expected '=' in a constant declaration.");
+        ExpressionSyntax initializer = ParseExpression();
+        return new ConstStatementSyntax(
+            name.Text,
+            name.Span,
+            initializer,
+            Combine(start.Span, initializer.Span));
+    }
 
-        if (keyword.Text.Equals("SET", StringComparison.OrdinalIgnoreCase))
+    private StatementSyntax ParsePrint()
+    {
+        Token start = Next();
+        var values = new List<ExpressionSyntax>();
+        bool suppressNewLine = false;
+        if (!AtLineEnd())
         {
-            return ParseSetStatement(line, keyword, ref lineIndex);
-        }
-
-        if (keyword.Text.Equals("INPUT", StringComparison.OrdinalIgnoreCase))
-        {
-            return ParseInputStatement(line, keyword);
-        }
-
-        if (keyword.Text.Equals("IF", StringComparison.OrdinalIgnoreCase))
-        {
-            if (controlFlowNestingDepth >= MaximumControlFlowNestingDepth)
+            values.Add(ParseExpression());
+            while (Current.Kind is TokenKind.Semicolon)
             {
-                AddDiagnostic(
-                    "SMILE1416",
-                    $"Maximum combined IF/WHILE nesting depth of {MaximumControlFlowNestingDepth} exceeded at IF.",
-                    keyword.Span);
-                RecoverOverLimitControlFlow(ref lineIndex, BlockKind.If);
-                return null;
+                Next();
+                suppressNewLine = AtLineEnd();
+                if (!suppressNewLine)
+                {
+                    values.Add(ParseExpression());
+                }
             }
-
-            return ParseIfStatement(
-                ref lineIndex,
-                line,
-                keyword,
-                controlFlowNestingDepth + 1);
         }
 
-        if (keyword.Text.Equals("WHILE", StringComparison.OrdinalIgnoreCase))
+        TextSpan end = values.Count > 0 ? values[^1].Span : start.Span;
+        return new CorePrintStatementSyntax(values, suppressNewLine, Combine(start.Span, end));
+    }
+
+    private StatementSyntax ParseIf()
+    {
+        Token start = Next();
+        var clauses = new List<ConditionalClauseSyntax>();
+        ExpressionSyntax firstCondition = ParseExpression();
+        Match(TokenKind.Then, "Expected 'Then' after the IF condition.");
+        ConsumeRequiredLineEnd("The IF header must end after 'Then'.");
+
+        IReadOnlyList<SourceItemSyntax> firstBody = ParseItems(IsIfTerminator);
+        clauses.Add(new ConditionalClauseSyntax(firstCondition, firstBody, Combine(firstCondition.Span, LastSpan(firstBody, firstCondition.Span))));
+
+        while (Current.Kind is TokenKind.Else && Peek(1).Kind is TokenKind.If)
         {
-            if (controlFlowNestingDepth >= MaximumControlFlowNestingDepth)
-            {
-                AddDiagnostic(
-                    "SMILE1611",
-                    $"Maximum combined IF/WHILE nesting depth of {MaximumControlFlowNestingDepth} exceeded at WHILE.",
-                    keyword.Span);
-                RecoverOverLimitControlFlow(ref lineIndex, BlockKind.While);
-                return null;
-            }
-
-            return ParseWhileStatement(
-                ref lineIndex,
-                line,
-                keyword,
-                controlFlowNestingDepth + 1);
+            Token elseToken = Next();
+            Next();
+            ExpressionSyntax condition = ParseExpression();
+            Match(TokenKind.Then, "Expected 'Then' after the ELSE IF condition.");
+            ConsumeRequiredLineEnd("The ELSE IF header must end after 'Then'.");
+            IReadOnlyList<SourceItemSyntax> body = ParseItems(IsIfTerminator);
+            clauses.Add(new ConditionalClauseSyntax(condition, body, Combine(elseToken.Span, LastSpan(body, condition.Span))));
         }
 
-        AddDiagnostic(
-            bodyKind is BlockKind.If ? "SMILE1415" : "SMILE1001",
-            bodyKind is BlockKind.If
-                ? "Statement is not permitted inside IF v1.0."
-                : "Unknown statement or keyword.",
-            keyword.Span);
+        bool hasElse = false;
+        IReadOnlyList<SourceItemSyntax> elseItems = Array.Empty<SourceItemSyntax>();
+        if (Current.Kind is TokenKind.Else)
+        {
+            hasElse = true;
+            Next();
+            ConsumeRequiredLineEnd("The ELSE line cannot contain another statement.");
+            elseItems = ParseItems(() => Current.Kind is TokenKind.End && Peek(1).Kind is TokenKind.If);
+        }
+
+        Token end = Match(TokenKind.End, "Expected 'End If'.");
+        Token ifToken = Match(TokenKind.If, "Expected 'If' after 'End'.");
+        return new IfStatementSyntax(clauses, elseItems, hasElse, Combine(start.Span, ifToken.Kind is TokenKind.If ? ifToken.Span : end.Span));
+    }
+
+    private bool IsIfTerminator() =>
+        Current.Kind is TokenKind.Else ||
+        (Current.Kind is TokenKind.End && Peek(1).Kind is TokenKind.If);
+
+    private StatementSyntax ParseFor()
+    {
+        Token start = Next();
+        Token counter = Match(TokenKind.Identifier, "Expected a FOR counter identifier.");
+        Match(TokenKind.Equals, "Expected '=' after the FOR counter.");
+        ExpressionSyntax lower = ParseExpression();
+        bool descending = Current.Kind is TokenKind.Down;
+        if (descending)
+        {
+            Next();
+        }
+
+        Match(TokenKind.To, "Expected 'To' or 'Down To' in the FOR header.");
+        ExpressionSyntax upper = ParseExpression();
+        ConsumeRequiredLineEnd("The FOR header must end after its upper bound.");
+        IReadOnlyList<SourceItemSyntax> body = ParseItems(() => Current.Kind is TokenKind.End && Peek(1).Kind is TokenKind.For);
+        Match(TokenKind.End, "Expected 'End For'.");
+        Token endFor = Match(TokenKind.For, "Expected 'For' after 'End'.");
+        return new ForStatementSyntax(
+            counter.Text,
+            counter.Span,
+            lower,
+            upper,
+            descending,
+            body,
+            Combine(start.Span, endFor.Span));
+    }
+
+    private StatementSyntax ParseDo()
+    {
+        Token start = Next();
+        ConsumeRequiredLineEnd("'Do' must appear alone on its line.");
+        IReadOnlyList<SourceItemSyntax> body = ParseItems(() => Current.Kind is TokenKind.Loop);
+        Token loop = Match(TokenKind.Loop, "Expected 'Loop' to close the DO block.");
+        ExpressionSyntax? until = null;
+        if (Current.Kind is TokenKind.Until)
+        {
+            Next();
+            until = ParseExpression();
+        }
+
+        return new DoStatementSyntax(body, until, Combine(start.Span, until?.Span ?? loop.Span));
+    }
+
+    private StatementSyntax ParseExit()
+    {
+        Token start = Next();
+        if (Current.Kind is TokenKind.For)
+        {
+            Token end = Next();
+            return new ExitStatementSyntax(ExitStatementKind.For, Combine(start.Span, end.Span));
+        }
+
+        Token doToken = Match(TokenKind.Do, "Expected 'For' or 'Do' after 'Exit'.");
+        return new ExitStatementSyntax(ExitStatementKind.Do, Combine(start.Span, doToken.Span));
+    }
+
+    private StatementSyntax ParseEndProgram()
+    {
+        Token start = Next();
+        Token program = Match(TokenKind.Program, "Expected 'Program' after 'End' in this context.");
+        return new EndProgramStatementSyntax(Combine(start.Span, program.Span));
+    }
+
+    private StatementSyntax? ParseUnsupported()
+    {
+        Token token = Next();
+        Report("SMILE2002", $"'{token.Text}' is outside the Core BASIC 1 profile.", token.Span);
+        SkipToLineEnd();
         return null;
     }
 
-    private IfStatementSyntax ParseIfStatement(
-        ref int lineIndex,
-        SourceLine ifLine,
-        IdentifierRead ifKeyword,
-        int ifNestingDepth)
+    private StatementSyntax? ParseUnexpectedStatement()
     {
-        int statementStart = ifLine.Start + ifKeyword.Start;
-        var clauses = new List<ConditionalClauseSyntax>();
+        Report("SMILE2001", "Expected an assignment, Dim, Const, Print, If, For, Do, Exit, or End Program statement.", Current.Span);
+        SkipToLineEnd();
+        return null;
+    }
 
-        ExpressionSyntax firstCondition = ParseIfHeader(
-            ifLine,
-            ifKeyword,
-            missingConditionCode: "SMILE1401");
-        TextSpan firstHeaderSpan = ifLine.Span(
-            ifKeyword.Start,
-            ifLine.Text.Length - ifKeyword.Start);
-
-        _activeBlocks.Add(BlockKind.If);
-        lineIndex++;
-        IReadOnlyList<SourceItemSyntax> firstSourceItems = ParseStatementList(
-            ref lineIndex,
-            bodyKind: BlockKind.If,
-            controlFlowNestingDepth: ifNestingDepth);
-        clauses.Add(new ConditionalClauseSyntax(
-            firstCondition,
-            firstSourceItems,
-            ExtendHeaderSpan(firstHeaderSpan, firstSourceItems)));
-
-        while (lineIndex < _lines.Count)
+    private ExpressionSyntax ParseExpression(int parentPrecedence = 0)
+    {
+        SkipExpressionContinuations();
+        ExpressionSyntax left;
+        int unaryPrecedence = GetUnaryPrecedence(Current.Kind);
+        if (unaryPrecedence != 0 && unaryPrecedence >= parentPrecedence)
         {
-            SourceLine line = _lines[lineIndex];
-            int first = SkipHorizontalWhitespace(line.Text, 0);
-            if (first >= line.Text.Length ||
-                ClassifyBlockTerminator(line, first) is not BlockTerminatorKind.ElseIf)
+            Token op = Next();
+            ExpressionSyntax operand = ParseExpression(unaryPrecedence);
+            SyntaxToken syntaxOperator = ToSyntaxToken(op);
+            left = new UnaryExpressionSyntax(syntaxOperator, operand, Combine(op.Span, operand.Span));
+        }
+        else
+        {
+            left = ParsePrimaryExpression();
+        }
+
+        while (true)
+        {
+            SkipExpressionContinuations();
+            int precedence = GetBinaryPrecedence(Current.Kind);
+            if (precedence == 0 || precedence <= parentPrecedence)
             {
                 break;
             }
 
-            IdentifierRead elseKeyword = ReadIdentifier(line, first);
-            int ifStart = SkipHorizontalWhitespace(line.Text, elseKeyword.End);
-            IdentifierRead nestedIfKeyword = ReadIdentifier(line, ifStart);
-            ExpressionSyntax condition = ParseIfHeader(
-                line,
-                nestedIfKeyword,
-                missingConditionCode: "SMILE1408");
-            TextSpan headerSpan = line.Span(first, line.Text.Length - first);
-
-            lineIndex++;
-            IReadOnlyList<SourceItemSyntax> sourceItems = ParseStatementList(
-                ref lineIndex,
-                bodyKind: BlockKind.If,
-                controlFlowNestingDepth: ifNestingDepth);
-            clauses.Add(new ConditionalClauseSyntax(
-                condition,
-                sourceItems,
-                ExtendHeaderSpan(headerSpan, sourceItems)));
+            Token op = Next();
+            ExpressionSyntax right = ParseExpression(precedence);
+            left = new BinaryExpressionSyntax(left, ToSyntaxToken(op), right, Combine(left.Span, right.Span));
         }
 
-        bool hasElseClause = false;
-        var elseSourceItems = new List<SourceItemSyntax>();
-        if (lineIndex < _lines.Count)
+        return left;
+    }
+
+    private ExpressionSyntax ParsePrimaryExpression()
+    {
+        SkipExpressionContinuations();
+        Token token = Current;
+        switch (token.Kind)
         {
-            SourceLine line = _lines[lineIndex];
-            int first = SkipHorizontalWhitespace(line.Text, 0);
-            if (first < line.Text.Length &&
-                ClassifyBlockTerminator(line, first) is BlockTerminatorKind.Else)
+            case TokenKind.Number:
+                Next();
+                return new IntegerLiteralExpressionSyntax(token.Text, token.Span);
+            case TokenKind.String:
+                Next();
+                return new StringLiteralExpressionSyntax((string?)token.Value ?? string.Empty, token.Span);
+            case TokenKind.True:
+            case TokenKind.False:
+                Next();
+                return new BooleanLiteralExpressionSyntax(token.Kind is TokenKind.True, token.Span);
+            case TokenKind.Identifier:
+                Next();
+                return new NameExpressionSyntax(token.Text, token.Span);
+            case TokenKind.OpenParenthesis:
+                Token open = Next();
+                _parenthesisDepth++;
+                ExpressionSyntax inner = ParseExpression();
+                Token close = Match(TokenKind.CloseParenthesis, "Expected ')' to close the expression.");
+                _parenthesisDepth--;
+                return new ParenthesizedExpressionSyntax(
+                    ToSyntaxToken(open),
+                    inner,
+                    ToSyntaxToken(close),
+                    Combine(open.Span, close.Span));
+            case TokenKind.UnsupportedKeyword:
+                Next();
+                Report("SMILE2002", $"'{token.Text}' is reserved and outside the Core BASIC 1 profile.", token.Span);
+                return new ErrorExpressionSyntax(token.Span);
+            default:
+                Next();
+                Report("SMILE2003", "Expected a Number, Boolean, Text, identifier, or parenthesized expression.", token.Span);
+                return new ErrorExpressionSyntax(token.Span);
+        }
+    }
+
+    private void SkipExpressionContinuations()
+    {
+        if (_parenthesisDepth == 0)
+        {
+            return;
+        }
+
+        while (Current.Kind is TokenKind.EndOfLine or TokenKind.Comment)
+        {
+            Next();
+        }
+    }
+
+    private static int GetUnaryPrecedence(TokenKind kind) => kind switch
+    {
+        TokenKind.Minus or TokenKind.Not => 8,
+        _ => 0
+    };
+
+    private static int GetBinaryPrecedence(TokenKind kind) => kind switch
+    {
+        TokenKind.Star or TokenKind.Slash or TokenKind.Mod => 7,
+        TokenKind.Plus or TokenKind.Minus => 6,
+        TokenKind.Less or TokenKind.LessOrEquals or TokenKind.Greater or TokenKind.GreaterOrEquals => 5,
+        TokenKind.Equals or TokenKind.NotEquals => 4,
+        TokenKind.And => 3,
+        TokenKind.Or => 2,
+        _ => 0
+    };
+
+    private static SyntaxToken ToSyntaxToken(Token token)
+    {
+        SyntaxKind kind = token.Kind switch
+        {
+            TokenKind.Plus => SyntaxKind.PlusToken,
+            TokenKind.Minus => SyntaxKind.MinusToken,
+            TokenKind.Star => SyntaxKind.StarToken,
+            TokenKind.Slash => SyntaxKind.SlashToken,
+            TokenKind.Mod => SyntaxKind.ModKeyword,
+            TokenKind.Equals => SyntaxKind.EqualsToken,
+            TokenKind.NotEquals => SyntaxKind.NotEqualsToken,
+            TokenKind.Less => SyntaxKind.LessToken,
+            TokenKind.LessOrEquals => SyntaxKind.LessOrEqualsToken,
+            TokenKind.Greater => SyntaxKind.GreaterToken,
+            TokenKind.GreaterOrEquals => SyntaxKind.GreaterOrEqualsToken,
+            TokenKind.Not => SyntaxKind.NotKeyword,
+            TokenKind.And => SyntaxKind.AndKeyword,
+            TokenKind.Or => SyntaxKind.OrKeyword,
+            TokenKind.OpenParenthesis => SyntaxKind.OpenParenthesisToken,
+            TokenKind.CloseParenthesis => SyntaxKind.CloseParenthesisToken,
+            _ => SyntaxKind.BadToken
+        };
+        return new SyntaxToken(kind, token.Text, token.Value, token.Span);
+    }
+
+    private bool AtLineEnd() => Current.Kind is TokenKind.EndOfLine or TokenKind.EndOfFile or TokenKind.Comment;
+
+    private void ConsumeStatementEnd()
+    {
+        if (Current.Kind is TokenKind.Comment)
+        {
+            Next();
+        }
+
+        if (Current.Kind is TokenKind.EndOfLine)
+        {
+            Next();
+            return;
+        }
+
+        if (Current.Kind is not TokenKind.EndOfFile)
+        {
+            Report("SMILE2004", $"Unexpected token '{Current.Text}' after the statement.", Current.Span);
+            SkipToLineEnd();
+            ConsumeLineEnd();
+        }
+    }
+
+    private void ConsumeRequiredLineEnd(string message)
+    {
+        if (Current.Kind is TokenKind.Comment)
+        {
+            Next();
+        }
+
+        if (Current.Kind is TokenKind.EndOfLine)
+        {
+            Next();
+            return;
+        }
+
+        if (Current.Kind is not TokenKind.EndOfFile)
+        {
+            Report("SMILE2004", message, Current.Span);
+            SkipToLineEnd();
+            ConsumeLineEnd();
+        }
+    }
+
+    private void ConsumeLineEnd()
+    {
+        if (Current.Kind is TokenKind.EndOfLine)
+        {
+            Next();
+        }
+    }
+
+    private void SkipToLineEnd()
+    {
+        while (Current.Kind is not TokenKind.EndOfLine and not TokenKind.EndOfFile)
+        {
+            Next();
+        }
+    }
+
+    private Token Match(TokenKind kind, string message)
+    {
+        if (Current.Kind == kind)
+        {
+            return Next();
+        }
+
+        Report("SMILE2005", message, Current.Span);
+        return new Token(kind, string.Empty, null, Current.Span);
+    }
+
+    private Token Current => Peek(0);
+
+    private Token Peek(int offset) => _tokens[Math.Min(_position + offset, _tokens.Count - 1)];
+
+    private Token Next()
+    {
+        Token token = Current;
+        if (_position < _tokens.Count - 1)
+        {
+            _position++;
+        }
+
+        return token;
+    }
+
+    private void Report(string code, string message, TextSpan span) =>
+        _diagnostics.Add(new Diagnostic(code, DiagnosticSeverity.Error, message, span));
+
+    private static TextSpan LastSpan(IReadOnlyList<SourceItemSyntax> items, TextSpan fallback) =>
+        items.Count == 0 ? fallback : items[^1].Span;
+
+    private static TextSpan Combine(TextSpan first, TextSpan last) =>
+        new(first.Start, Math.Max(0, last.Start + last.Length - first.Start), first.Line, first.Column);
+
+    private enum TokenKind
+    {
+        Bad, EndOfFile, EndOfLine, Comment, Identifier, Number, String,
+        Dim, If, Then, Else, End, For, To, Down, Do, Loop, Until, Print,
+        True, False, And, Or, Not, Const, Mod, Exit, Program, As,
+        NumberType, BooleanType, TextType, UnsupportedKeyword,
+        Plus, Minus, Star, Slash, Equals, NotEquals, Less, LessOrEquals,
+        Greater, GreaterOrEquals, OpenParenthesis, CloseParenthesis, Semicolon
+    }
+
+    private sealed record Token(TokenKind Kind, string Text, object? Value, TextSpan Span);
+
+    private sealed class Lexer
+    {
+        private static readonly Dictionary<string, TokenKind> CoreKeywords = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Dim"] = TokenKind.Dim, ["If"] = TokenKind.If, ["Then"] = TokenKind.Then,
+            ["Else"] = TokenKind.Else, ["End"] = TokenKind.End, ["For"] = TokenKind.For,
+            ["To"] = TokenKind.To, ["Down"] = TokenKind.Down, ["Do"] = TokenKind.Do,
+            ["Loop"] = TokenKind.Loop, ["Until"] = TokenKind.Until, ["Print"] = TokenKind.Print,
+            ["True"] = TokenKind.True, ["False"] = TokenKind.False, ["And"] = TokenKind.And,
+            ["Or"] = TokenKind.Or, ["Not"] = TokenKind.Not, ["Const"] = TokenKind.Const,
+            ["Mod"] = TokenKind.Mod, ["Exit"] = TokenKind.Exit, ["Program"] = TokenKind.Program,
+            ["As"] = TokenKind.As, ["Number"] = TokenKind.NumberType,
+            ["Boolean"] = TokenKind.BooleanType, ["Text"] = TokenKind.TextType
+        };
+
+        private static readonly HashSet<string> ReservedWords = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "Dim", "If", "Then", "Else", "End", "With", "For", "To", "Down", "Do", "Loop", "Until", "Print", "Get", "Key", "Clear", "Screen", "Wait", "Milliseconds", "Random", "From", "True", "False", "And", "Or", "Not", "Const", "Mod", "Sub", "Call", "Function", "Return", "Select", "Case", "Exit", "Program", "Timer", "Rgb", "Abs", "Min", "Max", "Game_Closed", "Key_Held", "Pointer_X", "Pointer_Y", "Pointer_Delta_X", "Pointer_Delta_Y", "Pointer_Wheel_Delta", "Pointer_Inside", "Pointer_Held", "Pointer_Pressed", "Pointer_Released", "Image_Width", "Image_Height", "Image_Loaded", "Text_Width", "Text_Height", "Text_Length", "Text_Code_At", "Text_Slice", "Renderer3D", "Renderer3DImage", "Renderer3DText", "Game", "Window", "Size", "By", "Fill", "Draw", "Rectangle", "Rounded", "Circle", "Arc", "Quadrilateral", "Line", "Text", "Number", "At", "Color", "Centered", "Show", "Play", "Sound", "Music", "Pause", "Resume", "Volume", "Stop", "Load", "File", "Into", "Count", "Save", "Default", "Module", "Import", "As", "Public", "Private", "Option", "Explicit", "Boolean", "ByRef", "ByVal", "Type", "Enum", "Property", "Set", "Me", "Optional", "Class", "New", "Nothing", "Is", "Image", "Unload", "Clip", "Data", "Opacity", "Anchor", "Flip", "Horizontal", "Vertical", "Both", "Filter", "Smooth", "Pixel", "On", "Channel", "NONE", "W", "A", "S", "D", "UP", "LEFT", "RIGHT", "KEY_NONE", "KEY_W", "KEY_A", "KEY_S", "KEY_D", "KEY_UP", "KEY_DOWN", "KEY_LEFT", "KEY_RIGHT", "KEY_ENTER", "KEY_ESCAPE", "KEY_SPACE", "KEY_1", "KEY_2", "KEY_3", "KEY_4", "KEY_TAB", "KEY_OTHER", "KEY_PAD_A", "KEY_PAD_B", "KEY_PAD_X", "KEY_PAD_Y", "POINTER_PRIMARY", "POINTER_SECONDARY", "POINTER_MIDDLE", "BLACK", "WHITE", "RED", "GREEN", "BLUE", "CYAN", "MAGENTA", "YELLOW", "ORANGE", "GRAY", "DARK_RED", "DARK_GREEN", "DARK_BLUE", "DARK_GRAY", "LIGHT_RED", "LIGHT_GREEN", "LIGHT_BLUE", "LIGHT_GRAY", "SOUND_CHANNEL_COUNT", "DATA_BLOCK_MAX_BYTES"
+        };
+
+        private readonly string _source;
+        private readonly List<Diagnostic> _diagnostics = new();
+        private int _position;
+        private int _line = 1;
+        private int _column = 1;
+
+        public Lexer(string source) => _source = source;
+
+        public IReadOnlyList<Diagnostic> Diagnostics => _diagnostics;
+
+        public IReadOnlyList<Token> LexAll()
+        {
+            var tokens = new List<Token>();
+            while (true)
             {
-                hasElseClause = true;
-                lineIndex++;
-                elseSourceItems.AddRange(ParseStatementList(
-                    ref lineIndex,
-                    bodyKind: BlockKind.If,
-                    controlFlowNestingDepth: ifNestingDepth));
-
-                // Recover through extra clause headers so the nearest IF still
-                // owns its END IF and later top-level statements remain usable.
-                while (lineIndex < _lines.Count)
+                Token token = Lex();
+                tokens.Add(token);
+                if (token.Kind is TokenKind.EndOfFile)
                 {
-                    SourceLine duplicateLine = _lines[lineIndex];
-                    int duplicateFirst = SkipHorizontalWhitespace(duplicateLine.Text, 0);
-                    if (duplicateFirst >= duplicateLine.Text.Length)
-                    {
-                        lineIndex++;
-                        continue;
-                    }
+                    return tokens;
+                }
+            }
+        }
 
-                    BlockTerminatorKind duplicate = ClassifyBlockTerminator(
-                        duplicateLine,
-                        duplicateFirst);
-                    if (duplicate is BlockTerminatorKind.Else)
+        private Token Lex()
+        {
+            while (Current is ' ' or '\t' or '\f' or '\v')
+            {
+                Advance();
+            }
+
+            int start = _position;
+            int line = _line;
+            int column = _column;
+            if (_position >= _source.Length)
+            {
+                return Make(TokenKind.EndOfFile, start, line, column);
+            }
+
+            if (Current is '\r' or '\n')
+            {
+                if (Current == '\r' && PeekChar(1) == '\n')
+                {
+                    Advance();
+                }
+
+                AdvanceLine();
+                return Make(TokenKind.EndOfLine, start, line, column);
+            }
+
+            if (Current == '\'')
+            {
+                Advance();
+                int payloadStart = _position;
+                while (_position < _source.Length && Current is not '\r' and not '\n')
+                {
+                    Advance();
+                }
+
+                string payload = _source[payloadStart.._position];
+                return Make(TokenKind.Comment, start, line, column, payload);
+            }
+
+            if (char.IsLetter(Current) || Current == '_')
+            {
+                Advance();
+                while (_position < _source.Length && (char.IsLetterOrDigit(Current) || Current == '_'))
+                {
+                    Advance();
+                }
+
+                string text = _source[start.._position];
+                TokenKind kind = CoreKeywords.TryGetValue(text, out TokenKind coreKind)
+                    ? coreKind
+                    : ReservedWords.Contains(text) ? TokenKind.UnsupportedKeyword : TokenKind.Identifier;
+                return Make(kind, start, line, column);
+            }
+
+            if (Current is >= '0' and <= '9')
+            {
+                Advance();
+                while (_position < _source.Length && Current is >= '0' and <= '9')
+                {
+                    Advance();
+                }
+
+                string text = _source[start.._position];
+                if (!long.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out _))
+                {
+                    _diagnostics.Add(new Diagnostic(
+                        "SMILE2006",
+                        DiagnosticSeverity.Error,
+                        "Number literal is outside the signed 64-bit range.",
+                        new TextSpan(start, _position - start, line, column)));
+                }
+
+                return Make(TokenKind.Number, start, line, column);
+            }
+
+            if (Current == '"')
+            {
+                Advance();
+                var value = new StringBuilder();
+                bool terminated = false;
+                while (_position < _source.Length)
+                {
+                    if (Current == '"')
                     {
-                        AddDiagnostic(
-                            "SMILE1409",
-                            "An IF may contain only one final ELSE.",
-                            duplicateLine.Span(
-                                duplicateFirst,
-                                duplicateLine.Text.Length - duplicateFirst));
-                    }
-                    else if (duplicate is BlockTerminatorKind.ElseIf)
-                    {
-                        AddDiagnostic(
-                            "SMILE1410",
-                            "ELSE IF cannot appear after ELSE.",
-                            duplicateLine.Span(
-                                duplicateFirst,
-                                duplicateLine.Text.Length - duplicateFirst));
-                    }
-                    else
-                    {
+                        if (PeekChar(1) == '"')
+                        {
+                            value.Append('"');
+                            Advance();
+                            Advance();
+                            continue;
+                        }
+
+                        Advance();
+                        terminated = true;
                         break;
                     }
 
-                    lineIndex++;
-                    elseSourceItems.AddRange(ParseStatementList(
-                        ref lineIndex,
-                        bodyKind: BlockKind.If,
-                        controlFlowNestingDepth: ifNestingDepth));
+                    if (Current == '\r')
+                    {
+                        if (PeekChar(1) == '\n')
+                        {
+                            Advance();
+                        }
+
+                        AdvanceLine();
+                        value.Append('\n');
+                    }
+                    else if (Current == '\n')
+                    {
+                        AdvanceLine();
+                        value.Append('\n');
+                    }
+                    else
+                    {
+                        value.Append(Current);
+                        Advance();
+                    }
                 }
-            }
-        }
 
-        int statementEnd;
-        if (lineIndex >= _lines.Count)
-        {
-            SourceLine diagnosticLine = _lines.Count > 0 ? _lines[^1] : ifLine;
-            AddDiagnostic(
-                "SMILE1412",
-                "IF is missing END IF.",
-                diagnosticLine.Span(diagnosticLine.Text.Length, 0));
-            statementEnd = _source.Length;
-        }
-        else
-        {
-            SourceLine endLine = _lines[lineIndex];
-            int first = SkipHorizontalWhitespace(endLine.Text, 0);
-            BlockTerminatorKind terminator = ClassifyBlockTerminator(endLine, first);
-            if (terminator is BlockTerminatorKind.MalformedEndIf or BlockTerminatorKind.MalformedEnd)
-            {
-                AddDiagnostic(
-                    "SMILE1413",
-                    "END IF is malformed or has trailing content.",
-                    endLine.Span(first, endLine.Text.Length - first));
-                statementEnd = endLine.Start + endLine.Text.Length;
-            }
-            else if (terminator is BlockTerminatorKind.EndIf)
-            {
-                statementEnd = endLine.Start + endLine.Text.Length;
-            }
-            else
-            {
-                AddDiagnostic(
-                    "SMILE1412",
-                    "IF is missing END IF.",
-                    endLine.Span(first, Math.Max(0, endLine.Text.Length - first)));
-                statementEnd = endLine.Start;
-                lineIndex--;
-            }
-        }
+                if (!terminated)
+                {
+                    _diagnostics.Add(new Diagnostic(
+                        "SMILE2007",
+                        DiagnosticSeverity.Error,
+                        "Unterminated Text literal.",
+                        new TextSpan(start, _position - start, line, column)));
+                }
 
-        _activeBlocks.RemoveAt(_activeBlocks.Count - 1);
-        return new IfStatementSyntax(
-            clauses,
-            elseSourceItems,
-            hasElseClause,
-            new TextSpan(
-                statementStart,
-                Math.Max(0, statementEnd - statementStart),
-                ifLine.LineNumber,
-                ifKeyword.Start + 1));
-    }
-
-    private WhileStatementSyntax ParseWhileStatement(
-        ref int lineIndex,
-        SourceLine whileLine,
-        IdentifierRead whileKeyword,
-        int controlFlowNestingDepth)
-    {
-        int statementStart = whileLine.Start + whileKeyword.Start;
-        ExpressionSyntax condition = ParseWhileHeader(whileLine, whileKeyword);
-
-        _activeBlocks.Add(BlockKind.While);
-        lineIndex++;
-        IReadOnlyList<SourceItemSyntax> sourceItems = ParseStatementList(
-            ref lineIndex,
-            bodyKind: BlockKind.While,
-            controlFlowNestingDepth: controlFlowNestingDepth);
-
-        int statementEnd;
-        if (lineIndex >= _lines.Count)
-        {
-            SourceLine diagnosticLine = _lines.Count > 0 ? _lines[^1] : whileLine;
-            AddDiagnostic(
-                "SMILE1607",
-                "WHILE requires a matching END WHILE.",
-                diagnosticLine.Span(diagnosticLine.Text.Length, 0));
-            statementEnd = _source.Length;
-        }
-        else
-        {
-            SourceLine endLine = _lines[lineIndex];
-            int first = SkipHorizontalWhitespace(endLine.Text, 0);
-            BlockTerminatorKind terminator = ClassifyBlockTerminator(endLine, first);
-            if (terminator is BlockTerminatorKind.MalformedEndWhile or BlockTerminatorKind.MalformedEnd)
-            {
-                AddDiagnostic(
-                    "SMILE1608",
-                    "END WHILE must contain two keywords and stand alone.",
-                    endLine.Span(first, endLine.Text.Length - first));
-                statementEnd = endLine.Start + endLine.Text.Length;
-            }
-            else if (terminator is BlockTerminatorKind.EndWhile)
-            {
-                statementEnd = endLine.Start + endLine.Text.Length;
-            }
-            else
-            {
-                AddDiagnostic(
-                    "SMILE1607",
-                    "WHILE requires a matching END WHILE.",
-                    endLine.Span(first, Math.Max(0, endLine.Text.Length - first)));
-                statementEnd = endLine.Start;
-                lineIndex--;
-            }
-        }
-
-        _activeBlocks.RemoveAt(_activeBlocks.Count - 1);
-        return new WhileStatementSyntax(
-            condition,
-            sourceItems,
-            whileKeyword.Span,
-            new TextSpan(
-                statementStart,
-                Math.Max(0, statementEnd - statementStart),
-                whileLine.LineNumber,
-                whileKeyword.Start + 1));
-    }
-
-    private ExpressionSyntax ParseWhileHeader(
-        SourceLine line,
-        IdentifierRead whileKeyword)
-    {
-        int conditionStart = SkipHorizontalWhitespace(line.Text, whileKeyword.End);
-        if (whileKeyword.End >= line.Text.Length)
-        {
-            AddDiagnostic(
-                "SMILE1602",
-                "WHILE requires a condition.",
-                line.Span(whileKeyword.End, 0));
-            return new ErrorExpressionSyntax(line.Span(whileKeyword.End, 0));
-        }
-
-        if (!SyntaxFacts.IsHorizontalWhitespace(line.Text[whileKeyword.End]))
-        {
-            AddDiagnostic(
-                "SMILE1601",
-                "WHILE must be followed by a space or tab.",
-                line.Span(whileKeyword.End, 0));
-            conditionStart = whileKeyword.End;
-        }
-
-        if (conditionStart >= line.Text.Length)
-        {
-            AddDiagnostic(
-                "SMILE1602",
-                "WHILE requires a condition.",
-                line.Span(conditionStart, 0));
-            return new ErrorExpressionSyntax(line.Span(conditionStart, 0));
-        }
-
-        var expressionParser = new ExpressionParser(
-            this,
-            line,
-            conditionStart,
-            line.Text.Length);
-        ExpressionSyntax condition = expressionParser.ParseExpression();
-        int trailing = SkipHorizontalWhitespace(line.Text, expressionParser.Position);
-        if (trailing < line.Text.Length)
-        {
-            AddDiagnostic(
-                "SMILE1606",
-                "Unexpected content follows the WHILE condition.",
-                line.Span(trailing, line.Text.Length - trailing));
-        }
-
-        return condition;
-    }
-
-    private void RecoverOverLimitControlFlow(
-        ref int lineIndex,
-        BlockKind rejectedOpener)
-    {
-        var openBlocks = new List<BlockKind> { rejectedOpener };
-        var ignoredBlockDiagnostics = new List<Diagnostic>();
-
-        // The ordinary parser deliberately stays recursive because that most
-        // clearly mirrors SMILE's nested block syntax through the documented
-        // limit. Once that limit is reached, this iterative scanner balances
-        // mixed IF and WHILE headers without consuming the process stack.
-        for (int scanIndex = lineIndex + 1; scanIndex < _lines.Count; scanIndex++)
-        {
-            SourceLine line = _lines[scanIndex];
-            int first = SkipHorizontalWhitespace(line.Text, 0);
-            if (first >= line.Text.Length)
-            {
-                continue;
+                return Make(TokenKind.String, start, line, column, value.ToString());
             }
 
-            // Comment payload is inert even when it spells a block header or
-            // terminator. Recovery uses the same contextual ownership as the
-            // ordinary statement-list parser.
-            if (FullLineCommentFacts.TryClassify(
-                    line.Text,
-                    first,
-                    out _,
-                    out _))
+            TokenKind single = Current switch
             {
-                continue;
-            }
-
-            if (TryFindBlockOpening(line, first, out int openingQuoteColumn))
-            {
-                // A block String's physical content is data. Reuse the one
-                // canonical delimiter scan, but suppress diagnostics because
-                // the complete over-limit control-flow subtree is intentionally
-                // being skipped.
-                BlockStringScanResult block = BlockStringScanner.Scan(
-                    _source,
-                    _lines,
-                    scanIndex,
-                    openingQuoteColumn,
-                    ignoredBlockDiagnostics);
-                scanIndex = block.ClosingLineIndex;
-                continue;
-            }
-
-            BlockTerminatorKind terminator = ClassifyBlockTerminator(line, first);
-            if ((terminator is BlockTerminatorKind.ElseIf or BlockTerminatorKind.Else) &&
-                !openBlocks.Contains(BlockKind.If) &&
-                _activeBlocks.Contains(BlockKind.If))
-            {
-                // The rejected subtree has no IF that can own this clause, so
-                // it belongs to an accepted outer IF. Leave the header for that
-                // owner just as the ordinary statement-list parser does.
-                lineIndex = scanIndex - 1;
-                return;
-            }
-
-            BlockKind closingKind = terminator switch
-            {
-                BlockTerminatorKind.EndIf or BlockTerminatorKind.MalformedEndIf => BlockKind.If,
-                BlockTerminatorKind.EndWhile or BlockTerminatorKind.MalformedEndWhile => BlockKind.While,
-                BlockTerminatorKind.MalformedEnd => openBlocks[^1],
-                _ => BlockKind.None
+                '+' => TokenKind.Plus, '-' => TokenKind.Minus, '*' => TokenKind.Star,
+                '/' => TokenKind.Slash, '=' => TokenKind.Equals, '(' => TokenKind.OpenParenthesis,
+                ')' => TokenKind.CloseParenthesis, ';' => TokenKind.Semicolon,
+                '<' when PeekChar(1) == '=' => TokenKind.LessOrEquals,
+                '<' when PeekChar(1) == '>' => TokenKind.NotEquals,
+                '<' => TokenKind.Less,
+                '>' when PeekChar(1) == '=' => TokenKind.GreaterOrEquals,
+                '>' => TokenKind.Greater,
+                _ => TokenKind.Bad
             };
-            if (closingKind is not BlockKind.None)
+            Advance();
+            if (single is TokenKind.LessOrEquals or TokenKind.NotEquals or TokenKind.GreaterOrEquals)
             {
-                int matchingIndex = openBlocks.LastIndexOf(closingKind);
-                if (matchingIndex >= 0)
-                {
-                    // A mismatched closer implicitly abandons any malformed
-                    // inner blocks during recovery, then closes its nearest
-                    // matching opener. This keeps later top-level source usable.
-                    openBlocks.RemoveRange(
-                        matchingIndex,
-                        openBlocks.Count - matchingIndex);
-                    if (openBlocks.Count == 0)
-                    {
-                        lineIndex = scanIndex;
-                        return;
-                    }
-                }
-                else if (_activeBlocks.Contains(closingKind))
-                {
-                    // This closer belongs to an accepted outer block, not the
-                    // rejected subtree. Leave it unconsumed so the recursive
-                    // owner can unwind normally and preserve later source.
-                    lineIndex = scanIndex - 1;
-                    return;
-                }
-
-                continue;
+                Advance();
             }
 
-            // ELSE IF starts with ELSE and therefore is not counted as a new
-            // IF. A standalone ELSE followed by IF on the next line naturally
-            // opens a nested block, as required by SMILE's grammar.
-            if (StartsWithKeyword(line, first, "IF"))
+            Token result = Make(single, start, line, column);
+            if (single is TokenKind.Bad)
             {
-                openBlocks.Add(BlockKind.If);
-            }
-            else if (StartsWithKeyword(line, first, "WHILE"))
-            {
-                openBlocks.Add(BlockKind.While);
-            }
-        }
-
-        // Match the surrounding parser convention: after ParseLine returns,
-        // its caller increments once. Parking on the last physical line keeps
-        // unterminated recovery deterministic without stepping past the list.
-        lineIndex = Math.Max(lineIndex, _lines.Count - 1);
-    }
-
-    private bool TryFindBlockOpening(
-        SourceLine line,
-        int first,
-        out int openingQuoteColumn)
-    {
-        openingQuoteColumn = -1;
-        if (!StartsWithKeyword(line, first, "LET") &&
-            !StartsWithKeyword(line, first, "SET"))
-        {
-            return false;
-        }
-
-        IdentifierRead statementKeyword = ReadIdentifier(line, first);
-        if (statementKeyword.End >= line.Text.Length ||
-            !SyntaxFacts.IsHorizontalWhitespace(line.Text[statementKeyword.End]))
-        {
-            return false;
-        }
-
-        int nameStart = SkipHorizontalWhitespace(line.Text, statementKeyword.End);
-        if (nameStart >= line.Text.Length ||
-            !SyntaxFacts.IsIdentifierStart(line.Text[nameStart]))
-        {
-            return false;
-        }
-
-        IdentifierRead name = ReadIdentifier(line, nameStart);
-        int equals = SkipHorizontalWhitespace(line.Text, name.End);
-        if (equals >= line.Text.Length || line.Text[equals] != '=')
-        {
-            return false;
-        }
-
-        int valueStart = SkipHorizontalWhitespace(line.Text, equals + 1);
-        if (IsBlockOpening(line, valueStart))
-        {
-            openingQuoteColumn = valueStart;
-            return true;
-        }
-
-        // LET and SET consume a misplaced trailing block opener before
-        // reporting its placement error. Recovery must make the same physical
-        // line ownership decision so block content cannot masquerade as
-        // control-flow structure while a learner is editing a LET/SET value.
-        int misplacedBlockOpening = FindMisplacedBlockOpening(line.Text, valueStart);
-        if (misplacedBlockOpening < 0 ||
-            !IsBlockOpening(line, misplacedBlockOpening))
-        {
-            return false;
-        }
-
-        openingQuoteColumn = misplacedBlockOpening;
-        return true;
-    }
-
-    private bool StartsWithKeyword(
-        SourceLine line,
-        int first,
-        string expected) =>
-        first < line.Text.Length &&
-        SyntaxFacts.IsIdentifierStart(line.Text[first]) &&
-        ReadIdentifier(line, first).Text.Equals(
-            expected,
-            StringComparison.OrdinalIgnoreCase);
-
-    private ExpressionSyntax ParseIfHeader(
-        SourceLine line,
-        IdentifierRead ifKeyword,
-        string missingConditionCode)
-    {
-        int conditionStart = SkipHorizontalWhitespace(line.Text, ifKeyword.End);
-        int thenStart = FindHeaderThen(line, conditionStart);
-
-        if (conditionStart >= line.Text.Length ||
-            !IsOnlyHorizontalWhitespace(line.Text, ifKeyword.End, conditionStart) ||
-            conditionStart == ifKeyword.End)
-        {
-            AddDiagnostic(
-                missingConditionCode,
-                missingConditionCode == "SMILE1408"
-                    ? "ELSE IF requires a condition."
-                    : "IF requires a condition.",
-                line.Span(conditionStart, 0));
-        }
-
-        if (thenStart < 0)
-        {
-            AddDiagnostic(
-                "SMILE1405",
-                "IF or ELSE IF requires THEN.",
-                line.Span(line.Text.Length, 0));
-            if (conditionStart >= line.Text.Length)
-            {
-                return new ErrorExpressionSyntax(line.Span(conditionStart, 0));
+                _diagnostics.Add(new Diagnostic(
+                    "SMILE2008",
+                    DiagnosticSeverity.Error,
+                    $"Unexpected character '{result.Text}'.",
+                    result.Span));
             }
 
-            var missingThenParser = new ExpressionParser(
-                this,
-                line,
-                conditionStart,
-                line.Text.Length);
-            ExpressionSyntax missingThenCondition = missingThenParser.ParseExpression();
-            RequireOnlyTrailingWhitespace(
-                line,
-                missingThenParser.Position,
-                "SMILE1201",
-                "Invalid or unexpected token in IF condition.");
-            return missingThenCondition;
+            return result;
         }
 
-        int conditionEnd = thenStart;
-        while (conditionEnd > conditionStart &&
-               SyntaxFacts.IsHorizontalWhitespace(line.Text[conditionEnd - 1]))
-        {
-            conditionEnd--;
-        }
-
-        ExpressionSyntax condition;
-        if (conditionEnd <= conditionStart)
-        {
-            if (!_diagnostics.Any(diagnostic =>
-                    diagnostic.Code == missingConditionCode &&
-                    diagnostic.Span.Line == line.LineNumber))
-            {
-                AddDiagnostic(
-                    missingConditionCode,
-                    missingConditionCode == "SMILE1408"
-                        ? "ELSE IF requires a condition."
-                        : "IF requires a condition.",
-                    line.Span(conditionStart, 0));
-            }
-
-            condition = new ErrorExpressionSyntax(line.Span(conditionStart, 0));
-        }
-        else
-        {
-            var expressionParser = new ExpressionParser(
-                this,
-                line,
-                conditionStart,
-                conditionEnd);
-            condition = expressionParser.ParseExpression();
-            if (!expressionParser.IsAtEndAfterWhitespace())
-            {
-                AddDiagnostic(
-                    "SMILE1201",
-                    "Invalid or unexpected token in IF condition.",
-                    line.Span(
-                        expressionParser.Position,
-                        Math.Max(0, conditionEnd - expressionParser.Position)));
-            }
-        }
-
-        IdentifierRead thenKeyword = ReadIdentifier(line, thenStart);
-        int trailing = SkipHorizontalWhitespace(line.Text, thenKeyword.End);
-        if (trailing < line.Text.Length)
-        {
-            AddDiagnostic(
-                "SMILE1406",
-                "Unexpected content follows THEN.",
-                line.Span(trailing, line.Text.Length - trailing));
-        }
-
-        return condition;
-    }
-
-    private int FindHeaderThen(SourceLine line, int start)
-    {
-        int position = start;
-        while (position < line.Text.Length)
-        {
-            if (InterpolatedStringScanner.IsStart(line.Text, position))
-            {
-                position = InterpolatedStringScanner.Skip(line.Text, position, line.Text.Length);
-                continue;
-            }
-
-            if (SyntaxFacts.IsDoubleQuote(line.Text[position]))
-            {
-                position = SkipQuotedText(line.Text, position + 1, line.Text.Length);
-                continue;
-            }
-
-            if (SyntaxFacts.IsIdentifierStart(line.Text[position]))
-            {
-                IdentifierRead identifier = ReadIdentifier(line, position);
-                if (identifier.Text.Equals("THEN", StringComparison.OrdinalIgnoreCase) &&
-                    position > 0 &&
-                    SyntaxFacts.IsHorizontalWhitespace(line.Text[position - 1]))
-                {
-                    return position;
-                }
-
-                position = identifier.End;
-                continue;
-            }
-
-            position++;
-        }
-
-        return -1;
-    }
-
-    private BlockTerminatorKind ClassifyBlockTerminator(SourceLine line, int first)
-    {
-        if (first >= line.Text.Length || !SyntaxFacts.IsIdentifierStart(line.Text[first]))
-        {
-            return BlockTerminatorKind.None;
-        }
-
-        IdentifierRead keyword = ReadIdentifier(line, first);
-        if (keyword.Text.Equals("ELSE", StringComparison.OrdinalIgnoreCase))
-        {
-            if (keyword.End >= line.Text.Length)
-            {
-                return BlockTerminatorKind.Else;
-            }
-
-            if (!SyntaxFacts.IsHorizontalWhitespace(line.Text[keyword.End]))
-            {
-                return BlockTerminatorKind.MalformedElse;
-            }
-
-            int next = SkipHorizontalWhitespace(line.Text, keyword.End);
-            if (next >= line.Text.Length)
-            {
-                return BlockTerminatorKind.Else;
-            }
-
-            if (SyntaxFacts.IsIdentifierStart(line.Text[next]))
-            {
-                IdentifierRead following = ReadIdentifier(line, next);
-                if (following.Text.Equals("IF", StringComparison.OrdinalIgnoreCase))
-                {
-                    return BlockTerminatorKind.ElseIf;
-                }
-            }
-
-            return BlockTerminatorKind.MalformedElse;
-        }
-
-        if (keyword.Text.Equals("ENDIF", StringComparison.OrdinalIgnoreCase))
-        {
-            return BlockTerminatorKind.MalformedEndIf;
-        }
-
-        if (keyword.Text.Equals("ENDWHILE", StringComparison.OrdinalIgnoreCase))
-        {
-            return BlockTerminatorKind.MalformedEndWhile;
-        }
-
-        if (!keyword.Text.Equals("END", StringComparison.OrdinalIgnoreCase))
-        {
-            return BlockTerminatorKind.None;
-        }
-
-        if (keyword.End >= line.Text.Length ||
-            !SyntaxFacts.IsHorizontalWhitespace(line.Text[keyword.End]))
-        {
-            return BlockTerminatorKind.MalformedEnd;
-        }
-
-        int followingStart = SkipHorizontalWhitespace(line.Text, keyword.End);
-        if (followingStart >= line.Text.Length ||
-            !SyntaxFacts.IsIdentifierStart(line.Text[followingStart]))
-        {
-            return BlockTerminatorKind.MalformedEnd;
-        }
-
-        IdentifierRead followingKeyword = ReadIdentifier(line, followingStart);
-        int trailing = SkipHorizontalWhitespace(line.Text, followingKeyword.End);
-        if (followingKeyword.Text.Equals("IF", StringComparison.OrdinalIgnoreCase))
-        {
-            return trailing < line.Text.Length
-                ? BlockTerminatorKind.MalformedEndIf
-                : BlockTerminatorKind.EndIf;
-        }
-
-        if (followingKeyword.Text.Equals("WHILE", StringComparison.OrdinalIgnoreCase))
-        {
-            return trailing < line.Text.Length
-                ? BlockTerminatorKind.MalformedEndWhile
-                : BlockTerminatorKind.EndWhile;
-        }
-
-        return BlockTerminatorKind.MalformedEnd;
-    }
-
-    private bool ShouldReturnToBlockOwner(
-        BlockKind bodyKind,
-        BlockTerminatorKind terminator)
-    {
-        BlockKind target = terminator switch
-        {
-            BlockTerminatorKind.ElseIf or
-            BlockTerminatorKind.Else or
-            BlockTerminatorKind.EndIf or
-            BlockTerminatorKind.MalformedEndIf => BlockKind.If,
-            BlockTerminatorKind.EndWhile or
-            BlockTerminatorKind.MalformedEndWhile => BlockKind.While,
-            BlockTerminatorKind.MalformedEnd => bodyKind,
-            _ => BlockKind.None
-        };
-        if (target is BlockKind.None)
-        {
-            return false;
-        }
-
-        if (target == bodyKind)
-        {
-            return true;
-        }
-
-        // A closer for an outer block must be left for that owner. The current
-        // owner will report its missing terminator and unwind one level without
-        // consuming the outer closer.
-        for (int index = 0; index + 1 < _activeBlocks.Count; index++)
-        {
-            if (_activeBlocks[index] == target)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private void ReportMisplacedTerminator(
-        BlockTerminatorKind terminator,
-        SourceLine line,
-        int first)
-    {
-        (string code, string message) = terminator switch
-        {
-            BlockTerminatorKind.MalformedElse => (
-                "SMILE1407",
-                "ELSE must stand alone or be followed by IF on the same logical line."),
-            BlockTerminatorKind.ElseIf or
-            BlockTerminatorKind.Else or
-            BlockTerminatorKind.EndIf => (
-                "SMILE1411",
-                "ELSE, ELSE IF, or END IF has no matching IF."),
-            BlockTerminatorKind.MalformedEndIf or BlockTerminatorKind.MalformedEnd => (
-                "SMILE1413",
-                "END IF is malformed or has trailing content."),
-            BlockTerminatorKind.EndWhile => (
-                "SMILE1609",
-                "END WHILE has no matching WHILE."),
-            BlockTerminatorKind.MalformedEndWhile => (
-                "SMILE1608",
-                "END WHILE must contain two keywords and stand alone."),
-            _ => throw new InvalidOperationException("Unexpected block terminator classification.")
-        };
-        AddDiagnostic(code, message, line.Span(first, line.Text.Length - first));
-    }
-
-    private static TextSpan ExtendHeaderSpan(
-        TextSpan headerSpan,
-        IReadOnlyList<SourceItemSyntax> sourceItems)
-    {
-        if (sourceItems.Count == 0)
-        {
-            return headerSpan;
-        }
-
-        SourceItemSyntax last = sourceItems[^1];
-        return headerSpan with
-        {
-            Length = last.Span.Start + last.Span.Length - headerSpan.Start
-        };
-    }
-
-    private StatementSyntax? ParsePrintStatement(
-        SourceLine line,
-        IdentifierRead printKeyword,
-        ref int lineIndex)
-    {
-        int afterKeyword = printKeyword.End;
-        int payloadStart = SkipHorizontalWhitespace(line.Text, afterKeyword);
-        TextSpan fullSpan = line.Span(printKeyword.Start, line.Text.Length - printKeyword.Start);
-
-        if (payloadStart >= line.Text.Length)
-        {
-            return new PrintStatementSyntax(
-                new StringLiteralExpressionSyntax(string.Empty, line.Span(afterKeyword, 0)),
-                fullSpan,
-                IsBlankLine: true);
-        }
-
-        if (!SyntaxFacts.IsHorizontalWhitespace(line.Text[afterKeyword]))
-        {
-            AddDiagnostic(
-                "SMILE1101",
-                "PRINT requires a space or tab before its payload.",
-                line.Span(afterKeyword, 0));
-            return null;
-        }
-
-        if (IsBlockOpening(line, payloadStart))
-        {
-            BlockStringScanResult block = ConsumeBlock(lineIndex, payloadStart);
-            lineIndex = block.ClosingLineIndex;
-            AddDiagnostic(
-                "SMILE1306",
-                "A Block String Literal is valid only as the complete value of LET or SET.",
-                block.Token.Span);
-            return null;
-        }
-
-        int misplacedPrintBlock = FindMisplacedBlockOpening(line.Text, payloadStart);
-        if (misplacedPrintBlock >= 0 && IsBlockOpening(line, misplacedPrintBlock))
-        {
-            BlockStringScanResult block = ConsumeBlock(lineIndex, misplacedPrintBlock);
-            lineIndex = block.ClosingLineIndex;
-            AddDiagnostic(
-                "SMILE1306",
-                "A Block String Literal is valid only as the complete value of LET or SET.",
-                block.Token.Span);
-            return null;
-        }
-
-        TextSpan? duplicatePrint = FindStandalonePrintKeyword(line, payloadStart, line.Text.Length);
-        if (duplicatePrint is not null)
-        {
-            AddDiagnostic(
-                "SMILE1102",
-                "Only one PRINT statement is allowed per line.",
-                duplicatePrint.Value);
-            return null;
-        }
-
-        ExpressionSyntax? value;
-        if (InterpolatedStringScanner.IsStart(line.Text, payloadStart) ||
-            SyntaxFacts.IsDoubleQuote(line.Text[payloadStart]))
-        {
-            var parser = new ExpressionParser(this, line, payloadStart, line.Text.Length);
-            value = parser.ParseExpression();
-            RequireOnlyTrailingWhitespace(line, parser.Position, "SMILE1111", "Unexpected text after PRINT expression.");
-        }
-        else
-        {
-            value = ParseRawTemplate(line, payloadStart, TrimTrailingHorizontalWhitespace(line.Text));
-        }
-
-        return value is null ? null : new PrintStatementSyntax(value, fullSpan);
-    }
-
-    private StatementSyntax? ParseLetStatement(
-        SourceLine line,
-        IdentifierRead letKeyword,
-        ref int lineIndex)
-    {
-        int position = SkipHorizontalWhitespace(line.Text, letKeyword.End);
-        if (position >= line.Text.Length || !SyntaxFacts.IsIdentifierStart(line.Text[position]))
-        {
-            int invalidEnd = FindPotentialIdentifierEnd(line.Text, position);
-            AddDiagnostic(
-                "SMILE1112",
-                "LET requires a valid variable name.",
-                line.Span(position, Math.Max(0, invalidEnd - position)));
-            return null;
-        }
-
-        IdentifierRead name = ReadIdentifier(line, position);
-        if (name.End < line.Text.Length &&
-            !SyntaxFacts.IsHorizontalWhitespace(line.Text[name.End]) &&
-            line.Text[name.End] != '=')
-        {
-            int invalidEnd = FindPotentialIdentifierEnd(line.Text, position);
-            AddDiagnostic(
-                "SMILE1112",
-                "LET requires a valid variable name.",
-                line.Span(position, invalidEnd - position));
-            return null;
-        }
-
-        if (SyntaxFacts.IsReservedKeyword(name.Text))
-        {
-            AddDiagnostic(
-                "SMILE1115",
-                $"'{name.Text}' is a reserved SMILE keyword and cannot be used as a variable name.",
-                name.Span);
-            return null;
-        }
-
-        position = SkipHorizontalWhitespace(line.Text, name.End);
-        if (position >= line.Text.Length || line.Text[position] != '=')
-        {
-            AddDiagnostic("SMILE1113", "LET requires '=' before its initializer.", line.Span(position, 0));
-            return null;
-        }
-
-        position = SkipHorizontalWhitespace(line.Text, position + 1);
-        if (position >= line.Text.Length)
-        {
-            AddDiagnostic(
-                "SMILE1116",
-                "LET requires an initializer expression.",
-                line.Span(position, 0));
-            return null;
-        }
-
-        if (IsBlockOpening(line, position))
-        {
-            BlockStringScanResult block = ConsumeBlock(lineIndex, position);
-            lineIndex = block.ClosingLineIndex;
-            var blockInitializer = new BlockStringLiteralExpressionSyntax(
-                (string?)block.Token.Value ?? string.Empty,
-                block.Token.Span);
-            int statementEnd = block.Token.Span.Start + block.Token.Span.Length;
-            return new LetStatementSyntax(
-                name.Text,
-                name.Span,
-                blockInitializer,
-                new TextSpan(
-                    line.Start + letKeyword.Start,
-                    statementEnd - (line.Start + letKeyword.Start),
-                    line.LineNumber,
-                    letKeyword.Start + 1));
-        }
-
-        if (line.Text[position] == '"' &&
-            !HasClosingQuoteOnLine(line.Text, position + 1) &&
-            !EndsWithUnterminatedStringEscape(line.Text, position + 1))
-        {
-            AddDiagnostic(
-                "SMILE1308",
-                "The opening quote of a Block String Literal must end the physical LET or SET line.",
-                line.Span(position, 1));
-            return null;
-        }
-
-        int misplacedLetBlock = FindMisplacedBlockOpening(line.Text, position);
-        if (misplacedLetBlock >= 0 && IsBlockOpening(line, misplacedLetBlock))
-        {
-            BlockStringScanResult block = ConsumeBlock(lineIndex, misplacedLetBlock);
-            lineIndex = block.ClosingLineIndex;
-            AddDiagnostic(
-                "SMILE1306",
-                "A Block String Literal is valid only as the complete value of LET or SET.",
-                block.Token.Span);
-            return null;
-        }
-
-        var parser = new ExpressionParser(this, line, position, line.Text.Length);
-        ExpressionSyntax initializer = parser.ParseExpression();
-        RequireOnlyTrailingWhitespace(line, parser.Position, "SMILE1111", "Unexpected text after LET initializer.");
-
-        return new LetStatementSyntax(
-            name.Text,
-            name.Span,
-            initializer,
-            line.Span(letKeyword.Start, line.Text.Length - letKeyword.Start));
-    }
-
-    private StatementSyntax? ParseSetStatement(
-        SourceLine line,
-        IdentifierRead setKeyword,
-        ref int lineIndex)
-    {
-        int position = SkipHorizontalWhitespace(line.Text, setKeyword.End);
-        if (position >= line.Text.Length ||
-            !SyntaxFacts.IsHorizontalWhitespace(line.Text[setKeyword.End]) ||
-            !SyntaxFacts.IsIdentifierStart(line.Text[position]))
-        {
-            int invalidEnd = FindPotentialIdentifierEnd(line.Text, position);
-            AddDiagnostic(
-                "SMILE1301",
-                "A variable name is required after SET.",
-                line.Span(position, Math.Max(0, invalidEnd - position)));
-            return null;
-        }
-
-        IdentifierRead name = ReadIdentifier(line, position);
-        if (name.End < line.Text.Length &&
-            !SyntaxFacts.IsHorizontalWhitespace(line.Text[name.End]) &&
-            line.Text[name.End] != '=')
-        {
-            int invalidEnd = FindPotentialIdentifierEnd(line.Text, position);
-            AddDiagnostic(
-                "SMILE1301",
-                "A variable name is required after SET.",
-                line.Span(position, Math.Max(0, invalidEnd - position)));
-            return null;
-        }
-
-        position = SkipHorizontalWhitespace(line.Text, name.End);
-        if (position >= line.Text.Length || line.Text[position] != '=')
-        {
-            AddDiagnostic(
-                "SMILE1302",
-                "SET requires '=' after its target variable.",
-                line.Span(position, 0));
-            return null;
-        }
-
-        position = SkipHorizontalWhitespace(line.Text, position + 1);
-        if (position >= line.Text.Length)
-        {
-            AddDiagnostic(
-                "SMILE1303",
-                "SET requires a value.",
-                line.Span(position, 0));
-            return null;
-        }
-
-        if (IsBlockOpening(line, position))
-        {
-            BlockStringScanResult block = ConsumeBlock(lineIndex, position);
-            lineIndex = block.ClosingLineIndex;
-            var value = new BlockStringLiteralExpressionSyntax(
-                (string?)block.Token.Value ?? string.Empty,
-                block.Token.Span);
-            int statementEnd = block.Token.Span.Start + block.Token.Span.Length;
-            return new SetStatementSyntax(
-                name.Text,
-                name.Span,
-                value,
-                new TextSpan(
-                    line.Start + setKeyword.Start,
-                    statementEnd - (line.Start + setKeyword.Start),
-                    line.LineNumber,
-                    setKeyword.Start + 1));
-        }
-
-        if (line.Text[position] == '"' &&
-            !HasClosingQuoteOnLine(line.Text, position + 1) &&
-            !EndsWithUnterminatedStringEscape(line.Text, position + 1))
-        {
-            AddDiagnostic(
-                "SMILE1308",
-                "The opening quote of a Block String Literal must end the physical LET or SET line.",
-                line.Span(position, 1));
-            return null;
-        }
-
-        int misplacedBlockOpening = FindMisplacedBlockOpening(line.Text, position);
-        if (misplacedBlockOpening >= 0 && IsBlockOpening(line, misplacedBlockOpening))
-        {
-            BlockStringScanResult block = ConsumeBlock(lineIndex, misplacedBlockOpening);
-            lineIndex = block.ClosingLineIndex;
-            AddDiagnostic(
-                "SMILE1306",
-                "A Block String Literal is valid only as the complete value of LET or SET.",
-                block.Token.Span);
-            return null;
-        }
-
-        var parser = new ExpressionParser(this, line, position, line.Text.Length);
-        ExpressionSyntax valueExpression = parser.ParseExpression();
-        RequireOnlyTrailingWhitespace(
-            line,
-            parser.Position,
-            "SMILE1111",
-            "Unexpected text after SET value.");
-
-        return new SetStatementSyntax(
-            name.Text,
-            name.Span,
-            valueExpression,
-            line.Span(setKeyword.Start, line.Text.Length - setKeyword.Start));
-    }
-
-    private StatementSyntax? ParseInputStatement(
-        SourceLine line,
-        IdentifierRead inputKeyword)
-    {
-        int afterKeyword = inputKeyword.End;
-        if (afterKeyword >= line.Text.Length)
-        {
-            AddDiagnostic(
-                "SMILE1502",
-                "INPUT requires a target variable.",
-                line.Span(afterKeyword, 0));
-            return null;
-        }
-
-        if (!SyntaxFacts.IsHorizontalWhitespace(line.Text[afterKeyword]))
-        {
-            AddDiagnostic(
-                "SMILE1501",
-                "INPUT must be followed by a space or tab.",
-                line.Span(afterKeyword, 0));
-            return null;
-        }
-
-        int position = SkipHorizontalWhitespace(line.Text, afterKeyword);
-        if (position >= line.Text.Length)
-        {
-            AddDiagnostic(
-                "SMILE1502",
-                "INPUT requires a target variable.",
-                line.Span(position, 0));
-            return null;
-        }
-
-        if (!SyntaxFacts.IsIdentifierStart(line.Text[position]))
-        {
-            int targetEnd = TrimTrailingHorizontalWhitespace(line.Text);
-            AddDiagnostic(
-                "SMILE1503",
-                "INPUT target must be one identifier.",
-                line.Span(position, Math.Max(1, targetEnd - position)));
-            return null;
-        }
-
-        IdentifierRead name = ReadIdentifier(line, position);
-        int trailing = SkipHorizontalWhitespace(line.Text, name.End);
-        if (trailing < line.Text.Length)
-        {
-            AddDiagnostic(
-                "SMILE1504",
-                "Unexpected content follows the INPUT target.",
-                line.Span(trailing, line.Text.Length - trailing));
-            return null;
-        }
-
-        return new InputStatementSyntax(
-            name.Text,
-            name.Span,
-            line.Span(inputKeyword.Start, line.Text.Length - inputKeyword.Start));
-    }
-
-    private BlockStringScanResult ConsumeBlock(int openingLineIndex, int openingQuoteColumn) =>
-        BlockStringScanner.Scan(
-            _source,
-            _lines,
-            openingLineIndex,
-            openingQuoteColumn,
-            _diagnostics);
-
-    private bool IsBlockOpening(SourceLine line, int quoteColumn)
-    {
-        if (quoteColumn < 0 ||
-            quoteColumn >= line.Text.Length ||
-            line.Text[quoteColumn] != '"' ||
-            line.Start + line.Text.Length >= _source.Length)
-        {
-            return false;
-        }
-
-        return IsOnlyHorizontalWhitespace(line.Text, quoteColumn + 1, line.Text.Length);
-    }
-
-    private static int FindMisplacedBlockOpening(string text, int start)
-    {
-        int end = TrimTrailingHorizontalWhitespace(text);
-        if (end <= start || text[end - 1] != '"')
-        {
-            return -1;
-        }
-
-        bool insideString = false;
-        bool escaped = false;
-        int unmatchedQuote = -1;
-        for (int position = start; position < end; position++)
-        {
-            char current = text[position];
-            if (escaped)
-            {
-                escaped = false;
-                continue;
-            }
-
-            if (insideString && current == '\\')
-            {
-                escaped = true;
-                continue;
-            }
-
-            if (current != '"')
-            {
-                continue;
-            }
-
-            insideString = !insideString;
-            unmatchedQuote = insideString ? position : -1;
-        }
-
-        return insideString && unmatchedQuote == end - 1
-            ? unmatchedQuote
-            : -1;
-    }
-
-    private static bool HasClosingQuoteOnLine(string text, int position)
-    {
-        bool escaped = false;
-        while (position < text.Length)
-        {
-            char current = text[position];
-            if (escaped)
-            {
-                escaped = false;
-            }
-            else if (current == '\\')
-            {
-                escaped = true;
-            }
-            else if (current == '"')
-            {
-                return true;
-            }
-
-            position++;
-        }
-
-        return false;
-    }
-
-    private static bool EndsWithUnterminatedStringEscape(string text, int position)
-    {
-        int backslashCount = 0;
-        for (int index = text.Length - 1; index >= position && text[index] == '\\'; index--)
-        {
-            backslashCount++;
-        }
-
-        // An odd final run leaves the last backslash without an escape target.
-        // Let the ordinary String lexer retain ownership of SMILE1209 instead
-        // of treating that established error as a malformed Block opener.
-        return backslashCount % 2 == 1;
-    }
-
-    private ExpressionSyntax? ParseRawTemplate(SourceLine line, int start, int end)
-    {
-        var parts = new List<InterpolatedPartSyntax>();
-        var currentText = new StringBuilder();
-        int currentTextStart = start;
-        int position = start;
-
-        while (position < end)
-        {
-            char current = line.Text[position];
-            if (current == '{')
-            {
-                if (position + 1 < end && line.Text[position + 1] == '{')
-                {
-                    currentText.Append('{');
-                    position += 2;
-                    continue;
-                }
-
-                FlushText(position);
-                int close = InterpolatedStringScanner.FindInterpolationClose(
-                    line.Text,
-                    position + 1,
-                    end);
-                if (close < 0)
-                {
-                    AddDiagnostic("SMILE1103", "Unterminated interpolation expression.", line.Span(position, 1));
-                    return null;
-                }
-
-                if (IsOnlyHorizontalWhitespace(line.Text, position + 1, close))
-                {
-                    AddDiagnostic("SMILE1105", "Interpolation expression cannot be empty.", line.Span(position, close - position + 1));
-                    return null;
-                }
-
-                var parser = new ExpressionParser(this, line, position + 1, close);
-                ExpressionSyntax expression = parser.ParseExpression();
-                if (!parser.IsAtEndAfterWhitespace())
-                {
-                    AddDiagnostic("SMILE1201", "Invalid or unexpected token in expression.", line.Span(parser.Position, Math.Max(0, close - parser.Position)));
-                    return null;
-                }
-
-                parts.Add(new InterpolationExpressionPartSyntax(expression, line.Span(position, close - position + 1)));
-                position = close + 1;
-                currentTextStart = position;
-                continue;
-            }
-
-            if (current == '}')
-            {
-                if (position + 1 < end && line.Text[position + 1] == '}')
-                {
-                    currentText.Append('}');
-                    position += 2;
-                    continue;
-                }
-
-                AddDiagnostic("SMILE1104", "Unexpected closing brace in template.", line.Span(position, 1));
-                return null;
-            }
-
-            currentText.Append(current);
-            position++;
-        }
-
-        FlushText(end);
-
-        if (parts.Count == 1 && parts[0] is InterpolatedTextPartSyntax textPart)
-        {
-            return new StringLiteralExpressionSyntax(textPart.Text, line.Span(start, end - start));
-        }
-
-        if (parts.Count == 1 && parts[0] is InterpolationExpressionPartSyntax expressionPart)
-        {
-            return expressionPart.Expression;
-        }
-
-        return new InterpolatedStringExpressionSyntax(parts, line.Span(start, end - start));
-
-        void FlushText(int flushPosition)
-        {
-            if (currentText.Length == 0)
-            {
-                return;
-            }
-
-            parts.Add(new InterpolatedTextPartSyntax(
-                currentText.ToString(),
-                line.Span(currentTextStart, flushPosition - currentTextStart)));
-            currentText.Clear();
-        }
-    }
-
-    private void RequireOnlyTrailingWhitespace(
-        SourceLine line,
-        int position,
-        string diagnosticCode,
-        string message)
-    {
-        int next = SkipHorizontalWhitespace(line.Text, position);
-        if (next >= line.Text.Length)
-        {
-            return;
-        }
-
-        if (line.Text[next] == ';')
-        {
-            AddDiagnostic(
-                "SMILE1109",
-                "Semicolons cannot separate SMILE statements.",
-                line.Span(next, 1));
-            return;
-        }
-
-        AddDiagnostic(diagnosticCode, message, line.Span(next, line.Text.Length - next));
-    }
-
-    private TextSpan? FindStandalonePrintKeyword(SourceLine line, int start, int end)
-    {
-        int position = start;
-        while (position < end)
-        {
-            char current = line.Text[position];
-            if (InterpolatedStringScanner.IsStart(line.Text, position))
-            {
-                position = InterpolatedStringScanner.Skip(line.Text, position, end);
-                continue;
-            }
-
-            if (SyntaxFacts.IsDoubleQuote(current))
-            {
-                position = SkipQuotedText(line.Text, position + 1, end);
-                continue;
-            }
-
-            if (current == '{')
-            {
-                int close = InterpolatedStringScanner.FindInterpolationClose(
-                    line.Text,
-                    position + 1,
-                    end);
-                position = close < 0 ? end : close + 1;
-                continue;
-            }
-
-            if (SyntaxFacts.IsIdentifierStart(current))
-            {
-                IdentifierRead identifier = ReadIdentifier(line, position);
-                if (identifier.Text.Equals("PRINT", StringComparison.OrdinalIgnoreCase))
-                {
-                    return identifier.Span;
-                }
-
-                position = identifier.End;
-                continue;
-            }
-
-            position++;
-        }
-
-        return null;
-    }
-
-    private static int SkipQuotedText(string text, int start, int end)
-    {
-        int position = start;
-        while (position < end)
-        {
-            if (text[position] == '\\')
-            {
-                position += position + 1 < end ? 2 : 1;
-                continue;
-            }
-
-            if (SyntaxFacts.IsDoubleQuote(text[position]))
-            {
-                return position + 1;
-            }
-
-            position++;
-        }
-
-        return end;
-    }
-
-    private static int SkipHorizontalWhitespace(string text, int position)
-    {
-        while (position < text.Length && SyntaxFacts.IsHorizontalWhitespace(text[position]))
-        {
-            position++;
-        }
-
-        return position;
-    }
-
-    private static int TrimTrailingHorizontalWhitespace(string text)
-    {
-        int end = text.Length;
-        while (end > 0 && SyntaxFacts.IsHorizontalWhitespace(text[end - 1]))
-        {
-            end--;
-        }
-
-        return end;
-    }
-
-    private static bool IsOnlyHorizontalWhitespace(string text, int start, int end)
-    {
-        for (int position = start; position < end; position++)
-        {
-            if (!SyntaxFacts.IsHorizontalWhitespace(text[position]))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static int FindPotentialIdentifierEnd(string text, int start)
-    {
-        int position = start;
-        while (position < text.Length &&
-            !SyntaxFacts.IsHorizontalWhitespace(text[position]) &&
-            text[position] != '=')
-        {
-            position++;
-        }
-
-        return position;
-    }
-
-    private IdentifierRead ReadIdentifier(SourceLine line, int start)
-    {
-        int position = start + 1;
-        while (position < line.Text.Length && SyntaxFacts.IsIdentifierPart(line.Text[position]))
-        {
-            position++;
-        }
-
-        return new IdentifierRead(
-            start,
-            position,
-            line.Text[start..position],
-            line.Span(start, position - start));
-    }
-
-    internal void AddDiagnostic(string code, string message, TextSpan span)
-    {
-        _diagnostics.Add(new Diagnostic(
-            code,
-            DiagnosticSeverity.Error,
-            message,
-            span));
-    }
-
-    private readonly record struct IdentifierRead(
-        int Start,
-        int End,
-        string Text,
-        TextSpan Span);
-
-    private enum BlockKind
-    {
-        None,
-        If,
-        While
-    }
-
-    private enum BlockTerminatorKind
-    {
-        None,
-        ElseIf,
-        Else,
-        EndIf,
-        EndWhile,
-        MalformedElse,
-        MalformedEndIf,
-        MalformedEndWhile,
-        MalformedEnd
-    }
-
-    private sealed class ExpressionParser
-    {
-        private readonly Parser _owner;
-        private readonly SourceLine _line;
-        private readonly int _end;
-        private SyntaxToken? _current;
-
-        public ExpressionParser(Parser owner, SourceLine line, int start, int end)
-        {
-            _owner = owner;
-            _line = line;
-            Position = start;
-            _end = end;
-        }
-
-        public int Position { get; private set; }
-
-        public ExpressionSyntax ParseExpression(int parentPrecedence = 0)
-        {
-            ExpressionSyntax left;
-            SyntaxToken current = Current;
-            int unaryPrecedence = SyntaxFacts.GetUnaryOperatorPrecedence(current.Kind);
-            if (unaryPrecedence != 0 && unaryPrecedence >= parentPrecedence)
-            {
-                SyntaxToken operatorToken = NextToken();
-                ExpressionSyntax operand = ParseExpression(unaryPrecedence);
-                int start = operatorToken.Span.Start - _line.Start;
-                int end = operand.Span.Start - _line.Start + operand.Span.Length;
-                left = new UnaryExpressionSyntax(operatorToken, operand, _line.Span(start, end - start));
-            }
-            else
-            {
-                left = ParsePrimaryExpression();
-            }
-
-            while (true)
-            {
-                current = Current;
-                int precedence = SyntaxFacts.GetBinaryOperatorPrecedence(current.Kind);
-                if (precedence == 0 || precedence <= parentPrecedence)
-                {
-                    break;
-                }
-
-                SyntaxToken operatorToken = NextToken();
-                ExpressionSyntax right = ParseExpression(precedence);
-                int start = left.Span.Start - _line.Start;
-                int end = right.Span.Start - _line.Start + right.Span.Length;
-                left = new BinaryExpressionSyntax(left, operatorToken, right, _line.Span(start, end - start));
-            }
-
-            return left;
-        }
-
-        public bool IsAtEndAfterWhitespace() =>
-            SkipHorizontalWhitespace(_line.Text, Position) >= _end;
-
-        private SyntaxToken Current
-        {
-            get
-            {
-                _current ??= ReadToken();
-                return _current;
-            }
-        }
-
-        private SyntaxToken NextToken()
-        {
-            SyntaxToken token = Current;
-            _current = null;
-            Position = Math.Max(Position, token.Span.Start - _line.Start + token.Span.Length);
-            return token;
-        }
-
-        private SyntaxToken ReadToken() =>
-            Lexer.LexOne(_line.Text, _line.Start, _line.LineNumber, Position, _end, _owner._diagnostics);
-
-        private ExpressionSyntax ParsePrimaryExpression()
-        {
-            SyntaxToken token = Current;
-            switch (token.Kind)
-            {
-                case SyntaxKind.OpenParenthesisToken:
-                    return ParseParenthesizedExpression();
-
-                case SyntaxKind.InterpolatedStringStartToken:
-                    return ParseInterpolatedString();
-
-                case SyntaxKind.StringLiteralToken:
-                    NextToken();
-                    return new StringLiteralExpressionSyntax((string?)token.Value ?? string.Empty, token.Span);
-
-                case SyntaxKind.IntegerLiteralToken:
-                    NextToken();
-                    return new IntegerLiteralExpressionSyntax((string?)token.Value ?? token.Text, token.Span);
-
-                case SyntaxKind.TrueKeyword:
-                case SyntaxKind.FalseKeyword:
-                    NextToken();
-                    return new BooleanLiteralExpressionSyntax(token.Kind is SyntaxKind.TrueKeyword, token.Span);
-
-                case SyntaxKind.IdentifierToken:
-                    NextToken();
-                    return new NameExpressionSyntax(token.Text, token.Span);
-
-                default:
-                    _owner.AddDiagnostic("SMILE1201", "Invalid or unexpected token in expression.", token.Span);
-                    if (token.Kind is not SyntaxKind.EndOfFileToken)
-                    {
-                        NextToken();
-                    }
-
-                    return new ErrorExpressionSyntax(token.Span);
-            }
-        }
-
-        private ExpressionSyntax ParseParenthesizedExpression()
-        {
-            SyntaxToken open = NextToken();
-            ExpressionSyntax expression = ParseExpression();
-            SyntaxToken close;
-            if (Current.Kind is SyntaxKind.CloseParenthesisToken)
-            {
-                close = NextToken();
-            }
-            else
-            {
-                _owner.AddDiagnostic("SMILE1205", "Missing closing parenthesis.", Current.Span);
-                close = new SyntaxToken(SyntaxKind.CloseParenthesisToken, string.Empty, null, Current.Span);
-            }
-
-            int start = open.Span.Start - _line.Start;
-            int end = close.Span.Start - _line.Start + close.Span.Length;
-            return new ParenthesizedExpressionSyntax(open, expression, close, _line.Span(start, Math.Max(0, end - start)));
-        }
-
-        private ExpressionSyntax ParseInterpolatedString()
-        {
-            SyntaxToken startToken = Current;
-            int tokenStart = startToken.Span.Start - _line.Start;
-            if (startToken.Kind is not SyntaxKind.InterpolatedStringStartToken ||
-                !InterpolatedStringScanner.IsStart(_line.Text, tokenStart))
-            {
-                _owner.AddDiagnostic("SMILE1201", "Invalid or unexpected token in expression.", _line.Span(Position, 0));
-                return new ErrorExpressionSyntax(_line.Span(Position, 0));
-            }
-
-            int start = tokenStart;
-            Position = tokenStart + 2;
-            _current = null;
-            var parts = new List<InterpolatedPartSyntax>();
-            var currentText = new StringBuilder();
-            int currentTextStart = Position;
-
-            while (Position < _end)
-            {
-                char current = _line.Text[Position];
-                if (SyntaxFacts.IsDoubleQuote(current))
-                {
-                    FlushText(Position);
-                    Position++;
-                    return new InterpolatedStringExpressionSyntax(parts, _line.Span(start, Position - start));
-                }
-
-                if (current == '\\')
-                {
-                    if (Position + 1 >= _end)
-                    {
-                        _owner.AddDiagnostic(
-                            "SMILE1209",
-                            "String literal ends with an unterminated escape sequence.",
-                            _line.Span(Position, 1));
-                        Position++;
-                        return new InterpolatedStringExpressionSyntax(parts, _line.Span(start, Position - start));
-                    }
-
-                    char escape = _line.Text[Position + 1];
-                    if (SmileStringEscapes.TryAppend(escape, currentText))
-                    {
-                        Position += 2;
-                        continue;
-                    }
-
-                    _owner.AddDiagnostic(
-                        "SMILE1208",
-                        $"Unknown string escape sequence '\\{escape}'.",
-                        _line.Span(Position, 2));
-                    Position += 2;
-                    continue;
-                }
-
-                if (current == '{')
-                {
-                    if (Position + 1 < _end && _line.Text[Position + 1] == '{')
-                    {
-                        currentText.Append('{');
-                        Position += 2;
-                        continue;
-                    }
-
-                    FlushText(Position);
-                    int close = InterpolatedStringScanner.FindInterpolationClose(
-                        _line.Text,
-                        Position + 1,
-                        _end);
-                    if (close < 0)
-                    {
-                        _owner.AddDiagnostic("SMILE1103", "Unterminated interpolation expression.", _line.Span(Position, 1));
-                        return new ErrorExpressionSyntax(_line.Span(start, Math.Max(0, Position - start)));
-                    }
-
-                    if (IsOnlyHorizontalWhitespace(_line.Text, Position + 1, close))
-                    {
-                        _owner.AddDiagnostic("SMILE1105", "Interpolation expression cannot be empty.", _line.Span(Position, close - Position + 1));
-                        return new ErrorExpressionSyntax(_line.Span(start, close - start + 1));
-                    }
-
-                    var parser = new ExpressionParser(_owner, _line, Position + 1, close);
-                    ExpressionSyntax expression = parser.ParseExpression();
-                    if (!parser.IsAtEndAfterWhitespace())
-                    {
-                        _owner.AddDiagnostic("SMILE1201", "Invalid or unexpected token in expression.", _line.Span(parser.Position, Math.Max(0, close - parser.Position)));
-                        return new ErrorExpressionSyntax(_line.Span(start, close - start + 1));
-                    }
-
-                    parts.Add(new InterpolationExpressionPartSyntax(expression, _line.Span(Position, close - Position + 1)));
-                    Position = close + 1;
-                    currentTextStart = Position;
-                    continue;
-                }
-
-                if (current == '}')
-                {
-                    if (Position + 1 < _end && _line.Text[Position + 1] == '}')
-                    {
-                        currentText.Append('}');
-                        Position += 2;
-                        continue;
-                    }
-
-                    _owner.AddDiagnostic("SMILE1104", "Unexpected closing brace in template.", _line.Span(Position, 1));
-                    return new ErrorExpressionSyntax(_line.Span(start, Position - start + 1));
-                }
-
-                currentText.Append(current);
-                Position++;
-            }
-
-            _owner.AddDiagnostic("SMILE1110", "Unterminated interpolated string.", _line.Span(start, Math.Max(0, _end - start)));
-            return new ErrorExpressionSyntax(_line.Span(start, Math.Max(0, _end - start)));
-
-            void FlushText(int flushPosition)
-            {
-                if (currentText.Length == 0)
-                {
-                    return;
-                }
+        private char Current => _position < _source.Length ? _source[_position] : '\0';
 
-                parts.Add(new InterpolatedTextPartSyntax(
-                    currentText.ToString(),
-                    _line.Span(currentTextStart, flushPosition - currentTextStart)));
-                currentText.Clear();
-            }
-        }
-    }
-
-}
-
-internal static class SyntaxFacts
-{
-    public static bool IsHorizontalWhitespace(char value) =>
-        value is ' ' or '\t';
-
-    public static bool IsDoubleQuote(char value) =>
-        value is '"' or '\u201c' or '\u201d';
-
-    public static bool IsReservedKeyword(string text) =>
-        GetKeywordKind(text) is not SyntaxKind.IdentifierToken;
-
-    public static SyntaxKind GetKeywordKind(string text) =>
-        text.ToUpperInvariant() switch
-        {
-            "LET" => SyntaxKind.LetKeyword,
-            "SET" => SyntaxKind.SetKeyword,
-            "INPUT" => SyntaxKind.InputKeyword,
-            "PRINT" => SyntaxKind.PrintKeyword,
-            "IF" => SyntaxKind.IfKeyword,
-            "WHILE" => SyntaxKind.WhileKeyword,
-            "THEN" => SyntaxKind.ThenKeyword,
-            "ELSE" => SyntaxKind.ElseKeyword,
-            "END" => SyntaxKind.EndKeyword,
-            "TRUE" => SyntaxKind.TrueKeyword,
-            "FALSE" => SyntaxKind.FalseKeyword,
-            "NOT" => SyntaxKind.NotKeyword,
-            "AND" => SyntaxKind.AndKeyword,
-            "OR" => SyntaxKind.OrKeyword,
-            _ => SyntaxKind.IdentifierToken
-        };
-
-    public static int GetUnaryOperatorPrecedence(SyntaxKind kind) =>
-        kind switch
-        {
-            SyntaxKind.PlusToken or
-            SyntaxKind.MinusToken or
-            SyntaxKind.NotKeyword => 7,
-            _ => 0
-        };
-
-    public static int GetBinaryOperatorPrecedence(SyntaxKind kind) =>
-        kind switch
-        {
-            SyntaxKind.StarToken or
-            SyntaxKind.SlashToken => 6,
-            SyntaxKind.PlusToken or
-            SyntaxKind.MinusToken => 5,
-            SyntaxKind.LessToken or
-            SyntaxKind.LessOrEqualsToken or
-            SyntaxKind.GreaterToken or
-            SyntaxKind.GreaterOrEqualsToken => 4,
-            SyntaxKind.EqualsToken or
-            SyntaxKind.NotEqualsToken => 3,
-            SyntaxKind.AndKeyword => 2,
-            SyntaxKind.OrKeyword => 1,
-            _ => 0
-        };
-
-    public static bool IsAsciiLetter(char value) =>
-        value is >= 'A' and <= 'Z' or >= 'a' and <= 'z';
-
-    public static bool IsAsciiUppercaseLetter(char value) =>
-        value is >= 'A' and <= 'Z';
-
-    public static bool IsIdentifierStart(char value) =>
-        IsAsciiLetter(value) || value == '_';
-
-    public static bool IsIdentifierPart(char value) =>
-        IsIdentifierStart(value) || value is >= '0' and <= '9';
-}
+        private char PeekChar(int offset) => _position + offset < _source.Length ? _source[_position + offset] : '\0';
 
-internal sealed record SourceLine(
-    string Text,
-    int Start,
-    int LineNumber)
-{
-    public TextSpan Span(int columnOffset, int length) =>
-        new(Start + columnOffset, length, LineNumber, columnOffset + 1);
-
-    public static IReadOnlyList<SourceLine> Split(string source)
-    {
-        var lines = new List<SourceLine>();
-        int lineStart = 0;
-        int lineNumber = 1;
-        int position = 0;
-
-        while (position < source.Length)
+        private void Advance()
         {
-            if (source[position] is '\r' or '\n')
-            {
-                lines.Add(new SourceLine(source[lineStart..position], lineStart, lineNumber));
-
-                if (source[position] == '\r' && position + 1 < source.Length && source[position + 1] == '\n')
-                {
-                    position += 2;
-                }
-                else
-                {
-                    position++;
-                }
-
-                lineStart = position;
-                lineNumber++;
-                continue;
-            }
-
-            position++;
+            _position++;
+            _column++;
         }
 
-        if (lineStart < source.Length)
+        private void AdvanceLine()
         {
-            lines.Add(new SourceLine(source[lineStart..], lineStart, lineNumber));
+            _position++;
+            _line++;
+            _column = 1;
         }
 
-        return lines;
+        private Token Make(TokenKind kind, int start, int line, int column, object? value = null) =>
+            new(kind, _source[start.._position], value, new TextSpan(start, _position - start, line, column));
     }
 }

@@ -1,0 +1,2 @@
+Name = "Sin"
+Print $"Hello {Name}"

@@ -1,11 +1,8 @@
-using System.Globalization;
 using System.Text;
 
 namespace SMILE.Engine;
 
-public sealed record SmileRuntimeError(
-    string Code,
-    string Message)
+public sealed record SmileRuntimeError(string Code, string Message)
 {
     public override string ToString() => $"SMILE Runtime Error {Code}: {Message}";
 }
@@ -25,56 +22,14 @@ public sealed record EvaluationResult(
 
 public sealed class SmileEvaluator
 {
-    private static readonly UTF8Encoding StrictUtf8 = new(
-        encoderShouldEmitUTF8Identifier: false,
-        throwOnInvalidBytes: true);
-
     private readonly SmileTranspiler _transpiler = new();
 
     public EvaluationResult Evaluate(string source) =>
-        Evaluate(source, TextReader.Null, CancellationToken.None);
+        Evaluate(source, CancellationToken.None);
 
-    public EvaluationResult Evaluate(
-        string source,
-        CancellationToken cancellationToken) =>
-        Evaluate(source, TextReader.Null, cancellationToken);
-
-    public EvaluationResult Evaluate(string source, string scriptedStandardInput)
-        => Evaluate(source, scriptedStandardInput, CancellationToken.None);
-
-    public EvaluationResult Evaluate(
-        string source,
-        string scriptedStandardInput,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(scriptedStandardInput);
-        using var input = new StringReader(scriptedStandardInput);
-        return Evaluate(source, input, cancellationToken);
-    }
-
-    public EvaluationResult Evaluate(string source, Stream utf8StandardInput)
-        => Evaluate(source, utf8StandardInput, CancellationToken.None);
-
-    public EvaluationResult Evaluate(
-        string source,
-        Stream utf8StandardInput,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(utf8StandardInput);
-        using var input = new Utf8StreamLineReader(utf8StandardInput);
-        return Evaluate(source, input, cancellationToken);
-    }
-
-    public EvaluationResult Evaluate(string source, TextReader input)
-        => Evaluate(source, input, CancellationToken.None);
-
-    public EvaluationResult Evaluate(
-        string source,
-        TextReader input,
-        CancellationToken cancellationToken)
+    public EvaluationResult Evaluate(string source, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(input);
         cancellationToken.ThrowIfCancellationRequested();
 
         BindResult bindResult = _transpiler.Bind(source);
@@ -84,43 +39,50 @@ public sealed class SmileEvaluator
                 Success: false,
                 Output: string.Empty,
                 Diagnostics: bindResult.Diagnostics,
-                ErrorOutput: string.Empty,
                 ExitCode: 1);
         }
 
         var output = new StringBuilder();
         var values = new Dictionary<VariableSymbol, SmileValue>();
-        SmileRuntimeError? runtimeError = ExecuteStatements(
-            bindResult.Program.Statements,
-            values,
-            output,
-            input,
-            cancellationToken);
-
-        if (runtimeError is not null)
+        foreach (VariableSymbol variable in bindResult.Program.Variables)
         {
-            return new EvaluationResult(
+            values[variable] = variable.IsConstant
+                ? FindConstantValue(bindResult.Program.SourceItems, variable)
+                : DefaultValue(variable.Type);
+        }
+
+        SmileRuntimeError? runtimeError;
+        try
+        {
+            runtimeError = ExecuteStatements(
+                bindResult.Program.Statements,
+                values,
+                output,
+                cancellationToken);
+        }
+        catch (ProgramEndSignal)
+        {
+            runtimeError = null;
+        }
+
+        return runtimeError is null
+            ? new EvaluationResult(
+                Success: true,
+                Output: output.ToString(),
+                Diagnostics: bindResult.Diagnostics)
+            : new EvaluationResult(
                 Success: false,
                 Output: output.ToString(),
                 Diagnostics: bindResult.Diagnostics,
                 ErrorOutput: runtimeError + "\n",
                 ExitCode: 1,
                 RuntimeError: runtimeError);
-        }
-
-        return new EvaluationResult(
-            Success: true,
-            Output: output.ToString(),
-            Diagnostics: bindResult.Diagnostics,
-            ErrorOutput: string.Empty,
-            ExitCode: 0);
     }
 
     private static SmileRuntimeError? ExecuteStatements(
         IReadOnlyList<BoundStatement> statements,
         Dictionary<VariableSymbol, SmileValue> values,
         StringBuilder output,
-        TextReader input,
         CancellationToken cancellationToken)
     {
         foreach (BoundStatement statement in statements)
@@ -128,66 +90,42 @@ public sealed class SmileEvaluator
             cancellationToken.ThrowIfCancellationRequested();
             switch (statement)
             {
-                case BoundLetStatement let:
-                    if (!TryEvaluateExpression(
-                            let.Initializer,
-                            values,
-                            out SmileValue initialValue,
-                            out SmileRuntimeError? letError))
-                    {
-                        return letError;
-                    }
-
-                    values.Add(let.Variable, initialValue);
+                case BoundDimStatement or BoundConstStatement:
                     break;
 
-                case BoundSetStatement set:
-                    // Evaluate into a temporary first. The old target value is
-                    // visible throughout the complete right side, and the
-                    // environment changes only after evaluation succeeds.
+                case BoundSetStatement assignment:
                     if (!TryEvaluateExpression(
-                            set.Value,
+                            assignment.Value,
                             values,
                             out SmileValue assignedValue,
-                            out SmileRuntimeError? setError))
+                            out SmileRuntimeError? assignmentError))
                     {
-                        return setError;
+                        return assignmentError;
                     }
 
-                    values[set.Variable] = assignedValue;
+                    values[assignment.Variable] = assignedValue;
                     break;
 
-                case BoundInputStatement inputStatement:
-                    if (!TryReadInputValue(
-                            input,
-                            inputStatement.Variable,
-                            out SmileValue inputValue,
-                            out SmileRuntimeError? inputError))
+                case BoundCorePrintStatement print:
+                    foreach (BoundExpression expression in print.Values)
                     {
-                        return inputError;
-                    }
+                        if (!TryEvaluateExpression(
+                                expression,
+                                values,
+                                out SmileValue printedValue,
+                                out SmileRuntimeError? printError))
+                        {
+                            return printError;
+                        }
 
-                    // Reading, byte validation, and conversion all complete
-                    // before the previous value is replaced.
-                    values[inputStatement.Variable] = inputValue;
-                    break;
-
-                case BoundPrintStatement print:
-                    if (!TryEvaluateExpression(
-                            print.Value,
-                            values,
-                            out SmileValue printedValue,
-                            out SmileRuntimeError? printError))
-                    {
-                        return printError;
-                    }
-
-                    if (!print.IsBlankLine)
-                    {
                         output.Append(printedValue.ToDisplayText());
                     }
 
-                    output.Append('\n');
+                    if (!print.SuppressNewLine)
+                    {
+                        output.Append('\n');
+                    }
+
                     break;
 
                 case BoundIfStatement conditional:
@@ -195,7 +133,6 @@ public sealed class SmileEvaluator
                         conditional,
                         values,
                         output,
-                        input,
                         cancellationToken);
                     if (ifError is not null)
                     {
@@ -204,19 +141,41 @@ public sealed class SmileEvaluator
 
                     break;
 
-                case BoundWhileStatement loop:
-                    SmileRuntimeError? whileError = ExecuteWhile(
+                case BoundForStatement loop:
+                    SmileRuntimeError? forError = ExecuteFor(
                         loop,
                         values,
                         output,
-                        input,
                         cancellationToken);
-                    if (whileError is not null)
+                    if (forError is not null)
                     {
-                        return whileError;
+                        return forError;
                     }
 
                     break;
+
+                case BoundDoStatement loop:
+                    SmileRuntimeError? doError = ExecuteDo(
+                        loop,
+                        values,
+                        output,
+                        cancellationToken);
+                    if (doError is not null)
+                    {
+                        return doError;
+                    }
+
+                    break;
+
+                case BoundExitStatement exit:
+                    throw new LoopExitSignal(exit.Kind);
+
+                case BoundEndProgramStatement:
+                    throw new ProgramEndSignal();
+
+                default:
+                    throw new InvalidOperationException(
+                        $"Unsupported statement reached the Core BASIC evaluator: {statement.GetType().Name}.");
             }
         }
 
@@ -227,7 +186,6 @@ public sealed class SmileEvaluator
         BoundIfStatement conditional,
         Dictionary<VariableSymbol, SmileValue> values,
         StringBuilder output,
-        TextReader input,
         CancellationToken cancellationToken)
     {
         foreach (BoundConditionalClause clause in conditional.Clauses)
@@ -242,17 +200,14 @@ public sealed class SmileEvaluator
                 return conditionError;
             }
 
-            if (!condition.BooleanValue)
+            if (condition.BooleanValue)
             {
-                continue;
+                return ExecuteStatements(
+                    clause.Statements,
+                    values,
+                    output,
+                    cancellationToken);
             }
-
-            return ExecuteStatements(
-                clause.Statements,
-                values,
-                output,
-                input,
-                cancellationToken);
         }
 
         return conditional.HasElseClause
@@ -260,26 +215,96 @@ public sealed class SmileEvaluator
                 conditional.ElseStatements,
                 values,
                 output,
-                input,
                 cancellationToken)
             : null;
     }
 
-    private static SmileRuntimeError? ExecuteWhile(
-        BoundWhileStatement loop,
+    private static SmileRuntimeError? ExecuteFor(
+        BoundForStatement loop,
         Dictionary<VariableSymbol, SmileValue> values,
         StringBuilder output,
-        TextReader input,
+        CancellationToken cancellationToken)
+    {
+        if (!TryEvaluateExpression(loop.LowerBound, values, out SmileValue lower, out SmileRuntimeError? lowerError))
+        {
+            return lowerError;
+        }
+
+        if (!TryEvaluateExpression(loop.UpperBound, values, out SmileValue upper, out SmileRuntimeError? upperError))
+        {
+            return upperError;
+        }
+
+        long counter = lower.IntegerValue;
+        values[loop.Counter] = SmileValue.FromInteger(counter);
+        while (loop.IsDescending ? counter >= upper.IntegerValue : counter <= upper.IntegerValue)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                SmileRuntimeError? bodyError = ExecuteStatements(
+                    loop.Statements,
+                    values,
+                    output,
+                    cancellationToken);
+                if (bodyError is not null)
+                {
+                    return bodyError;
+                }
+            }
+            catch (LoopExitSignal signal) when (signal.Kind is BoundExitKind.For)
+            {
+                return null;
+            }
+
+            try
+            {
+                counter = loop.IsDescending ? checked(counter - 1) : checked(counter + 1);
+            }
+            catch (OverflowException)
+            {
+                return new SmileRuntimeError("SMILER1206", "Number arithmetic overflow.");
+            }
+
+            values[loop.Counter] = SmileValue.FromInteger(counter);
+        }
+
+        return null;
+    }
+
+    private static SmileRuntimeError? ExecuteDo(
+        BoundDoStatement loop,
+        Dictionary<VariableSymbol, SmileValue> values,
+        StringBuilder output,
         CancellationToken cancellationToken)
     {
         while (true)
         {
-            // The host cancellation check is deliberately outside SMILE's
-            // runtime-error model. Infinite loops retain their language
-            // semantics while Desktop, CLI, and tests can still stop them.
             cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                SmileRuntimeError? bodyError = ExecuteStatements(
+                    loop.Statements,
+                    values,
+                    output,
+                    cancellationToken);
+                if (bodyError is not null)
+                {
+                    return bodyError;
+                }
+            }
+            catch (LoopExitSignal signal) when (signal.Kind is BoundExitKind.Do)
+            {
+                return null;
+            }
+
+            if (loop.UntilCondition is null)
+            {
+                continue;
+            }
+
             if (!TryEvaluateExpression(
-                    loop.Condition,
+                    loop.UntilCondition,
                     values,
                     out SmileValue condition,
                     out SmileRuntimeError? conditionError))
@@ -287,23 +312,62 @@ public sealed class SmileEvaluator
                 return conditionError;
             }
 
-            if (!condition.BooleanValue)
+            if (condition.BooleanValue)
             {
                 return null;
             }
-
-            SmileRuntimeError? bodyError = ExecuteStatements(
-                loop.Statements,
-                values,
-                output,
-                input,
-                cancellationToken);
-            if (bodyError is not null)
-            {
-                return bodyError;
-            }
         }
     }
+
+    private static SmileValue FindConstantValue(
+        IReadOnlyList<BoundSourceItem> items,
+        VariableSymbol variable)
+    {
+        foreach (BoundSourceItem item in items)
+        {
+            switch (item)
+            {
+                case BoundConstStatement constant when constant.Variable.Equals(variable):
+                    return constant.Value;
+                case BoundIfStatement conditional:
+                    foreach (BoundConditionalClause clause in conditional.Clauses)
+                    {
+                        SmileValue found = FindConstantValue(clause.SourceItems, variable);
+                        if (found.Type == variable.Type)
+                        {
+                            return found;
+                        }
+                    }
+
+                    break;
+                case BoundForStatement loop:
+                    SmileValue forValue = FindConstantValue(loop.SourceItems, variable);
+                    if (forValue.Type == variable.Type)
+                    {
+                        return forValue;
+                    }
+
+                    break;
+                case BoundDoStatement loop:
+                    SmileValue doValue = FindConstantValue(loop.SourceItems, variable);
+                    if (doValue.Type == variable.Type)
+                    {
+                        return doValue;
+                    }
+
+                    break;
+            }
+        }
+
+        return DefaultValue(variable.Type);
+    }
+
+    private static SmileValue DefaultValue(SmileType type) => type switch
+    {
+        SmileType.Integer => SmileValue.FromInteger(0),
+        SmileType.Boolean => SmileValue.FromBoolean(false),
+        _ => SmileValue.FromString(string.Empty)
+    };
 
     private static bool TryEvaluateExpression(
         BoundExpression expression,
@@ -322,224 +386,18 @@ public sealed class SmileEvaluator
         if (result.IsInvalid && result.Error is SmileArithmeticError arithmeticError)
         {
             value = default;
-            error = new SmileRuntimeError(
-                arithmeticError.RuntimeCode,
-                arithmeticError.Message);
+            error = new SmileRuntimeError(arithmeticError.RuntimeCode, arithmeticError.Message);
             return false;
         }
 
-        // A successfully bound runtime environment contains every declared
-        // variable that a reached expression can read. Unknown here therefore
-        // signals internal semantic-model corruption, not a learner error.
         throw new InvalidOperationException(
-            "A reached bound expression remained Unknown during runtime evaluation.");
+            "A reached bound expression remained unknown during evaluation.");
     }
 
-    private static bool TryReadInputValue(
-        TextReader input,
-        VariableSymbol variable,
-        out SmileValue value,
-        out SmileRuntimeError? error)
+    private sealed class LoopExitSignal(BoundExitKind kind) : Exception
     {
-        string? line;
-        try
-        {
-            line = input.ReadLine();
-        }
-        catch (Exception exception) when (
-            exception is IOException or
-            DecoderFallbackException or
-            ObjectDisposedException or
-            InvalidOperationException or
-            NotSupportedException)
-        {
-            value = default;
-            error = InputError(
-                "SMILER1506",
-                $"Input for '{variable.Name}' could not be read as valid UTF-8 text.");
-            return false;
-        }
-
-        if (line is null)
-        {
-            value = default;
-            error = InputError(
-                "SMILER1501",
-                $"Input ended before a value was received for '{variable.Name}'.");
-            return false;
-        }
-
-        return TryConvertInput(line, variable, out value, out error);
+        public BoundExitKind Kind { get; } = kind;
     }
 
-    private static bool TryConvertInput(
-        string line,
-        VariableSymbol variable,
-        out SmileValue value,
-        out SmileRuntimeError? error)
-    {
-        switch (variable.Type)
-        {
-            case SmileType.String:
-                value = SmileValue.FromString(line);
-                error = null;
-                return true;
-
-            case SmileType.Integer:
-                string integerText = TrimAsciiHorizontalWhitespace(line);
-                if (!HasInputIntegerGrammar(integerText))
-                {
-                    value = default;
-                    error = InputError(
-                        "SMILER1503",
-                        $"Input for '{variable.Name}' is not a valid Integer.");
-                    return false;
-                }
-
-                if (!long.TryParse(
-                        integerText,
-                        NumberStyles.AllowLeadingSign,
-                        CultureInfo.InvariantCulture,
-                        out long integer))
-                {
-                    value = default;
-                    error = InputError(
-                        "SMILER1504",
-                        $"Input for '{variable.Name}' is outside the signed 64-bit Integer range.");
-                    return false;
-                }
-
-                value = SmileValue.FromInteger(integer);
-                error = null;
-                return true;
-
-            case SmileType.Boolean:
-                string booleanText = TrimAsciiHorizontalWhitespace(line);
-                if (booleanText.Equals("TRUE", StringComparison.OrdinalIgnoreCase))
-                {
-                    value = SmileValue.FromBoolean(true);
-                    error = null;
-                    return true;
-                }
-
-                if (booleanText.Equals("FALSE", StringComparison.OrdinalIgnoreCase))
-                {
-                    value = SmileValue.FromBoolean(false);
-                    error = null;
-                    return true;
-                }
-
-                value = default;
-                error = InputError(
-                    "SMILER1505",
-                    $"Input for '{variable.Name}' must be TRUE or FALSE.");
-                return false;
-
-            default:
-                value = default;
-                error = InputError(
-                    "SMILER1506",
-                    $"Input for '{variable.Name}' could not be read as valid UTF-8 text.");
-                return false;
-        }
-    }
-
-    private static string TrimAsciiHorizontalWhitespace(string text)
-    {
-        int start = 0;
-        while (start < text.Length && text[start] is ' ' or '\t')
-        {
-            start++;
-        }
-
-        int end = text.Length;
-        while (end > start && text[end - 1] is ' ' or '\t')
-        {
-            end--;
-        }
-
-        return text[start..end];
-    }
-
-    private static bool HasInputIntegerGrammar(string text)
-    {
-        if (text.Length == 0)
-        {
-            return false;
-        }
-
-        int position = text[0] is '+' or '-' ? 1 : 0;
-        if (position >= text.Length)
-        {
-            return false;
-        }
-
-        for (; position < text.Length; position++)
-        {
-            if (text[position] is < '0' or > '9')
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static SmileRuntimeError InputError(string code, string message) =>
-        new(code, message);
-
-    // StreamReader may decode bytes from a later line while satisfying the
-    // current ReadLine call. Reading one raw logical line at a time keeps a
-    // malformed future line from failing an earlier INPUT and preserves exact
-    // CRLF, LF, standalone-CR, EOF, and embedded-NUL behavior.
-    private sealed class Utf8StreamLineReader : TextReader
-    {
-        private readonly Stream _stream;
-        private bool _skipLeadingLineFeed;
-
-        public Utf8StreamLineReader(Stream stream)
-        {
-            _stream = stream;
-        }
-
-        public override string? ReadLine()
-        {
-            var bytes = new List<byte>();
-            while (true)
-            {
-                int next = _stream.ReadByte();
-                if (_skipLeadingLineFeed)
-                {
-                    _skipLeadingLineFeed = false;
-                    if (next == '\n')
-                    {
-                        continue;
-                    }
-                }
-
-                if (next < 0)
-                {
-                    return bytes.Count == 0
-                        ? null
-                        : StrictUtf8.GetString(bytes.ToArray());
-                }
-
-                if (next == '\n')
-                {
-                    return StrictUtf8.GetString(bytes.ToArray());
-                }
-
-                if (next == '\r')
-                {
-                    // A standalone CR completes the current logical line
-                    // immediately. Delay the optional LF check until the next
-                    // INPUT so a future byte cannot block or fail this line.
-                    _skipLeadingLineFeed = true;
-                    return StrictUtf8.GetString(bytes.ToArray());
-                }
-
-                bytes.Add((byte)next);
-            }
-        }
-    }
+    private sealed class ProgramEndSignal : Exception;
 }

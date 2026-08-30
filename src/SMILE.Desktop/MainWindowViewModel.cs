@@ -43,7 +43,6 @@ public sealed class MainWindowViewModel : ViewModelBase
     private bool _openGeneratedFolderAfterBuild = true;
     private bool _createPauseLauncherAfterBuild = true;
     private bool _outputShowsLiveDiagnostics;
-
     public MainWindowViewModel()
         : this(
             ToolchainRegistry.CreateDefault(),
@@ -882,22 +881,10 @@ public sealed class MainWindowViewModel : ViewModelBase
 
             pane.Status = GetInitialBuildStatus(language);
 
-            BuildRunOptions options = runnableProgram.RequiresStandardInput
-                ? BuildRunOptions.VisibleInteractiveConsole
-                : new BuildRunOptions(CreatePauseLauncher: CreatePauseLauncherAfterBuild);
+            BuildRunOptions options = new(CreatePauseLauncher: CreatePauseLauncherAfterBuild);
             BuildRunResult result = await _toolchains.Get(language)
                 .BuildAndRunAsync(runnableProgram, cancellationToken, options)
                 .ConfigureAwait(true);
-
-            if (runnableProgram.RequiresStandardInput &&
-                result.WorkingDirectory is not null &&
-                result.Stage.Equals("Running", StringComparison.OrdinalIgnoreCase) &&
-                (result.ExitCode.HasValue || result.TimedOut || result.Cancelled))
-            {
-                AppendOutput(
-                    $"{languageName} interactive console launched. " +
-                    "Prompts, learner input, normal output, and runtime errors were handled in that console.");
-            }
 
             pane.Status = BuildRunStatusText(result);
             AppendBuildRunResult(result);

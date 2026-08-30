@@ -2,1048 +2,372 @@ using System.Globalization;
 
 namespace SMILE.Engine;
 
+// This is the sole source-language binder. Every evaluator and target backend
+// receives the same case-insensitive names, exact types, and control-flow tree.
 internal sealed class Binder
 {
-    private static readonly ulong MinIntegerMagnitude = (ulong)long.MaxValue + 1UL;
+    private readonly Dictionary<string, VariableSymbol> _symbols = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ConstStatementSyntax> _constantSyntax = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, BoundConstStatement> _resolvedConstants = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _resolvingConstants = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<VariableSymbol, SmileValue> _constantValues = new();
     private readonly List<Diagnostic> _diagnostics = new();
-    private readonly Dictionary<string, VariableSymbol> _variables = new(StringComparer.OrdinalIgnoreCase);
-    private readonly List<VariableSymbol> _declaredVariables = new();
-    private readonly Dictionary<VariableSymbol, SmileValue> _knownValues = new();
-    private bool _topLevelCanContinue = true;
-    private bool _topLevelDefinitelyContinues = true;
+    private int _forDepth;
+    private int _doDepth;
 
-    public BindResult Bind(SmileProgramSyntax program)
+    public BindResult Bind(SmileProgramSyntax syntax)
     {
-        IReadOnlyList<BoundSourceItem> sourceItems = BindSourceItems(
-            program.SourceItems,
-            appendExecution: true,
-            isIfBody: false,
-            isWhileBody: false);
+        CollectExplicitDeclarations(syntax.SourceItems, topLevel: true);
+        foreach (string name in _constantSyntax.Keys.ToArray())
+        {
+            ResolveConstant(name);
+        }
 
+        IReadOnlyList<BoundSourceItem> items = BindItems(syntax.SourceItems, topLevel: true);
         return new BindResult(
-            new BoundProgram(sourceItems, _declaredVariables.ToArray()),
+            new BoundProgram(items, _symbols.Values.ToArray()),
             _diagnostics);
     }
 
-    private IReadOnlyList<BoundSourceItem> BindSourceItems(
-        IReadOnlyList<SourceItemSyntax> sourceItems,
-        bool appendExecution,
-        bool isIfBody,
-        bool isWhileBody)
+    private void CollectExplicitDeclarations(IReadOnlyList<SourceItemSyntax> items, bool topLevel)
     {
-        var boundItems = new List<BoundSourceItem>(sourceItems.Count);
-        foreach (SourceItemSyntax sourceItem in sourceItems)
+        foreach (SourceItemSyntax item in items)
         {
-            switch (sourceItem)
+            switch (item)
             {
-                case FullLineCommentSyntax comment:
-                    boundItems.Add(new BoundFullLineComment(comment.Marker, comment.Payload));
+                case DimStatementSyntax dim:
+                    DeclareExplicit(dim.Name, dim.NameSpan, dim.DeclaredType, isConstant: false);
                     break;
-
-                case BlankLineSyntax:
-                    boundItems.Add(new BoundBlankLine());
-                    break;
-
-                case StatementSyntax statement:
-                    BoundStatement? bound = BindStatement(
-                        statement,
-                        appendExecution,
-                        isIfBody,
-                        isWhileBody);
-                    if (bound is not null)
+                case ConstStatementSyntax constant when topLevel:
+                    if (_constantSyntax.ContainsKey(constant.Name) || _symbols.ContainsKey(constant.Name))
                     {
-                        boundItems.Add(bound);
+                        Report("SMILE2101", $"'{constant.Name}' is already declared.", constant.NameSpan);
+                    }
+                    else
+                    {
+                        _constantSyntax.Add(constant.Name, constant);
                     }
 
                     break;
+                case ConstStatementSyntax constant:
+                    Report("SMILE2102", "Const declarations are allowed only at program level.", constant.Span);
+                    break;
+                case IfStatementSyntax conditional:
+                    foreach (ConditionalClauseSyntax clause in conditional.Clauses)
+                    {
+                        CollectExplicitDeclarations(clause.SourceItems, topLevel: false);
+                    }
+
+                    CollectExplicitDeclarations(conditional.ElseSourceItems, topLevel: false);
+                    break;
+                case ForStatementSyntax loop:
+                    CollectExplicitDeclarations(loop.SourceItems, topLevel: false);
+                    break;
+                case DoStatementSyntax loop:
+                    CollectExplicitDeclarations(loop.SourceItems, topLevel: false);
+                    break;
             }
         }
-
-        return boundItems;
     }
 
-    private BoundStatement? BindStatement(
-        StatementSyntax statement,
-        bool appendExecution,
-        bool isIfBody,
-        bool isWhileBody) =>
-        statement switch
+    private void DeclareExplicit(string name, TextSpan span, SmileType type, bool isConstant)
+    {
+        if (_symbols.ContainsKey(name) || _constantSyntax.ContainsKey(name))
         {
-            LetStatementSyntax let when isWhileBody => RejectWhileLet(let),
-            LetStatementSyntax let when isIfBody => RejectBranchLet(let),
-            LetStatementSyntax let => BindLetStatement(let, appendExecution),
-            SetStatementSyntax set => BindSetStatement(set, appendExecution),
-            InputStatementSyntax input => BindInputStatement(input, appendExecution),
-            PrintStatementSyntax print => BindPrintStatement(print, appendExecution),
-            IfStatementSyntax conditional => BindIfStatement(
-                conditional,
-                appendExecution,
-                isWhileBody),
-            WhileStatementSyntax loop => BindWhileStatement(
-                loop,
-                appendExecution,
-                isIfBody),
-            _ => null
-        };
-
-    private BoundStatement? RejectBranchLet(LetStatementSyntax syntax)
-    {
-        _diagnostics.Add(new Diagnostic(
-            "SMILE1414",
-            DiagnosticSeverity.Error,
-            "LET is not permitted inside IF v1.0.",
-            syntax.Span));
-        return null;
-    }
-
-    private BoundStatement? RejectWhileLet(LetStatementSyntax syntax)
-    {
-        _diagnostics.Add(new Diagnostic(
-            "SMILE1610",
-            DiagnosticSeverity.Error,
-            "LET is not permitted inside WHILE v1.0.",
-            syntax.Span with { Length = "LET".Length }));
-        return null;
-    }
-
-    private BoundStatement? BindLetStatement(
-        LetStatementSyntax syntax,
-        bool appendExecution)
-    {
-        if (_variables.ContainsKey(syntax.Name))
-        {
-            _diagnostics.Add(new Diagnostic(
-                "SMILE1107",
-                DiagnosticSeverity.Error,
-                $"Variable '{syntax.Name}' is already declared.",
-                syntax.NameSpan));
-            return null;
+            Report("SMILE2101", $"'{name}' is already declared.", span);
+            return;
         }
 
-        // A declaration is intentionally absent while its initializer binds.
-        // That single ordering rule gives us declaration-before-use and makes
-        // self-reference naturally become the normal undefined-variable error.
-        int diagnosticCountBeforeInitializer = _diagnostics.Count;
-        BoundExpression initializer = BindExpression(syntax.Initializer);
-        if (initializer.Type is SmileType.Error ||
-            _diagnostics.Count != diagnosticCountBeforeInitializer)
+        _symbols.Add(name, new VariableSymbol(name, span, type, isConstant));
+    }
+
+    private BoundConstStatement? ResolveConstant(string name)
+    {
+        if (_resolvedConstants.TryGetValue(name, out BoundConstStatement? resolved))
+        {
+            return resolved;
+        }
+
+        if (!_constantSyntax.TryGetValue(name, out ConstStatementSyntax? syntax))
         {
             return null;
         }
 
-        var symbol = new VariableSymbol(syntax.Name, syntax.NameSpan, initializer.Type);
-        var statement = new BoundLetStatement(symbol, initializer);
-        if (appendExecution && !TryApplyTopLevelStatement(statement))
+        if (!_resolvingConstants.Add(name))
         {
+            Report("SMILE2103", $"Constant '{name}' is part of a circular definition.", syntax.NameSpan);
             return null;
         }
 
-        _variables.Add(syntax.Name, symbol);
-        _declaredVariables.Add(symbol);
+        BoundExpression initializer = BindExpression(syntax.Initializer, constantsOnly: true);
+        StaticEvaluationResult evaluation = BoundExpressionEvaluator.Evaluate(initializer, _constantValues);
+        _resolvingConstants.Remove(name);
+        if (initializer.Type is SmileType.Error || !evaluation.IsKnown || evaluation.MayFailAtRuntime)
+        {
+            if (!evaluation.IsInvalid)
+            {
+                Report("SMILE2104", $"Constant '{name}' requires a compile-time scalar value.", syntax.Initializer.Span);
+            }
+            else if (evaluation.Error is SmileArithmeticError error)
+            {
+                Report(error.CompileCode, error.Message, error.Span);
+            }
+
+            return null;
+        }
+
+        var symbol = new VariableSymbol(name, syntax.NameSpan, initializer.Type, IsConstant: true);
+        _symbols[name] = symbol;
+        var statement = new BoundConstStatement(symbol, initializer, evaluation.Value);
+        _resolvedConstants[name] = statement;
+        _constantValues[symbol] = evaluation.Value;
         return statement;
     }
 
-    private BoundStatement? BindSetStatement(
-        SetStatementSyntax syntax,
-        bool appendExecution)
+    private IReadOnlyList<BoundSourceItem> BindItems(IReadOnlyList<SourceItemSyntax> items, bool topLevel)
     {
-        if (!_variables.TryGetValue(syntax.Name, out VariableSymbol? variable))
+        var result = new List<BoundSourceItem>();
+        foreach (SourceItemSyntax item in items)
         {
-            _diagnostics.Add(new Diagnostic(
-                "SMILE1304",
-                DiagnosticSeverity.Error,
-                $"SET target variable '{syntax.Name}' is undefined.",
-                syntax.NameSpan));
-            return null;
+            BoundSourceItem? bound = item switch
+            {
+                BlankLineSyntax => new BoundBlankLine(),
+                FullLineCommentSyntax comment => new BoundFullLineComment(comment.Marker, comment.Payload),
+                StatementSyntax statement => BindStatement(statement, topLevel),
+                _ => null
+            };
+            if (bound is not null)
+            {
+                result.Add(bound);
+            }
         }
 
-        int diagnosticCountBeforeValue = _diagnostics.Count;
+        return result;
+    }
+
+    private BoundStatement? BindStatement(StatementSyntax statement, bool topLevel) => statement switch
+    {
+        CoreAssignmentStatementSyntax assignment => BindAssignment(assignment),
+        DimStatementSyntax dim => BindDim(dim),
+        ConstStatementSyntax constant => topLevel ? BindConst(constant) : null,
+        CorePrintStatementSyntax print => BindPrint(print),
+        IfStatementSyntax conditional => BindIf(conditional),
+        ForStatementSyntax loop => BindFor(loop),
+        DoStatementSyntax loop => BindDo(loop),
+        ExitStatementSyntax exit => BindExit(exit),
+        EndProgramStatementSyntax => new BoundEndProgramStatement(),
+        _ => null
+    };
+
+    private BoundStatement BindAssignment(CoreAssignmentStatementSyntax syntax)
+    {
         BoundExpression value = BindExpression(syntax.Value);
-        if (value.Type is SmileType.Error ||
-            _diagnostics.Count != diagnosticCountBeforeValue)
+        if (!_symbols.TryGetValue(syntax.Name, out VariableSymbol? variable))
         {
-            return null;
+            variable = new VariableSymbol(syntax.Name, syntax.NameSpan, value.Type);
+            _symbols.Add(syntax.Name, variable);
+        }
+        else if (variable.IsConstant)
+        {
+            Report("SMILE2105", $"Constant '{variable.Name}' cannot be assigned.", syntax.NameSpan);
+        }
+        else if (value.Type is not SmileType.Error && variable.Type != value.Type)
+        {
+            Report(
+                "SMILE2106",
+                $"Cannot assign {DisplayType(value.Type)} to {DisplayType(variable.Type)} variable '{variable.Name}'.",
+                syntax.Value.Span);
         }
 
-        if (value.Type != variable.Type)
-        {
-            _diagnostics.Add(new Diagnostic(
-                "SMILE1305",
-                DiagnosticSeverity.Error,
-                $"SET value type '{value.Type}' does not match variable '{syntax.Name}' of type '{variable.Type}'.",
-                syntax.Value.Span));
-            return null;
-        }
-
-        var statement = new BoundSetStatement(variable, value);
-        return !appendExecution || TryApplyTopLevelStatement(statement)
-            ? statement
-            : null;
+        return new BoundSetStatement(variable, value);
     }
 
-    private BoundStatement? BindInputStatement(
-        InputStatementSyntax syntax,
-        bool appendExecution)
-    {
-        if (!_variables.TryGetValue(syntax.Name, out VariableSymbol? variable))
-        {
-            _diagnostics.Add(new Diagnostic(
-                "SMILE1505",
-                DiagnosticSeverity.Error,
-                $"INPUT target variable '{syntax.Name}' is undefined.",
-                syntax.NameSpan));
-            return null;
-        }
-
-        var statement = new BoundInputStatement(variable);
-        return !appendExecution || TryApplyTopLevelStatement(statement)
-            ? statement
+    private BoundStatement? BindDim(DimStatementSyntax syntax) =>
+        _symbols.TryGetValue(syntax.Name, out VariableSymbol? variable)
+            ? new BoundDimStatement(variable)
             : null;
-    }
 
-    private BoundStatement? BindPrintStatement(
-        PrintStatementSyntax syntax,
-        bool appendExecution)
+    private BoundStatement? BindConst(ConstStatementSyntax syntax) => ResolveConstant(syntax.Name);
+
+    private BoundStatement BindPrint(CorePrintStatementSyntax syntax) =>
+        new BoundCorePrintStatement(
+            syntax.Values.Select(value => BindExpression(value)).ToArray(),
+            syntax.SuppressNewLine);
+
+    private BoundStatement BindIf(IfStatementSyntax syntax)
     {
-        int diagnosticCountBeforeValue = _diagnostics.Count;
-        BoundExpression value = BindExpression(syntax.Value);
-        if (value.Type is SmileType.Error ||
-            _diagnostics.Count != diagnosticCountBeforeValue)
-        {
-            return null;
-        }
-
-        var statement = new BoundPrintStatement(value, syntax.IsBlankLine);
-        return !appendExecution || TryApplyTopLevelStatement(statement)
-            ? statement
-            : null;
-    }
-
-    private BoundStatement? BindIfStatement(
-        IfStatementSyntax syntax,
-        bool appendExecution,
-        bool isWhileBody)
-    {
-        int diagnosticsBefore = _diagnostics.Count;
-        var clauses = new List<BoundConditionalClause>(syntax.Clauses.Count);
-
+        var clauses = new List<BoundConditionalClause>();
         foreach (ConditionalClauseSyntax clause in syntax.Clauses)
         {
-            BoundExpression condition = BindControlFlowCondition(
-                clause.Condition,
-                IfConditionDiagnostics);
-
+            BoundExpression condition = BindExpression(clause.Condition);
+            RequireBoolean(condition, clause.Condition.Span, "IF condition");
             clauses.Add(new BoundConditionalClause(
                 condition,
-                BindIfBody(clause.SourceItems, isWhileBody)));
+                BindItems(clause.SourceItems, topLevel: false)));
         }
 
-        IReadOnlyList<BoundSourceItem> elseSourceItems = BindIfBody(
-            syntax.ElseSourceItems,
-            isWhileBody);
-        if (_diagnostics.Count != diagnosticsBefore ||
-            clauses.Any(clause => clause.Condition.Type is SmileType.Error))
-        {
-            return null;
-        }
-
-        var statement = new BoundIfStatement(
+        return new BoundIfStatement(
             clauses,
-            elseSourceItems,
+            BindItems(syntax.ElseSourceItems, topLevel: false),
             syntax.HasElseClause);
-        return !appendExecution || TryApplyTopLevelStatement(statement)
-            ? statement
-            : null;
     }
 
-    private BoundStatement? BindWhileStatement(
-        WhileStatementSyntax syntax,
-        bool appendExecution,
-        bool isIfBody)
+    private BoundStatement BindFor(ForStatementSyntax syntax)
     {
-        int diagnosticsBefore = _diagnostics.Count;
-        BoundExpression condition = BindControlFlowCondition(
-            syntax.Condition,
-            WhileConditionDiagnostics);
+        BoundExpression lower = BindExpression(syntax.LowerBound);
+        BoundExpression upper = BindExpression(syntax.UpperBound);
+        RequireNumber(lower, syntax.LowerBound.Span, "FOR lower bound");
+        RequireNumber(upper, syntax.UpperBound.Span, "FOR upper bound");
 
-        IReadOnlyList<BoundSourceItem> sourceItems = BindSourceItems(
-            syntax.SourceItems,
-            appendExecution: false,
-            isIfBody: isIfBody,
-            isWhileBody: true);
-        if (_diagnostics.Count != diagnosticsBefore ||
-            condition.Type is SmileType.Error)
+        bool declares = !_symbols.TryGetValue(syntax.CounterName, out VariableSymbol? counter);
+        if (declares)
         {
-            return null;
+            counter = new VariableSymbol(syntax.CounterName, syntax.CounterSpan, SmileType.Integer);
+            _symbols.Add(syntax.CounterName, counter);
+        }
+        else if (counter!.IsConstant)
+        {
+            Report("SMILE2107", "A FOR counter must be writable.", syntax.CounterSpan);
+        }
+        else if (counter.Type is not SmileType.Integer)
+        {
+            Report("SMILE2108", "A FOR counter must have type Number.", syntax.CounterSpan);
         }
 
-        var statement = new BoundWhileStatement(
-            condition,
-            sourceItems,
-            syntax.KeywordSpan);
-        return !appendExecution || TryApplyTopLevelStatement(statement)
-            ? statement
-            : null;
+        _forDepth++;
+        IReadOnlyList<BoundSourceItem> body = BindItems(syntax.SourceItems, topLevel: false);
+        _forDepth--;
+        return new BoundForStatement(counter!, declares, lower, upper, syntax.IsDescending, body);
     }
 
-    private bool TryApplyTopLevelStatement(BoundStatement statement)
+    private BoundStatement BindDo(DoStatementSyntax syntax)
     {
-        // Binding and type checking continue through unreachable source so the
-        // learner still receives structural diagnostics. Static evaluation is
-        // skipped once every possible runtime path has already terminated;
-        // later arithmetic is then not definitely evaluated.
-        if (!_topLevelCanContinue)
+        _doDepth++;
+        IReadOnlyList<BoundSourceItem> body = BindItems(syntax.SourceItems, topLevel: false);
+        _doDepth--;
+        BoundExpression? condition = syntax.UntilCondition is null ? null : BindExpression(syntax.UntilCondition);
+        if (condition is not null)
         {
-            return true;
+            RequireBoolean(condition, syntax.UntilCondition!.Span, "LOOP UNTIL condition");
         }
 
-        bool succeeded = TryApplyStaticStatement(
-            statement,
-            _knownValues,
-            reportInvalid: _topLevelDefinitelyContinues,
-            out bool canContinue,
-            out bool definitelyContinues);
-        if (succeeded)
-        {
-            _topLevelCanContinue = canContinue;
-            _topLevelDefinitelyContinues &= definitelyContinues;
-        }
-
-        return succeeded;
+        return new BoundDoStatement(body, condition);
     }
 
-    private bool TryApplyStaticStatement(
-        BoundStatement statement,
-        Dictionary<VariableSymbol, SmileValue> knownValues,
-        bool reportInvalid,
-        out bool canContinue,
-        out bool definitelyContinues)
+    private BoundStatement BindExit(ExitStatementSyntax syntax)
     {
-        switch (statement)
+        if (syntax.Kind is ExitStatementKind.For && _forDepth == 0)
         {
-            case BoundLetStatement let:
-                return TryApplyStaticAssignment(
-                    let.Variable,
-                    let.Initializer,
-                    knownValues,
-                    reportInvalid,
-                    out canContinue,
-                    out definitelyContinues);
-
-            case BoundSetStatement set:
-                return TryApplyStaticAssignment(
-                    set.Variable,
-                    set.Value,
-                    knownValues,
-                    reportInvalid,
-                    out canContinue,
-                    out definitelyContinues);
-
-            case BoundInputStatement input:
-                knownValues.Remove(input.Variable);
-                canContinue = true;
-                definitelyContinues = true;
-                return true;
-
-            case BoundPrintStatement print:
-                StaticEvaluationResult printed = BoundExpressionEvaluator.Evaluate(
-                    print.Value,
-                    knownValues);
-                return HandleStaticResult(
-                    printed,
-                    reportInvalid,
-                    out canContinue,
-                    out definitelyContinues);
-
-            case BoundIfStatement conditional:
-                return TryApplyStaticIf(
-                    conditional,
-                    knownValues,
-                    reportInvalid,
-                    out canContinue,
-                    out definitelyContinues);
-
-            case BoundWhileStatement loop:
-                return TryApplyStaticWhile(
-                    loop,
-                    knownValues,
-                    reportInvalid,
-                    out canContinue,
-                    out definitelyContinues);
-
-            default:
-                canContinue = true;
-                definitelyContinues = true;
-                return true;
+            Report("SMILE2109", "'Exit For' is valid only inside a FOR loop.", syntax.Span);
         }
+        else if (syntax.Kind is ExitStatementKind.Do && _doDepth == 0)
+        {
+            Report("SMILE2110", "'Exit Do' is valid only inside a DO loop.", syntax.Span);
+        }
+
+        return new BoundExitStatement(
+            syntax.Kind is ExitStatementKind.For ? BoundExitKind.For : BoundExitKind.Do);
     }
 
-    private bool TryApplyStaticWhile(
-        BoundWhileStatement loop,
-        Dictionary<VariableSymbol, SmileValue> knownValues,
-        bool reportInvalid,
-        out bool canContinue,
-        out bool definitelyContinues)
+    private BoundExpression BindExpression(ExpressionSyntax syntax, bool constantsOnly = false)
     {
-        StaticEvaluationResult condition = BoundExpressionEvaluator.Evaluate(
-            loop.Condition,
-            knownValues);
-        if (!HandleStaticResult(
-                condition,
-                reportInvalid,
-                out canContinue,
-                out definitelyContinues))
-        {
-            return false;
-        }
-
-        if (!canContinue)
-        {
-            return true;
-        }
-
-        if (condition.IsKnown &&
-            !condition.MayFailAtRuntime &&
-            !condition.Value.BooleanValue)
-        {
-            // The condition is evaluated, but the body is unreachable. Binding
-            // already validated the complete body independently of execution.
-            return true;
-        }
-
-        // One abstract body transfer is enough for binding-time reachability:
-        // it can report a source-known failure in a definitely reached first
-        // iteration, but it never re-evaluates the back edge or invents a trip
-        // count. BoundProgramAnalysis owns the full fixed-point calculation.
-        var bodyValues = new Dictionary<VariableSymbol, SmileValue>(knownValues);
-        bool bodyIsDefinitelyReached =
-            reportInvalid &&
-            condition.IsKnown &&
-            condition.Value.BooleanValue &&
-            !condition.MayFailAtRuntime;
-        if (!TryApplyStaticStatementList(
-                loop.Statements,
-                bodyValues,
-                bodyIsDefinitelyReached,
-                out bool bodyCanContinue,
-                out _))
-        {
-            canContinue = false;
-            definitelyContinues = false;
-            return false;
-        }
-
-        if (bodyIsDefinitelyReached && !bodyCanContinue)
-        {
-            canContinue = false;
-            definitelyContinues = false;
-            return true;
-        }
-
-        foreach (VariableSymbol variable in EnumerateMutatedVariables(loop.Statements))
-        {
-            if (!knownValues.TryGetValue(variable, out SmileValue incoming) ||
-                !bodyValues.TryGetValue(variable, out SmileValue afterBody) ||
-                incoming != afterBody)
-            {
-                knownValues.Remove(variable);
-            }
-        }
-
-        // A loop may execute zero times, fail, run forever, or eventually
-        // leave. Its successful exit is possible, but not guaranteed, unless
-        // the known-false special case above proved that the body is skipped.
-        canContinue = true;
-        definitelyContinues = false;
-        return true;
-    }
-
-    private static IEnumerable<VariableSymbol> EnumerateMutatedVariables(
-        IReadOnlyList<BoundStatement> statements)
-    {
-        foreach (BoundStatement statement in statements)
-        {
-            switch (statement)
-            {
-                case BoundSetStatement set:
-                    yield return set.Variable;
-                    break;
-
-                case BoundInputStatement input:
-                    yield return input.Variable;
-                    break;
-
-                case BoundIfStatement conditional:
-                    foreach (BoundConditionalClause clause in conditional.Clauses)
-                    {
-                        foreach (VariableSymbol variable in EnumerateMutatedVariables(clause.Statements))
-                        {
-                            yield return variable;
-                        }
-                    }
-
-                    foreach (VariableSymbol variable in EnumerateMutatedVariables(
-                                 conditional.ElseStatements))
-                    {
-                        yield return variable;
-                    }
-
-                    break;
-
-                case BoundWhileStatement nested:
-                    foreach (VariableSymbol variable in EnumerateMutatedVariables(nested.Statements))
-                    {
-                        yield return variable;
-                    }
-
-                    break;
-            }
-        }
-    }
-
-    private bool TryApplyStaticAssignment(
-        VariableSymbol variable,
-        BoundExpression expression,
-        Dictionary<VariableSymbol, SmileValue> knownValues,
-        bool reportInvalid,
-        out bool canContinue,
-        out bool definitelyContinues)
-    {
-        StaticEvaluationResult result = BoundExpressionEvaluator.Evaluate(
-            expression,
-            knownValues);
-        if (!HandleStaticResult(
-                result,
-                reportInvalid,
-                out canContinue,
-                out definitelyContinues))
-        {
-            return false;
-        }
-
-        if (!canContinue)
-        {
-            return true;
-        }
-
-        if (result.IsKnown)
-        {
-            knownValues[variable] = result.Value;
-        }
-        else
-        {
-            knownValues.Remove(variable);
-        }
-
-        return true;
-    }
-
-    private bool HandleStaticResult(
-        StaticEvaluationResult result,
-        bool reportInvalid,
-        out bool canContinue,
-        out bool definitelyContinues)
-    {
-        if (!result.IsInvalid)
-        {
-            canContinue = true;
-            // A value can be Known on every successful runtime path while its
-            // evaluation can still fail first (for example, an INPUT-dependent
-            // division hidden behind a Boolean identity). Later source-known
-            // errors are therefore diagnostics only when this expression is
-            // also guaranteed to complete.
-            definitelyContinues = !result.MayFailAtRuntime;
-            return true;
-        }
-
-        canContinue = false;
-        definitelyContinues = false;
-        if (!reportInvalid)
-        {
-            return true;
-        }
-
-        SmileArithmeticError error = result.Error!.Value;
-        _diagnostics.Add(new Diagnostic(
-            error.CompileCode,
-            DiagnosticSeverity.Error,
-            error.Message,
-            error.Span));
-        return false;
-    }
-
-    private bool TryApplyStaticIf(
-        BoundIfStatement conditional,
-        Dictionary<VariableSymbol, SmileValue> knownValues,
-        bool reportInvalid,
-        out bool canContinue,
-        out bool definitelyContinues)
-    {
-        var outgoing = new List<Dictionary<VariableSymbol, SmileValue>>();
-        bool remainingPathIsPossible = true;
-        bool remainingPathIsDefinite = reportInvalid;
-        definitelyContinues = true;
-
-        foreach (BoundConditionalClause clause in conditional.Clauses)
-        {
-            if (!remainingPathIsPossible)
-            {
-                break;
-            }
-
-            StaticEvaluationResult condition = BoundExpressionEvaluator.Evaluate(
-                clause.Condition,
-                knownValues);
-            if (condition.IsInvalid)
-            {
-                if (remainingPathIsDefinite)
-                {
-                    canContinue = false;
-                    definitelyContinues = false;
-                    return HandleStaticResult(
-                        condition,
-                        reportInvalid: true,
-                        out _,
-                        out _);
-                }
-
-                // This remaining path terminates at runtime if earlier clauses
-                // all failed. It cannot reach a later clause or the merge.
-                remainingPathIsPossible = false;
-                definitelyContinues = false;
-                break;
-            }
-
-            if (condition.MayFailAtRuntime)
-            {
-                // The condition's value describes successful evaluations only.
-                // A runtime arithmetic failure can prevent both its selected
-                // body and every later clause from being reached.
-                definitelyContinues = false;
-                remainingPathIsDefinite = false;
-            }
-
-            if (condition.IsKnown)
-            {
-                if (!condition.Value.BooleanValue)
-                {
-                    continue;
-                }
-
-                var selectedValues = new Dictionary<VariableSymbol, SmileValue>(knownValues);
-                if (!TryApplyStaticStatementList(
-                        clause.Statements,
-                        selectedValues,
-                        remainingPathIsDefinite,
-                        out bool selectedContinues,
-                        out bool selectedDefinitelyContinues))
-                {
-                    canContinue = false;
-                    definitelyContinues = false;
-                    return false;
-                }
-
-                if (selectedContinues)
-                {
-                    outgoing.Add(selectedValues);
-                }
-
-                definitelyContinues &= selectedContinues && selectedDefinitelyContinues;
-
-                remainingPathIsPossible = false;
-                break;
-            }
-
-            var branchValues = new Dictionary<VariableSymbol, SmileValue>(knownValues);
-            if (!TryApplyStaticStatementList(
-                    clause.Statements,
-                    branchValues,
-                    reportInvalid: false,
-                    out bool branchContinues,
-                    out bool branchDefinitelyContinues))
-            {
-                canContinue = false;
-                definitelyContinues = false;
-                return false;
-            }
-
-            if (branchContinues)
-            {
-                outgoing.Add(branchValues);
-            }
-
-            definitelyContinues &= branchContinues && branchDefinitelyContinues;
-
-            // A runtime-unknown condition makes both its selected body and the
-            // later-clause path conditional from this point onward.
-            remainingPathIsDefinite = false;
-        }
-
-        if (remainingPathIsPossible)
-        {
-            if (conditional.HasElseClause)
-            {
-                var elseValues = new Dictionary<VariableSymbol, SmileValue>(knownValues);
-                if (!TryApplyStaticStatementList(
-                        conditional.ElseStatements,
-                        elseValues,
-                        remainingPathIsDefinite,
-                        out bool elseContinues,
-                        out bool elseDefinitelyContinues))
-                {
-                    canContinue = false;
-                    definitelyContinues = false;
-                    return false;
-                }
-
-                if (elseContinues)
-                {
-                    outgoing.Add(elseValues);
-                }
-
-                definitelyContinues &= elseContinues && elseDefinitelyContinues;
-            }
-            else
-            {
-                outgoing.Add(new Dictionary<VariableSymbol, SmileValue>(knownValues));
-            }
-        }
-
-        canContinue = outgoing.Count > 0;
-        definitelyContinues &= canContinue;
-        if (canContinue)
-        {
-            MergeKnownValues(knownValues, outgoing);
-        }
-
-        return true;
-    }
-
-    private bool TryApplyStaticStatementList(
-        IReadOnlyList<BoundStatement> statements,
-        Dictionary<VariableSymbol, SmileValue> knownValues,
-        bool reportInvalid,
-        out bool canContinue,
-        out bool definitelyContinues)
-    {
-        definitelyContinues = true;
-        foreach (BoundStatement statement in statements)
-        {
-            if (!TryApplyStaticStatement(
-                    statement,
-                    knownValues,
-                    reportInvalid && definitelyContinues,
-                    out canContinue,
-                    out bool statementDefinitelyContinues))
-            {
-                definitelyContinues = false;
-                return false;
-            }
-
-            if (!canContinue)
-            {
-                definitelyContinues = false;
-                return true;
-            }
-
-            definitelyContinues &= statementDefinitelyContinues;
-        }
-
-        canContinue = true;
-        return true;
-    }
-
-    private static void MergeKnownValues(
-        Dictionary<VariableSymbol, SmileValue> destination,
-        IReadOnlyList<Dictionary<VariableSymbol, SmileValue>> outgoing)
-    {
-        VariableSymbol[] variables = outgoing
-            .SelectMany(environment => environment.Keys)
-            .Distinct()
-            .ToArray();
-        destination.Clear();
-
-        foreach (VariableSymbol variable in variables)
-        {
-            if (!outgoing[0].TryGetValue(variable, out SmileValue first))
-            {
-                continue;
-            }
-
-            if (outgoing.Skip(1).All(environment =>
-                    environment.TryGetValue(variable, out SmileValue candidate) &&
-                    candidate == first))
-            {
-                destination.Add(variable, first);
-            }
-        }
-    }
-
-    private IReadOnlyList<BoundSourceItem> BindIfBody(
-        IReadOnlyList<SourceItemSyntax> sourceItems,
-        bool isWhileBody) =>
-        BindSourceItems(
-            sourceItems,
-            appendExecution: false,
-            isIfBody: true,
-            isWhileBody: isWhileBody);
-
-    private void ValidateCondition(
-        ExpressionSyntax expression,
-        ConditionDiagnosticProfile diagnostics)
-    {
-        switch (expression)
+        switch (syntax)
         {
             case ErrorExpressionSyntax:
-                return;
+                return new BoundErrorExpression();
+            case StringLiteralExpressionSyntax literal:
+                return new BoundStringLiteralExpression(literal.Value);
+            case IntegerLiteralExpressionSyntax literal:
+                if (long.TryParse(literal.Text, NumberStyles.None, CultureInfo.InvariantCulture, out long number))
+                {
+                    return new BoundIntegerLiteralExpression(number);
+                }
 
+                return new BoundErrorExpression();
+            case BooleanLiteralExpressionSyntax literal:
+                return new BoundBooleanLiteralExpression(literal.Value);
             case ParenthesizedExpressionSyntax parenthesized:
-                ValidateCondition(parenthesized.Expression, diagnostics);
-                return;
-
-            case UnaryExpressionSyntax { OperatorToken.Kind: SyntaxKind.NotKeyword } unary:
-                ValidateCondition(unary.Operand, diagnostics);
-                return;
-
-            case BinaryExpressionSyntax binary
-                when binary.OperatorToken.Kind is SyntaxKind.AndKeyword or SyntaxKind.OrKeyword:
-                ValidateCondition(binary.Left, diagnostics);
-                ValidateCondition(binary.Right, diagnostics);
-                return;
-
-            case BinaryExpressionSyntax binary when IsComparison(binary.OperatorToken.Kind):
-                if (ContainsInvocation(binary.Left) || ContainsInvocation(binary.Right))
+                return BindExpression(parenthesized.Expression, constantsOnly);
+            case NameExpressionSyntax name:
+                if (_constantSyntax.ContainsKey(name.Name) && !_symbols.ContainsKey(name.Name))
                 {
-                    _diagnostics.Add(new Diagnostic(
-                        diagnostics.InvocationCode,
-                        DiagnosticSeverity.Error,
-                        diagnostics.InvocationMessage,
-                        binary.Span));
+                    ResolveConstant(name.Name);
                 }
 
-                return;
+                if (_symbols.TryGetValue(name.Name, out VariableSymbol? variable) &&
+                    (!constantsOnly || variable.IsConstant))
+                {
+                    return new BoundVariableExpression(variable);
+                }
 
+                Report(
+                    constantsOnly ? "SMILE2111" : "SMILE2112",
+                    constantsOnly
+                        ? $"Constant expression cannot reference non-constant '{name.Name}'."
+                        : $"Variable '{name.Name}' is used before its first assignment or declaration.",
+                    name.Span);
+                return new BoundErrorExpression();
+            case UnaryExpressionSyntax unary:
+                BoundExpression operand = BindExpression(unary.Operand, constantsOnly);
+                BoundUnaryOperator? unaryOperator = BoundUnaryOperator.Bind(unary.OperatorToken.Kind, operand.Type);
+                if (unaryOperator is null)
+                {
+                    if (operand.Type is not SmileType.Error)
+                    {
+                        Report("SMILE2113", $"Operator '{unary.OperatorToken.Text}' is not defined for {DisplayType(operand.Type)}.", unary.OperatorToken.Span);
+                    }
+
+                    return new BoundErrorExpression();
+                }
+
+                return new BoundUnaryExpression(unaryOperator, operand, unary.OperatorToken.Span);
+            case BinaryExpressionSyntax binary:
+                BoundExpression left = BindExpression(binary.Left, constantsOnly);
+                BoundExpression right = BindExpression(binary.Right, constantsOnly);
+                BoundBinaryOperator? binaryOperator = BoundBinaryOperator.Bind(binary.OperatorToken.Kind, left.Type, right.Type);
+                if (binaryOperator is null)
+                {
+                    if (left.Type is not SmileType.Error && right.Type is not SmileType.Error)
+                    {
+                        Report(
+                            "SMILE2114",
+                            $"Operator '{binary.OperatorToken.Text}' is not defined for {DisplayType(left.Type)} and {DisplayType(right.Type)}.",
+                            binary.OperatorToken.Span);
+                    }
+
+                    return new BoundErrorExpression();
+                }
+
+                return new BoundBinaryExpression(left, binaryOperator, right, binary.OperatorToken.Span);
             default:
-                if (ContainsInvocation(expression))
-                {
-                    _diagnostics.Add(new Diagnostic(
-                        diagnostics.InvocationCode,
-                        DiagnosticSeverity.Error,
-                        diagnostics.InvocationMessage,
-                        expression.Span));
-                }
-
-                _diagnostics.Add(new Diagnostic(
-                    diagnostics.ExplicitComparisonCode,
-                    DiagnosticSeverity.Error,
-                    diagnostics.ExplicitComparisonMessage,
-                    expression.Span));
-                return;
+                return new BoundErrorExpression();
         }
     }
 
-    private BoundExpression BindControlFlowCondition(
-        ExpressionSyntax syntax,
-        ConditionDiagnosticProfile diagnostics)
+    private void RequireBoolean(BoundExpression expression, TextSpan span, string context)
     {
-        // Structural validation deliberately sees the unsimplified syntax tree
-        // so a Boolean identity can never hide an implicit condition leaf.
-        ValidateCondition(syntax, diagnostics);
-        BoundExpression condition = BindExpression(syntax);
-        if (condition.Type is not (SmileType.Boolean or SmileType.Error))
+        if (expression.Type is not SmileType.Boolean and not SmileType.Error)
         {
-            _diagnostics.Add(new Diagnostic(
-                diagnostics.TypeCode,
-                DiagnosticSeverity.Error,
-                diagnostics.TypeMessage,
-                syntax.Span));
+            Report("SMILE2115", $"{context} must have type Boolean.", span);
         }
-
-        return condition;
     }
 
-    private static readonly ConditionDiagnosticProfile IfConditionDiagnostics = new(
-        ExplicitComparisonCode: "SMILE1402",
-        ExplicitComparisonMessage: "Every atomic IF condition must be an explicit comparison.",
-        TypeCode: "SMILE1403",
-        TypeMessage: "The complete IF condition must have type Boolean.",
-        InvocationCode: "SMILE1404",
-        InvocationMessage: "An IF condition cannot invoke a function or procedure.");
-
-    private static readonly ConditionDiagnosticProfile WhileConditionDiagnostics = new(
-        ExplicitComparisonCode: "SMILE1603",
-        ExplicitComparisonMessage: "Every atomic WHILE condition must be an explicit comparison.",
-        TypeCode: "SMILE1604",
-        TypeMessage: "The complete WHILE condition must have type Boolean.",
-        InvocationCode: "SMILE1605",
-        InvocationMessage: "A WHILE condition cannot invoke a function or procedure.");
-
-    private readonly record struct ConditionDiagnosticProfile(
-        string ExplicitComparisonCode,
-        string ExplicitComparisonMessage,
-        string TypeCode,
-        string TypeMessage,
-        string InvocationCode,
-        string InvocationMessage);
-
-    private static bool IsComparison(SyntaxKind kind) =>
-        kind is SyntaxKind.EqualsToken or
-            SyntaxKind.NotEqualsToken or
-            SyntaxKind.LessToken or
-            SyntaxKind.LessOrEqualsToken or
-            SyntaxKind.GreaterToken or
-            SyntaxKind.GreaterOrEqualsToken;
-
-    private static bool ContainsInvocation(ExpressionSyntax expression) =>
-        expression switch
-        {
-            ErrorExpressionSyntax => false,
-            StringLiteralExpressionSyntax => false,
-            BlockStringLiteralExpressionSyntax => false,
-            IntegerLiteralExpressionSyntax => false,
-            BooleanLiteralExpressionSyntax => false,
-            NameExpressionSyntax => false,
-            UnaryExpressionSyntax unary => ContainsInvocation(unary.Operand),
-            BinaryExpressionSyntax binary =>
-                ContainsInvocation(binary.Left) || ContainsInvocation(binary.Right),
-            ParenthesizedExpressionSyntax parenthesized =>
-                ContainsInvocation(parenthesized.Expression),
-            InterpolatedStringExpressionSyntax interpolated =>
-                interpolated.Parts
-                    .OfType<InterpolationExpressionPartSyntax>()
-                    .Any(part => ContainsInvocation(part.Expression)),
-
-            // IF conditions permanently fail closed for future callable or
-            // otherwise unknown value-expression nodes. A future function
-            // feature must deliberately prove that condition evaluation is
-            // call-free instead of inheriting accidental acceptance here.
-            _ => true
-        };
-
-    private BoundExpression BindExpression(ExpressionSyntax expression) =>
-        expression switch
-        {
-            ErrorExpressionSyntax => new BoundErrorExpression(),
-            StringLiteralExpressionSyntax literal => new BoundStringLiteralExpression(literal.Value),
-            BlockStringLiteralExpressionSyntax literal => new BoundStringLiteralExpression(literal.Value),
-            IntegerLiteralExpressionSyntax literal => BindIntegerLiteral(literal),
-            BooleanLiteralExpressionSyntax literal => new BoundBooleanLiteralExpression(literal.Value),
-            NameExpressionSyntax name => BindNameExpression(name),
-            UnaryExpressionSyntax unary => BindUnaryExpression(unary),
-            BinaryExpressionSyntax binary => BindBinaryExpression(binary),
-            ParenthesizedExpressionSyntax parenthesized => BindExpression(parenthesized.Expression),
-            InterpolatedStringExpressionSyntax interpolated => BindInterpolatedString(interpolated),
-            _ => new BoundErrorExpression()
-        };
-
-    private BoundExpression BindIntegerLiteral(IntegerLiteralExpressionSyntax syntax)
+    private void RequireNumber(BoundExpression expression, TextSpan span, string context)
     {
-        if (TryParseIntegerMagnitude(syntax.Text, out ulong magnitude) &&
-            magnitude <= long.MaxValue)
+        if (expression.Type is not SmileType.Integer and not SmileType.Error)
         {
-            return new BoundIntegerLiteralExpression((long)magnitude);
+            Report("SMILE2116", $"{context} must have type Number.", span);
         }
-
-        _diagnostics.Add(new Diagnostic(
-            "SMILE1202",
-            DiagnosticSeverity.Error,
-            "Integer literal is outside the signed 64-bit range.",
-            syntax.Span));
-        return new BoundErrorExpression();
     }
 
-    private BoundExpression BindNameExpression(NameExpressionSyntax syntax)
+    private void Report(string code, string message, TextSpan span) =>
+        _diagnostics.Add(new Diagnostic(code, DiagnosticSeverity.Error, message, span));
+
+    private static string DisplayType(SmileType type) => type switch
     {
-        if (_variables.TryGetValue(syntax.Name, out VariableSymbol? variable))
-        {
-            return new BoundVariableExpression(variable);
-        }
-
-        _diagnostics.Add(new Diagnostic(
-            "SMILE1106",
-            DiagnosticSeverity.Error,
-            $"Undefined variable '{syntax.Name}'.",
-            syntax.Span));
-        return new BoundErrorExpression();
-    }
-
-    private BoundExpression BindUnaryExpression(UnaryExpressionSyntax syntax)
-    {
-        if (syntax.OperatorToken.Kind is SyntaxKind.MinusToken &&
-            syntax.Operand is IntegerLiteralExpressionSyntax literal &&
-            TryParseIntegerMagnitude(literal.Text, out ulong magnitude) &&
-            magnitude == MinIntegerMagnitude)
-        {
-            return new BoundIntegerLiteralExpression(long.MinValue);
-        }
-
-        BoundExpression operand = BindExpression(syntax.Operand);
-        if (operand.Type is SmileType.Error)
-        {
-            return new BoundErrorExpression();
-        }
-
-        BoundUnaryOperator? op = BoundUnaryOperator.Bind(syntax.OperatorToken.Kind, operand.Type);
-        if (op is null)
-        {
-            _diagnostics.Add(new Diagnostic(
-                "SMILE1203",
-                DiagnosticSeverity.Error,
-                $"Unary operator '{syntax.OperatorToken.Text}' is not defined for type '{operand.Type}'.",
-                syntax.OperatorToken.Span));
-            return new BoundErrorExpression();
-        }
-
-        return new BoundUnaryExpression(op, operand, syntax.OperatorToken.Span);
-    }
-
-    private BoundExpression BindBinaryExpression(BinaryExpressionSyntax syntax)
-    {
-        BoundExpression left = BindExpression(syntax.Left);
-        BoundExpression right = BindExpression(syntax.Right);
-        if (left.Type is SmileType.Error || right.Type is SmileType.Error)
-        {
-            return new BoundErrorExpression();
-        }
-
-        BoundBinaryOperator? op = BoundBinaryOperator.Bind(syntax.OperatorToken.Kind, left.Type, right.Type);
-        if (op is null)
-        {
-            _diagnostics.Add(new Diagnostic(
-                "SMILE1204",
-                DiagnosticSeverity.Error,
-                $"Binary operator '{syntax.OperatorToken.Text}' is not defined for types '{left.Type}' and '{right.Type}'.",
-                syntax.OperatorToken.Span));
-            return new BoundErrorExpression();
-        }
-
-        return new BoundBinaryExpression(left, op, right, syntax.OperatorToken.Span);
-    }
-
-    private BoundExpression BindInterpolatedString(InterpolatedStringExpressionSyntax syntax)
-    {
-        var parts = new List<BoundInterpolatedPart>();
-        foreach (InterpolatedPartSyntax part in syntax.Parts)
-        {
-            switch (part)
-            {
-                case InterpolatedTextPartSyntax text:
-                    parts.Add(new BoundInterpolatedTextPart(text.Text));
-                    break;
-
-                case InterpolationExpressionPartSyntax expression:
-                    parts.Add(new BoundInterpolationExpressionPart(BindExpression(expression.Expression)));
-                    break;
-            }
-        }
-
-        return new BoundInterpolatedStringExpression(parts);
-    }
-
-    private static bool TryParseIntegerMagnitude(string text, out ulong magnitude) =>
-        ulong.TryParse(
-            text,
-            NumberStyles.None,
-            CultureInfo.InvariantCulture,
-            out magnitude);
+        SmileType.Integer => "Number",
+        SmileType.Boolean => "Boolean",
+        SmileType.String => "Text",
+        _ => "Error"
+    };
 }

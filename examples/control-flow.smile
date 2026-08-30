@@ -1,0 +1,17 @@
+' Ascending and descending For, post-tested Do, and typed exits.
+For I = 1 To 3
+    Print I;
+End For
+Print
+
+For I = 3 Down To 1
+    Print I;
+End For
+Print
+
+Do
+    For J = 1 To 10
+        Print J
+        Exit Do
+    End For
+Loop

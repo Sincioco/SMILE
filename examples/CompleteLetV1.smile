@@ -1,9 +1,0 @@
-LET FirstName = "Sin"
-LET LastName = "Cioco"
-LET CopyOfFirstName = FirstName
-LET FullName = FirstName + " " + LastName
-LET Greeting = $"Hello {FullName}!"
-
-PRINT {CopyOfFirstName}
-PRINT {FullName}
-PRINT {Greeting}

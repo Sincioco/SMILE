@@ -7,21 +7,11 @@
   <Color name="Operator" foreground="#1F1F1F" />
 
   <RuleSet ignoreCase="true">
-    <Span color="String"
-          multiline="true"
-          begin="(?&lt;!\$)&quot;[ \t]*$"
-          end="^[ \t]*&quot;[ \t]*$" />
-    <Span color="String" begin="\$&quot;" end="&quot;" />
     <Span color="String" begin="&quot;" end="&quot;" />
-    <Span color="Comment"
-          begin="^[ \t]*(REM(?=$|[ \t])|//|\#|--)"
-          end="$" />
+    <Span color="Comment" begin="'" end="$" />
 
     <Keywords color="Keyword">
-      <Word>LET</Word>
       <Word>PRINT</Word>
-      <Word>SET</Word>
-      <Word>INPUT</Word>
       <Word>TRUE</Word>
       <Word>FALSE</Word>
       <Word>NOT</Word>
@@ -31,10 +21,24 @@
       <Word>THEN</Word>
       <Word>ELSE</Word>
       <Word>END</Word>
-      <Word>WHILE</Word>
+      <Word>DIM</Word>
+      <Word>AS</Word>
+      <Word>NUMBER</Word>
+      <Word>BOOLEAN</Word>
+      <Word>TEXT</Word>
+      <Word>CONST</Word>
+      <Word>MOD</Word>
+      <Word>FOR</Word>
+      <Word>TO</Word>
+      <Word>DOWN</Word>
+      <Word>DO</Word>
+      <Word>LOOP</Word>
+      <Word>UNTIL</Word>
+      <Word>EXIT</Word>
+      <Word>PROGRAM</Word>
     </Keywords>
 
-    <Rule color="Number">\b\d+(\.\d+)?\b</Rule>
-    <Rule color="Operator">&lt;&gt;|&lt;=|&gt;=|[=+\-*/()&lt;&gt;\{\}]</Rule>
+    <Rule color="Number">\b\d+\b</Rule>
+    <Rule color="Operator">&lt;&gt;|&lt;=|&gt;=|[=+\-*/();&lt;&gt;]</Rule>
   </RuleSet>
 </SyntaxDefinition>

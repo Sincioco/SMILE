@@ -40,6 +40,7 @@ public abstract record SyntaxNode(TextSpan Span);
 
 public enum FullLineCommentMarker
 {
+    Apostrophe,
     Rem,
     SlashSlash,
     Hash,
@@ -312,7 +313,8 @@ public readonly record struct SmileValue
 public sealed record VariableSymbol(
     string Name,
     TextSpan DeclarationSpan,
-    SmileType Type);
+    SmileType Type,
+    bool IsConstant = false);
 
 // Bound nodes describe what the program means after name lookup and type
 // checking. Generators consume this layer so no backend has to reparse SMILE.
@@ -334,6 +336,7 @@ public sealed record BoundProgram
     public IReadOnlyList<BoundStatement> Statements { get; }
 
     public IReadOnlyList<VariableSymbol> Variables { get; }
+
 }
 
 public abstract record BoundStatement
@@ -357,12 +360,26 @@ public sealed record BoundSetStatement(
     BoundExpression Value)
     : BoundStatement;
 
+public sealed record BoundConstStatement(
+    VariableSymbol Variable,
+    BoundExpression Initializer,
+    SmileValue Value)
+    : BoundStatement;
+
+public sealed record BoundDimStatement(VariableSymbol Variable)
+    : BoundStatement;
+
 public sealed record BoundInputStatement(VariableSymbol Variable)
     : BoundStatement;
 
 public sealed record BoundPrintStatement(
     BoundExpression Value,
     bool IsBlankLine = false)
+    : BoundStatement;
+
+public sealed record BoundCorePrintStatement(
+    IReadOnlyList<BoundExpression> Values,
+    bool SuppressNewLine)
     : BoundStatement;
 
 public sealed record BoundConditionalClause
@@ -426,6 +443,38 @@ public sealed record BoundWhileStatement : BoundStatement
 
     public TextSpan KeywordSpan { get; }
 }
+
+public sealed record BoundForStatement(
+    VariableSymbol Counter,
+    bool DeclaresCounter,
+    BoundExpression LowerBound,
+    BoundExpression UpperBound,
+    bool IsDescending,
+    IReadOnlyList<BoundSourceItem> SourceItems)
+    : BoundStatement
+{
+    public IReadOnlyList<BoundStatement> Statements => SourceItems.OfType<BoundStatement>().ToArray();
+}
+
+public sealed record BoundDoStatement(
+    IReadOnlyList<BoundSourceItem> SourceItems,
+    BoundExpression? UntilCondition)
+    : BoundStatement
+{
+    public IReadOnlyList<BoundStatement> Statements => SourceItems.OfType<BoundStatement>().ToArray();
+}
+
+public enum BoundExitKind
+{
+    For,
+    Do
+}
+
+public sealed record BoundExitStatement(BoundExitKind Kind)
+    : BoundStatement;
+
+public sealed record BoundEndProgramStatement()
+    : BoundStatement;
 
 public abstract record BoundExpression(SmileType Type);
 
@@ -523,6 +572,7 @@ public enum BoundBinaryOperatorKind
     Subtraction,
     Multiplication,
     Division,
+    Modulo,
     StringConcatenation,
     Equality,
     Inequality,
@@ -542,6 +592,7 @@ public sealed class BoundBinaryOperator
         new(SyntaxKind.MinusToken, BoundBinaryOperatorKind.Subtraction, SmileType.Integer),
         new(SyntaxKind.StarToken, BoundBinaryOperatorKind.Multiplication, SmileType.Integer),
         new(SyntaxKind.SlashToken, BoundBinaryOperatorKind.Division, SmileType.Integer),
+        new(SyntaxKind.ModKeyword, BoundBinaryOperatorKind.Modulo, SmileType.Integer),
         new(SyntaxKind.PlusToken, BoundBinaryOperatorKind.StringConcatenation, SmileType.String),
 
         new(SyntaxKind.EqualsToken, BoundBinaryOperatorKind.Equality, SmileType.String, SmileType.Boolean),
@@ -710,7 +761,7 @@ public readonly record struct SmileArithmeticError(
 
     public string Message =>
         Kind is SmileArithmeticErrorKind.IntegerOverflow
-            ? "Integer arithmetic overflow."
+            ? "Number arithmetic overflow."
             : "Division by zero.";
 }
 
@@ -862,7 +913,7 @@ public static class BoundExpressionEvaluator
                 : right;
         }
 
-        if (binary.Operator.Kind is BoundBinaryOperatorKind.Division &&
+        if (binary.Operator.Kind is BoundBinaryOperatorKind.Division or BoundBinaryOperatorKind.Modulo &&
             right.IsKnown &&
             right.Value.IntegerValue == 0)
         {
@@ -937,6 +988,8 @@ public static class BoundExpressionEvaluator
             BoundBinaryOperatorKind.Multiplication =>
                 !(LeftIs(0) || RightIs(0) || LeftIs(1) || RightIs(1)),
             BoundBinaryOperatorKind.Division =>
+                !right.IsKnown || right.Value.IntegerValue is 0 or -1,
+            BoundBinaryOperatorKind.Modulo =>
                 !right.IsKnown || right.Value.IntegerValue is 0 or -1,
             _ => false
         };
@@ -1062,6 +1115,8 @@ public static class BoundExpressionEvaluator
                 SmileValue.FromInteger(checked(left.IntegerValue * right.IntegerValue)),
             BoundBinaryOperatorKind.Division =>
                 SmileValue.FromInteger(checked(left.IntegerValue / right.IntegerValue)),
+            BoundBinaryOperatorKind.Modulo =>
+                SmileValue.FromInteger(checked(left.IntegerValue % right.IntegerValue)),
             BoundBinaryOperatorKind.StringConcatenation =>
                 SmileValue.FromString(left.StringValue + right.StringValue),
             BoundBinaryOperatorKind.Equality =>

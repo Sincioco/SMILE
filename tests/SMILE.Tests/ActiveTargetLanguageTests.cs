@@ -77,7 +77,7 @@ public sealed class ActiveTargetLanguageTests
             errorReporter: null,
             folderOpener: null,
             languageFilePath: null,
-            languageSourceReader: _ => Task.FromResult("PRINT Hello"));
+            languageSourceReader: _ => Task.FromResult("Print \"Hello\""));
 
         await viewModel.InitializeAsync();
 
