@@ -76,7 +76,7 @@ Uppercase and lowercase W/A/S/D normalize identically. Arrow events, Enter, Esca
 Clear Screen
 ```
 
-In an attached interactive terminal, this moves the cursor to the home position without erasing the visible console and without launching a child process. This matches the current SMILE 2.0 native runtime and permits frame-overwrite games without forced scrollback loss. Output needed for the current frame is flushed. When output is redirected, the statement is a safe no-op and emits no terminal-control bytes.
+In an attached interactive terminal, this erases the visible console and moves the cursor to the home position without launching a child process. This deliberate SMILE 1.0 behavior prevents text from an earlier, wider frame or instruction screen from remaining beside a later frame. Output needed before the clear is flushed. When output is redirected, the statement is a safe no-op and emits no terminal-control bytes. Destination-native console facilities may differ in how they retain terminal scrollback.
 
 ## Wait
 

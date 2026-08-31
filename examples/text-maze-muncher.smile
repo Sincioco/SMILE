@@ -2,19 +2,22 @@
 
 Option Explicit
 
-Const WIDTH = 25
-Const HEIGHT = 13
+Const WIDTH = 59
+Const HEIGHT = 17
 Const EMPTY = 0
 Const WALL = 1
 Const PELLET = 2
+Const ENEMY_COUNT = 4
 Const ENEMY_DELAY = 220
 
 Dim Maze[WIDTH, HEIGHT] As Number
 
 Dim PlayerX As Number
 Dim PlayerY As Number
-Dim EnemyX As Number
-Dim EnemyY As Number
+
+Dim EnemyX[ENEMY_COUNT] As Number
+Dim EnemyY[ENEMY_COUNT] As Number
+
 Dim PelletsLeft As Number
 Dim Score As Number
 Dim Lives As Number
@@ -68,7 +71,7 @@ Sub ShowTitle()
 
     Clear Screen
     Print "LANTERN MAZE"
-    Print "Collect every dot while avoiding the roaming shadow."
+    Print "Collect every dot while avoiding four roaming shadows."
     Print "Move with WASD or arrows. A collision costs one lantern."
     Print "Press Enter to begin. Press Escape to leave."
 
@@ -79,15 +82,32 @@ Sub ResetGame()
     Call BuildMaze()
     PlayerX = 1
     PlayerY = 1
-    EnemyX = 3
-    EnemyY = 1
+    Call ResetEnemies()
     Maze[PlayerX, PlayerY] = EMPTY
-    Maze[EnemyX, EnemyY] = EMPTY
     Score = 0
     Lives = 3
     PlayerWon = False
     RoundActive = True
     NextEnemyTime = Timer() + ENEMY_DELAY
+
+End Sub
+
+Sub ResetEnemies()
+
+    Dim Enemy As Number
+
+    EnemyX[0] = 3
+    EnemyY[0] = 1
+    EnemyX[1] = WIDTH - 4
+    EnemyY[1] = 1
+    EnemyX[2] = 3
+    EnemyY[2] = HEIGHT - 2
+    EnemyX[3] = WIDTH - 4
+    EnemyY[3] = HEIGHT - 2
+
+    For Enemy = 0 To ENEMY_COUNT - 1
+        Maze[EnemyX[Enemy], EnemyY[Enemy]] = EMPTY
+    End For
 
 End Sub
 
@@ -107,21 +127,21 @@ Sub BuildMaze()
     End For
 
     For Y = 2 To HEIGHT - 3
-        If Y <> 4 And Y <> 9 Then
-            Call PutWall(6, Y)
-            Call PutWall(18, Y)
+        If Y <> 4 And Y <> 8 And Y <> 12 Then
+            Call PutWall(14, Y)
+            Call PutWall(44, Y)
         End If
     End For
 
     For Y = 1 To HEIGHT - 2
-        If Y <> 2 And Y <> 7 Then
-            Call PutWall(12, Y)
+        If Y <> 3 And Y <> 7 And Y <> 11 And Y <> 14 Then
+            Call PutWall(29, Y)
         End If
     End For
 
     For X = 2 To WIDTH - 3
-        If X <> 4 And X <> 10 And X <> 15 And X <> 21 Then
-            Call PutWall(X, 6)
+        If X <> 7 And X <> 14 And X <> 21 And X <> 29 And X <> 37 And X <> 44 And X <> 51 Then
+            Call PutWall(X, 8)
         End If
     End For
 
@@ -183,40 +203,55 @@ Sub MoveEnemy()
     Dim MoveX As Number
     Dim MoveY As Number
     Dim Moved As Boolean
+    Dim Enemy As Number
 
-    Moved = False
+    For Enemy = 0 To ENEMY_COUNT - 1
+        Moved = False
 
-    For Attempt = 1 To 4
-        Random Direction From 1 To 4
-        MoveX = 0
-        MoveY = 0
+        For Attempt = 1 To 4
+            Random Direction From 1 To 4
+            MoveX = 0
+            MoveY = 0
 
-        Select Case Direction
-            Case 1
-                MoveY = -1
+            Select Case Direction
+                Case 1
+                    MoveY = -1
 
-            Case 2
-                MoveX = 1
+                Case 2
+                    MoveX = 1
 
-            Case 3
-                MoveY = 1
+                Case 3
+                    MoveY = 1
 
-            Case 4
-                MoveX = -1
-        End Select
+                Case 4
+                    MoveX = -1
+            End Select
 
-        If Not Moved And Maze[EnemyX + MoveX, EnemyY + MoveY] <> WALL Then
-            EnemyX = EnemyX + MoveX
-            EnemyY = EnemyY + MoveY
-            Moved = True
-        End If
+            If Not Moved And Maze[EnemyX[Enemy] + MoveX, EnemyY[Enemy] + MoveY] <> WALL Then
+                EnemyX[Enemy] = EnemyX[Enemy] + MoveX
+                EnemyY[Enemy] = EnemyY[Enemy] + MoveY
+                Moved = True
+            End If
+        End For
     End For
 
 End Sub
 
 Sub CheckCollision()
 
-    If PlayerX = EnemyX And PlayerY = EnemyY Then
+    Dim Enemy As Number
+    Dim Collided As Boolean
+
+    Collided = False
+
+    For Enemy = 0 To ENEMY_COUNT - 1
+        If PlayerX = EnemyX[Enemy] And PlayerY = EnemyY[Enemy] Then
+            Collided = True
+            Exit For
+        End If
+    End For
+
+    If Collided Then
         Lives = Lives - 1
 
         If Lives <= 0 Then
@@ -224,8 +259,7 @@ Sub CheckCollision()
         Else
             PlayerX = 1
             PlayerY = 1
-            EnemyX = 3
-            EnemyY = 1
+            Call ResetEnemies()
         End If
     End If
 
@@ -233,13 +267,22 @@ End Sub
 
 Function SymbolAt(CellX As Number, CellY As Number) As Text
 
+    Dim Enemy As Number
+    Dim EnemyHere As Boolean
     Dim Symbol As Text
 
+    EnemyHere = False
     Symbol = " "
+
+    For Enemy = 0 To ENEMY_COUNT - 1
+        If CellX = EnemyX[Enemy] And CellY = EnemyY[Enemy] Then
+            EnemyHere = True
+        End If
+    End For
 
     If CellX = PlayerX And CellY = PlayerY Then
         Symbol = "@"
-    Else If CellX = EnemyX And CellY = EnemyY Then
+    Else If EnemyHere Then
         Symbol = "X"
     Else If Maze[CellX, CellY] = WALL Then
         Symbol = "#"
@@ -254,7 +297,7 @@ End Function
 Sub DrawMaze()
 
     Clear Screen
-    Print "LANTERN MAZE    Score: "; Score; "    Lanterns: "; Lives; "    Dots: "; PelletsLeft
+    Print "LANTERN MAZE  Score: "; Score; "  Lives: "; Lives; "  Dots: "; PelletsLeft; "  Ghosts: "; ENEMY_COUNT
 
     For Y = 0 To HEIGHT - 1
         For X = 0 To WIDTH - 1
@@ -276,7 +319,7 @@ Sub EndRound()
     If PlayerWon Then
         Print "Every passage is bright! Score: "; Score
     Else
-        Print "The shadow found the last lantern. Score: "; Score
+        Print "The shadows found the last lantern. Score: "; Score
     End If
 
     Print "Press Enter to explore again or Escape to leave."

@@ -26,7 +26,7 @@ public interface ISmileEvaluationHost
 {
     long ReadKeyNonBlocking();
 
-    void HomeCursor(string outputSnapshot);
+    void ClearScreen(string outputSnapshot);
 
     void WaitMilliseconds(long duration);
 
@@ -100,7 +100,7 @@ public sealed class ScriptedSmileEvaluationHost : ISmileEvaluationHost
             : SmileKeyCodes.None;
     }
 
-    public void HomeCursor(string outputSnapshot)
+    public void ClearScreen(string outputSnapshot)
     {
         ArgumentNullException.ThrowIfNull(outputSnapshot);
         int start = Math.Min(_lastFrameStart, outputSnapshot.Length);

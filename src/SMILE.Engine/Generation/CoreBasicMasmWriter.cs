@@ -80,7 +80,9 @@ internal sealed class CoreBasicMasmWriter
         if (_features.HasClearScreen)
         {
             Line("GetStdHandle PROTO :DWORD");
-            Line("GetConsoleMode PROTO :QWORD, :PTR DWORD");
+            Line("GetConsoleScreenBufferInfo PROTO :QWORD, :PTR BYTE");
+            Line("FillConsoleOutputCharacterA PROTO :QWORD, :DWORD, :DWORD, :DWORD, :PTR DWORD");
+            Line("FillConsoleOutputAttribute PROTO :QWORD, :DWORD, :DWORD, :DWORD, :PTR DWORD");
             Line("SetConsoleCursorPosition PROTO :QWORD, :DWORD");
         }
         Line("includelib kernel32.lib");
@@ -252,20 +254,41 @@ internal sealed class CoreBasicMasmWriter
         {
             Line("smile_clear_screen PROC");
             Line("    push rbx");
-            Line("    sub rsp, 48");
+            Line("    sub rsp, 80");
             Line("    mov ecx, -11");
             Line("    call GetStdHandle");
             Line("    mov rbx, rax");
             Line("    mov rcx, rbx");
-            Line("    lea rdx, [rsp+32]");
-            Line("    call GetConsoleMode");
+            Line("    lea rdx, [rsp+48]");
+            Line("    call GetConsoleScreenBufferInfo");
             Line("    test eax, eax");
             Line("    jz smile_clear_done");
+            Line("    movsx eax, WORD PTR [rsp+64]");
+            Line("    movsx ecx, WORD PTR [rsp+60]");
+            Line("    sub eax, ecx");
+            Line("    inc eax");
+            Line("    movzx ecx, WORD PTR [rsp+48]");
+            Line("    imul eax, ecx");
+            Line("    mov DWORD PTR [rsp+72], eax");
+            Line("    lea rax, [rsp+76]");
+            Line("    mov QWORD PTR [rsp+32], rax");
+            Line("    mov rcx, rbx");
+            Line("    mov edx, 32");
+            Line("    mov r8d, DWORD PTR [rsp+72]");
+            Line("    xor r9d, r9d");
+            Line("    call FillConsoleOutputCharacterA");
+            Line("    lea rax, [rsp+76]");
+            Line("    mov QWORD PTR [rsp+32], rax");
+            Line("    mov rcx, rbx");
+            Line("    movzx edx, WORD PTR [rsp+56]");
+            Line("    mov r8d, DWORD PTR [rsp+72]");
+            Line("    xor r9d, r9d");
+            Line("    call FillConsoleOutputAttribute");
             Line("    mov rcx, rbx");
             Line("    xor edx, edx");
             Line("    call SetConsoleCursorPosition");
             Line("smile_clear_done:");
-            Line("    add rsp, 48");
+            Line("    add rsp, 80");
             Line("    pop rbx");
             Line("    ret");
             Line("smile_clear_screen ENDP");

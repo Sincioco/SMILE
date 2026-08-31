@@ -44,7 +44,7 @@ Binding is case-insensitive with a shared program namespace and per-routine scop
 
 The evaluator keeps globals outside a stack of reentrant call frames. Each frame owns copied ByVal parameters, locals, and local arrays. It preserves left-to-right evaluation, short circuiting, selector-once Select behavior, checked one- and two-dimensional indexes, routine Return, typed exits, recursion, and whole-program `End Program` propagation.
 
-`ISmileEvaluationHost` isolates terminal and nondeterministic effects: one-event key polling, cursor-home frame boundaries, virtual Wait, monotonic time, and inclusive Random. The default host is safe for ordinary callers; scripted tests use a deterministic host. Wait clamps once to the unsigned 32-bit millisecond maximum, and a reversed Random range returns its evaluated lower bound without consuming randomness. A configurable statement budget stops runaway game loops with `SMILER1222` without changing normal source semantics.
+`ISmileEvaluationHost` isolates terminal and nondeterministic effects: one-event key polling, clear-screen frame boundaries, virtual Wait, monotonic time, and inclusive Random. The default host is safe for ordinary callers; scripted tests use a deterministic host. Wait clamps once to the unsigned 32-bit millisecond maximum, and a reversed Random range returns its evaluated lower bound without consuming randomness. A configurable statement budget stops runaway game loops with `SMILER1222` without changing normal source semantics.
 
 ## Generation registry
 

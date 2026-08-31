@@ -18,6 +18,7 @@ Dim KeyCode As Number
 Dim StartedAt As Number
 Dim ProvedNoInput As Boolean
 
+Print "SMILE INTERACTIVE STALE"
 Clear Screen
 Print "SMILE INTERACTIVE READY"
 StartedAt = Timer()
@@ -163,6 +164,7 @@ Print "SMILE INTERACTIVE CLEAN"
 
         Assert.IsFalse(run.TimedOut, $"{language} timed out.{Environment.NewLine}{run.Output}");
         Assert.AreEqual(0, run.ExitCode, $"{language}:{Environment.NewLine}{run.Output}");
+        AssertClearErasedStaleFrame(language, run.Output);
         foreach (string marker in new[]
         {
                 "SMILE INTERACTIVE READY",
@@ -284,12 +286,12 @@ Print "SMILE INTERACTIVE CLEAN"
                 File: "text-snake.smile",
                 Title: "TRAIL RUNNER",
                 Exit: "Thanks for running the trail!",
-                FramePattern: @"(?m)^#(?=[^\r\n]{22}#\r?$)[^\r\n]* [^\r\n]*#\r?$"),
+                FramePattern: @"(?m)^#(?=[^\r\n]{58}#\r?$)[^\r\n]* [^\r\n]*#\r?$"),
             (
                 File: "text-maze-muncher.smile",
                 Title: "LANTERN MAZE",
                 Exit: "The lanterns dim. Thanks for exploring!",
-                FramePattern: @"(?m)^#(?=[^\r\n]{23}#\r?$)[^\r\n]* [^\r\n]*#\r?$"),
+                FramePattern: @"(?m)^#(?=[^\r\n]{57}#\r?$)[^\r\n]* [^\r\n]*#\r?$"),
             (
                 File: "text-falling-blocks.smile",
                 Title: "SKY FOUNDRY",
@@ -356,6 +358,22 @@ Print "SMILE INTERACTIVE CLEAN"
             Assert.IsFalse(string.IsNullOrWhiteSpace(build.PauseLauncherPath));
         }
         return build;
+    }
+
+    private static void AssertClearErasedStaleFrame(TargetLanguage language, string output)
+    {
+        int ready = output.IndexOf("SMILE INTERACTIVE READY", StringComparison.Ordinal);
+        Assert.IsGreaterThanOrEqualTo(0, ready, $"{language}: ready frame was not printed.");
+
+        int noKey = output.IndexOf("KEY_NONE", ready, StringComparison.Ordinal);
+        Assert.IsGreaterThan(ready, noKey, $"{language}: key probe did not follow the ready frame.");
+
+        int launcher = output.LastIndexOf("Run Program - Press Any Key.cmd", ready, StringComparison.Ordinal);
+        int ansiErase = output.LastIndexOf("\x1b[2J", ready, StringComparison.Ordinal);
+        string readyTrace = output[ready..noKey];
+        Assert.IsTrue(
+            ansiErase > launcher || readyTrace.Contains("\x1b[K", StringComparison.Ordinal),
+            $"{language}: Clear Screen did not erase the stale attached-console frame.{Environment.NewLine}{output}");
     }
 
     private static bool HasCompilerWarning(string text) =>

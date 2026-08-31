@@ -171,7 +171,7 @@ public sealed class SmileEvaluator
                     break;
 
                 case BoundClearScreenStatement:
-                    _host.HomeCursor(_output.ToString());
+                    _host.ClearScreen(_output.ToString());
                     break;
 
                 case BoundWaitStatement wait:

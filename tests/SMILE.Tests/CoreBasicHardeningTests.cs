@@ -102,7 +102,7 @@ End Function
 
     [TestMethod]
     [TestCategory("MissionGuardrail")]
-    public void Runtime_authority_homes_the_cursor_returns_reversed_lower_bound_and_clamps_wait_once()
+    public void Runtime_authority_clears_the_screen_returns_reversed_lower_bound_and_clamps_wait_once()
     {
         var host = new ScriptedSmileEvaluationHost(randomValues: new long[] { 99 });
         const string source = """
@@ -130,7 +130,7 @@ Print Roll
     }
 
     [TestMethod]
-    public void Every_target_structurally_uses_cursor_home_reversed_lower_and_uint32_wait_limit()
+    public void Every_target_structurally_erases_and_homes_reversed_lower_and_uint32_wait_limit()
     {
         const string source = """
 Option Explicit
@@ -147,9 +147,16 @@ Print Roll
             Assert.IsTrue(result.Success, $"{result.Language}: {Join(result.Diagnostics)}");
             string generated = string.Join("\n", result.GeneratedProgram!.Files.Select(file => file.Content));
             Assert.IsFalse(generated.Contains("SMILER1221", StringComparison.Ordinal));
-            Assert.IsFalse(generated.Contains("[2J", StringComparison.Ordinal));
-            Assert.IsFalse(generated.Contains("Console.Clear", StringComparison.Ordinal));
-            Assert.IsFalse(generated.Contains("FillConsoleOutput", StringComparison.Ordinal));
+            string clearConstruct = result.Language switch
+            {
+                TargetLanguage.CSharp => "Console.Clear();",
+                TargetLanguage.C or TargetLanguage.MasmX64 or TargetLanguage.Cobol or
+                    TargetLanguage.ObjectiveC or TargetLanguage.Cpp => "FillConsoleOutputCharacterA",
+                TargetLanguage.JavaScript or TargetLanguage.Java or
+                    TargetLanguage.Swift or TargetLanguage.Python => "[2J",
+                _ => throw new InvalidOperationException(result.Language.ToString())
+            };
+            StringAssert.Contains(generated, clearConstruct, result.Language.ToString());
         }
     }
 

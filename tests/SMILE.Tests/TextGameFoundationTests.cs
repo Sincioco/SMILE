@@ -427,16 +427,18 @@ End Sub
             [
                 new(0, SmileKeyCodes.Enter),
                 new(20, SmileKeyCodes.Up),
-                new(900, SmileKeyCodes.Escape)
+                new(1500, SmileKeyCodes.Escape)
             ]);
 
         EvaluationResult result = _evaluator.Evaluate(
             source,
-            new SmileEvaluationOptions(host, StatementBudget: 600_000));
+            new SmileEvaluationOptions(host, StatementBudget: 2_000_000));
 
         Assert.IsTrue(result.Success, result.RuntimeError?.ToString());
         Assert.IsTrue(host.ScreenFrames.Any(frame => frame.Contains("Score: 10", StringComparison.Ordinal)));
         Assert.IsTrue(host.ScreenFrames.Any(frame => frame.Contains("Trail ended", StringComparison.Ordinal)));
+        Assert.IsTrue(host.ScreenFrames.Any(frame =>
+            frame.Split('\n').Any(line => line.Length == 60 && line.All(character => character == '#'))));
         Assert.AreEqual(0, host.RemainingKeyCount);
     }
 
@@ -462,8 +464,11 @@ End Sub
             new SmileEvaluationOptions(host, StatementBudget: 800_000));
 
         Assert.IsTrue(result.Success, result.RuntimeError?.ToString());
-        Assert.IsTrue(host.ScreenFrames.Any(frame => frame.Contains("Lanterns: 2", StringComparison.Ordinal)));
+        Assert.IsTrue(host.ScreenFrames.Any(frame => frame.Contains("Lives: 2", StringComparison.Ordinal)));
         Assert.IsTrue(host.ScreenFrames.Any(frame => frame.Contains("last lantern", StringComparison.Ordinal)));
+        Assert.IsTrue(host.ScreenFrames.Any(frame => frame.Count(character => character == 'X') >= 4));
+        Assert.IsTrue(host.ScreenFrames.Any(frame =>
+            frame.Split('\n').Any(line => line.Length == 59 && line.All(character => character == '#'))));
         Assert.AreEqual(0, host.RemainingRandomCount, "The bounded enemy update should consume its scripted choices.");
     }
 

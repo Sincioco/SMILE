@@ -55,7 +55,7 @@ These are direct-run targets. `javascript` remains the stable CLI ID, the displa
 - Java requires JDK 21 and uses the standard Foreign Function & Memory API with `--enable-preview` to call `_kbhit`/`_getwch`; no JNA or external JAR is used.
 - Swift uses Windows CRT symbols for key polling and WinSDK only for screen operations.
 - GnuCOBOL links a generated `SmileRuntime.c` only when a used primitive needs C/Win32 interop. The companion contains terminal mechanics, never learner or game logic.
-- `Clear Screen` homes without erasing and is a safe no-op when output is redirected. `Get Key` returns `KEY_NONE` when no attached interactive input event exists. Wait clamps to `4,294,967,295` milliseconds; reversed Random returns its lower bound without consuming randomness.
+- `Clear Screen` erases the visible attached console, homes the cursor, and is a safe no-op when output is redirected. `Get Key` returns `KEY_NONE` when no attached interactive input event exists. Wait clamps to `4,294,967,295` milliseconds; reversed Random returns its lower bound without consuming randomness.
 - Interactive conformance uses Windows ConPTY to prove W/A/S/D, real arrow sequences, Enter, Escape, Space, no-input polling, redraw, exit, and restored launcher input on every target.
 
 ## Build/run result model

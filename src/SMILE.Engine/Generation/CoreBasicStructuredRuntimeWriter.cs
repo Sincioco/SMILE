@@ -200,7 +200,7 @@ internal static partial class CoreBasicCodeGenerator
                     break;
                 case TargetLanguage.Python:
                     if (_features.HasGetKey) Line("import msvcrt");
-                    if (_features.HasClearScreen) Line("import ctypes");
+                    if (_features.HasClearScreen) Line("import sys");
                     if (_features.HasRandom) Line("import random");
                     if (_features.HasWait || _features.HasTimer) Line("import time");
                     break;
@@ -277,7 +277,7 @@ internal static partial class CoreBasicCodeGenerator
             }
             if (_features.HasClearScreen)
             {
-                Lines("private static void SmileClearScreen()", "{", "    if (!Console.IsOutputRedirected)", "    {", "        Console.SetCursorPosition(0, 0);", "    }", "}");
+                Lines("private static void SmileClearScreen()", "{", "    if (!Console.IsOutputRedirected)", "    {", "        Console.Clear();", "    }", "}");
             }
             if (_features.HasWait)
             {
@@ -322,7 +322,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private void WriteCClearHelper()
         {
-            Lines("static void smile_clear_screen(void)", "{", "    HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);", "    DWORD mode;", "    if (output == INVALID_HANDLE_VALUE || !GetConsoleMode(output, &mode))", "    {", "        return;", "    }", "    COORD origin = {0, 0};", "    SetConsoleCursorPosition(output, origin);", "}");
+            Lines("static void smile_clear_screen(void)", "{", "    HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);", "    CONSOLE_SCREEN_BUFFER_INFO info;", "    if (output == INVALID_HANDLE_VALUE || !GetConsoleScreenBufferInfo(output, &info))", "    {", "        return;", "    }", "    COORD origin = {0, 0};", "    DWORD cells = (DWORD)info.dwSize.X * (DWORD)(info.srWindow.Bottom - info.srWindow.Top + 1);", "    DWORD written;", "    FillConsoleOutputCharacterA(output, ' ', cells, origin, &written);", "    FillConsoleOutputAttribute(output, info.wAttributes, cells, origin, &written);", "    SetConsoleCursorPosition(output, origin);", "}");
         }
 
         private void WriteCRandomHelper(bool cpp = false)
@@ -381,7 +381,7 @@ internal static partial class CoreBasicCodeGenerator
                     "    smileInputStarted = false;",
                     "}");
             }
-            if (_features.HasClearScreen) Lines("function smileClearScreen() {", "    if (process.stdout.isTTY) {", "        process.stdout.write(\"\\u001b[H\");", "    }", "}");
+            if (_features.HasClearScreen) Lines("function smileClearScreen() {", "    if (process.stdout.isTTY) {", "        process.stdout.write(\"\\u001b[2J\\u001b[H\");", "    }", "}");
             if (_features.HasWait) Lines("async function smileWait(milliseconds) {", "    let remaining = milliseconds < 0n ? 0n : milliseconds > 4294967295n ? 4294967295n : milliseconds;", "    while (remaining > 0n) {", "        const part = remaining > 2147483647n ? 2147483647n : remaining;", "        await new Promise(resolve => setTimeout(resolve, Number(part)));", "        remaining -= part;", "    }", "}");
             if (_features.HasTimer) Lines("function smileTimer() {", "    return process.hrtime.bigint() / 1000000n;", "}");
             if (_features.HasRandom) Lines("function smileRandom(lower, upper) {", "    if (lower > upper) {", "        return lower;", "    }", "    const modulus = 1n << 64n, range = BigInt.asUintN(64, upper - lower + 1n);", "    let sample, threshold = range === 0n ? 0n : (modulus - range) % range;", "    do { sample = randomBytes(8).readBigUInt64LE(); } while (sample < threshold);", "    if (range !== 0n) sample %= range;", "    return BigInt.asIntN(64, BigInt.asUintN(64, lower) + sample);", "}");
@@ -393,7 +393,7 @@ internal static partial class CoreBasicCodeGenerator
         private void WriteJavaRuntimeHelpers()
         {
             if (_features.HasGetKey) Lines("private static long smileGetKey()", "{", "    try", "    {", "        if ((int)SMILE_KBHIT.invokeExact() == 0)", "        {", "            return 0;", "        }", "        int key = (int)SMILE_GETWCH.invokeExact();", "        if (key == 0 || key == 224)", "        {", "            key = (int)SMILE_GETWCH.invokeExact();", "            return switch (key)", "            {", "                case 72 -> 10;", "                case 80 -> 11;", "                case 75 -> 12;", "                case 77 -> 13;", "                default -> 19;", "            };", "        }", "        return switch (key)", "        {", "            case 'w', 'W' -> 1;", "            case 'a', 'A' -> 2;", "            case 's', 'S' -> 3;", "            case 'd', 'D' -> 4;", "            case 13 -> 14;", "            case 27 -> 15;", "            case 32 -> 16;", "            case '1' -> 17;", "            case '2' -> 18;", "            case '3' -> 20;", "            case 9 -> 21;", "            case '4' -> 22;", "            default -> 19;", "        };", "    }", "    catch (Throwable error)", "    {", "        return 0;", "    }", "}");
-            if (_features.HasClearScreen) Lines("private static void smileClearScreen()", "{", "    if (System.console() != null)", "    {", "        System.out.print(\"\\033[H\");", "        System.out.flush();", "    }", "}");
+            if (_features.HasClearScreen) Lines("private static void smileClearScreen()", "{", "    if (System.console() != null)", "    {", "        System.out.print(\"\\033[2J\\033[H\");", "        System.out.flush();", "    }", "}");
             if (_features.HasWait) Lines("private static void smileWait(long milliseconds)", "{", "    long normalized = Math.clamp(milliseconds, 0, 4_294_967_295L);", "    try", "    {", "        Thread.sleep(normalized);", "    }", "    catch (InterruptedException interrupted)", "    {", "        Thread.currentThread().interrupt();", "    }", "}");
             if (_features.HasTimer) Lines("private static long smileTimer()", "{", "    return System.nanoTime() / 1_000_000L;", "}");
             if (_features.HasRandom) Lines("private static long smileRandom(long lower, long upper)", "{", "    if (lower > upper)", "    {", "        return lower;", "    }", "    long range = upper - lower + 1, sample, threshold = range == 0 ? 0 : Long.remainderUnsigned(-range, range);", "    do { sample = java.util.concurrent.ThreadLocalRandom.current().nextLong(); } while (Long.compareUnsigned(sample, threshold) < 0);", "    if (range != 0) sample = Long.remainderUnsigned(sample, range);", "    return lower + sample;", "}");
@@ -417,7 +417,7 @@ internal static partial class CoreBasicCodeGenerator
         private void WriteSwiftRuntimeHelpers()
         {
             if (_features.HasGetKey) Lines("@_silgen_name(\"_kbhit\") func _kbhit() -> Int32", "@_silgen_name(\"_getch\") func _getch() -> Int32", "func smileGetKey() -> Int64 {", "    if _kbhit() == 0 {", "        return 0", "    }", "    var key = _getch()", "    if key == 0 || key == 224 {", "        if _kbhit() == 0 {", "            return 19", "        }", "        key = _getch()", "        switch key {", "        case 72: return 10", "        case 80: return 11", "        case 75: return 12", "        case 77: return 13", "        default: return 19", "        }", "    }", "    switch key {", "    case 119, 87: return 1", "    case 97, 65: return 2", "    case 115, 83: return 3", "    case 100, 68: return 4", "    case 13: return 14", "    case 27: return 15", "    case 32: return 16", "    case 49: return 17", "    case 50: return 18", "    case 51: return 20", "    case 9: return 21", "    case 52: return 22", "    default: return 19", "    }", "}");
-            if (_features.HasClearScreen) Lines("func smileClearScreen() {", "    let output = GetStdHandle(STD_OUTPUT_HANDLE)", "    var mode: DWORD = 0", "    if output == INVALID_HANDLE_VALUE || !GetConsoleMode(output, &mode) {", "        return", "    }", "    print(\"\\u{001B}[H\", terminator: \"\")", "}");
+            if (_features.HasClearScreen) Lines("func smileClearScreen() {", "    let output = GetStdHandle(STD_OUTPUT_HANDLE)", "    var mode: DWORD = 0", "    if output == INVALID_HANDLE_VALUE || !GetConsoleMode(output, &mode) {", "        return", "    }", "    print(\"\\u{001B}[2J\\u{001B}[H\", terminator: \"\")", "}");
             if (_features.HasWait) Lines("func smileWait(_ milliseconds: Int64) {", "    let normalized = min(max(milliseconds, 0), 4_294_967_295)", "    Thread.sleep(forTimeInterval: Double(normalized) / 1000.0)", "}");
             if (_features.HasTimer) Lines("func smileTimer() -> Int64 {", "    Int64(ProcessInfo.processInfo.systemUptime * 1000.0)", "}");
             if (_features.HasRandom) Lines("func smileRandom(_ lower: Int64, _ upper: Int64) -> Int64 {", "    if lower > upper {", "        return lower", "    }", "    return Int64.random(in: lower...upper)", "}");
@@ -426,7 +426,7 @@ internal static partial class CoreBasicCodeGenerator
         private void WritePythonRuntimeHelpers()
         {
             if (_features.HasGetKey) Lines("smile_extended_key_pending = False", "smile_key_map = {", "    'w': 1, 'W': 1, 'a': 2, 'A': 2,", "    's': 3, 'S': 3, 'd': 4, 'D': 4,", "    '\\r': 14, '\\n': 14, '\\x1b': 15, ' ': 16,", "    '1': 17, '2': 18, '3': 20, '\\t': 21, '4': 22,", "}", "smile_arrow_map = {'H': 10, 'P': 11, 'K': 12, 'M': 13}", "def smile_get_key():", "    global smile_extended_key_pending", "    if smile_extended_key_pending:", "        if not msvcrt.kbhit():", "            return 0", "        smile_extended_key_pending = False", "        return smile_arrow_map.get(msvcrt.getwch(), 19)", "    if not msvcrt.kbhit():", "        return 0", "    key = msvcrt.getwch()", "    if key in ('\\x00', '\\xe0'):", "        if not msvcrt.kbhit():", "            smile_extended_key_pending = True", "            return 0", "        return smile_arrow_map.get(msvcrt.getwch(), 19)", "    return smile_key_map.get(key, 19)");
-            if (_features.HasClearScreen) Lines("def smile_clear_screen():", "    handle = ctypes.windll.kernel32.GetStdHandle(-11)", "    mode = ctypes.c_ulong()", "    if handle not in (0, -1) and ctypes.windll.kernel32.GetConsoleMode(handle, ctypes.byref(mode)):", "        print('\\x1b[H', end='', flush=True)");
+            if (_features.HasClearScreen) Lines("def smile_clear_screen():", "    if sys.stdout.isatty():", "        print('\\x1b[2J\\x1b[H', end='', flush=True)");
             if (_features.HasWait) Lines("def smile_wait(milliseconds):", "    normalized = min(max(milliseconds, 0), 4_294_967_295)", "    time.sleep(normalized / 1000)");
             if (_features.HasTimer) Lines("def smile_timer():", "    return time.monotonic_ns() // 1_000_000");
             if (_features.HasRandom) Lines("def smile_random(lower, upper):", "    if lower > upper:", "        return lower", "    return random.randint(lower, upper)");

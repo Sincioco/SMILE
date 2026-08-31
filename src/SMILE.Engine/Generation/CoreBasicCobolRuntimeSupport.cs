@@ -56,9 +56,13 @@ internal static class CoreBasicCobolRuntimeSupport
             text.AppendLine("int smile_clear_screen_cobol(void)");
             text.AppendLine("{");
             text.AppendLine("    HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);");
-            text.AppendLine("    DWORD mode;");
-            text.AppendLine("    if (output == INVALID_HANDLE_VALUE || !GetConsoleMode(output, &mode)) return 0;");
+            text.AppendLine("    CONSOLE_SCREEN_BUFFER_INFO info;");
+            text.AppendLine("    if (output == INVALID_HANDLE_VALUE || !GetConsoleScreenBufferInfo(output, &info)) return 0;");
             text.AppendLine("    COORD origin = {0, 0};");
+            text.AppendLine("    DWORD cells = (DWORD)info.dwSize.X * (DWORD)(info.srWindow.Bottom - info.srWindow.Top + 1);");
+            text.AppendLine("    DWORD written;");
+            text.AppendLine("    FillConsoleOutputCharacterA(output, ' ', cells, origin, &written);");
+            text.AppendLine("    FillConsoleOutputAttribute(output, info.wAttributes, cells, origin, &written);");
             text.AppendLine("    SetConsoleCursorPosition(output, origin);");
             text.AppendLine("    return 0;");
             text.AppendLine("}");

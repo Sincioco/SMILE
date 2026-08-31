@@ -2,9 +2,9 @@
 
 Option Explicit
 
-Const WIDTH = 24
-Const HEIGHT = 12
-Const MAX_LENGTH = 240
+Const WIDTH = 60
+Const HEIGHT = 17
+Const MAX_LENGTH = 870
 Const MOVE_DELAY = 110
 
 Dim SnakeX[MAX_LENGTH] As Number

@@ -101,12 +101,12 @@ See [Architecture](docs/Architecture.md), [Toolchains](docs/Toolchains.md), and 
 - [`examples/core-basic-2-local-arrays.smile`](examples/core-basic-2-local-arrays.smile) — fresh local arrays in ordinary and recursive calls;
 - [`examples/core-basic-2-end-program-routine.smile`](examples/core-basic-2-end-program-routine.smile) — whole-program termination from a routine;
 - [`examples/text-game-foundation.smile`](examples/text-game-foundation.smile) — compact 2D array and terminal-primitive demonstration;
-- [`examples/text-snake.smile`](examples/text-snake.smile) — Trail Runner, a complete growing-trail text game;
-- [`examples/text-maze-muncher.smile`](examples/text-maze-muncher.smile) — Lantern Maze, an original collection-and-chase game;
+- [`examples/text-snake.smile`](examples/text-snake.smile) — Trail Runner, a complete growing-trail game on a roomy 60-by-17 board;
+- [`examples/text-maze-muncher.smile`](examples/text-maze-muncher.smile) — Lantern Maze, an original collection-and-chase game with four roaming shadows on a 59-by-17 maze;
 - [`examples/text-falling-blocks.smile`](examples/text-falling-blocks.smile) — Sky Foundry, an original seven-family falling-block game;
 - [`tests/CoreBasic2Parity/canonical.smile`](tests/CoreBasic2Parity/canonical.smile) — unchanged Profile 2 fixture compiled by both repositories.
 
-All examples use only the canonical Core BASIC 2.1 language. The three games are terminal programs, not graphical games; use an attached Windows console for real-time controls and full-frame redraw.
+All examples use only the canonical Core BASIC 2.1 language. The three games are terminal programs, not graphical games; use an attached Windows console for real-time controls and full-frame redraw. `Clear Screen` erases each visible frame before drawing the next one, so instruction text and older frames do not remain behind the game.
 
 ## Requirements
 
