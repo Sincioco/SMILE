@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
+using SMILE.Desktop.Controls;
 
 namespace SMILE.Desktop;
 
@@ -13,14 +14,30 @@ public partial class MainWindow : Window
 
     private readonly MainWindowViewModel _viewModel = new();
     private TargetPaneViewModel? _maximizedTargetPane;
+    private SmileCodeEditor? _activeEditor;
 
     public MainWindow()
     {
         InitializeComponent();
         DataContext = _viewModel;
+        _activeEditor = SourceEditor;
 
         ContentRendered += MainWindow_ContentRendered;
     }
+
+    private void CodeEditor_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (sender is SmileCodeEditor editor)
+        {
+            _activeEditor = editor;
+        }
+    }
+
+    private void FindMenuItem_Click(object sender, RoutedEventArgs e) =>
+        (_activeEditor ?? SourceEditor).OpenFind();
+
+    private void GoToLineMenuItem_Click(object sender, RoutedEventArgs e) =>
+        (_activeEditor ?? SourceEditor).OpenGoToLine();
 
     private async void MainWindow_ContentRendered(object? sender, EventArgs e)
     {

@@ -36,6 +36,18 @@ public sealed class CoreBasicDesktopTests
         Assert.IsFalse(xaml.Contains("Legacy", StringComparison.OrdinalIgnoreCase));
     }
 
+    [TestMethod]
+    public void Desktop_exposes_find_and_go_to_line_for_the_active_editor()
+    {
+        string xaml = File.ReadAllText(FindRepositoryFile("src", "SMILE.Desktop", "MainWindow.xaml"));
+
+        StringAssert.Contains(xaml, "Header=\"_Find...\"");
+        StringAssert.Contains(xaml, "InputGestureText=\"Ctrl+F\"");
+        StringAssert.Contains(xaml, "Header=\"_Go to Line...\"");
+        StringAssert.Contains(xaml, "InputGestureText=\"Ctrl+G\"");
+        Assert.HasCount(2, xaml.Split("GotKeyboardFocus=\"CodeEditor_GotKeyboardFocus\"").Skip(1));
+    }
+
     private static string FindRepositoryFile(params string[] parts)
     {
         DirectoryInfo? current = new(AppContext.BaseDirectory);

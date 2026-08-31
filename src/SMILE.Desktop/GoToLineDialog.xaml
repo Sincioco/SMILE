@@ -1,0 +1,48 @@
+<Window x:Class="SMILE.Desktop.GoToLineDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Go to Line"
+        SizeToContent="WidthAndHeight"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock x:Name="PromptTextBlock"
+                   Grid.Row="0"
+                   Margin="0,0,0,8" />
+
+        <TextBox x:Name="LineNumberTextBox"
+                 Grid.Row="1"
+                 Width="260"
+                 MaxLength="10"
+                 TextChanged="LineNumberTextBox_TextChanged"
+                 AutomationProperties.Name="Line number" />
+
+        <TextBlock x:Name="ValidationTextBlock"
+                   Grid.Row="2"
+                   MinHeight="20"
+                   Margin="0,5,0,7"
+                   Foreground="#B00020"
+                   TextWrapping="Wrap" />
+
+        <StackPanel Grid.Row="3"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right">
+            <Button Content="Go"
+                    Width="74"
+                    Margin="0,0,8,0"
+                    IsDefault="True"
+                    Click="Go_Click" />
+            <Button Content="Cancel"
+                    Width="74"
+                    IsCancel="True" />
+        </StackPanel>
+    </Grid>
+</Window>

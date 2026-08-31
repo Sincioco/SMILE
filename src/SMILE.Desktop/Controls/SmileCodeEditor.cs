@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using ICSharpCode.AvalonEdit;
+using ICSharpCode.AvalonEdit.Search;
 using SMILE.Desktop.Highlighting;
 
 namespace SMILE.Desktop.Controls;
@@ -13,6 +14,15 @@ public sealed class SmileCodeEditor : TextEditor
     private const double MinimumEditorFontSize = 8.0;
     private const double MaximumEditorFontSize = 48.0;
     private const double EditorZoomStep = 1.0;
+
+    public static readonly RoutedUICommand GoToLineCommand = new(
+        "Go to Line",
+        nameof(GoToLineCommand),
+        typeof(SmileCodeEditor),
+        new InputGestureCollection
+        {
+            new KeyGesture(Key.G, ModifierKeys.Control)
+        });
 
     public static readonly DependencyProperty DocumentTextProperty =
         DependencyProperty.Register(
@@ -33,6 +43,7 @@ public sealed class SmileCodeEditor : TextEditor
 
     private bool _isApplyingDocumentText;
     private bool _isPublishingEditorText;
+    private readonly SearchPanel _searchPanel;
 
     public SmileCodeEditor()
     {
@@ -46,7 +57,55 @@ public sealed class SmileCodeEditor : TextEditor
         Options.ConvertTabsToSpaces = false;
         Options.IndentationSize = 4;
 
+        _searchPanel = SearchPanel.Install(this);
+        CommandBindings.Add(new CommandBinding(
+            GoToLineCommand,
+            ExecuteGoToLine,
+            CanGoToLine));
         TextChanged += OnEditorTextChanged;
+    }
+
+    public void OpenFind()
+    {
+        string selectedText = SelectedText ?? string.Empty;
+        if (selectedText.Length > 0 &&
+            !selectedText.Contains('\r') &&
+            !selectedText.Contains('\n'))
+        {
+            _searchPanel.SearchPattern = selectedText;
+        }
+
+        _searchPanel.Open();
+    }
+
+    public void OpenGoToLine()
+    {
+        var dialog = new GoToLineDialog(Document.LineCount, TextArea.Caret.Line);
+        Window? owner = Window.GetWindow(this);
+        if (owner is not null)
+        {
+            dialog.Owner = owner;
+        }
+
+        if (dialog.ShowDialog() == true)
+        {
+            TryGoToLine(dialog.LineNumber);
+        }
+    }
+
+    internal bool TryGoToLine(int lineNumber)
+    {
+        if (lineNumber < 1 || lineNumber > Document.LineCount)
+        {
+            return false;
+        }
+
+        int lineOffset = Document.GetLineByNumber(lineNumber).Offset;
+        Select(lineOffset, 0);
+        ScrollToLine(lineNumber);
+        TextArea.Caret.BringCaretToView();
+        TextArea.Focus();
+        return true;
     }
 
     protected override void OnPreviewMouseWheel(MouseWheelEventArgs e)
@@ -85,6 +144,18 @@ public sealed class SmileCodeEditor : TextEditor
     {
         get => (string)GetValue(LanguageIdProperty);
         set => SetValue(LanguageIdProperty, value ?? string.Empty);
+    }
+
+    private void ExecuteGoToLine(object sender, ExecutedRoutedEventArgs e)
+    {
+        OpenGoToLine();
+        e.Handled = true;
+    }
+
+    private void CanGoToLine(object sender, CanExecuteRoutedEventArgs e)
+    {
+        e.CanExecute = Document.LineCount > 0;
+        e.Handled = true;
     }
 
     private static void OnDocumentTextChanged(

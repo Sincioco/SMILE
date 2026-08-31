@@ -68,6 +68,7 @@
                                               DocumentText="{Binding GeneratedCode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                               LanguageId="{Binding HighlightingId}"
                                               IsReadOnly="{Binding IsBusy}"
+                                              GotKeyboardFocus="CodeEditor_GotKeyboardFocus"
                                               AutomationProperties.Name="{Binding Title}" />
 
                     <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,8,0,0">
@@ -98,6 +99,14 @@
                 <MenuItem Header="Save _As..." Command="{Binding SaveAsCommand}" />
                 <Separator />
                 <MenuItem Header="E_xit" Command="{Binding ExitCommand}" />
+            </MenuItem>
+            <MenuItem Header="_Edit">
+                <MenuItem Header="_Find..."
+                          InputGestureText="Ctrl+F"
+                          Click="FindMenuItem_Click" />
+                <MenuItem Header="_Go to Line..."
+                          InputGestureText="Ctrl+G"
+                          Click="GoToLineMenuItem_Click" />
             </MenuItem>
             <MenuItem Header="_Options">
                 <MenuItem Header="_Open Generated Folder After Build"
@@ -161,10 +170,12 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
                     <TextBlock Text="SMILE" FontWeight="SemiBold" Margin="0,0,0,6" />
-                    <controls:SmileCodeEditor Grid.Row="1"
+                    <controls:SmileCodeEditor x:Name="SourceEditor"
+                                              Grid.Row="1"
                                               DocumentText="{Binding SourceText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                               LanguageId="smile"
                                               IsReadOnly="{Binding IsBusy}"
+                                              GotKeyboardFocus="CodeEditor_GotKeyboardFocus"
                                               AutomationProperties.Name="SMILE source editor" />
                 </Grid>
             </Border>
