@@ -380,6 +380,29 @@ internal sealed class CobolWriter
                     case BoundClearScreenStatement:
                         Line(indent, "CALL \"smile_clear_screen_cobol\"");
                         break;
+                    case BoundMoveCursorStatement moveCursor:
+                    {
+                        string column = PrepareExpression(moveCursor.Column, indent);
+                        Temporary capturedColumn = NewTemporary(SmileType.Integer);
+                        Assign(capturedColumn.Name, SmileType.Integer, moveCursor.Column, column, indent);
+                        string row = PrepareExpression(moveCursor.Row, indent);
+                        Temporary capturedRow = NewTemporary(SmileType.Integer);
+                        Assign(capturedRow.Name, SmileType.Integer, moveCursor.Row, row, indent);
+                        Line(indent, $"CALL \"smile_move_cursor_cobol\" USING BY REFERENCE {capturedColumn.Name} BY REFERENCE {capturedRow.Name}");
+                        break;
+                    }
+                    case BoundTextColorStatement { IsDefault: true }:
+                        Line(indent, "CALL \"smile_reset_text_color_cobol\"");
+                        break;
+                    case BoundTextColorStatement textColor:
+                    {
+                        Temporary foreground = NewTemporary(SmileType.Integer);
+                        Temporary background = NewTemporary(SmileType.Integer);
+                        Line(indent, $"MOVE {(int)textColor.Foreground!.Value} TO {foreground.Name}");
+                        Line(indent, $"MOVE {(int)textColor.Background!.Value} TO {background.Name}");
+                        Line(indent, $"CALL \"smile_set_text_color_cobol\" USING BY REFERENCE {foreground.Name} BY REFERENCE {background.Name}");
+                        break;
+                    }
                     case BoundWaitStatement wait:
                     {
                         string duration = PrepareExpression(wait.Duration, indent);

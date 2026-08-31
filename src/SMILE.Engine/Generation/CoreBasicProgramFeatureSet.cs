@@ -5,6 +5,8 @@ internal sealed record CoreBasicProgramFeatureSet(
     bool HasTwoDimensionalArrays,
     bool HasGetKey,
     bool HasClearScreen,
+    bool HasMoveCursor,
+    bool HasTextColor,
     bool HasWait,
     bool HasRandom,
     bool HasTimer,
@@ -12,7 +14,7 @@ internal sealed record CoreBasicProgramFeatureSet(
     bool HasMin,
     bool HasMax)
 {
-    public bool HasInteractiveConsole => HasGetKey || HasClearScreen;
+    public bool HasInteractiveConsole => HasGetKey || HasClearScreen || HasMoveCursor || HasTextColor;
 
     public bool HasConsoleRuntime => HasInteractiveConsole || HasWait || HasRandom || HasTimer;
 
@@ -25,6 +27,8 @@ internal sealed record CoreBasicProgramFeatureSet(
             program.AllVariables.Any(variable => variable.ArrayRank == 2),
             statements.Any(statement => statement is BoundGetKeyStatement),
             statements.Any(statement => statement is BoundClearScreenStatement),
+            statements.Any(statement => statement is BoundMoveCursorStatement),
+            statements.Any(statement => statement is BoundTextColorStatement),
             statements.Any(statement => statement is BoundWaitStatement),
             statements.Any(statement => statement is BoundRandomStatement),
             expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.Timer }),
@@ -90,6 +94,7 @@ internal sealed record CoreBasicProgramFeatureSet(
                 BoundForStatement loop => new[] { loop.LowerBound, loop.UpperBound },
                 BoundDoStatement { UntilCondition: not null } loop => new[] { loop.UntilCondition },
                 BoundWaitStatement wait => new[] { wait.Duration },
+                BoundMoveCursorStatement moveCursor => new[] { moveCursor.Column, moveCursor.Row },
                 BoundRandomStatement random => new[] { random.LowerBound, random.UpperBound },
                 _ => Array.Empty<BoundExpression>()
             };

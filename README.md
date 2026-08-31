@@ -55,7 +55,7 @@ Core BASIC 2 provides:
 - top-level `Sub` and `Function` routines, `Call`, `Return`, exact typed ByVal parameters, routine-local scope, and recursion;
 - `Select Case` over exact scalar constants;
 - checked fixed one- and two-dimensional arrays with zero-based indexes;
-- nonblocking `Get Key`, stable `KEY_*` constants, `Clear Screen`, and millisecond `Wait`;
+- nonblocking `Get Key`, stable `KEY_*` constants, `Clear Screen`, 1-based `Move Cursor To`, named `Text Color`, and millisecond `Wait`;
 - inclusive `Random ... From ... To ...`, monotonic `Timer()`, and `Abs`/`Min`/`Max`;
 - `End Program`.
 
@@ -82,7 +82,7 @@ The same parsed and bound program generates all ten active destinations:
 
 Generated code uses native destination constructs whenever practical: ordinary routines and call frames, locals/globals, arrays, conditionals, counted and post-test loops, combined destination-native output, native selection where its type rules are exact, and direct process termination. A shared semantic layout keeps imports, state, entry code, learner routines, and unavoidable support in readable sections. Helpers appear only when a target needs one to preserve semantics, such as checked indexes, C Text concatenation, or Python's typed exit across differently nested loop kinds. C, Objective-C, and MASM Text concatenation uses explicit generated roots and bounded statement-boundary collection; a feature-gated MASM C companion supplies only that lifetime mechanism. COBOL pairs its native fixed `PIC X(4096)` Text storage with an explicit logical length so `DISPLAY` preserves meaningful spaces in variables, arrays, routine calls, returns, comparisons, concatenation, and game cells. Python output is a direct module-level script—no synthetic `main()` wrapper. JavaScript remains dependency-free `.js` executed directly by Node.js; no npm dependency or module system is added.
 
-For interactive programs, generated code polls real terminal keys without requiring Enter, redraws the attached console, waits without a busy loop, and restores changed terminal state. Node.js uses an async `main` only when `Get Key` or `Wait` requires the console lifecycle; its delay remains Promise-based. Noninteractive programs receive none of that support.
+For interactive programs, generated code polls real terminal keys without requiring Enter, clears or positions the attached console, applies named foreground/background colors, waits without a busy loop, and restores changed input state. Games explicitly reset their colors before returning. Node.js uses an async `main` only when `Get Key` or `Wait` requires the console lifecycle; its delay remains Promise-based. Noninteractive programs receive none of that support.
 
 See [Architecture](docs/Architecture.md), [Toolchains](docs/Toolchains.md), and the [Target Code Generation Standard](docs/SMILE%20Target%20Code%20Generation%20Standard%20v1.0.md).
 
@@ -102,11 +102,11 @@ See [Architecture](docs/Architecture.md), [Toolchains](docs/Toolchains.md), and 
 - [`examples/core-basic-2-end-program-routine.smile`](examples/core-basic-2-end-program-routine.smile) — whole-program termination from a routine;
 - [`examples/text-game-foundation.smile`](examples/text-game-foundation.smile) — compact 2D array and terminal-primitive demonstration;
 - [`examples/text-snake.smile`](examples/text-snake.smile) — Trail Runner, a complete growing-trail game on a roomy 60-by-17 board;
-- [`examples/text-maze-muncher.smile`](examples/text-maze-muncher.smile) — Lantern Maze, an original collection-and-chase game with four roaming shadows on a 59-by-17 maze;
-- [`examples/text-falling-blocks.smile`](examples/text-falling-blocks.smile) — Sky Foundry, an original seven-family falling-block game;
+- [`examples/text-maze-muncher.smile`](examples/text-maze-muncher.smile) — Lantern Maze, an original 71-by-21 symmetric collection maze with a ghost house, wrap tunnel, and four distinct targeting shadows;
+- [`examples/text-falling-blocks.smile`](examples/text-falling-blocks.smile) — Sky Foundry, an original seven-family falling-block game with a widened, colored playfield;
 - [`tests/CoreBasic2Parity/canonical.smile`](tests/CoreBasic2Parity/canonical.smile) — unchanged Profile 2 fixture compiled by both repositories.
 
-All examples use only the canonical Core BASIC 2.1 language. The three games are terminal programs, not graphical games; use an attached Windows console for real-time controls and full-frame redraw. They prepare complete rows before clearing and redraw only when game state changes, avoiding a visible blank frame while keeping instruction text and older frames off the playfield.
+All examples use only the canonical Core BASIC 2.1 language. The three games are terminal programs, not graphical games; use an attached Windows console of at least 80 columns by 25 rows for real-time controls and colored full-frame overwrite. They prepare complete rows before moving the cursor to the top-left, redraw only when state changes, and clear only at screen transitions, so there is no visible blank frame or instruction text beneath the playfield.
 
 ## Requirements
 

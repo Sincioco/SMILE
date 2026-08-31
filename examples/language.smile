@@ -115,6 +115,8 @@ End Select
 
 Board[1, 1] = "@"
 Clear Screen
+Move Cursor To 1, 1
+Text Color Cyan, Black
 Get Key LastKey
 StartedAt = Timer()
 Wait 0 Milliseconds
@@ -123,6 +125,7 @@ Print "2D cell="; Board[1, 1]
 Print "No-input key="; LastKey; ", die="; FixedRoll
 Print "Math="; Abs(-5); ", "; Min(8, 3); ", "; Max(8, 3)
 Print "Timer monotonic="; Timer() >= StartedAt
+Text Color Default
 
 Print "End Program stops before the next statement."
 End Program

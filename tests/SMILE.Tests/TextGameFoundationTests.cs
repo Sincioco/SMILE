@@ -56,6 +56,37 @@ Print Roll
     }
 
     [TestMethod]
+    [TestCategory("MissionGuardrail")]
+    public void Move_Cursor_And_Text_Color_have_named_deterministic_host_semantics()
+    {
+        var host = new ScriptedSmileEvaluationHost();
+        const string source = """
+Option Explicit
+Print "frame"
+Move Cursor To 12, 4
+Text Color Yellow, Black
+Text Color Default
+""";
+
+        EvaluationResult result = _evaluator.Evaluate(
+            source,
+            new SmileEvaluationOptions(host, StatementBudget: 20));
+
+        Assert.IsTrue(result.Success, Join(result.Diagnostics));
+        Assert.AreEqual("frame\n", result.Output);
+        CollectionAssert.AreEqual(
+            new[] { new SmileCursorMove(12, 4) },
+            host.CursorMoves.ToArray());
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                new SmileTextColorChange(SmileTextColor.Yellow, SmileTextColor.Black, false),
+                new SmileTextColorChange(null, null, true)
+            },
+            host.TextColorChanges.ToArray());
+    }
+
+    [TestMethod]
     public void Get_Key_consumes_at_most_one_event_and_Timer_never_moves_backward()
     {
         var host = new ScriptedSmileEvaluationHost(
@@ -165,6 +196,10 @@ End Function
     [DataRow("Dim Flag As Boolean\nGet Key Flag")]
     [DataRow("Wait 5 Seconds")]
     [DataRow("Random Value 1 To 2")]
+    [DataRow("Move Cursor To 4")]
+    [DataRow("Move Cursor To True, 2")]
+    [DataRow("Text Color Orange, Black")]
+    [DataRow("Text Color Yellow")]
     [DataRow("Print KEY_ESC")]
     [DataRow("Game Window 80 By 25")]
     public void Malformed_or_excluded_text_game_forms_are_rejected(string source)
@@ -444,34 +479,38 @@ End Sub
     }
 
     [TestMethod]
-    public async Task Maze_script_collects_pellets_updates_enemy_loses_lives_and_exits()
+    public async Task Maze_script_collects_pellets_releases_four_targeting_enemies_and_exits()
     {
         string source = await ReadExample("text-maze-muncher.smile");
         var host = new ScriptedSmileEvaluationHost(
-            randomValues: new long[] { 4, 1, 1, 1 },
             timedKeys:
             [
                 new(0, SmileKeyCodes.Enter),
                 new(20, SmileKeyCodes.D),
-                new(40, SmileKeyCodes.D),
-                new(240, SmileKeyCodes.D),
-                new(260, SmileKeyCodes.D),
-                new(280, SmileKeyCodes.D),
-                new(340, SmileKeyCodes.Escape)
+                new(2000, SmileKeyCodes.Escape)
             ]);
 
         EvaluationResult result = _evaluator.Evaluate(
             source,
-            new SmileEvaluationOptions(host, StatementBudget: 800_000));
+            new SmileEvaluationOptions(host, StatementBudget: 4_000_000));
 
         Assert.IsTrue(result.Success, result.RuntimeError?.ToString());
-        Assert.IsTrue(host.ScreenFrames.Any(frame => frame.Contains("Lives: 2", StringComparison.Ordinal)));
-        Assert.IsTrue(host.ScreenFrames.Any(frame => frame.Contains("last lantern", StringComparison.Ordinal)));
-        Assert.IsTrue(host.ScreenFrames.Any(frame => frame.Count(character => character == 'X') >= 4));
+        Assert.IsTrue(host.ScreenFrames.Any(frame => frame.Contains("Score: 5", StringComparison.Ordinal)));
+        Assert.IsTrue(host.ScreenFrames.Any(frame => frame.Contains("@ABCD", StringComparison.Ordinal)));
         Assert.IsTrue(host.ScreenFrames.Any(frame =>
-            frame.Split('\n').Any(line => line.Length == 59 && line.All(character => character == '#'))));
-        Assert.IsLessThan(15, host.ScreenFrames.Count, "The maze should redraw only after a player or ghost moves.");
-        Assert.AreEqual(0, host.RemainingRandomCount, "The bounded enemy update should consume its scripted choices.");
+            frame.Split('\n').Any(line => line.Length == 71 && line.All(character => character == '#'))));
+        Assert.IsTrue(
+            host.CursorMoves.Any(move => move.Column is >= 30 and <= 42 && move.Row < 12),
+            "At least one released shadow should leave the central house.");
+        CollectionAssert.IsSubsetOf(
+            new[] { SmileTextColor.Red, SmileTextColor.Magenta, SmileTextColor.Cyan, SmileTextColor.Green },
+            host.TextColorChanges
+                .Where(change => !change.IsDefault)
+                .Select(change => change.Foreground!.Value)
+                .Distinct()
+                .ToArray());
+        Assert.IsLessThan(20, host.ScreenFrames.Count, "The maze should redraw only after a player or ghost moves.");
+        Assert.AreEqual(0, host.RemainingKeyCount);
     }
 
     [TestMethod]

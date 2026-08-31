@@ -455,6 +455,11 @@ internal sealed class Binder
         CorePrintStatementSyntax print => BindPrint(print),
         GetKeyStatementSyntax getKey => BindGetKey(getKey),
         ClearScreenStatementSyntax => new BoundClearScreenStatement(),
+        MoveCursorStatementSyntax moveCursor => BindMoveCursor(moveCursor),
+        TextColorStatementSyntax textColor => new BoundTextColorStatement(
+            textColor.Foreground,
+            textColor.Background,
+            textColor.IsDefault),
         WaitStatementSyntax wait => BindWait(wait),
         RandomStatementSyntax random => BindRandom(random),
         IfStatementSyntax conditional => BindIf(conditional),
@@ -464,6 +469,15 @@ internal sealed class Binder
         EndProgramStatementSyntax => new BoundEndProgramStatement(),
         _ => null
     };
+
+    private BoundStatement BindMoveCursor(MoveCursorStatementSyntax syntax)
+    {
+        BoundExpression column = BindExpression(syntax.Column);
+        BoundExpression row = BindExpression(syntax.Row);
+        RequireNumber(column, syntax.Column.Span, "Move Cursor To column");
+        RequireNumber(row, syntax.Row.Span, "Move Cursor To row");
+        return new BoundMoveCursorStatement(column, row);
+    }
 
     private BoundStatement BindAssignment(CoreAssignmentStatementSyntax syntax)
     {

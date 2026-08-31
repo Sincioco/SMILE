@@ -247,6 +247,18 @@ public sealed record VariableSymbol(
     public bool IsGlobal => RoutineName is null;
 }
 
+public enum SmileTextColor
+{
+    Black,
+    Red,
+    Green,
+    Yellow,
+    Blue,
+    Magenta,
+    Cyan,
+    White
+}
+
 public sealed record RoutineSymbol(
     string Name,
     TextSpan DeclarationSpan,
@@ -334,6 +346,17 @@ public sealed record BoundGetKeyStatement(VariableSymbol Target)
     : BoundStatement;
 
 public sealed record BoundClearScreenStatement()
+    : BoundStatement;
+
+public sealed record BoundMoveCursorStatement(
+    BoundExpression Column,
+    BoundExpression Row)
+    : BoundStatement;
+
+public sealed record BoundTextColorStatement(
+    SmileTextColor? Foreground,
+    SmileTextColor? Background,
+    bool IsDefault)
     : BoundStatement;
 
 public sealed record BoundWaitStatement(BoundExpression Duration)

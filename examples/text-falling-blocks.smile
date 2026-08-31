@@ -6,6 +6,7 @@ Const BOARD_WIDTH = 10
 Const BOARD_HEIGHT = 20
 Const BLOCK_COUNT = 4
 Const FALL_DELAY = 420
+Const CELL_WIDTH = 3
 
 Dim Board[BOARD_WIDTH, BOARD_HEIGHT] As Number
 Dim PieceX[BLOCK_COUNT] As Number
@@ -36,6 +37,8 @@ Do
         ProgramRunning = False
     Else If KeyCode = KEY_ENTER Then
         Call ResetGame()
+        Text Color Default
+        Clear Screen
         Call DrawBoard()
 
         Do
@@ -68,17 +71,25 @@ Do
     Wait 20 Milliseconds
 Loop Until Not ProgramRunning
 
+Text Color Default
 Clear Screen
+Text Color Cyan, Black
 Print "The foundry closes. Thanks for building!"
+Text Color Default
 
 Sub ShowTitle()
 
+    Text Color Default
     Clear Screen
+    Text Color Yellow, Black
     Print "SKY FOUNDRY"
+    Text Color Cyan, Black
     Print "Arrange seven families of four-cell shapes into complete rows."
+    Text Color White, Black
     Print "Left/right: A/D or arrows · Soft drop: S/Down"
     Print "Rotate: W, Up, or Space · Escape leaves"
     Print "Press Enter to start."
+    Text Color Default
 
 End Sub
 
@@ -318,40 +329,54 @@ Sub RemoveCompleteRows()
 
 End Sub
 
-Function PieceOccupies(CellX As Number, CellY As Number) As Boolean
-
-    Dim Index As Number
-    Dim Found As Boolean
-
-    Found = False
-
-    For Index = 0 To BLOCK_COUNT - 1
-        If PieceColumn + PieceX[Index] = CellX And PieceRow + PieceY[Index] = CellY Then
-            Found = True
-        End If
-    End For
-
-    Return Found
-
-End Function
-
 Function SymbolAt(CellX As Number, CellY As Number) As Text
 
     Dim Symbol As Text
 
     Symbol = " "
 
-    If PieceOccupies(CellX, CellY) Then
-        Symbol = "@"
-    Else If Board[CellX, CellY] <> 0 Then
-        Symbol = "#"
+    If Board[CellX, CellY] <> 0 Then
+        Symbol = "###"
+    Else
+        Symbol = "   "
     End If
 
     Return Symbol
 
 End Function
 
+Sub UsePieceColor()
+
+    Select Case PieceKind
+        Case 1
+            Text Color Cyan, Black
+
+        Case 2
+            Text Color Yellow, Black
+
+        Case 3
+            Text Color Magenta, Black
+
+        Case 4
+            Text Color Blue, Black
+
+        Case 5
+            Text Color White, Black
+
+        Case 6
+            Text Color Green, Black
+
+        Case Else
+            Text Color Red, Black
+    End Select
+
+End Sub
+
 Sub DrawBoard()
+
+    Dim CellX As Number
+    Dim CellY As Number
+    Dim Index As Number
 
     Dim Rows[BOARD_HEIGHT] As Text
 
@@ -366,24 +391,44 @@ Sub DrawBoard()
         Rows[Y] = Rows[Y] + "|"
     End For
 
-    Clear Screen
-    Print "SKY FOUNDRY    Score: "; Score; "    Rows: "; LinesCleared; "    Next family: "; NextKind
-    Print "+----------+"
+    Move Cursor To 1, 1
+    Text Color Yellow, Black
+    Print "SKY FOUNDRY    Score: "; Score; "    Rows: "; LinesCleared; "    Next family: "; NextKind; "                    "
+    Text Color Blue, Black
+    Print "+------------------------------+"
 
     For Y = 0 To BOARD_HEIGHT - 1
         Print Rows[Y]
     End For
 
-    Print "+----------+"
-    Print "A/D move · S drops · W/Up/Space rotates · Escape exits"
+    Print "+------------------------------+"
+    Call UsePieceColor()
+
+    For Index = 0 To BLOCK_COUNT - 1
+        CellX = PieceColumn + PieceX[Index]
+        CellY = PieceRow + PieceY[Index]
+
+        If CellY >= 0 Then
+            Move Cursor To 2 + CellX * CELL_WIDTH, CellY + 3
+            Print "@@@";
+        End If
+    End For
+
+    Move Cursor To 1, BOARD_HEIGHT + 4
+    Text Color White, Black
+    Print "A/D move · S drops · W/Up/Space rotates · Escape exits                    "
+    Text Color Default
 
 End Sub
 
 Sub EndRound()
 
     Call DrawBoard()
-    Print
-    Print "The stack reached the clouds. Final score: "; Score
-    Print "Press Enter to build again or Escape to leave."
+    Move Cursor To 1, BOARD_HEIGHT + 4
+    Text Color Yellow, Black
+    Print "Stack reached the clouds. Score: "; Score;
+    Text Color White, Black
+    Print " · Enter builds again · Escape leaves                    ";
+    Text Color Default
 
 End Sub

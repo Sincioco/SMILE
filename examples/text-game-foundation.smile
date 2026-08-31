@@ -18,10 +18,13 @@ End For
 Get Key PressedKey
 Random DieRoll From 1 To 6
 Clear Screen
+Move Cursor To 1, 1
+Text Color Cyan, Black
 Print "Key: "; PressedKey
 Print "Roll: "; DieRoll
 Print "Corner: "; Board[3, 2]
 Print "Magnitude: "; Abs(-7)
 Print "Range: "; Min(4, 9); " through "; Max(4, 9)
 Print "Clock: "; Timer()
+Text Color Default
 Wait 0 Milliseconds

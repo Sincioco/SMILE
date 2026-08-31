@@ -77,14 +77,21 @@ internal sealed class CoreBasicMasmWriter
         }
         if (_features.HasWait) Line("Sleep PROTO :DWORD");
         if (_features.HasTimer || _features.HasRandom) Line("GetTickCount64 PROTO");
-        if (_features.HasClearScreen)
+        if (_features.HasClearScreen || _features.HasMoveCursor || _features.HasTextColor)
         {
             Line("GetStdHandle PROTO :DWORD");
             Line("GetConsoleScreenBufferInfo PROTO :QWORD, :PTR BYTE");
+        }
+        if (_features.HasClearScreen)
+        {
             Line("FillConsoleOutputCharacterA PROTO :QWORD, :DWORD, :DWORD, :DWORD, :PTR DWORD");
             Line("FillConsoleOutputAttribute PROTO :QWORD, :DWORD, :DWORD, :DWORD, :PTR DWORD");
+        }
+        if (_features.HasClearScreen || _features.HasMoveCursor)
+        {
             Line("SetConsoleCursorPosition PROTO :QWORD, :DWORD");
         }
+        if (_features.HasTextColor) Line("SetConsoleTextAttribute PROTO :QWORD, :DWORD");
         Line("includelib kernel32.lib");
         if ((_usesPrintf || _usesStrcmp || _features.HasGetKey) && !_usesManagedText)
         {
@@ -95,6 +102,10 @@ internal sealed class CoreBasicMasmWriter
         foreach ((string value, string label) in _strings)
         {
             Line($"{label} BYTE {TargetEscapes.MasmByteInitializers(value)}, 0");
+        }
+        if (_features.HasTextColor)
+        {
+            Line("smile_console_colors WORD 0, 12, 10, 14, 9, 13, 11, 15");
         }
 
         Line();
@@ -118,6 +129,11 @@ internal sealed class CoreBasicMasmWriter
             }
         }
         if (_features.HasRandom) Line("smile_random_state QWORD 0");
+        if (_features.HasTextColor)
+        {
+            Line("smile_default_attributes WORD 0");
+            Line("smile_has_default_attributes BYTE 0");
+        }
 
         Line();
         Line(".code");
@@ -292,6 +308,115 @@ internal sealed class CoreBasicMasmWriter
             Line("    pop rbx");
             Line("    ret");
             Line("smile_clear_screen ENDP");
+            Line();
+        }
+
+        if (_features.HasMoveCursor)
+        {
+            Line("smile_move_cursor PROC");
+            Line("    push rbx");
+            Line("    sub rsp, 80");
+            Line("    mov QWORD PTR [rsp+32], rcx");
+            Line("    mov QWORD PTR [rsp+40], rdx");
+            Line("    mov ecx, -11");
+            Line("    call GetStdHandle");
+            Line("    mov rbx, rax");
+            Line("    mov rcx, rbx");
+            Line("    lea rdx, [rsp+48]");
+            Line("    call GetConsoleScreenBufferInfo");
+            Line("    test eax, eax");
+            Line("    jz smile_move_cursor_done");
+            Line("    mov rax, QWORD PTR [rsp+32]");
+            Line("    mov r10, 1");
+            Line("    cmp rax, r10");
+            Line("    cmovl rax, r10");
+            Line("    movsx r10, WORD PTR [rsp+48]");
+            Line("    cmp rax, r10");
+            Line("    cmovg rax, r10");
+            Line("    dec eax");
+            Line("    movzx r11d, ax");
+            Line("    mov rax, QWORD PTR [rsp+40]");
+            Line("    mov r10, 1");
+            Line("    cmp rax, r10");
+            Line("    cmovl rax, r10");
+            Line("    movsx r10, WORD PTR [rsp+50]");
+            Line("    cmp rax, r10");
+            Line("    cmovg rax, r10");
+            Line("    dec eax");
+            Line("    shl eax, 16");
+            Line("    or eax, r11d");
+            Line("    mov rcx, rbx");
+            Line("    mov edx, eax");
+            Line("    call SetConsoleCursorPosition");
+            Line("smile_move_cursor_done:");
+            Line("    add rsp, 80");
+            Line("    pop rbx");
+            Line("    ret");
+            Line("smile_move_cursor ENDP");
+            Line();
+        }
+
+        if (_features.HasTextColor)
+        {
+            Line("smile_set_text_color PROC");
+            Line("    push rbx");
+            Line("    sub rsp, 80");
+            Line("    mov QWORD PTR [rsp+32], rcx");
+            Line("    mov QWORD PTR [rsp+40], rdx");
+            Line("    mov ecx, -11");
+            Line("    call GetStdHandle");
+            Line("    mov rbx, rax");
+            Line("    cmp BYTE PTR [smile_has_default_attributes], 0");
+            Line("    jne smile_set_color_ready");
+            Line("    mov rcx, rbx");
+            Line("    lea rdx, [rsp+48]");
+            Line("    call GetConsoleScreenBufferInfo");
+            Line("    test eax, eax");
+            Line("    jz smile_set_color_done");
+            Line("    mov ax, WORD PTR [rsp+56]");
+            Line("    mov WORD PTR [smile_default_attributes], ax");
+            Line("    mov BYTE PTR [smile_has_default_attributes], 1");
+            Line("smile_set_color_ready:");
+            Line("    lea r10, smile_console_colors");
+            Line("    mov rax, QWORD PTR [rsp+32]");
+            Line("    movzx edx, WORD PTR [r10+rax*2]");
+            Line("    mov rax, QWORD PTR [rsp+40]");
+            Line("    movzx eax, WORD PTR [r10+rax*2]");
+            Line("    shl eax, 4");
+            Line("    or edx, eax");
+            Line("    mov rcx, rbx");
+            Line("    call SetConsoleTextAttribute");
+            Line("smile_set_color_done:");
+            Line("    add rsp, 80");
+            Line("    pop rbx");
+            Line("    ret");
+            Line("smile_set_text_color ENDP");
+            Line();
+            Line("smile_reset_text_color PROC");
+            Line("    push rbx");
+            Line("    sub rsp, 64");
+            Line("    mov ecx, -11");
+            Line("    call GetStdHandle");
+            Line("    mov rbx, rax");
+            Line("    cmp BYTE PTR [smile_has_default_attributes], 0");
+            Line("    jne smile_reset_color_ready");
+            Line("    mov rcx, rbx");
+            Line("    lea rdx, [rsp+32]");
+            Line("    call GetConsoleScreenBufferInfo");
+            Line("    test eax, eax");
+            Line("    jz smile_reset_color_done");
+            Line("    mov ax, WORD PTR [rsp+40]");
+            Line("    mov WORD PTR [smile_default_attributes], ax");
+            Line("    mov BYTE PTR [smile_has_default_attributes], 1");
+            Line("smile_reset_color_ready:");
+            Line("    mov rcx, rbx");
+            Line("    movzx edx, WORD PTR [smile_default_attributes]");
+            Line("    call SetConsoleTextAttribute");
+            Line("smile_reset_color_done:");
+            Line("    add rsp, 64");
+            Line("    pop rbx");
+            Line("    ret");
+            Line("smile_reset_text_color ENDP");
             Line();
         }
 
@@ -586,6 +711,28 @@ internal sealed class CoreBasicMasmWriter
                     case BoundClearScreenStatement:
                         NoteCall(0);
                         Emit(indent, "call smile_clear_screen");
+                        break;
+                    case BoundMoveCursorStatement moveCursor:
+                    {
+                        EmitExpression(moveCursor.Column, indent);
+                        Storage column = NewTemporary();
+                        Emit(indent, $"mov QWORD PTR {Address(column.Offset)}, rax");
+                        EmitExpression(moveCursor.Row, indent);
+                        Emit(indent, "mov rdx, rax");
+                        Emit(indent, $"mov rcx, QWORD PTR {Address(column.Offset)}");
+                        NoteCall(2);
+                        Emit(indent, "call smile_move_cursor");
+                        break;
+                    }
+                    case BoundTextColorStatement { IsDefault: true }:
+                        NoteCall(0);
+                        Emit(indent, "call smile_reset_text_color");
+                        break;
+                    case BoundTextColorStatement textColor:
+                        Emit(indent, $"mov ecx, {(int)textColor.Foreground!.Value}");
+                        Emit(indent, $"mov edx, {(int)textColor.Background!.Value}");
+                        NoteCall(2);
+                        Emit(indent, "call smile_set_text_color");
                         break;
                     case BoundWaitStatement wait:
                         EmitExpression(wait.Duration, indent);

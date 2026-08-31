@@ -23,7 +23,7 @@ internal static class CoreBasicCobolRuntimeSupport
             text.AppendLine("#include <stdio.h>");
             text.AppendLine("#include <stdlib.h>");
         }
-        if (features.HasClearScreen || features.HasWait || features.HasTimer || features.HasRandom)
+        if (features.HasClearScreen || features.HasMoveCursor || features.HasTextColor || features.HasWait || features.HasTimer || features.HasRandom)
         {
             text.AppendLine("#include <windows.h>");
         }
@@ -64,6 +64,54 @@ internal static class CoreBasicCobolRuntimeSupport
             text.AppendLine("    FillConsoleOutputCharacterA(output, ' ', cells, origin, &written);");
             text.AppendLine("    FillConsoleOutputAttribute(output, info.wAttributes, cells, origin, &written);");
             text.AppendLine("    SetConsoleCursorPosition(output, origin);");
+            text.AppendLine("    return 0;");
+            text.AppendLine("}");
+            text.AppendLine();
+        }
+
+        if (features.HasMoveCursor)
+        {
+            text.AppendLine("int smile_move_cursor_cobol(const int64_t *column, const int64_t *row)");
+            text.AppendLine("{");
+            text.AppendLine("    HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);");
+            text.AppendLine("    CONSOLE_SCREEN_BUFFER_INFO info;");
+            text.AppendLine("    if (output == INVALID_HANDLE_VALUE || !GetConsoleScreenBufferInfo(output, &info)) return 0;");
+            text.AppendLine("    COORD position;");
+            text.AppendLine("    position.X = (SHORT)(*column < 1 ? 0 : *column > info.dwSize.X ? info.dwSize.X - 1 : *column - 1);");
+            text.AppendLine("    position.Y = (SHORT)(*row < 1 ? 0 : *row > info.dwSize.Y ? info.dwSize.Y - 1 : *row - 1);");
+            text.AppendLine("    SetConsoleCursorPosition(output, position);");
+            text.AppendLine("    return 0;");
+            text.AppendLine("}");
+            text.AppendLine();
+        }
+
+        if (features.HasTextColor)
+        {
+            text.AppendLine("static WORD smile_default_attributes = 0;");
+            text.AppendLine("static int smile_has_default_attributes = 0;");
+            text.AppendLine("static const WORD smile_console_colors[] = {0, 12, 10, 14, 9, 13, 11, 15};");
+            text.AppendLine("static HANDLE smile_color_output(void)");
+            text.AppendLine("{");
+            text.AppendLine("    HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);");
+            text.AppendLine("    CONSOLE_SCREEN_BUFFER_INFO info;");
+            text.AppendLine("    if (output != INVALID_HANDLE_VALUE && !smile_has_default_attributes && GetConsoleScreenBufferInfo(output, &info))");
+            text.AppendLine("    {");
+            text.AppendLine("        smile_default_attributes = info.wAttributes;");
+            text.AppendLine("        smile_has_default_attributes = 1;");
+            text.AppendLine("    }");
+            text.AppendLine("    return output;");
+            text.AppendLine("}");
+            text.AppendLine("int smile_set_text_color_cobol(const int64_t *foreground, const int64_t *background)");
+            text.AppendLine("{");
+            text.AppendLine("    HANDLE output = smile_color_output();");
+            text.AppendLine("    WORD attributes = smile_console_colors[*foreground] | (WORD)(smile_console_colors[*background] << 4);");
+            text.AppendLine("    if (output != INVALID_HANDLE_VALUE) SetConsoleTextAttribute(output, attributes);");
+            text.AppendLine("    return 0;");
+            text.AppendLine("}");
+            text.AppendLine("int smile_reset_text_color_cobol(void)");
+            text.AppendLine("{");
+            text.AppendLine("    HANDLE output = smile_color_output();");
+            text.AppendLine("    if (output != INVALID_HANDLE_VALUE && smile_has_default_attributes) SetConsoleTextAttribute(output, smile_default_attributes);");
             text.AppendLine("    return 0;");
             text.AppendLine("}");
             text.AppendLine();

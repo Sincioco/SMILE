@@ -26,6 +26,9 @@ Board[1, 2] = 7
 Flags[1, 2] = True
 Words[1, 2] = "ready"
 Clear Screen
+Move Cursor To 1, 1
+Text Color Yellow, Black
+Text Color Default
 Get Key KeyCode
 StartedAt = Timer()
 Wait 45 Milliseconds
@@ -34,7 +37,7 @@ Random FixedRoll From -2 To -2
 Random AcrossZero From -3 To 3
 Print Board[1, 2]; Flags[1, 2]; Words[1, 2]
 Print KeyCode
-Print Abs(-5); Min(9, 4); Max(-8, -2); FixedRoll
+Print Abs(-5); Min(FixedRoll, 4); Max(-8, FixedRoll); FixedRoll
 Print AcrossZero >= -3 And AcrossZero <= 3
 Print Elapsed >= 20
 """;
@@ -67,7 +70,7 @@ Print Elapsed >= 20
         Assert.IsTrue(
             run.Success,
             $"{language}: {run.Stage}{Environment.NewLine}{run.BuildOutput}{Environment.NewLine}{run.StandardError}");
-        Assert.AreEqual("7Trueready\n0\n54-2-2\nTrue\nTrue\n", Normalize(run.StandardOutput), language.ToString());
+        Assert.AreEqual("7Trueready\n0\n5-2-2-2\nTrue\nTrue\n", Normalize(run.StandardOutput), language.ToString());
         Assert.IsFalse(HasCompilerWarning(run.BuildOutput),
             $"{language} emitted a compiler warning.{Environment.NewLine}{run.BuildOutput}");
         Console.WriteLine($"PASS text-game deterministic matrix / {language} / {run.Duration.TotalMilliseconds:F0} ms");

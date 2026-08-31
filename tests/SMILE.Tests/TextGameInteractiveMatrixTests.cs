@@ -291,12 +291,12 @@ Print "SMILE INTERACTIVE CLEAN"
                 File: "text-maze-muncher.smile",
                 Title: "LANTERN MAZE",
                 Exit: "The lanterns dim. Thanks for exploring!",
-                FramePattern: @"(?m)^#(?=[^\r\n]{57}#\r?$)[^\r\n]* [^\r\n]*#\r?$"),
+                FramePattern: @"(?m)^#(?=[^\r\n]{69}#\r?$)[^\r\n]* [^\r\n]*#\r?$"),
             (
                 File: "text-falling-blocks.smile",
                 Title: "SKY FOUNDRY",
                 Exit: "The foundry closes. Thanks for building!",
-                FramePattern: @"(?m)^\|(?=[^\r\n]{10}\|\r?$)[^\r\n]* [^\r\n]*\|\r?$")
+                FramePattern: @"(?m)^\|(?=[^\r\n]{30}\|\r?$)[^\r\n]* [^\r\n]*\|\r?$")
         };
         IReadOnlyList<PseudoConsoleInput> input = new[]
         {

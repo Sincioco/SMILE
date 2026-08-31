@@ -166,6 +166,7 @@ public static class SmileSourceFormatter
                 ForStatementSyntax loop => new[] { loop.LowerBound, loop.UpperBound },
                 DoStatementSyntax { UntilCondition: not null } loop => new[] { loop.UntilCondition },
                 WaitStatementSyntax wait => new[] { wait.Duration },
+                MoveCursorStatementSyntax moveCursor => new[] { moveCursor.Column, moveCursor.Row },
                 RandomStatementSyntax random => new[] { random.LowerBound, random.UpperBound },
                 _ => Array.Empty<ExpressionSyntax>()
             };

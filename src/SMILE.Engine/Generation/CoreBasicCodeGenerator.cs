@@ -2110,8 +2110,8 @@ internal static partial class CoreBasicCodeGenerator
                 (TargetLanguage.Python, BoundIntrinsicKind.Max) => $"max({arguments[0]}, {arguments[1]})",
                 (TargetLanguage.Cpp, BoundIntrinsicKind.Timer) => "smile_timer()",
                 (TargetLanguage.Cpp, BoundIntrinsicKind.Abs) => $"smile_abs({arguments[0]})",
-                (TargetLanguage.Cpp, BoundIntrinsicKind.Min) => $"std::min({arguments[0]}, {arguments[1]})",
-                (TargetLanguage.Cpp, BoundIntrinsicKind.Max) => $"std::max({arguments[0]}, {arguments[1]})",
+                (TargetLanguage.Cpp, BoundIntrinsicKind.Min) => $"std::min<std::int64_t>({arguments[0]}, {arguments[1]})",
+                (TargetLanguage.Cpp, BoundIntrinsicKind.Max) => $"std::max<std::int64_t>({arguments[0]}, {arguments[1]})",
                 (_, BoundIntrinsicKind.Timer) => "smile_timer()",
                 (_, BoundIntrinsicKind.Abs) => $"smile_abs({arguments[0]})",
                 (_, BoundIntrinsicKind.Min) => $"smile_min({arguments[0]}, {arguments[1]})",
@@ -2543,6 +2543,7 @@ internal static partial class CoreBasicCodeGenerator
                     BoundForStatement loop => new[] { loop.LowerBound, loop.UpperBound },
                     BoundDoStatement { UntilCondition: not null } loop => new[] { loop.UntilCondition },
                     BoundWaitStatement wait => new[] { wait.Duration },
+                    BoundMoveCursorStatement moveCursor => new[] { moveCursor.Column, moveCursor.Row },
                     BoundRandomStatement random => new[] { random.LowerBound, random.UpperBound },
                     _ => Array.Empty<BoundExpression>()
                 };

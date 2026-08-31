@@ -28,6 +28,12 @@ public interface ISmileEvaluationHost
 
     void ClearScreen(string outputSnapshot);
 
+    void MoveCursor(long column, long row, string outputSnapshot);
+
+    void SetTextColor(SmileTextColor foreground, SmileTextColor background);
+
+    void ResetTextColor();
+
     void WaitMilliseconds(long duration);
 
     long MonotonicMilliseconds { get; }
@@ -49,6 +55,13 @@ public sealed record SmileEvaluationOptions(
 
 public sealed record SmileTimedKeyEvent(long AtMilliseconds, long KeyCode);
 
+public sealed record SmileCursorMove(long Column, long Row);
+
+public sealed record SmileTextColorChange(
+    SmileTextColor? Foreground,
+    SmileTextColor? Background,
+    bool IsDefault);
+
 // The evaluator uses a virtual host by default so Wait never slows tests and
 // Get Key never reaches out to a developer's physical terminal. Tests and
 // teaching tools can enqueue an exact event/random script and inspect frames.
@@ -60,6 +73,8 @@ public sealed class ScriptedSmileEvaluationHost : ISmileEvaluationHost
     private readonly Random _random;
     private readonly List<string> _screenFrames = new();
     private readonly List<long> _waits = new();
+    private readonly List<SmileCursorMove> _cursorMoves = new();
+    private readonly List<SmileTextColorChange> _textColorChanges = new();
     private int _lastFrameStart;
 
     public ScriptedSmileEvaluationHost(
@@ -81,6 +96,10 @@ public sealed class ScriptedSmileEvaluationHost : ISmileEvaluationHost
     public IReadOnlyList<string> ScreenFrames => _screenFrames;
 
     public IReadOnlyList<long> Waits => _waits;
+
+    public IReadOnlyList<SmileCursorMove> CursorMoves => _cursorMoves;
+
+    public IReadOnlyList<SmileTextColorChange> TextColorChanges => _textColorChanges;
 
     public long MonotonicMilliseconds { get; private set; }
 
@@ -107,6 +126,24 @@ public sealed class ScriptedSmileEvaluationHost : ISmileEvaluationHost
         _screenFrames.Add(outputSnapshot[start..]);
         _lastFrameStart = outputSnapshot.Length;
     }
+
+    public void MoveCursor(long column, long row, string outputSnapshot)
+    {
+        ArgumentNullException.ThrowIfNull(outputSnapshot);
+        _cursorMoves.Add(new SmileCursorMove(column, row));
+        if (column == 1 && row == 1)
+        {
+            int start = Math.Min(_lastFrameStart, outputSnapshot.Length);
+            _screenFrames.Add(outputSnapshot[start..]);
+            _lastFrameStart = outputSnapshot.Length;
+        }
+    }
+
+    public void SetTextColor(SmileTextColor foreground, SmileTextColor background) =>
+        _textColorChanges.Add(new SmileTextColorChange(foreground, background, false));
+
+    public void ResetTextColor() =>
+        _textColorChanges.Add(new SmileTextColorChange(null, null, true));
 
     public void WaitMilliseconds(long duration)
     {

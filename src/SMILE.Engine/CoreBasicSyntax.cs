@@ -114,6 +114,19 @@ public sealed record GetKeyStatementSyntax(
 public sealed record ClearScreenStatementSyntax(TextSpan Span)
     : StatementSyntax(Span);
 
+public sealed record MoveCursorStatementSyntax(
+    ExpressionSyntax Column,
+    ExpressionSyntax Row,
+    TextSpan Span)
+    : StatementSyntax(Span);
+
+public sealed record TextColorStatementSyntax(
+    SmileTextColor? Foreground,
+    SmileTextColor? Background,
+    bool IsDefault,
+    TextSpan Span)
+    : StatementSyntax(Span);
+
 public sealed record WaitStatementSyntax(
     ExpressionSyntax Duration,
     TextSpan Span)

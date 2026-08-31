@@ -12,9 +12,9 @@ Implemented in this baseline:
 - `If`, ascending/descending `For`, post-tested `Do`, typed exits, and `End Program`;
 - `Option Explicit`, Sub/Function routines, Call/Return, typed ByVal parameters, routine scope, and recursion;
 - selector-once `Select Case` and checked fixed one- and two-dimensional arrays;
-- nonblocking `Get Key`, stable key constants, `Clear Screen`, millisecond `Wait`, inclusive `Random`, and `Timer`/`Abs`/`Min`/`Max`;
+- nonblocking `Get Key`, stable key constants, `Clear Screen`, 1-based `Move Cursor To`, named `Text Color`, millisecond `Wait`, inclusive `Random`, and `Timer`/`Abs`/`Min`/`Max`;
 - an injected evaluator host, virtual time/random/input, and a bounded-execution option for deterministic game tests;
-- complete original Trail Runner, Lantern Maze, and Sky Foundry terminal games;
+- complete colored Trail Runner, Lantern Maze, and Sky Foundry terminal games with in-place redraws and larger playfields;
 - explicit rejection of superseded source forms and excluded SMILE 2.0 features;
 - evaluator support for the complete profile;
 - deterministic generation and Build & Run integration for all ten active targets;

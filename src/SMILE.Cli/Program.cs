@@ -211,7 +211,7 @@ internal static class Program
         Console.Error.WriteLine("  dotnet run --project src\\SMILE.Cli -- <file.smile> --check");
         Console.Error.WriteLine("  javascript generates dependency-free JavaScript (Node.js) in Program.js.");
         Console.Error.WriteLine("  Current language: SMILE Core BASIC 2.1 - Text-Game Foundation (ten targets).");
-        Console.Error.WriteLine("  Text-game programs use Get Key, Clear Screen, Wait, Random, Timer, and fixed 2D arrays.");
+        Console.Error.WriteLine("  Text-game programs use keys, screen clearing, cursor movement, named colors, timing, random values, and fixed 2D arrays.");
     }
 }
 

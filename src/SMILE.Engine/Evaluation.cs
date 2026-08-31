@@ -174,6 +174,28 @@ public sealed class SmileEvaluator
                     _host.ClearScreen(_output.ToString());
                     break;
 
+                case BoundMoveCursorStatement moveCursor:
+                    if (!TryEvaluateExpression(moveCursor.Column, frame, out SmileValue column, out SmileRuntimeError? columnError))
+                    {
+                        return columnError;
+                    }
+
+                    if (!TryEvaluateExpression(moveCursor.Row, frame, out SmileValue row, out SmileRuntimeError? rowError))
+                    {
+                        return rowError;
+                    }
+
+                    _host.MoveCursor(column.IntegerValue, row.IntegerValue, _output.ToString());
+                    break;
+
+                case BoundTextColorStatement { IsDefault: true }:
+                    _host.ResetTextColor();
+                    break;
+
+                case BoundTextColorStatement textColor:
+                    _host.SetTextColor(textColor.Foreground!.Value, textColor.Background!.Value);
+                    break;
+
                 case BoundWaitStatement wait:
                     if (!TryEvaluateExpression(wait.Duration, frame, out SmileValue duration, out SmileRuntimeError? waitError))
                     {

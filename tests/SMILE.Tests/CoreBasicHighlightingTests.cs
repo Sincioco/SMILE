@@ -67,7 +67,7 @@ Print Total
     [TestMethod]
     public void Text_game_statements_intrinsics_and_key_constants_are_highlighted()
     {
-        const string source = "Get Key Pressed\nClear Screen\nWait 20 Milliseconds\nRandom Roll From 1 To 6\nPrint Timer(); Abs(-1); Min(1, 2); Max(1, 2); KEY_ESCAPE";
+        const string source = "Get Key Pressed\nClear Screen\nMove Cursor To 1, 1\nText Color Yellow, Black\nText Color Default\nWait 20 Milliseconds\nRandom Roll From 1 To 6\nPrint Timer(); Abs(-1); Min(1, 2); Max(1, 2); KEY_ESCAPE";
         var document = new TextDocument(source);
         IHighlightingDefinition definition = SyntaxHighlightingCatalog.GetDefinition("smile")!;
         var highlighter = new DocumentHighlighter(document, definition);

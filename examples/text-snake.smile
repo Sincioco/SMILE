@@ -34,6 +34,8 @@ Do
         ProgramRunning = False
     Else If KeyCode = KEY_ENTER Then
         Call ResetGame()
+        Text Color Default
+        Clear Screen
         Call DrawBoard()
 
         Do
@@ -59,16 +61,24 @@ Do
     Wait 20 Milliseconds
 Loop Until Not ProgramRunning
 
+Text Color Default
 Clear Screen
+Text Color Cyan, Black
 Print "Thanks for running the trail!"
+Text Color Default
 
 Sub ShowTitle()
 
+    Text Color Default
     Clear Screen
+    Text Color Yellow, Black
     Print "TRAIL RUNNER"
+    Text Color Green, Black
     Print "Guide the growing trail with WASD or the arrow keys."
+    Text Color White, Black
     Print "Avoid the border and your own path."
     Print "Press Enter to start. Press Escape to leave."
+    Text Color Default
 
 End Sub
 
@@ -253,22 +263,36 @@ Sub DrawBoard()
         End For
     End For
 
-    Clear Screen
-    Print "TRAIL RUNNER    Score: "; Score; "    Length: "; SnakeLength
+    Move Cursor To 1, 1
+    Text Color Yellow, Black
+    Print "TRAIL RUNNER    Score: "; Score; "    Length: "; SnakeLength; "                          "
+    Text Color Green, Black
 
     For Y = 0 To HEIGHT - 1
         Print Rows[Y]
     End For
 
-    Print "WASD/arrows move · Escape exits"
+    Text Color Red, Black
+    Move Cursor To FoodX + 1, FoodY + 2
+    Print "*";
+    Text Color Yellow, Black
+    Move Cursor To SnakeX[0] + 1, SnakeY[0] + 2
+    Print "@";
+    Move Cursor To 1, HEIGHT + 2
+    Text Color White, Black
+    Print "WASD/arrows move · Escape exits                              "
+    Text Color Default
 
 End Sub
 
 Sub EndRound()
 
     Call DrawBoard()
-    Print
+    Move Cursor To 1, HEIGHT + 3
+    Text Color Yellow, Black
     Print "Trail ended. Final score: "; Score
-    Print "Press Enter to run again or Escape to leave."
+    Text Color White, Black
+    Print "Press Enter to run again or Escape to leave.";
+    Text Color Default
 
 End Sub

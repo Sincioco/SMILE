@@ -49,6 +49,18 @@
       <Word>KEY</Word>
       <Word>CLEAR</Word>
       <Word>SCREEN</Word>
+      <Word>MOVE</Word>
+      <Word>CURSOR</Word>
+      <Word>COLOR</Word>
+      <Word>DEFAULT</Word>
+      <Word>BLACK</Word>
+      <Word>RED</Word>
+      <Word>GREEN</Word>
+      <Word>YELLOW</Word>
+      <Word>BLUE</Word>
+      <Word>MAGENTA</Word>
+      <Word>CYAN</Word>
+      <Word>WHITE</Word>
       <Word>WAIT</Word>
       <Word>MILLISECONDS</Word>
       <Word>RANDOM</Word>

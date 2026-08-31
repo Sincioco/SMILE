@@ -2,21 +2,35 @@
 
 Option Explicit
 
-Const WIDTH = 59
-Const HEIGHT = 17
+Const WIDTH = 71
+Const HEIGHT = 21
 Const EMPTY = 0
 Const WALL = 1
 Const PELLET = 2
+Const GATE = 3
+Const TUNNEL_ROW = 10
 Const ENEMY_COUNT = 4
+Const DIRECTION_COUNT = 4
 Const ENEMY_DELAY = 220
+Const RELEASE_DELAY = 700
 
 Dim Maze[WIDTH, HEIGHT] As Number
+Dim DirectionX[DIRECTION_COUNT] As Number
+Dim DirectionY[DIRECTION_COUNT] As Number
 
 Dim PlayerX As Number
 Dim PlayerY As Number
+Dim PlayerPreviousX As Number
+Dim PlayerPreviousY As Number
+Dim PlayerDirection As Number
 
 Dim EnemyX[ENEMY_COUNT] As Number
 Dim EnemyY[ENEMY_COUNT] As Number
+Dim EnemyPreviousX[ENEMY_COUNT] As Number
+Dim EnemyPreviousY[ENEMY_COUNT] As Number
+Dim EnemyDirection[ENEMY_COUNT] As Number
+Dim EnemyReleaseTime[ENEMY_COUNT] As Number
+Dim EnemyVisits[ENEMY_COUNT, WIDTH * HEIGHT] As Number
 
 Dim PelletsLeft As Number
 Dim Score As Number
@@ -31,6 +45,7 @@ Dim X As Number
 Dim Y As Number
 
 ProgramRunning = True
+Call InitializeDirections()
 Call ShowTitle()
 
 Do
@@ -40,6 +55,8 @@ Do
         ProgramRunning = False
     Else If KeyCode = KEY_ENTER Then
         Call ResetGame()
+        Text Color Default
+        Clear Screen
         Call DrawMaze()
 
         Do
@@ -47,7 +64,7 @@ Do
             Call ReadPlayerMove()
 
             If ProgramRunning And RoundActive And Timer() >= NextEnemyTime Then
-                Call MoveEnemy()
+                Call MoveEnemies()
                 NextEnemyTime = Timer() + ENEMY_DELAY
             End If
 
@@ -70,26 +87,50 @@ Do
     Wait 20 Milliseconds
 Loop Until Not ProgramRunning
 
+Text Color Default
 Clear Screen
+Text Color Cyan, Black
 Print "The lanterns dim. Thanks for exploring!"
+Text Color Default
+
+Sub InitializeDirections()
+
+    DirectionX[0] = 0
+    DirectionY[0] = -1
+    DirectionX[1] = 1
+    DirectionY[1] = 0
+    DirectionX[2] = 0
+    DirectionY[2] = 1
+    DirectionX[3] = -1
+    DirectionY[3] = 0
+
+End Sub
 
 Sub ShowTitle()
 
+    Text Color Default
     Clear Screen
+    Text Color Yellow, Black
     Print "LANTERN MAZE"
-    Print "Collect every dot while avoiding four roaming shadows."
-    Print "Move with WASD or arrows. A collision costs one lantern."
+    Text Color Cyan, Black
+    Print "Light every passage while four clever shadows search for you."
+    Text Color White, Black
+    Print "Move with WASD or arrows. Side tunnels wrap across the maze."
     Print "Press Enter to begin. Press Escape to leave."
+    Text Color Default
 
 End Sub
 
 Sub ResetGame()
 
     Call BuildMaze()
-    PlayerX = 1
-    PlayerY = 1
+    PlayerX = 35
+    PlayerY = 15
+    PlayerPreviousX = PlayerX
+    PlayerPreviousY = PlayerY
+    PlayerDirection = 1
     Call ResetEnemies()
-    Maze[PlayerX, PlayerY] = EMPTY
+    Call ClearPellet(PlayerX, PlayerY)
     Score = 0
     Lives = 3
     PlayerWon = False
@@ -100,19 +141,32 @@ End Sub
 
 Sub ResetEnemies()
 
+    Dim Cell As Number
     Dim Enemy As Number
+    Dim Now As Number
 
-    EnemyX[0] = 3
-    EnemyY[0] = 1
-    EnemyX[1] = WIDTH - 4
-    EnemyY[1] = 1
-    EnemyX[2] = 3
-    EnemyY[2] = HEIGHT - 2
-    EnemyX[3] = WIDTH - 4
-    EnemyY[3] = HEIGHT - 2
+    EnemyX[0] = 32
+    EnemyY[0] = 10
+    EnemyX[1] = 34
+    EnemyY[1] = 10
+    EnemyX[2] = 36
+    EnemyY[2] = 10
+    EnemyX[3] = 38
+    EnemyY[3] = 10
+    Now = Timer()
 
     For Enemy = 0 To ENEMY_COUNT - 1
-        Maze[EnemyX[Enemy], EnemyY[Enemy]] = EMPTY
+        EnemyPreviousX[Enemy] = EnemyX[Enemy]
+        EnemyPreviousY[Enemy] = EnemyY[Enemy] + 1
+        EnemyDirection[Enemy] = 0
+        EnemyReleaseTime[Enemy] = Now + Enemy * RELEASE_DELAY
+        Call ClearPellet(EnemyX[Enemy], EnemyY[Enemy])
+
+        For Cell = 0 To WIDTH * HEIGHT - 1
+            EnemyVisits[Enemy, Cell] = 0
+        End For
+
+        EnemyVisits[Enemy, CellIndex(EnemyX[Enemy], EnemyY[Enemy])] = 1
     End For
 
 End Sub
@@ -132,67 +186,137 @@ Sub BuildMaze()
         End For
     End For
 
-    For Y = 2 To HEIGHT - 3
-        If Y <> 4 And Y <> 8 And Y <> 12 Then
-            Call PutWall(14, Y)
-            Call PutWall(44, Y)
-        End If
+    ' The paired wall islands make a broad, symmetric arcade maze.
+    Call PutWallBlock(3, 2, 11, 3)
+    Call PutWallBlock(59, 2, 67, 3)
+    Call PutWallBlock(15, 2, 27, 3)
+    Call PutWallBlock(43, 2, 55, 3)
+    Call PutWallBlock(33, 1, 37, 4)
+
+    Call PutWallBlock(3, 6, 7, 8)
+    Call PutWallBlock(63, 6, 67, 8)
+    Call PutWallBlock(11, 6, 21, 7)
+    Call PutWallBlock(49, 6, 59, 7)
+    Call PutWallBlock(25, 6, 30, 7)
+    Call PutWallBlock(40, 6, 45, 7)
+
+    Call PutWallBlock(3, 12, 7, 14)
+    Call PutWallBlock(63, 12, 67, 14)
+    Call PutWallBlock(11, 13, 21, 14)
+    Call PutWallBlock(49, 13, 59, 14)
+    Call PutWallBlock(25, 13, 30, 14)
+    Call PutWallBlock(40, 13, 45, 14)
+
+    Call PutWallBlock(3, 17, 11, 18)
+    Call PutWallBlock(59, 17, 67, 18)
+    Call PutWallBlock(15, 17, 27, 18)
+    Call PutWallBlock(43, 17, 55, 18)
+    Call PutWallBlock(33, 17, 37, 19)
+
+    Call BuildGhostHouse()
+    Maze[0, TUNNEL_ROW] = EMPTY
+    Maze[WIDTH - 1, TUNNEL_ROW] = EMPTY
+
+End Sub
+
+Sub BuildGhostHouse()
+
+    For X = 29 To 41
+        Call PutWall(X, 8)
+        Call PutWall(X, 12)
     End For
 
-    For Y = 1 To HEIGHT - 2
-        If Y <> 3 And Y <> 7 And Y <> 11 And Y <> 14 Then
-            Call PutWall(29, Y)
-        End If
+    For Y = 9 To 11
+        Call PutWall(29, Y)
+        Call PutWall(41, Y)
     End For
 
-    For X = 2 To WIDTH - 3
-        If X <> 7 And X <> 14 And X <> 21 And X <> 29 And X <> 37 And X <> 44 And X <> 51 Then
-            Call PutWall(X, 8)
-        End If
+    For Y = 9 To 11
+        For X = 30 To 40
+            Call ClearPellet(X, Y)
+        End For
+    End For
+
+    Call PutGate(34, 8)
+    Call PutGate(35, 8)
+    Call PutGate(36, 8)
+
+End Sub
+
+Sub PutWallBlock(StartX As Number, StartY As Number, EndX As Number, EndY As Number)
+
+    Dim CellX As Number
+    Dim CellY As Number
+
+    For CellY = StartY To EndY
+        For CellX = StartX To EndX
+            Call PutWall(CellX, CellY)
+        End For
     End For
 
 End Sub
 
 Sub PutWall(CellX As Number, CellY As Number)
 
+    Call ClearPellet(CellX, CellY)
+    Maze[CellX, CellY] = WALL
+
+End Sub
+
+Sub PutGate(CellX As Number, CellY As Number)
+
+    Call ClearPellet(CellX, CellY)
+    Maze[CellX, CellY] = GATE
+
+End Sub
+
+Sub ClearPellet(CellX As Number, CellY As Number)
+
     If Maze[CellX, CellY] = PELLET Then
+        Maze[CellX, CellY] = EMPTY
         PelletsLeft = PelletsLeft - 1
     End If
-
-    Maze[CellX, CellY] = WALL
 
 End Sub
 
 Sub ReadPlayerMove()
 
-    Dim MoveX As Number
-    Dim MoveY As Number
+    Dim Direction As Number
+    Dim NextX As Number
+    Dim NextY As Number
 
     Get Key KeyCode
-    MoveX = 0
-    MoveY = 0
+    Direction = -1
 
     If KeyCode = KEY_ESCAPE Then
         ProgramRunning = False
     Else If KeyCode = KEY_W Or KeyCode = KEY_UP Then
-        MoveY = -1
-    Else If KeyCode = KEY_S Or KeyCode = KEY_DOWN Then
-        MoveY = 1
-    Else If KeyCode = KEY_A Or KeyCode = KEY_LEFT Then
-        MoveX = -1
+        Direction = 0
     Else If KeyCode = KEY_D Or KeyCode = KEY_RIGHT Then
-        MoveX = 1
+        Direction = 1
+    Else If KeyCode = KEY_S Or KeyCode = KEY_DOWN Then
+        Direction = 2
+    Else If KeyCode = KEY_A Or KeyCode = KEY_LEFT Then
+        Direction = 3
     End If
 
-    If (MoveX <> 0 Or MoveY <> 0) And Maze[PlayerX + MoveX, PlayerY + MoveY] <> WALL Then
-        PlayerX = PlayerX + MoveX
-        PlayerY = PlayerY + MoveY
-        NeedsRedraw = True
+    PlayerPreviousX = PlayerX
+    PlayerPreviousY = PlayerY
+
+    If Direction >= 0 Then
+        NextX = NextCellX(PlayerX, PlayerY, Direction)
+        NextY = PlayerY + DirectionY[Direction]
+
+        If PlayerCanEnter(NextX, NextY) Then
+            PlayerX = NextX
+            PlayerY = NextY
+            PlayerDirection = Direction
+            NeedsRedraw = True
+        End If
     End If
 
     If Maze[PlayerX, PlayerY] = PELLET Then
-        Maze[PlayerX, PlayerY] = EMPTY
-        PelletsLeft = PelletsLeft - 1
+        Call ClearPellet(PlayerX, PlayerY)
         Score = Score + 5
 
         If PelletsLeft = 0 Then
@@ -203,59 +327,238 @@ Sub ReadPlayerMove()
 
 End Sub
 
-Sub MoveEnemy()
+Function PlayerCanEnter(CellX As Number, CellY As Number) As Boolean
 
-    Dim Attempt As Number
-    Dim Direction As Number
-    Dim MoveX As Number
-    Dim MoveY As Number
-    Dim Moved As Boolean
+    Dim CanEnter As Boolean
+
+    CanEnter = False
+
+    If CellX >= 0 And CellX < WIDTH And CellY >= 0 And CellY < HEIGHT Then
+        CanEnter = Maze[CellX, CellY] <> WALL And Maze[CellX, CellY] <> GATE
+    End If
+
+    Return CanEnter
+
+End Function
+
+Function NextCellX(CellX As Number, CellY As Number, Direction As Number) As Number
+
+    Dim Result As Number
+
+    Result = CellX + DirectionX[Direction]
+
+    If CellY = TUNNEL_ROW And Result < 0 Then
+        Result = WIDTH - 1
+    Else If CellY = TUNNEL_ROW And Result >= WIDTH Then
+        Result = 0
+    End If
+
+    Return Result
+
+End Function
+
+Sub MoveEnemies()
+
     Dim Enemy As Number
+    Dim Now As Number
+
+    Now = Timer()
 
     For Enemy = 0 To ENEMY_COUNT - 1
-        Moved = False
-
-        For Attempt = 1 To 4
-            Random Direction From 1 To 4
-            MoveX = 0
-            MoveY = 0
-
-            Select Case Direction
-                Case 1
-                    MoveY = -1
-
-                Case 2
-                    MoveX = 1
-
-                Case 3
-                    MoveY = 1
-
-                Case 4
-                    MoveX = -1
-            End Select
-
-            If Not Moved And Maze[EnemyX[Enemy] + MoveX, EnemyY[Enemy] + MoveY] <> WALL Then
-                EnemyX[Enemy] = EnemyX[Enemy] + MoveX
-                EnemyY[Enemy] = EnemyY[Enemy] + MoveY
-                Moved = True
-                NeedsRedraw = True
-            End If
-        End For
+        If Now >= EnemyReleaseTime[Enemy] Then
+            Call MoveOneEnemy(Enemy)
+        End If
     End For
 
 End Sub
 
+Sub MoveOneEnemy(Enemy As Number)
+
+    Dim Direction As Number
+    Dim NextX As Number
+    Dim NextY As Number
+    Dim VisitCell As Number
+
+    Direction = ChooseEnemyDirection(Enemy)
+
+    If Direction >= 0 Then
+        EnemyPreviousX[Enemy] = EnemyX[Enemy]
+        EnemyPreviousY[Enemy] = EnemyY[Enemy]
+        NextX = NextCellX(EnemyX[Enemy], EnemyY[Enemy], Direction)
+        NextY = EnemyY[Enemy] + DirectionY[Direction]
+        EnemyX[Enemy] = NextX
+        EnemyY[Enemy] = NextY
+        EnemyDirection[Enemy] = Direction
+        VisitCell = CellIndex(NextX, NextY)
+        EnemyVisits[Enemy, VisitCell] = EnemyVisits[Enemy, VisitCell] + 1
+        NeedsRedraw = True
+    End If
+
+End Sub
+
+Function ChooseEnemyDirection(Enemy As Number) As Number
+
+    Dim BestDirection As Number
+    Dim BestScore As Number
+    Dim Candidate As Number
+    Dim CandidateX As Number
+    Dim CandidateY As Number
+    Dim Distance As Number
+    Dim LegalMoves As Number
+    Dim Opposite As Number
+    Dim ScoreForMove As Number
+    Dim TargetX As Number
+    Dim TargetY As Number
+    Dim VisitCell As Number
+
+    BestDirection = -1
+    BestScore = 1000000
+    LegalMoves = CountEnemyMoves(Enemy)
+    Opposite = (EnemyDirection[Enemy] + 2) Mod DIRECTION_COUNT
+    TargetX = EnemyTargetX(Enemy)
+    TargetY = EnemyTargetY(Enemy)
+
+    For Candidate = 0 To DIRECTION_COUNT - 1
+        If EnemyCanMove(Enemy, Candidate) Then
+            CandidateX = NextCellX(EnemyX[Enemy], EnemyY[Enemy], Candidate)
+            CandidateY = EnemyY[Enemy] + DirectionY[Candidate]
+
+            If LegalMoves = 1 Or Candidate <> Opposite Then
+                Distance = Abs(CandidateX - TargetX) + Abs(CandidateY - TargetY)
+                ScoreForMove = Distance * 10
+                VisitCell = CellIndex(CandidateX, CandidateY)
+                ScoreForMove = ScoreForMove + Min(30, EnemyVisits[Enemy, VisitCell] * 4)
+                ScoreForMove = ScoreForMove + (Candidate + Enemy) Mod DIRECTION_COUNT
+
+                If ScoreForMove < BestScore Then
+                    BestScore = ScoreForMove
+                    BestDirection = Candidate
+                End If
+            End If
+        End If
+    End For
+
+    If BestDirection < 0 And EnemyCanMove(Enemy, Opposite) Then
+        BestDirection = Opposite
+    End If
+
+    Return BestDirection
+
+End Function
+
+Function CountEnemyMoves(Enemy As Number) As Number
+
+    Dim Candidate As Number
+    Dim MoveCount As Number
+
+    MoveCount = 0
+
+    For Candidate = 0 To DIRECTION_COUNT - 1
+        If EnemyCanMove(Enemy, Candidate) Then
+            MoveCount = MoveCount + 1
+        End If
+    End For
+
+    Return MoveCount
+
+End Function
+
+Function EnemyCanMove(Enemy As Number, Direction As Number) As Boolean
+
+    Dim CanMove As Boolean
+    Dim NextX As Number
+    Dim NextY As Number
+
+    CanMove = False
+    NextX = NextCellX(EnemyX[Enemy], EnemyY[Enemy], Direction)
+    NextY = EnemyY[Enemy] + DirectionY[Direction]
+
+    If NextX >= 0 And NextX < WIDTH And NextY >= 0 And NextY < HEIGHT Then
+        CanMove = Maze[NextX, NextY] <> WALL
+    End If
+
+    Return CanMove
+
+End Function
+
+Function EnemyTargetX(Enemy As Number) As Number
+
+    Dim SideDirection As Number
+    Dim Target As Number
+
+    If EnemyX[Enemy] >= 30 And EnemyX[Enemy] <= 40 And EnemyY[Enemy] >= 9 And EnemyY[Enemy] <= 11 Then
+        Target = 35
+    Else
+        Target = PlayerX
+
+        Select Case Enemy
+            Case 1
+                Target = PlayerX + DirectionX[PlayerDirection] * 4
+
+            Case 2
+                SideDirection = (PlayerDirection + 1) Mod DIRECTION_COUNT
+                Target = PlayerX + DirectionX[PlayerDirection] * 2 + DirectionX[SideDirection] * 4
+
+            Case 3
+                If (Timer() / 5000) Mod 2 = 1 Then
+                    Target = WIDTH - 2
+                End If
+        End Select
+    End If
+
+    Return Min(WIDTH - 1, Max(0, Target))
+
+End Function
+
+Function EnemyTargetY(Enemy As Number) As Number
+
+    Dim SideDirection As Number
+    Dim Target As Number
+
+    If EnemyX[Enemy] >= 30 And EnemyX[Enemy] <= 40 And EnemyY[Enemy] >= 9 And EnemyY[Enemy] <= 11 Then
+        Target = 7
+    Else
+        Target = PlayerY
+
+        Select Case Enemy
+            Case 1
+                Target = PlayerY + DirectionY[PlayerDirection] * 4
+
+            Case 2
+                SideDirection = (PlayerDirection + 1) Mod DIRECTION_COUNT
+                Target = PlayerY + DirectionY[PlayerDirection] * 2 + DirectionY[SideDirection] * 4
+
+            Case 3
+                If (Timer() / 5000) Mod 2 = 1 Then
+                    Target = HEIGHT - 2
+                End If
+        End Select
+    End If
+
+    Return Min(HEIGHT - 1, Max(0, Target))
+
+End Function
+
+Function CellIndex(CellX As Number, CellY As Number) As Number
+
+    Return CellY * WIDTH + CellX
+
+End Function
+
 Sub CheckCollision()
 
-    Dim Enemy As Number
     Dim Collided As Boolean
+    Dim Enemy As Number
 
     Collided = False
 
     For Enemy = 0 To ENEMY_COUNT - 1
         If PlayerX = EnemyX[Enemy] And PlayerY = EnemyY[Enemy] Then
             Collided = True
-            Exit For
+        Else If PlayerX = EnemyPreviousX[Enemy] And PlayerY = EnemyPreviousY[Enemy] Then
+            If PlayerPreviousX = EnemyX[Enemy] And PlayerPreviousY = EnemyY[Enemy] Then
+                Collided = True
+            End If
         End If
     End For
 
@@ -266,71 +569,119 @@ Sub CheckCollision()
         If Lives <= 0 Then
             RoundActive = False
         Else
-            PlayerX = 1
-            PlayerY = 1
+            PlayerX = 35
+            PlayerY = 15
+            PlayerPreviousX = PlayerX
+            PlayerPreviousY = PlayerY
             Call ResetEnemies()
         End If
     End If
 
 End Sub
 
-Function SymbolAt(CellX As Number, CellY As Number) As Text
+Function MazeSymbolAt(CellX As Number, CellY As Number) As Text
 
-    Dim Enemy As Number
-    Dim EnemyHere As Boolean
     Dim Symbol As Text
 
-    EnemyHere = False
     Symbol = " "
 
-    For Enemy = 0 To ENEMY_COUNT - 1
-        If CellX = EnemyX[Enemy] And CellY = EnemyY[Enemy] Then
-            EnemyHere = True
-        End If
-    End For
-
-    If CellX = PlayerX And CellY = PlayerY Then
-        Symbol = "@"
-    Else If EnemyHere Then
-        Symbol = "X"
-    Else If Maze[CellX, CellY] = WALL Then
+    If Maze[CellX, CellY] = WALL Then
         Symbol = "#"
     Else If Maze[CellX, CellY] = PELLET Then
         Symbol = "."
+    Else If Maze[CellX, CellY] = GATE Then
+        Symbol = "="
     End If
 
     Return Symbol
 
 End Function
 
+Function EnemySymbol(Enemy As Number) As Text
+
+    Dim Symbol As Text
+
+    Symbol = "D"
+
+    Select Case Enemy
+        Case 0
+            Symbol = "A"
+
+        Case 1
+            Symbol = "B"
+
+        Case 2
+            Symbol = "C"
+    End Select
+
+    Return Symbol
+
+End Function
+
+Sub UseEnemyColor(Enemy As Number)
+
+    Select Case Enemy
+        Case 0
+            Text Color Red, Black
+
+        Case 1
+            Text Color Magenta, Black
+
+        Case 2
+            Text Color Cyan, Black
+
+        Case Else
+            Text Color Green, Black
+    End Select
+
+End Sub
+
 Sub DrawMaze()
+
+    Dim Enemy As Number
 
     Dim Rows[HEIGHT] As Text
 
-    ' Keep the old frame visible while preparing the next one.
+    ' Prepare the complete base frame before replacing anything on screen.
     For Y = 0 To HEIGHT - 1
         Rows[Y] = ""
 
         For X = 0 To WIDTH - 1
-            Rows[Y] = Rows[Y] + SymbolAt(X, Y)
+            Rows[Y] = Rows[Y] + MazeSymbolAt(X, Y)
         End For
     End For
 
-    Clear Screen
-    Print "LANTERN MAZE  Score: "; Score; "  Lives: "; Lives; "  Dots: "; PelletsLeft; "  Ghosts: "; ENEMY_COUNT
+    Move Cursor To 1, 1
+    Text Color Yellow, Black
+    Print "LANTERN MAZE  Score: "; Score; "  Lives: "; Lives; "  Dots: "; PelletsLeft; "                "
+    Text Color Blue, Black
 
     For Y = 0 To HEIGHT - 1
         Print Rows[Y]
     End For
 
-    Print "WASD/arrows move · Escape exits"
+    Text Color Yellow, Black
+    Move Cursor To PlayerX + 1, PlayerY + 2
+    Print "@";
+
+    For Enemy = 0 To ENEMY_COUNT - 1
+        Call UseEnemyColor(Enemy)
+        Move Cursor To EnemyX[Enemy] + 1, EnemyY[Enemy] + 2
+        Print EnemySymbol(Enemy);
+    End For
+
+    Move Cursor To 1, HEIGHT + 2
+    Text Color White, Black
+    Print "WASD/arrows move · wrap through side tunnels · Escape exits                  "
+    Text Color Default
 
 End Sub
 
 Sub EndRound()
 
     Call DrawMaze()
-    Print
+    Move Cursor To 1, HEIGHT + 3
+    Text Color Yellow, Black
 
     If PlayerWon Then
         Print "Every passage is bright! Score: "; Score
@@ -338,6 +689,8 @@ Sub EndRound()
         Print "The shadows found the last lantern. Score: "; Score
     End If
 
-    Print "Press Enter to explore again or Escape to leave."
+    Text Color White, Black
+    Print "Press Enter to explore again or Escape to leave.";
+    Text Color Default
 
 End Sub

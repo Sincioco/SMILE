@@ -103,9 +103,9 @@ C and Objective-C programs that concatenate Text emit an immutable allocation re
 
 | Target | Required recognizable direction |
 |---|---|
-| C# | main-first minimal console program, rectangular arrays, `Console` polling/clear, `Thread.Sleep`, monotonic clock |
-| C | main-first `int main(void)`, fixed arrays, Win32/CRT console primitives, explicit ordered temporaries |
-| MASM x64 | main-first ABI-correct `PROC`, flattened checked 2D offsets, direct CRT/Win64 primitives |
+| C# | main-first minimal console program, rectangular arrays, `Console` polling/screen/color operations, `Thread.Sleep`, monotonic clock |
+| C | main-first `int main(void)`, fixed arrays, Win32/CRT console and color primitives, explicit ordered temporaries |
+| MASM x64 | main-first ABI-correct `PROC`, flattened checked 2D offsets, direct CRT/Win64 screen/color primitives |
 | JavaScript (Node.js) | dependency-free `.js`, independent nested arrays, feature-driven async main, Promise Wait, raw queue/finally cleanup |
 | Java | main-first small `Program`, primitive arrays, standard JDK 21 FFM for Windows CRT key polling |
 | COBOL | primary-first recursive program units, nested `OCCURS`, exact logical-length Text, and a feature-gated C console companion |

@@ -84,6 +84,8 @@ internal sealed class Parser
         TokenKind.Print => ParsePrint(),
         TokenKind.Get => ParseGetKey(),
         TokenKind.Clear => ParseClearScreen(),
+        TokenKind.Move => ParseMoveCursor(),
+        TokenKind.TextType => ParseTextColor(),
         TokenKind.Wait => ParseWait(),
         TokenKind.Random => ParseRandom(),
         TokenKind.If => ParseIf(),
@@ -340,6 +342,37 @@ internal sealed class Parser
         Token start = Next();
         Token screen = Match(TokenKind.Screen, "Expected 'Screen' after 'Clear'.");
         return new ClearScreenStatementSyntax(Combine(start.Span, screen.Span));
+    }
+
+    private StatementSyntax ParseMoveCursor()
+    {
+        Token start = Next();
+        Match(TokenKind.Cursor, "Expected 'Cursor' after 'Move'.");
+        Match(TokenKind.To, "Expected 'To' after 'Move Cursor'.");
+        ExpressionSyntax column = ParseExpression();
+        Match(TokenKind.Comma, "Move Cursor To requires a column and row separated by a comma.");
+        ExpressionSyntax row = ParseExpression();
+        return new MoveCursorStatementSyntax(column, row, Combine(start.Span, row.Span));
+    }
+
+    private StatementSyntax ParseTextColor()
+    {
+        Token start = Next();
+        Match(TokenKind.Color, "Expected 'Color' after 'Text'.");
+        if (Current.Kind is TokenKind.Default)
+        {
+            Token reset = Next();
+            return new TextColorStatementSyntax(null, null, true, Combine(start.Span, reset.Span));
+        }
+
+        Token foreground = Match(TokenKind.TextColor, "Expected a named foreground color or 'Default'.");
+        Match(TokenKind.Comma, "Text Color requires foreground and background colors separated by a comma.");
+        Token background = Match(TokenKind.TextColor, "Expected a named background color.");
+        return new TextColorStatementSyntax(
+            foreground.Value is SmileTextColor foregroundColor ? foregroundColor : SmileTextColor.White,
+            background.Value is SmileTextColor backgroundColor ? backgroundColor : SmileTextColor.Black,
+            false,
+            Combine(start.Span, background.Span));
     }
 
     private StatementSyntax ParseWait()
@@ -830,7 +863,7 @@ internal sealed class Parser
     {
         Bad, EndOfFile, EndOfLine, Comment, Identifier, Number, String,
         Dim, If, Then, Else, End, For, To, Down, Do, Loop, Until, Print,
-        Get, Key, Clear, Screen, Wait, Milliseconds, Random, From,
+        Get, Key, Clear, Screen, Move, Cursor, Color, Default, TextColor, Wait, Milliseconds, Random, From,
         True, False, And, Or, Not, Const, Mod, Exit, Program, As,
         NumberType, BooleanType, TextType, Option, Explicit, Sub, Function,
         Call, Return, Select, Case, ByVal, ByRef, Optional, BuiltInConstant, BuiltInFunction, UnsupportedKeyword,
@@ -851,6 +884,8 @@ internal sealed class Parser
             ["Loop"] = TokenKind.Loop, ["Until"] = TokenKind.Until, ["Print"] = TokenKind.Print,
             ["Get"] = TokenKind.Get, ["Key"] = TokenKind.Key,
             ["Clear"] = TokenKind.Clear, ["Screen"] = TokenKind.Screen,
+            ["Move"] = TokenKind.Move, ["Cursor"] = TokenKind.Cursor,
+            ["Color"] = TokenKind.Color, ["Default"] = TokenKind.Default,
             ["Wait"] = TokenKind.Wait, ["Milliseconds"] = TokenKind.Milliseconds,
             ["Random"] = TokenKind.Random, ["From"] = TokenKind.From,
             ["True"] = TokenKind.True, ["False"] = TokenKind.False, ["And"] = TokenKind.And,
@@ -866,6 +901,18 @@ internal sealed class Parser
             ["Optional"] = TokenKind.Optional,
             ["Timer"] = TokenKind.BuiltInFunction, ["Abs"] = TokenKind.BuiltInFunction,
             ["Min"] = TokenKind.BuiltInFunction, ["Max"] = TokenKind.BuiltInFunction
+        };
+
+        private static readonly Dictionary<string, SmileTextColor> TextColors = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Black"] = SmileTextColor.Black,
+            ["Red"] = SmileTextColor.Red,
+            ["Green"] = SmileTextColor.Green,
+            ["Yellow"] = SmileTextColor.Yellow,
+            ["Blue"] = SmileTextColor.Blue,
+            ["Magenta"] = SmileTextColor.Magenta,
+            ["Cyan"] = SmileTextColor.Cyan,
+            ["White"] = SmileTextColor.White
         };
 
         private static readonly Dictionary<string, long> KeyConstants = new(StringComparer.OrdinalIgnoreCase)
@@ -970,6 +1017,11 @@ internal sealed class Parser
                 if (KeyConstants.TryGetValue(text, out long keyValue))
                 {
                     return Make(TokenKind.BuiltInConstant, start, line, column, keyValue);
+                }
+
+                if (TextColors.TryGetValue(text, out SmileTextColor textColor))
+                {
+                    return Make(TokenKind.TextColor, start, line, column, textColor);
                 }
 
                 TokenKind kind = CoreKeywords.TryGetValue(text, out TokenKind coreKind)
