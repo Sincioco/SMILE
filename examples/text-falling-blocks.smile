@@ -22,6 +22,7 @@ Dim KeyCode As Number
 Dim NextFallTime As Number
 Dim ProgramRunning As Boolean
 Dim RoundActive As Boolean
+Dim NeedsRedraw As Boolean
 Dim X As Number
 Dim Y As Number
 
@@ -35,8 +36,10 @@ Do
         ProgramRunning = False
     Else If KeyCode = KEY_ENTER Then
         Call ResetGame()
+        Call DrawBoard()
 
         Do
+            NeedsRedraw = False
             Call ReadControls()
 
             If ProgramRunning And RoundActive And Timer() >= NextFallTime Then
@@ -46,10 +49,11 @@ Do
                     Call LockPiece()
                 End If
 
+                NeedsRedraw = True
                 NextFallTime = Timer() + FALL_DELAY
             End If
 
-            If ProgramRunning And RoundActive Then
+            If ProgramRunning And RoundActive And NeedsRedraw Then
                 Call DrawBoard()
             End If
 
@@ -218,10 +222,12 @@ Sub ReadControls()
     Else If KeyCode = KEY_A Or KeyCode = KEY_LEFT Then
         If CanPlace(PieceColumn - 1, PieceRow) Then
             PieceColumn = PieceColumn - 1
+            NeedsRedraw = True
         End If
     Else If KeyCode = KEY_D Or KeyCode = KEY_RIGHT Then
         If CanPlace(PieceColumn + 1, PieceRow) Then
             PieceColumn = PieceColumn + 1
+            NeedsRedraw = True
         End If
     Else If KeyCode = KEY_S Or KeyCode = KEY_DOWN Then
         If CanPlace(PieceColumn, PieceRow + 1) Then
@@ -230,6 +236,8 @@ Sub ReadControls()
         Else
             Call LockPiece()
         End If
+
+        NeedsRedraw = True
     Else If KeyCode = KEY_W Or KeyCode = KEY_UP Or KeyCode = KEY_SPACE Then
         Call RotatePiece()
     End If
@@ -247,6 +255,8 @@ Sub RotatePiece()
     If Not CanPlace(PieceColumn, PieceRow) Then
         PieceRotation = PreviousRotation
         Call LoadPieceShape()
+    Else
+        NeedsRedraw = True
     End If
 
 End Sub
@@ -343,18 +353,25 @@ End Function
 
 Sub DrawBoard()
 
+    Dim Rows[BOARD_HEIGHT] As Text
+
+    ' Keep the old frame visible while preparing the next one.
+    For Y = 0 To BOARD_HEIGHT - 1
+        Rows[Y] = "|"
+
+        For X = 0 To BOARD_WIDTH - 1
+            Rows[Y] = Rows[Y] + SymbolAt(X, Y)
+        End For
+
+        Rows[Y] = Rows[Y] + "|"
+    End For
+
     Clear Screen
     Print "SKY FOUNDRY    Score: "; Score; "    Rows: "; LinesCleared; "    Next family: "; NextKind
     Print "+----------+"
 
     For Y = 0 To BOARD_HEIGHT - 1
-        Print "|";
-
-        For X = 0 To BOARD_WIDTH - 1
-            Print SymbolAt(X, Y);
-        End For
-
-        Print "|"
+        Print Rows[Y]
     End For
 
     Print "+----------+"

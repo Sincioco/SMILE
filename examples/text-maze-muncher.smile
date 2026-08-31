@@ -26,6 +26,7 @@ Dim NextEnemyTime As Number
 Dim ProgramRunning As Boolean
 Dim RoundActive As Boolean
 Dim PlayerWon As Boolean
+Dim NeedsRedraw As Boolean
 Dim X As Number
 Dim Y As Number
 
@@ -39,8 +40,10 @@ Do
         ProgramRunning = False
     Else If KeyCode = KEY_ENTER Then
         Call ResetGame()
+        Call DrawMaze()
 
         Do
+            NeedsRedraw = False
             Call ReadPlayerMove()
 
             If ProgramRunning And RoundActive And Timer() >= NextEnemyTime Then
@@ -50,7 +53,10 @@ Do
 
             If ProgramRunning And RoundActive Then
                 Call CheckCollision()
-                Call DrawMaze()
+
+                If NeedsRedraw Then
+                    Call DrawMaze()
+                End If
             End If
 
             Wait 20 Milliseconds
@@ -178,9 +184,10 @@ Sub ReadPlayerMove()
         MoveX = 1
     End If
 
-    If Maze[PlayerX + MoveX, PlayerY + MoveY] <> WALL Then
+    If (MoveX <> 0 Or MoveY <> 0) And Maze[PlayerX + MoveX, PlayerY + MoveY] <> WALL Then
         PlayerX = PlayerX + MoveX
         PlayerY = PlayerY + MoveY
+        NeedsRedraw = True
     End If
 
     If Maze[PlayerX, PlayerY] = PELLET Then
@@ -231,6 +238,7 @@ Sub MoveEnemy()
                 EnemyX[Enemy] = EnemyX[Enemy] + MoveX
                 EnemyY[Enemy] = EnemyY[Enemy] + MoveY
                 Moved = True
+                NeedsRedraw = True
             End If
         End For
     End For
@@ -253,6 +261,7 @@ Sub CheckCollision()
 
     If Collided Then
         Lives = Lives - 1
+        NeedsRedraw = True
 
         If Lives <= 0 Then
             RoundActive = False
@@ -296,15 +305,22 @@ End Function
 
 Sub DrawMaze()
 
+    Dim Rows[HEIGHT] As Text
+
+    ' Keep the old frame visible while preparing the next one.
+    For Y = 0 To HEIGHT - 1
+        Rows[Y] = ""
+
+        For X = 0 To WIDTH - 1
+            Rows[Y] = Rows[Y] + SymbolAt(X, Y)
+        End For
+    End For
+
     Clear Screen
     Print "LANTERN MAZE  Score: "; Score; "  Lives: "; Lives; "  Dots: "; PelletsLeft; "  Ghosts: "; ENEMY_COUNT
 
     For Y = 0 To HEIGHT - 1
-        For X = 0 To WIDTH - 1
-            Print SymbolAt(X, Y);
-        End For
-
-        Print
+        Print Rows[Y]
     End For
 
     Print "WASD/arrows move · Escape exits"

@@ -439,6 +439,7 @@ End Sub
         Assert.IsTrue(host.ScreenFrames.Any(frame => frame.Contains("Trail ended", StringComparison.Ordinal)));
         Assert.IsTrue(host.ScreenFrames.Any(frame =>
             frame.Split('\n').Any(line => line.Length == 60 && line.All(character => character == '#'))));
+        Assert.IsLessThan(20, host.ScreenFrames.Count, "Snake should redraw on movement, not on every input poll.");
         Assert.AreEqual(0, host.RemainingKeyCount);
     }
 
@@ -469,6 +470,7 @@ End Sub
         Assert.IsTrue(host.ScreenFrames.Any(frame => frame.Count(character => character == 'X') >= 4));
         Assert.IsTrue(host.ScreenFrames.Any(frame =>
             frame.Split('\n').Any(line => line.Length == 59 && line.All(character => character == '#'))));
+        Assert.IsLessThan(15, host.ScreenFrames.Count, "The maze should redraw only after a player or ghost moves.");
         Assert.AreEqual(0, host.RemainingRandomCount, "The bounded enemy update should consume its scripted choices.");
     }
 

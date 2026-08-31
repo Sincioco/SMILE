@@ -34,6 +34,7 @@ Do
         ProgramRunning = False
     Else If KeyCode = KEY_ENTER Then
         Call ResetGame()
+        Call DrawBoard()
 
         Do
             Call ReadControls()
@@ -41,10 +42,10 @@ Do
             If ProgramRunning And RoundActive And Timer() >= NextMoveTime Then
                 Call MoveSnake()
                 NextMoveTime = Timer() + MOVE_DELAY
-            End If
 
-            If ProgramRunning And RoundActive Then
-                Call DrawBoard()
+                If RoundActive Then
+                    Call DrawBoard()
+                End If
             End If
 
             Wait 20 Milliseconds
@@ -241,15 +242,22 @@ End Function
 
 Sub DrawBoard()
 
+    Dim Rows[HEIGHT] As Text
+
+    ' Keep the old frame visible while preparing the next one.
+    For Y = 0 To HEIGHT - 1
+        Rows[Y] = ""
+
+        For X = 0 To WIDTH - 1
+            Rows[Y] = Rows[Y] + SymbolAt(X, Y)
+        End For
+    End For
+
     Clear Screen
     Print "TRAIL RUNNER    Score: "; Score; "    Length: "; SnakeLength
 
     For Y = 0 To HEIGHT - 1
-        For X = 0 To WIDTH - 1
-            Print SymbolAt(X, Y);
-        End For
-
-        Print
+        Print Rows[Y]
     End For
 
     Print "WASD/arrows move · Escape exits"

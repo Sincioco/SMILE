@@ -106,7 +106,7 @@ See [Architecture](docs/Architecture.md), [Toolchains](docs/Toolchains.md), and 
 - [`examples/text-falling-blocks.smile`](examples/text-falling-blocks.smile) — Sky Foundry, an original seven-family falling-block game;
 - [`tests/CoreBasic2Parity/canonical.smile`](tests/CoreBasic2Parity/canonical.smile) — unchanged Profile 2 fixture compiled by both repositories.
 
-All examples use only the canonical Core BASIC 2.1 language. The three games are terminal programs, not graphical games; use an attached Windows console for real-time controls and full-frame redraw. `Clear Screen` erases each visible frame before drawing the next one, so instruction text and older frames do not remain behind the game.
+All examples use only the canonical Core BASIC 2.1 language. The three games are terminal programs, not graphical games; use an attached Windows console for real-time controls and full-frame redraw. They prepare complete rows before clearing and redraw only when game state changes, avoiding a visible blank frame while keeping instruction text and older frames off the playfield.
 
 ## Requirements
 
