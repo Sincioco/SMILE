@@ -2,7 +2,7 @@
 
 ## Result
 
-SMILE 1.0 Core BASIC 2 parity is pinned to the read-only authoritative `Sincioco/SMILE-2.0` commit `9aa9583a651eab452ea3af80772b08b68fc03220`. Three unchanged Profile 2 programs compile in both repositories and produce the same recorded standard output. The retained Profile 1 corpus separately protects every earlier canonical subset program and the intentional rejection corpus.
+SMILE 1.0 Core BASIC 2 parity is pinned to the read-only authoritative `Sincioco/SMILE-2.0` commit `0049c72eb80a8c1ea366cdfe5840f7db71e89d76`. Three unchanged Profile 2 programs compile in both repositories and produce the same recorded standard output. The retained Profile 1 corpus separately protects every earlier canonical subset program and the intentional rejection corpus. The pinned authority advance contains Renderer3D work only; shared source-language files for this corpus are unchanged.
 
 ## Reproducible corpora
 
@@ -26,15 +26,15 @@ The three Profile 2 `.smile` files are byte-identical to their public example co
 `scripts/Test-CoreBasicParity.ps1` performs the gate:
 
 1. Resolve the SMILE 2.0 checkout and require the pinned commit.
-2. Require a clean authority working tree.
+2. Record the authority working-tree status, including any pre-existing user work.
 3. Verify manifest hashes.
 4. Bind and evaluate each fixture in SMILE 1.0.
 5. Generate/build/run the SMILE 1.0 Windows x64 MASM destination.
 6. compile and run the same source bytes through the SMILE 2.0 Windows x64 compiler;
 7. normalize only physical output newlines and compare exact stdout;
-8. verify the authority SHA and clean state again.
+8. verify the authority SHA and exact working-tree status again.
 
-All executable output is created beneath the system temporary directory. The test never writes into SMILE 2.0.
+All executable output is created beneath the system temporary directory. The test never writes into SMILE 2.0. Requiring an exact before/after status protects a checkout that already contains unrelated user work without demanding that work be discarded.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/Test-CoreBasicParity.ps1
@@ -52,4 +52,4 @@ powershell -ExecutionPolicy Bypass -File scripts/Test-CoreBasicParity.ps1
 
 ## Scope restriction
 
-Parity applies to the frozen Core BASIC 2 profile, not every feature in SMILE 2.0. Console Input, ByRef, Optional/named parameters, dynamic or multidimensional arrays, modules, user-defined/object types, files/data, and multimedia remain excluded. SMILE 2.0 remains authoritative whenever shared language behavior differs.
+Parity applies to the preserved Core BASIC 2.0 shared corpus, not every feature in SMILE 2.0. Core BASIC 2.1 adds rank-two arrays and its text-game terminal subset in SMILE 1.0 with separate all-target conformance evidence. Console Input, ByRef, Optional/named parameters, dynamic or rank-three arrays, modules, user-defined/object types, files/data, graphics, and multimedia remain excluded. SMILE 2.0 remains authoritative whenever shared language behavior differs.

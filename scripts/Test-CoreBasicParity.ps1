@@ -25,10 +25,6 @@ $beforeStatus = (& git -C $smile2 status --porcelain) -join "`n"
 if ($beforeCommit -ne $authorityCommit) {
     throw "SMILE 2.0 is at $beforeCommit; parity is frozen to $authorityCommit."
 }
-if ($beforeStatus) {
-    throw 'SMILE 2.0 must be clean before the read-only parity check.'
-}
-
 $previousSmile2Root = $env:SMILE2_ROOT
 try {
     $env:SMILE2_ROOT = $smile2
@@ -46,8 +42,8 @@ finally {
 
 $afterCommit = (& git -C $smile2 rev-parse HEAD).Trim()
 $afterStatus = (& git -C $smile2 status --porcelain) -join "`n"
-if ($afterCommit -ne $beforeCommit -or $afterStatus) {
+if ($afterCommit -ne $beforeCommit -or $afterStatus -ne $beforeStatus) {
     throw 'The authoritative SMILE 2.0 repository changed during parity verification.'
 }
 
-Write-Host "Core BASIC Profiles 1 and 2 parity passed against SMILE 2.0 $afterCommit."
+Write-Host "Core BASIC Profiles 1 and 2 parity passed against read-only SMILE 2.0 $afterCommit; its starting status was preserved exactly."

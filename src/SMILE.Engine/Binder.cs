@@ -173,14 +173,15 @@ internal sealed class Binder
                      .Where(item => item.IsArray == arrays)
                      .OrderBy(item => item.Span.Start))
         {
-            int length = dim.IsArray ? ResolveArrayLength(dim) : 0;
+            IReadOnlyList<int> dimensions = dim.IsArray ? ResolveArrayDimensions(dim) : Array.Empty<int>();
             _globals[dim.Name] = new VariableSymbol(
                 dim.Name,
                 dim.NameSpan,
                 dim.DeclaredType,
                 IsConstant: false,
                 RoutineName: null,
-                ArrayLength: length);
+                ArrayLength: dimensions.Count > 0 ? dimensions[0] : 0,
+                ArraySecondLength: dimensions.Count > 1 ? dimensions[1] : 0);
         }
     }
 
@@ -260,46 +261,67 @@ internal sealed class Binder
         return statement;
     }
 
-    private int ResolveArrayLength(DimStatementSyntax syntax)
+    private IReadOnlyList<int> ResolveArrayDimensions(DimStatementSyntax syntax)
     {
-        if (syntax.ArraySize is null)
+        if (!syntax.IsArray)
         {
-            return 0;
+            return Array.Empty<int>();
         }
 
-        BoundExpression size = BindExpression(syntax.ArraySize, constantsOnly: true);
-        RequireNumber(size, syntax.ArraySize.Span, "array dimension");
-        StaticEvaluationResult evaluation = BoundExpressionEvaluator.Evaluate(size, _constantValues);
-        if (evaluation.IsInvalid && evaluation.Error is SmileArithmeticError error)
+        if (syntax.ArraySizes.Count is < 1 or > 2)
         {
-            Report(error.CompileCode, error.Message, error.Span);
-            return 1;
+            Report("SMILE2010", "Arrays require one or two dimensions.", syntax.Span);
+            return new[] { 1 };
         }
 
-        if (!evaluation.IsKnown || evaluation.MayFailAtRuntime || size.Type is not SmileType.Integer)
+        var dimensions = new List<int>(syntax.ArraySizes.Count);
+        long total = 1;
+        foreach (ExpressionSyntax sizeSyntax in syntax.ArraySizes)
         {
-            if (size.Type is not SmileType.Error)
+            BoundExpression size = BindExpression(sizeSyntax, constantsOnly: true);
+            RequireNumber(size, sizeSyntax.Span, "array dimension");
+            StaticEvaluationResult evaluation = BoundExpressionEvaluator.Evaluate(size, _constantValues);
+            if (evaluation.IsInvalid && evaluation.Error is SmileArithmeticError error)
             {
-                Report("SMILE2120", "An array dimension must be a compile-time Number expression.", syntax.ArraySize.Span);
+                Report(error.CompileCode, error.Message, error.Span);
+                dimensions.Add(1);
+                continue;
             }
 
-            return 1;
+            if (!evaluation.IsKnown || evaluation.MayFailAtRuntime || size.Type is not SmileType.Integer)
+            {
+                if (size.Type is not SmileType.Error)
+                {
+                    Report("SMILE2120", "An array dimension must be a compile-time Number expression.", sizeSyntax.Span);
+                }
+
+                dimensions.Add(1);
+                continue;
+            }
+
+            long value = evaluation.Value.IntegerValue;
+            if (value <= 0)
+            {
+                Report("SMILE2121", "An array dimension must be positive.", sizeSyntax.Span);
+                value = 1;
+            }
+            else if (value > int.MaxValue)
+            {
+                Report("SMILE2122", "The array dimension is too large for compiler-managed storage.", sizeSyntax.Span);
+                value = 1;
+            }
+
+            if (total > int.MaxValue / value)
+            {
+                Report("SMILE2122", "Total array storage is too large for compiler-managed storage.", syntax.Span);
+                value = 1;
+            }
+
+            total *= value;
+            dimensions.Add((int)value);
         }
 
-        long value = evaluation.Value.IntegerValue;
-        if (value <= 0)
-        {
-            Report("SMILE2121", "An array dimension must be positive.", syntax.ArraySize.Span);
-            return 1;
-        }
-
-        if (value > int.MaxValue)
-        {
-            Report("SMILE2122", "The array dimension is too large for compiler-managed storage.", syntax.ArraySize.Span);
-            return 1;
-        }
-
-        return (int)value;
+        return dimensions;
     }
 
     private void BindRoutine(RoutineDeclarationSyntax declaration)
@@ -347,13 +369,17 @@ internal sealed class Binder
                         break;
                     }
 
+                    IReadOnlyList<int> dimensions = dim.IsArray
+                        ? ResolveArrayDimensions(dim)
+                        : Array.Empty<int>();
                     _locals.Add(dim.Name, new VariableSymbol(
                         dim.Name,
                         dim.NameSpan,
                         dim.DeclaredType,
                         IsConstant: false,
                         RoutineName: routineName,
-                        ArrayLength: dim.IsArray ? ResolveArrayLength(dim) : 0));
+                        ArrayLength: dimensions.Count > 0 ? dimensions[0] : 0,
+                        ArraySecondLength: dimensions.Count > 1 ? dimensions[1] : 0));
                     break;
                 case IfStatementSyntax conditional:
                     foreach (ConditionalClauseSyntax clause in conditional.Clauses)
@@ -427,6 +453,10 @@ internal sealed class Binder
         ReturnStatementSyntax returnStatement => BindReturn(returnStatement),
         SelectStatementSyntax select => BindSelect(select),
         CorePrintStatementSyntax print => BindPrint(print),
+        GetKeyStatementSyntax getKey => BindGetKey(getKey),
+        ClearScreenStatementSyntax => new BoundClearScreenStatement(),
+        WaitStatementSyntax wait => BindWait(wait),
+        RandomStatementSyntax random => BindRandom(random),
         IfStatementSyntax conditional => BindIf(conditional),
         ForStatementSyntax loop => BindFor(loop),
         DoStatementSyntax loop => BindDo(loop),
@@ -501,15 +531,51 @@ internal sealed class Binder
     private BoundStatement BindArrayAssignment(CoreArrayAssignmentStatementSyntax syntax)
     {
         VariableSymbol array = ResolveArray(syntax.Name, syntax.NameSpan);
-        BoundExpression index = BindExpression(syntax.Index);
-        ValidateIndex(array, index, syntax.Index.Span);
+        IReadOnlyList<BoundExpression> indices = BindArrayIndices(array, syntax.Indices, syntax.Span);
         BoundExpression value = BindExpression(syntax.Value);
         if (value.Type is not SmileType.Error && array.Type != value.Type)
         {
             Report("SMILE2130", $"Cannot assign {DisplayType(value.Type)} to {DisplayType(array.Type)} array '{array.Name}'.", syntax.Value.Span);
         }
 
-        return new BoundArraySetStatement(array, index, value);
+        return new BoundArraySetStatement(array, indices, value);
+    }
+
+    private BoundStatement BindGetKey(GetKeyStatementSyntax syntax)
+    {
+        VariableSymbol target = ResolveAssignmentTarget(syntax.Name, syntax.NameSpan, SmileType.Integer);
+        ValidateWritableNumberTarget(target, syntax.NameSpan, "Get Key");
+        return new BoundGetKeyStatement(target);
+    }
+
+    private BoundStatement BindWait(WaitStatementSyntax syntax)
+    {
+        BoundExpression duration = BindExpression(syntax.Duration);
+        RequireNumber(duration, syntax.Duration.Span, "Wait duration");
+        return new BoundWaitStatement(duration);
+    }
+
+    private BoundStatement BindRandom(RandomStatementSyntax syntax)
+    {
+        BoundExpression lower = BindExpression(syntax.LowerBound);
+        BoundExpression upper = BindExpression(syntax.UpperBound);
+        RequireNumber(lower, syntax.LowerBound.Span, "Random lower bound");
+        RequireNumber(upper, syntax.UpperBound.Span, "Random upper bound");
+        VariableSymbol target = ResolveAssignmentTarget(syntax.Name, syntax.NameSpan, SmileType.Integer);
+        ValidateWritableNumberTarget(target, syntax.NameSpan, "Random");
+        return new BoundRandomStatement(target, lower, upper);
+    }
+
+    private void ValidateWritableNumberTarget(VariableSymbol target, TextSpan span, string context)
+    {
+        if (target.IsConstant || target.IsArray)
+        {
+            Report("SMILE2150", $"{context} requires a writable scalar Number variable.", span);
+        }
+        else if (target.Type is not SmileType.Integer and not SmileType.Error)
+        {
+            Report("SMILE2151", $"{context} target must have type Number.", span);
+        }
     }
 
     private BoundStatement? BindDim(DimStatementSyntax syntax)
@@ -765,10 +831,14 @@ internal sealed class Binder
                 }
 
                 VariableSymbol arraySymbol = ResolveArray(array.Name, array.NameSpan);
-                BoundExpression index = BindExpression(array.Index);
-                ValidateIndex(arraySymbol, index, array.Index.Span);
-                return new BoundArrayExpression(arraySymbol, index);
+                IReadOnlyList<BoundExpression> indices = BindArrayIndices(arraySymbol, array.Indices, array.Span);
+                return new BoundArrayExpression(arraySymbol, indices);
             case CallExpressionSyntax call:
+                if (TryBindIntrinsic(call, constantsOnly, out BoundExpression? intrinsic))
+                {
+                    return intrinsic!;
+                }
+
                 if (constantsOnly)
                 {
                     Report("SMILE2111", "Constant expressions cannot invoke functions.", call.Span);
@@ -896,23 +966,87 @@ internal sealed class Binder
         return symbol;
     }
 
-    private void ValidateIndex(VariableSymbol array, BoundExpression index, TextSpan span)
+    private IReadOnlyList<BoundExpression> BindArrayIndices(
+        VariableSymbol array,
+        IReadOnlyList<ExpressionSyntax> syntax,
+        TextSpan span)
     {
-        RequireNumber(index, span, "array index");
-        if (index.Type is not SmileType.Integer)
+        BoundExpression[] indices = syntax.Select(index => BindExpression(index)).ToArray();
+        if (indices.Length != array.ArrayRank)
         {
-            return;
+            Report("SMILE2152", $"Array '{array.Name}' requires {array.ArrayRank} index value(s).", span);
         }
 
-        StaticEvaluationResult evaluation = BoundExpressionEvaluator.Evaluate(index, _constantValues);
-        if (evaluation.IsKnown && !evaluation.MayFailAtRuntime)
+        int count = Math.Min(indices.Length, array.ArrayRank);
+        for (int position = 0; position < indices.Length; position++)
         {
-            long value = evaluation.Value.IntegerValue;
-            if (value < 0 || value >= array.ArrayLength)
+            ExpressionSyntax indexSyntax = syntax[position];
+            BoundExpression index = indices[position];
+            RequireNumber(index, indexSyntax.Span, "array index");
+            if (position >= count || index.Type is not SmileType.Integer)
             {
-                Report("SMILE2146", $"Array index {value} is outside the valid range 0 through {array.ArrayLength - 1} for '{array.Name}'.", span);
+                continue;
+            }
+
+            StaticEvaluationResult evaluation = BoundExpressionEvaluator.Evaluate(index, _constantValues);
+            int length = position == 0 ? array.ArrayLength : array.ArraySecondLength;
+            if (evaluation.IsKnown && !evaluation.MayFailAtRuntime)
+            {
+                long value = evaluation.Value.IntegerValue;
+                if (value < 0 || value >= length)
+                {
+                    Report(
+                        "SMILE2146",
+                        $"Array index {value} for dimension {position + 1} is outside the valid range 0 through {length - 1} for '{array.Name}'.",
+                        indexSyntax.Span);
+                }
             }
         }
+
+        return indices;
+    }
+
+    private bool TryBindIntrinsic(
+        CallExpressionSyntax syntax,
+        bool constantsOnly,
+        out BoundExpression? expression)
+    {
+        BoundIntrinsicKind? kind = syntax.Name.ToUpperInvariant() switch
+        {
+            "TIMER" => BoundIntrinsicKind.Timer,
+            "ABS" => BoundIntrinsicKind.Abs,
+            "MIN" => BoundIntrinsicKind.Min,
+            "MAX" => BoundIntrinsicKind.Max,
+            _ => null
+        };
+        if (kind is null)
+        {
+            expression = null;
+            return false;
+        }
+
+        int expected = kind is BoundIntrinsicKind.Timer ? 0 : kind is BoundIntrinsicKind.Abs ? 1 : 2;
+        BoundExpression[] arguments = syntax.Arguments.Select(argument => BindExpression(argument, constantsOnly)).ToArray();
+        if (arguments.Length != expected)
+        {
+            Report("SMILE2153", $"Built-in function '{syntax.Name}' expects {expected} argument(s), but received {arguments.Length}.", syntax.NameSpan);
+        }
+
+        foreach ((BoundExpression argument, int index) in arguments.Select((value, index) => (value, index)))
+        {
+            TextSpan argumentSpan = index < syntax.Arguments.Count ? syntax.Arguments[index].Span : syntax.NameSpan;
+            RequireNumber(argument, argumentSpan, $"{syntax.Name} argument");
+        }
+
+        if (constantsOnly && kind is BoundIntrinsicKind.Timer)
+        {
+            Report("SMILE2111", "Constant expressions cannot read Timer().", syntax.Span);
+            expression = new BoundErrorExpression();
+            return true;
+        }
+
+        expression = new BoundIntrinsicExpression(kind.Value, arguments);
+        return true;
     }
 
     private RoutineSymbol ResolveRoutine(string name, TextSpan span, bool expectedFunction)

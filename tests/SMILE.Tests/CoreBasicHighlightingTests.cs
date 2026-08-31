@@ -63,4 +63,20 @@ Print Total
             highlighter.HighlightLine(2).Sections.Any(section => section.Color.Name == "Operator"),
             "Array brackets and parameter punctuation should use the operator color.");
     }
+
+    [TestMethod]
+    public void Text_game_statements_intrinsics_and_key_constants_are_highlighted()
+    {
+        const string source = "Get Key Pressed\nClear Screen\nWait 20 Milliseconds\nRandom Roll From 1 To 6\nPrint Timer(); Abs(-1); Min(1, 2); Max(1, 2); KEY_ESCAPE";
+        var document = new TextDocument(source);
+        IHighlightingDefinition definition = SyntaxHighlightingCatalog.GetDefinition("smile")!;
+        var highlighter = new DocumentHighlighter(document, definition);
+
+        for (int line = 1; line <= document.LineCount; line++)
+        {
+            Assert.IsTrue(
+                highlighter.HighlightLine(line).Sections.Any(section => section.Color.Name == "Keyword"),
+                $"Expected a Text-Game Foundation keyword on line {line}.");
+        }
+    }
 }

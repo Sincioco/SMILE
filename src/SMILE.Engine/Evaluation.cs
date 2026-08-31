@@ -27,14 +27,31 @@ public sealed class SmileEvaluator
     private readonly Dictionary<VariableSymbol, SmileValue[]> _globalArrays = new();
     private readonly Dictionary<RoutineSymbol, BoundRoutineDeclaration> _routines = new();
     private readonly StringBuilder _output = new();
+    private ISmileEvaluationHost _host = new ScriptedSmileEvaluationHost();
+    private long _remainingStatements;
     private CancellationToken _cancellationToken;
 
     public EvaluationResult Evaluate(string source) =>
-        Evaluate(source, CancellationToken.None);
+        Evaluate(source, new SmileEvaluationOptions(), CancellationToken.None);
 
     public EvaluationResult Evaluate(string source, CancellationToken cancellationToken)
+        => Evaluate(source, new SmileEvaluationOptions(), cancellationToken);
+
+    public EvaluationResult Evaluate(string source, SmileEvaluationOptions options) =>
+        Evaluate(source, options, CancellationToken.None);
+
+    public EvaluationResult Evaluate(
+        string source,
+        SmileEvaluationOptions options,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(options);
+        if (options.StatementBudget <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "Statement budget must be positive.");
+        }
+
         cancellationToken.ThrowIfCancellationRequested();
 
         BindResult bindResult = _transpiler.Bind(source);
@@ -51,6 +68,8 @@ public sealed class SmileEvaluator
         _globalArrays.Clear();
         _routines.Clear();
         _output.Clear();
+        _host = options.Host ?? new ScriptedSmileEvaluationHost();
+        _remainingStatements = options.StatementBudget;
         _cancellationToken = cancellationToken;
         InitializeProgram(bindResult.Program);
 
@@ -109,6 +128,11 @@ public sealed class SmileEvaluator
         foreach (BoundStatement statement in statements)
         {
             _cancellationToken.ThrowIfCancellationRequested();
+            if (!TryConsumeBudget(out SmileRuntimeError? budgetError))
+            {
+                return budgetError;
+            }
+
             switch (statement)
             {
                 case BoundDimStatement or BoundConstStatement:
@@ -124,12 +148,12 @@ public sealed class SmileEvaluator
                     break;
 
                 case BoundArraySetStatement assignment:
-                    if (!TryEvaluateExpression(assignment.Index, frame, out SmileValue indexValue, out SmileRuntimeError? indexError))
+                    if (!TryEvaluateArrayIndices(assignment.Indices, frame, out long[]? requestedIndices, out SmileRuntimeError? indexError))
                     {
                         return indexError;
                     }
 
-                    if (!TryGetArrayElement(assignment.Array, indexValue.IntegerValue, frame, out SmileValue[]? array, out int index, out SmileRuntimeError? boundsError))
+                    if (!TryGetArrayElement(assignment.Array, requestedIndices!, frame, out SmileValue[]? array, out int index, out SmileRuntimeError? boundsError))
                     {
                         return boundsError;
                     }
@@ -140,6 +164,47 @@ public sealed class SmileEvaluator
                     }
 
                     array![index] = arrayValue;
+                    break;
+
+                case BoundGetKeyStatement getKey:
+                    SetValue(getKey.Target, frame, SmileValue.FromInteger(_host.ReadKeyNonBlocking()));
+                    break;
+
+                case BoundClearScreenStatement:
+                    _host.ClearScreen(_output.ToString());
+                    break;
+
+                case BoundWaitStatement wait:
+                    if (!TryEvaluateExpression(wait.Duration, frame, out SmileValue duration, out SmileRuntimeError? waitError))
+                    {
+                        return waitError;
+                    }
+
+                    _host.WaitMilliseconds(duration.IntegerValue);
+                    break;
+
+                case BoundRandomStatement random:
+                    if (!TryEvaluateExpression(random.LowerBound, frame, out SmileValue lower, out SmileRuntimeError? lowerError))
+                    {
+                        return lowerError;
+                    }
+
+                    if (!TryEvaluateExpression(random.UpperBound, frame, out SmileValue upper, out SmileRuntimeError? upperError))
+                    {
+                        return upperError;
+                    }
+
+                    if (lower.IntegerValue > upper.IntegerValue)
+                    {
+                        return new SmileRuntimeError(
+                            "SMILER1221",
+                            $"Random lower bound {lower.IntegerValue} is greater than upper bound {upper.IntegerValue}.");
+                    }
+
+                    SetValue(
+                        random.Target,
+                        frame,
+                        SmileValue.FromInteger(_host.NextRandomInclusive(lower.IntegerValue, upper.IntegerValue)));
                     break;
 
                 case BoundCallStatement call:
@@ -301,6 +366,11 @@ public sealed class SmileEvaluator
         while (loop.IsDescending ? counter >= upper.IntegerValue : counter <= upper.IntegerValue)
         {
             _cancellationToken.ThrowIfCancellationRequested();
+            if (!TryConsumeBudget(out SmileRuntimeError? budgetError))
+            {
+                return budgetError;
+            }
+
             try
             {
                 SmileRuntimeError? bodyError = ExecuteStatements(loop.Statements, frame);
@@ -334,6 +404,11 @@ public sealed class SmileEvaluator
         while (true)
         {
             _cancellationToken.ThrowIfCancellationRequested();
+            if (!TryConsumeBudget(out SmileRuntimeError? budgetError))
+            {
+                return budgetError;
+            }
+
             try
             {
                 SmileRuntimeError? bodyError = ExecuteStatements(loop.Statements, frame);
@@ -386,13 +461,13 @@ public sealed class SmileEvaluator
                 value = GetValue(variable.Variable, frame);
                 return Success(out error);
             case BoundArrayExpression arrayExpression:
-                if (!TryEvaluateExpression(arrayExpression.Index, frame, out SmileValue indexValue, out error))
+                if (!TryEvaluateArrayIndices(arrayExpression.Indices, frame, out long[]? requestedIndices, out error))
                 {
                     value = default;
                     return false;
                 }
 
-                if (!TryGetArrayElement(arrayExpression.Array, indexValue.IntegerValue, frame, out SmileValue[]? array, out int index, out error))
+                if (!TryGetArrayElement(arrayExpression.Array, requestedIndices!, frame, out SmileValue[]? array, out int index, out error))
                 {
                     value = default;
                     return false;
@@ -400,6 +475,8 @@ public sealed class SmileEvaluator
 
                 value = array![index];
                 return true;
+            case BoundIntrinsicExpression intrinsic:
+                return TryEvaluateIntrinsic(intrinsic, frame, out value, out error);
             case BoundCallExpression call:
                 if (!TryEvaluateArguments(call.Arguments, frame, out SmileValue[]? arguments, out error))
                 {
@@ -510,6 +587,66 @@ public sealed class SmileEvaluator
         }
     }
 
+    private bool TryEvaluateIntrinsic(
+        BoundIntrinsicExpression intrinsic,
+        CallFrame? frame,
+        out SmileValue value,
+        out SmileRuntimeError? error)
+    {
+        if (intrinsic.Kind is BoundIntrinsicKind.Timer)
+        {
+            value = SmileValue.FromInteger(_host.MonotonicMilliseconds);
+            return Success(out error);
+        }
+
+        if (!TryEvaluateArguments(intrinsic.Arguments, frame, out SmileValue[]? arguments, out error))
+        {
+            value = default;
+            return false;
+        }
+
+        try
+        {
+            long result = intrinsic.Kind switch
+            {
+                BoundIntrinsicKind.Abs => checked(Math.Abs(arguments![0].IntegerValue)),
+                BoundIntrinsicKind.Min => Math.Min(arguments![0].IntegerValue, arguments[1].IntegerValue),
+                BoundIntrinsicKind.Max => Math.Max(arguments![0].IntegerValue, arguments[1].IntegerValue),
+                _ => throw new InvalidOperationException("Unknown SMILE intrinsic.")
+            };
+            value = SmileValue.FromInteger(result);
+            return Success(out error);
+        }
+        catch (OverflowException)
+        {
+            value = default;
+            error = OverflowError();
+            return false;
+        }
+    }
+
+    private bool TryEvaluateArrayIndices(
+        IReadOnlyList<BoundExpression> expressions,
+        CallFrame? frame,
+        out long[]? indices,
+        out SmileRuntimeError? error)
+    {
+        indices = new long[expressions.Count];
+        for (int position = 0; position < expressions.Count; position++)
+        {
+            if (!TryEvaluateExpression(expressions[position], frame, out SmileValue value, out error))
+            {
+                indices = null;
+                return false;
+            }
+
+            indices[position] = value.IntegerValue;
+        }
+
+        error = null;
+        return true;
+    }
+
     private bool TryEvaluateArguments(
         IReadOnlyList<BoundExpression> expressions,
         CallFrame? caller,
@@ -603,31 +740,48 @@ public sealed class SmileEvaluator
 
     private bool TryGetArrayElement(
         VariableSymbol variable,
-        long requestedIndex,
+        IReadOnlyList<long> requestedIndices,
         CallFrame? frame,
         out SmileValue[]? array,
         out int index,
         out SmileRuntimeError? error)
     {
-        if (requestedIndex < 0 || requestedIndex >= variable.ArrayLength)
+        if (requestedIndices.Count != variable.ArrayRank)
         {
             array = null;
             index = 0;
             error = new SmileRuntimeError(
                 "SMILER1210",
-                $"Array index {requestedIndex} is outside the valid range 0 through {variable.ArrayLength - 1} for '{variable.Name}'.");
+                $"Array '{variable.Name}' requires {variable.ArrayRank} index value(s).");
             return false;
         }
 
+        for (int position = 0; position < requestedIndices.Count; position++)
+        {
+            long requestedIndex = requestedIndices[position];
+            int length = position == 0 ? variable.ArrayLength : variable.ArraySecondLength;
+            if (requestedIndex < 0 || requestedIndex >= length)
+            {
+                array = null;
+                index = 0;
+                error = new SmileRuntimeError(
+                    "SMILER1210",
+                    $"Array index {requestedIndex} for dimension {position + 1} is outside the valid range 0 through {length - 1} for '{variable.Name}'.");
+                return false;
+            }
+        }
+
         array = GetArray(variable, frame);
-        index = (int)requestedIndex;
+        index = variable.ArrayRank == 1
+            ? (int)requestedIndices[0]
+            : checked((int)(requestedIndices[0] * variable.ArraySecondLength + requestedIndices[1]));
         error = null;
         return true;
     }
 
     private static SmileValue[] CreateArray(VariableSymbol variable)
     {
-        SmileValue[] values = new SmileValue[variable.ArrayLength];
+        SmileValue[] values = new SmileValue[variable.TotalElementCount];
         Array.Fill(values, DefaultValue(variable.Type));
         return values;
     }
@@ -660,6 +814,20 @@ public sealed class SmileEvaluator
 
     private static SmileRuntimeError OverflowError() =>
         new("SMILER1206", "Number arithmetic overflow.");
+
+    private bool TryConsumeBudget(out SmileRuntimeError? error)
+    {
+        if (_remainingStatements-- > 0)
+        {
+            error = null;
+            return true;
+        }
+
+        error = new SmileRuntimeError(
+            "SMILER1222",
+            "The evaluator execution budget was exhausted before the program completed.");
+        return false;
+    }
 
     private static bool Success(out SmileRuntimeError? error)
     {

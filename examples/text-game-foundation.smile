@@ -1,0 +1,25 @@
+' Core BASIC 2.1 text-game runtime and two-dimensional array tour.
+Option Explicit
+
+Dim Board[4, 3] As Number
+Dim X As Number
+Dim Y As Number
+Dim PressedKey As Number
+Dim DieRoll As Number
+
+For X = 0 To 3
+    For Y = 0 To 2
+        Board[X, Y] = X * 10 + Y
+    End For
+End For
+
+Get Key PressedKey
+Random DieRoll From 1 To 6
+Clear Screen
+Print "Key: "; PressedKey
+Print "Roll: "; DieRoll
+Print "Corner: "; Board[3, 2]
+Print "Magnitude: "; Abs(-7)
+Print "Range: "; Min(4, 9); " through "; Max(4, 9)
+Print "Clock: "; Timer()
+Wait 0 Milliseconds

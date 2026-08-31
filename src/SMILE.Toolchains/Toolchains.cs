@@ -32,9 +32,16 @@ public sealed record BuildRunOptions(bool CreatePauseLauncher = false)
 {
     public static BuildRunOptions Default { get; } = new();
 
+    public static BuildRunOptions BuildOnly { get; } = new()
+    {
+        SkipProgramExecution = true
+    };
+
     public ProcessInput ProgramStandardInput { get; init; } = ProcessInput.Closed;
 
     public bool LaunchVisibleConsole { get; init; }
+
+    public bool SkipProgramExecution { get; init; }
 
     public static BuildRunOptions Scripted(string standardInput) =>
         new()
@@ -340,6 +347,30 @@ public abstract class ToolchainBase : IToolchain
             stage);
     }
 
+    protected BuildRunResult BuildOnlyResult(
+        ToolchainStatus status,
+        string buildOutput,
+        string workingDirectory,
+        TimeSpan duration,
+        string? pauseLauncherPath = null) =>
+        new(
+            Language,
+            Success: true,
+            status,
+            buildOutput,
+            StandardOutput: string.Empty,
+            StandardError: string.Empty,
+            ExitCode: 0,
+            duration,
+            TimedOut: false,
+            Cancelled: false,
+            workingDirectory,
+            pauseLauncherPath,
+            Stage: "Built");
+
+    protected static bool ShouldSkipProgramExecution(BuildRunOptions? options) =>
+        (options ?? BuildRunOptions.Default).SkipProgramExecution;
+
     protected static ProcessCommand ConfigureProgramCommand(
         ProcessCommand command,
         BuildRunOptions? options,
@@ -579,6 +610,11 @@ public sealed class DotNetToolchain : ToolchainBase
             options,
             cancellationToken).ConfigureAwait(false);
 
+        if (ShouldSkipProgramExecution(options))
+        {
+            return BuildOnlyResult(status, buildOutput, workspace, build.Duration, pauseLauncherPath);
+        }
+
         string executablePath = Path.Combine(workspace, "bin", "Debug", "net10.0", "GeneratedProgram.exe");
         ProcessResult run = await Runner.RunAsync(
             ConfigureProgramCommand(
@@ -667,6 +703,11 @@ public sealed class MsvcCToolchain : ToolchainBase
             options,
             cancellationToken).ConfigureAwait(false);
 
+        if (ShouldSkipProgramExecution(options))
+        {
+            return BuildOnlyResult(status, buildOutput, workspace, build.Duration, pauseLauncherPath);
+        }
+
         ProcessResult run = await Runner.RunAsync(
             ConfigureProgramCommand(
                 ProcessCommand.ForCmd("Program.exe", workspace),
@@ -750,6 +791,11 @@ public sealed class MsvcCppToolchain : ToolchainBase
             new[] { "\"Program.exe\"" },
             options,
             cancellationToken).ConfigureAwait(false);
+
+        if (ShouldSkipProgramExecution(options))
+        {
+            return BuildOnlyResult(status, buildOutput, workspace, build.Duration, pauseLauncherPath);
+        }
 
         ProcessResult run = await Runner.RunAsync(
             ConfigureProgramCommand(
@@ -864,6 +910,16 @@ public sealed class MasmX64Toolchain : ToolchainBase
             new[] { "\"Program.exe\"" },
             options,
             cancellationToken).ConfigureAwait(false);
+
+        if (ShouldSkipProgramExecution(options))
+        {
+            return BuildOnlyResult(
+                status,
+                buildOutput,
+                workspace,
+                TotalDuration(assemble, link),
+                pauseLauncherPath);
+        }
 
         ProcessResult run = await Runner.RunAsync(
             ConfigureProgramCommand(
@@ -981,6 +1037,16 @@ public sealed class CobolToolchain : ToolchainBase
             options,
             cancellationToken,
             setupLines: new[] { pathSetup, configSetup }).ConfigureAwait(false);
+
+        if (ShouldSkipProgramExecution(options))
+        {
+            return BuildOnlyResult(
+                detection.Status,
+                buildOutput,
+                workspace,
+                build.Duration,
+                pauseLauncherPath);
+        }
 
         ProcessResult run = await Runner.RunAsync(
             ConfigureProgramCommand(
@@ -1143,11 +1209,26 @@ public sealed class NodeToolchain : ToolchainBase
         string workspace = await WriteGeneratedProgramAsync(generatedProgram, cancellationToken)
             .ConfigureAwait(false);
 
+        ProcessResult build = await Runner.RunAsync(
+            new ProcessCommand("node", new[] { "--check", "Program.js" }, workspace),
+            BuildTimeout,
+            cancellationToken).ConfigureAwait(false);
+        string buildOutput = Combine(build);
+        if (!build.Success)
+        {
+            return FromProcessResults(status, buildOutput, build, workspace, "Checking syntax", buildSucceeded: false);
+        }
+
         string? pauseLauncherPath = await WritePauseLauncherAsync(
             workspace,
             new[] { "node Program.js" },
             options,
             cancellationToken).ConfigureAwait(false);
+
+        if (ShouldSkipProgramExecution(options))
+        {
+            return BuildOnlyResult(status, buildOutput, workspace, build.Duration, pauseLauncherPath);
+        }
 
         ProcessResult run = await Runner.RunAsync(
             ConfigureProgramCommand(
@@ -1157,7 +1238,14 @@ public sealed class NodeToolchain : ToolchainBase
             GetProgramTimeout(options),
             cancellationToken).ConfigureAwait(false);
 
-        return FromProcessResults(status, string.Empty, run, workspace, "Running", pauseLauncherPath: pauseLauncherPath);
+        return FromProcessResults(
+            status,
+            buildOutput,
+            run,
+            workspace,
+            "Running",
+            pauseLauncherPath: pauseLauncherPath,
+            totalDuration: TotalDuration(build, run));
     }
 }
 
@@ -1217,11 +1305,34 @@ public sealed class PythonToolchain : ToolchainBase
                 .Concat(detection.Command.PrefixArguments)
                 .Concat(new[] { "-B", "Program.py" }));
 
+        string[] checkArguments = detection.Command.PrefixArguments
+            .Concat(new[]
+            {
+                "-B",
+                "-c",
+                "compile(open('Program.py', encoding='utf-8').read(), 'Program.py', 'exec')"
+            })
+            .ToArray();
+        ProcessResult build = await Runner.RunAsync(
+            new ProcessCommand(detection.Command.Executable, checkArguments, workspace),
+            BuildTimeout,
+            cancellationToken).ConfigureAwait(false);
+        string buildOutput = Combine(build);
+        if (!build.Success)
+        {
+            return FromProcessResults(status, buildOutput, build, workspace, "Checking syntax", buildSucceeded: false);
+        }
+
         string? pauseLauncherPath = await WritePauseLauncherAsync(
             workspace,
             new[] { launcherCommand },
             options,
             cancellationToken).ConfigureAwait(false);
+
+        if (ShouldSkipProgramExecution(options))
+        {
+            return BuildOnlyResult(status, buildOutput, workspace, build.Duration, pauseLauncherPath);
+        }
 
         ProcessResult run = await Runner.RunAsync(
             ConfigureProgramCommand(
@@ -1233,11 +1344,12 @@ public sealed class PythonToolchain : ToolchainBase
 
         return FromProcessResults(
             status,
-            string.Empty,
+            buildOutput,
             run,
             workspace,
             "Running",
-            pauseLauncherPath: pauseLauncherPath);
+            pauseLauncherPath: pauseLauncherPath,
+            totalDuration: TotalDuration(build, run));
     }
 
     private async Task<PythonDetection?> DetectInstallationAsync(CancellationToken cancellationToken)
@@ -1412,8 +1524,18 @@ public sealed class JavaToolchain : ToolchainBase
         string workspace = await WriteGeneratedProgramAsync(generatedProgram, cancellationToken)
             .ConfigureAwait(false);
 
+        bool usesForeignApi = generatedProgram.PrimaryFile.Content.Contains(
+            "java.lang.foreign",
+            StringComparison.Ordinal);
+        string[] compileArguments = usesForeignApi
+            ? new[] { "--enable-preview", "--release", "21", "-encoding", "UTF-8", "Program.java" }
+            : new[] { "-encoding", "UTF-8", "Program.java" };
+        string[] runArguments = usesForeignApi
+            ? new[] { "--enable-preview", "--enable-native-access=ALL-UNNAMED", "Program" }
+            : new[] { "Program" };
+
         ProcessResult build = await Runner.RunAsync(
-            new ProcessCommand(commands.Javac, new[] { "-encoding", "UTF-8", "Program.java" }, workspace),
+            new ProcessCommand(commands.Javac, compileArguments, workspace),
             BuildTimeout,
             cancellationToken).ConfigureAwait(false);
 
@@ -1425,13 +1547,18 @@ public sealed class JavaToolchain : ToolchainBase
 
         string? pauseLauncherPath = await WritePauseLauncherAsync(
             workspace,
-            new[] { BuildJavaProgramCommand(commands) },
+            new[] { BuildJavaProgramCommand(commands, usesForeignApi) },
             options,
             cancellationToken).ConfigureAwait(false);
 
+        if (ShouldSkipProgramExecution(options))
+        {
+            return BuildOnlyResult(status, buildOutput, workspace, build.Duration, pauseLauncherPath);
+        }
+
         ProcessResult run = await Runner.RunAsync(
             ConfigureProgramCommand(
-                new ProcessCommand(commands.Java, new[] { "Program" }, workspace),
+                new ProcessCommand(commands.Java, runArguments, workspace),
                 options,
                 pauseLauncherPath),
             GetProgramTimeout(options),
@@ -1652,8 +1779,9 @@ public sealed class JavaToolchain : ToolchainBase
     private static string FormatExitCode(int? exitCode) =>
         exitCode?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unavailable";
 
-    private static string BuildJavaProgramCommand(JavaCommands commands) =>
-        QuoteForCmd(commands.Java) + " Program";
+    private static string BuildJavaProgramCommand(JavaCommands commands, bool usesForeignApi) =>
+        QuoteForCmd(commands.Java) +
+        (usesForeignApi ? " --enable-preview --enable-native-access=ALL-UNNAMED Program" : " Program");
 }
 
 public sealed class ObjectiveCToolchain : ToolchainBase
@@ -1740,6 +1868,16 @@ public sealed class ObjectiveCToolchain : ToolchainBase
             options,
             cancellationToken,
             setupLines: new[] { pathSetup }).ConfigureAwait(false);
+
+        if (ShouldSkipProgramExecution(options))
+        {
+            return BuildOnlyResult(
+                detection.Status,
+                buildOutput,
+                workspace,
+                build.Duration,
+                pauseLauncherPath);
+        }
 
         ProcessResult run = await Runner.RunAsync(
             ConfigureProgramCommand(
@@ -1932,6 +2070,16 @@ public sealed class SwiftToolchain : ToolchainBase
             options,
             cancellationToken,
             setupLines: new[] { pathSetup }).ConfigureAwait(false);
+
+        if (ShouldSkipProgramExecution(options))
+        {
+            return BuildOnlyResult(
+                detection.Status,
+                buildOutput,
+                workspace,
+                build.Duration,
+                pauseLauncherPath);
+        }
 
         ProcessResult run = await Runner.RunAsync(
             ConfigureProgramCommand(

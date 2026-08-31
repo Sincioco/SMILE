@@ -14,11 +14,11 @@ public sealed record DimStatementSyntax(
     string Name,
     TextSpan NameSpan,
     SmileType DeclaredType,
-    ExpressionSyntax? ArraySize,
+    IReadOnlyList<ExpressionSyntax> ArraySizes,
     TextSpan Span)
     : StatementSyntax(Span)
 {
-    public bool IsArray => ArraySize is not null;
+    public bool IsArray => ArraySizes.Count > 0;
 }
 
 public sealed record ConstStatementSyntax(
@@ -86,7 +86,7 @@ public sealed record SelectStatementSyntax(
 public sealed record CoreArrayAssignmentStatementSyntax(
     string Name,
     TextSpan NameSpan,
-    ExpressionSyntax Index,
+    IReadOnlyList<ExpressionSyntax> Indices,
     ExpressionSyntax Value,
     TextSpan Span)
     : StatementSyntax(Span);
@@ -101,9 +101,31 @@ public sealed record CallExpressionSyntax(
 public sealed record ArrayAccessExpressionSyntax(
     string Name,
     TextSpan NameSpan,
-    ExpressionSyntax Index,
+    IReadOnlyList<ExpressionSyntax> Indices,
     TextSpan Span)
     : ExpressionSyntax(Span);
+
+public sealed record GetKeyStatementSyntax(
+    string Name,
+    TextSpan NameSpan,
+    TextSpan Span)
+    : StatementSyntax(Span);
+
+public sealed record ClearScreenStatementSyntax(TextSpan Span)
+    : StatementSyntax(Span);
+
+public sealed record WaitStatementSyntax(
+    ExpressionSyntax Duration,
+    TextSpan Span)
+    : StatementSyntax(Span);
+
+public sealed record RandomStatementSyntax(
+    string Name,
+    TextSpan NameSpan,
+    ExpressionSyntax LowerBound,
+    ExpressionSyntax UpperBound,
+    TextSpan Span)
+    : StatementSyntax(Span);
 
 public sealed record CorePrintStatementSyntax(
     IReadOnlyList<ExpressionSyntax> Values,

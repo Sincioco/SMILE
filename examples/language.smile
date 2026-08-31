@@ -1,8 +1,10 @@
-' SMILE Core BASIC Profile 2 cumulative language reference.
+' SMILE Core BASIC 2.1 cumulative language reference.
 ' Apostrophe comments may use their own line or follow a statement.
 
 Const ProductName = "SMILE"
 Const Quotation = "She said ""Hello""."
+Const BoardWidth = 4
+Const BoardHeight = 3
 
 Dim FirstName As Text
 Dim LastName As Text
@@ -23,6 +25,10 @@ Dim Tally As Number
 Dim Inner As Number
 Dim SampleValues[3] As Number
 Dim SamplePosition As Number
+Dim Board[BoardWidth, BoardHeight] As Text
+Dim LastKey As Number
+Dim FixedRoll As Number
+Dim StartedAt As Number
 
 FirstName = "Sin"
 LastName = "Cioco"
@@ -95,6 +101,17 @@ Select Case SampleTotal()
     Case Else
         Print "Select Case used its fallback."
 End Select
+
+Board[1, 1] = "@"
+Clear Screen
+Get Key LastKey
+StartedAt = Timer()
+Wait 0 Milliseconds
+Random FixedRoll From 6 To 6
+Print "2D cell="; Board[1, 1]
+Print "No-input key="; LastKey; ", die="; FixedRoll
+Print "Math="; Abs(-5); ", "; Min(8, 3); ", "; Max(8, 3)
+Print "Timer monotonic="; Timer() >= StartedAt
 
 Print "End Program stops before the next statement."
 End Program

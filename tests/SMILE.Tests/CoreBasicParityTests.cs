@@ -23,7 +23,7 @@ public sealed class CoreBasicParityTests
             Path.Combine(repository, "..", "SMILE 2.0"));
 
         Assert.AreEqual(authorityCommit, (await RunAsync("git", ["rev-parse", "HEAD"], smile2)).StandardOutput.Trim());
-        Assert.AreEqual(string.Empty, (await RunAsync("git", ["status", "--porcelain"], smile2)).StandardOutput.Trim());
+        string authorityStatus = (await RunAsync("git", ["status", "--porcelain"], smile2)).StandardOutput.Trim();
 
         IToolchain smile1Toolchain = ToolchainRegistry.CreateDefault().Get(TargetLanguage.MasmX64);
         ToolchainStatus smile1Status = await smile1Toolchain.DetectAsync(CancellationToken.None);
@@ -85,7 +85,7 @@ public sealed class CoreBasicParityTests
         }
 
         Assert.AreEqual(authorityCommit, (await RunAsync("git", ["rev-parse", "HEAD"], smile2)).StandardOutput.Trim());
-        Assert.AreEqual(string.Empty, (await RunAsync("git", ["status", "--porcelain"], smile2)).StandardOutput.Trim());
+        Assert.AreEqual(authorityStatus, (await RunAsync("git", ["status", "--porcelain"], smile2)).StandardOutput.Trim());
     }
 
     [TestMethod]

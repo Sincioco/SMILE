@@ -2,7 +2,7 @@
 
 ## Status
 
-This standard governs generation for SMILE Core BASIC 2 across the ten active destinations. `AGENTS.md`, [Core Principles](SMILE%20Core%20Principles.md), and the [Official Specification](SMILE%20Language%20Specification/002%20-%20SMILE%20Core%20BASIC%202%20Official%20Specification.md) have higher authority.
+This standard governs generation for SMILE Core BASIC 2.1 across the ten active destinations. `AGENTS.md`, [Core Principles](SMILE%20Core%20Principles.md), and the [Text-Game Foundation Official Specification](SMILE%20Language%20Specification/003%20-%20SMILE%20Core%20BASIC%202.1%20Text-Game%20Foundation%20Official%20Specification.md) have higher authority.
 
 ## Governing rule
 
@@ -61,7 +61,7 @@ Calls use normal destination routines and native call frames. Destinations witho
 
 Implicit assignment, `Dim`, constants, parameters, local/global variables, arrays, and loop counters become clear target declarations and assignments. Declarations may be hoisted where the destination requires it, but learner reads and writes stay visible. Constants should use a destination constant when its declaration model permits; otherwise use the smallest faithful immutable representation.
 
-Fixed arrays use native fixed storage where practical. Every dynamic index is checked against the SMILE zero-based range before access, even when the target would otherwise allow negative indexing, sparse extension, one-based subscripts, or unchecked memory. Text cells start as empty Text. Routine-local arrays are new/defaulted per call.
+Fixed rank-one and rank-two arrays use native fixed storage where practical. Every dynamic index is checked against its SMILE zero-based dimension before access, even when the target would otherwise allow negative indexing, sparse extension, one-based subscripts, or unchecked memory. Index expressions run left to right exactly once; every assignment index is checked before its right-hand value. Text cells start as empty Text. Routine-local arrays are new/defaulted per call.
 
 Do not generate unused declarations. Preserve case-insensitive SMILE identity while mapping names deterministically away from destination reserved words and collisions.
 
@@ -93,16 +93,16 @@ Use familiar output:
 
 | Target | Required recognizable direction |
 |---|---|
-| C# | minimal console program, static routines/globals, native arrays, `for`, `do`, `if`, `Console.Write` |
-| C | `int main(void)`, fixed-width Number, `for`, `do`, `if`, standard C output |
-| MASM x64 | clear data, ABI-correct recursive `PROC` frames/calls, local stack arrays, compare/branch labels, direct `ExitProcess` |
-| JavaScript (Node.js) | dependency-free `.js`, functions, native arrays, `let`/`const`, structured blocks, Node output stream |
-| Java | small `Program` class, primitive/String storage, structured blocks |
-| COBOL | recursive program units, linkage/local storage, `OCCURS`, `EVALUATE`, `DISPLAY`, structured `PERFORM` |
+| C# | main-first minimal console program, rectangular arrays, `Console` polling/clear, `Thread.Sleep`, monotonic clock |
+| C | main-first `int main(void)`, fixed arrays, Win32/CRT console primitives, explicit ordered temporaries |
+| MASM x64 | main-first ABI-correct `PROC`, flattened checked 2D offsets, direct CRT/Win64 primitives |
+| JavaScript (Node.js) | dependency-free `.js`, independent nested arrays, feature-driven async main, Promise Wait, raw queue/finally cleanup |
+| Java | main-first small `Program`, primitive arrays, standard JDK 21 FFM for Windows CRT key polling |
+| COBOL | primary-first recursive program units, nested `OCCURS`, and a feature-gated C console companion |
 | Objective-C | dependency-light C-compatible console source in `.m` |
-| Swift | top-level script statements, `for`/`stride`, `repeat`, native `print` |
-| Python | direct module-level script, `for`, `while True`, `if`, native `print` |
-| C++ | small `main`, standard library scalar/Text/output, structured blocks |
+| Swift | top-level script statements, nested arrays, WinSDK/CRT console interop only when used |
+| Python | direct module-level script, list comprehensions, `msvcrt`, and no synthetic main |
+| C++ | main-first small program, nested `std::array`, standard chrono/thread/random |
 
 ## Comments and layout
 

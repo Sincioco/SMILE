@@ -1,0 +1,299 @@
+' Sky Foundry: an original falling-shape text game.
+Option Explicit
+
+Const BOARD_WIDTH = 10
+Const BOARD_HEIGHT = 20
+Const BLOCK_COUNT = 4
+Const FALL_DELAY = 420
+
+Dim Board[BOARD_WIDTH, BOARD_HEIGHT] As Number
+Dim PieceX[BLOCK_COUNT] As Number
+Dim PieceY[BLOCK_COUNT] As Number
+Dim PieceKind As Number
+Dim NextKind As Number
+Dim PieceRotation As Number
+Dim PieceColumn As Number
+Dim PieceRow As Number
+Dim Score As Number
+Dim LinesCleared As Number
+Dim KeyCode As Number
+Dim NextFallTime As Number
+Dim ProgramRunning As Boolean
+Dim RoundActive As Boolean
+Dim X As Number
+Dim Y As Number
+
+ProgramRunning = True
+Call ShowTitle()
+
+Do
+    Get Key KeyCode
+    If KeyCode = KEY_ESCAPE Then
+        ProgramRunning = False
+    Else If KeyCode = KEY_ENTER Then
+        Call ResetGame()
+        Do
+            Call ReadControls()
+            If ProgramRunning And RoundActive And Timer() >= NextFallTime Then
+                If CanPlace(PieceColumn, PieceRow + 1) Then
+                    PieceRow = PieceRow + 1
+                Else
+                    Call LockPiece()
+                End If
+                NextFallTime = Timer() + FALL_DELAY
+            End If
+            If ProgramRunning And RoundActive Then
+                Call DrawBoard()
+            End If
+            Wait 20 Milliseconds
+        Loop Until Not ProgramRunning Or Not RoundActive
+
+        If ProgramRunning Then
+            Call EndRound()
+        End If
+    End If
+    Wait 20 Milliseconds
+Loop Until Not ProgramRunning
+
+Clear Screen
+Print "The foundry closes. Thanks for building!"
+
+Sub ShowTitle()
+    Clear Screen
+    Print "SKY FOUNDRY"
+    Print "Arrange seven families of four-cell shapes into complete rows."
+    Print "Left/right: A/D or arrows · Soft drop: S/Down"
+    Print "Rotate: W, Up, or Space · Escape leaves"
+    Print "Press Enter to start."
+End Sub
+
+Sub ResetGame()
+    For Y = 0 To BOARD_HEIGHT - 1
+        For X = 0 To BOARD_WIDTH - 1
+            Board[X, Y] = 0
+        End For
+    End For
+    For X = 0 To BOARD_WIDTH - 1
+        If X < 4 Or X > 7 Then
+            Board[X, BOARD_HEIGHT - 1] = 7
+        End If
+    End For
+    Score = 0
+    LinesCleared = 0
+    RoundActive = True
+    NextKind = 1
+    Call SpawnPiece()
+    NextFallTime = Timer() + FALL_DELAY
+End Sub
+
+Sub SpawnPiece()
+    PieceKind = NextKind
+    Random NextKind From 1 To 7
+    PieceRotation = 0
+    PieceColumn = BOARD_WIDTH / 2
+    PieceRow = 0
+    Call LoadPieceShape()
+    If Not CanPlace(PieceColumn, PieceRow) Then
+        RoundActive = False
+    End If
+End Sub
+
+Sub LoadPieceShape()
+    Dim Turn As Number
+    Dim Index As Number
+    Dim OldX As Number
+    Select Case PieceKind
+    Case 1
+        Call SetBlock(0, -1, 0)
+        Call SetBlock(1, 0, 0)
+        Call SetBlock(2, 1, 0)
+        Call SetBlock(3, 2, 0)
+    Case 2
+        Call SetBlock(0, 0, 0)
+        Call SetBlock(1, 1, 0)
+        Call SetBlock(2, 0, 1)
+        Call SetBlock(3, 1, 1)
+    Case 3
+        Call SetBlock(0, -1, 0)
+        Call SetBlock(1, 0, 0)
+        Call SetBlock(2, 1, 0)
+        Call SetBlock(3, 0, 1)
+    Case 4
+        Call SetBlock(0, -1, 0)
+        Call SetBlock(1, 0, 0)
+        Call SetBlock(2, 1, 0)
+        Call SetBlock(3, 1, 1)
+    Case 5
+        Call SetBlock(0, -1, 1)
+        Call SetBlock(1, -1, 0)
+        Call SetBlock(2, 0, 0)
+        Call SetBlock(3, 1, 0)
+    Case 6
+        Call SetBlock(0, -1, 1)
+        Call SetBlock(1, 0, 1)
+        Call SetBlock(2, 0, 0)
+        Call SetBlock(3, 1, 0)
+    Case 7
+        Call SetBlock(0, -1, 0)
+        Call SetBlock(1, 0, 0)
+        Call SetBlock(2, 0, 1)
+        Call SetBlock(3, 1, 1)
+    End Select
+
+    If PieceKind <> 2 Then
+        For Turn = 1 To PieceRotation
+            For Index = 0 To BLOCK_COUNT - 1
+                OldX = PieceX[Index]
+                PieceX[Index] = -PieceY[Index]
+                PieceY[Index] = OldX
+            End For
+        End For
+    End If
+End Sub
+
+Sub SetBlock(Index As Number, OffsetX As Number, OffsetY As Number)
+    PieceX[Index] = OffsetX
+    PieceY[Index] = OffsetY
+End Sub
+
+Function CanPlace(AtColumn As Number, AtRow As Number) As Boolean
+    Dim Index As Number
+    Dim CellX As Number
+    Dim CellY As Number
+    Dim Allowed As Boolean
+    Allowed = True
+    For Index = 0 To BLOCK_COUNT - 1
+        CellX = AtColumn + PieceX[Index]
+        CellY = AtRow + PieceY[Index]
+        If CellX < 0 Or CellX >= BOARD_WIDTH Or CellY >= BOARD_HEIGHT Then
+            Allowed = False
+        Else If CellY >= 0 And Board[CellX, CellY] <> 0 Then
+            Allowed = False
+        End If
+    End For
+    Return Allowed
+End Function
+
+Sub ReadControls()
+    Get Key KeyCode
+    If KeyCode = KEY_ESCAPE Then
+        ProgramRunning = False
+    Else If KeyCode = KEY_A Or KeyCode = KEY_LEFT Then
+        If CanPlace(PieceColumn - 1, PieceRow) Then
+            PieceColumn = PieceColumn - 1
+        End If
+    Else If KeyCode = KEY_D Or KeyCode = KEY_RIGHT Then
+        If CanPlace(PieceColumn + 1, PieceRow) Then
+            PieceColumn = PieceColumn + 1
+        End If
+    Else If KeyCode = KEY_S Or KeyCode = KEY_DOWN Then
+        If CanPlace(PieceColumn, PieceRow + 1) Then
+            PieceRow = PieceRow + 1
+            Score = Score + 1
+        Else
+            Call LockPiece()
+        End If
+    Else If KeyCode = KEY_W Or KeyCode = KEY_UP Or KeyCode = KEY_SPACE Then
+        Call RotatePiece()
+    End If
+End Sub
+
+Sub RotatePiece()
+    Dim PreviousRotation As Number
+    PreviousRotation = PieceRotation
+    PieceRotation = (PieceRotation + 1) Mod 4
+    Call LoadPieceShape()
+    If Not CanPlace(PieceColumn, PieceRow) Then
+        PieceRotation = PreviousRotation
+        Call LoadPieceShape()
+    End If
+End Sub
+
+Sub LockPiece()
+    Dim Index As Number
+    Dim CellX As Number
+    Dim CellY As Number
+    For Index = 0 To BLOCK_COUNT - 1
+        CellX = PieceColumn + PieceX[Index]
+        CellY = PieceRow + PieceY[Index]
+        If CellY >= 0 Then
+            Board[CellX, CellY] = PieceKind
+        End If
+    End For
+    Call RemoveCompleteRows()
+    Call SpawnPiece()
+End Sub
+
+Sub RemoveCompleteRows()
+    Dim Row As Number
+    Dim CopyRow As Number
+    Dim Full As Boolean
+    Row = BOARD_HEIGHT - 1
+    Do
+        Full = True
+        For X = 0 To BOARD_WIDTH - 1
+            If Board[X, Row] = 0 Then
+                Full = False
+            End If
+        End For
+        If Full Then
+            For CopyRow = Row Down To 1
+                For X = 0 To BOARD_WIDTH - 1
+                    Board[X, CopyRow] = Board[X, CopyRow - 1]
+                End For
+            End For
+            For X = 0 To BOARD_WIDTH - 1
+                Board[X, 0] = 0
+            End For
+            LinesCleared = LinesCleared + 1
+            Score = Score + 100
+        Else
+            Row = Row - 1
+        End If
+    Loop Until Row < 0
+End Sub
+
+Function PieceOccupies(CellX As Number, CellY As Number) As Boolean
+    Dim Index As Number
+    Dim Found As Boolean
+    Found = False
+    For Index = 0 To BLOCK_COUNT - 1
+        If PieceColumn + PieceX[Index] = CellX And PieceRow + PieceY[Index] = CellY Then
+            Found = True
+        End If
+    End For
+    Return Found
+End Function
+
+Function SymbolAt(CellX As Number, CellY As Number) As Text
+    Dim Symbol As Text
+    Symbol = " "
+    If PieceOccupies(CellX, CellY) Then
+        Symbol = "@"
+    Else If Board[CellX, CellY] <> 0 Then
+        Symbol = "#"
+    End If
+    Return Symbol
+End Function
+
+Sub DrawBoard()
+    Clear Screen
+    Print "SKY FOUNDRY    Score: "; Score; "    Rows: "; LinesCleared; "    Next family: "; NextKind
+    Print "+----------+"
+    For Y = 0 To BOARD_HEIGHT - 1
+        Print "|";
+        For X = 0 To BOARD_WIDTH - 1
+            Print SymbolAt(X, Y);
+        End For
+        Print "|"
+    End For
+    Print "+----------+"
+    Print "A/D move · S drops · W/Up/Space rotates · Escape exits"
+End Sub
+
+Sub EndRound()
+    Call DrawBoard()
+    Print
+    Print "The stack reached the clouds. Final score: "; Score
+    Print "Press Enter to build again or Escape to leave."
+End Sub

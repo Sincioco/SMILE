@@ -2,7 +2,7 @@
 
 ## Current baseline: SMILE 1.0
 
-SMILE 1.0 is the breaking Core BASIC alignment repository. Its current language is one canonical Core BASIC 2 profile frozen from SMILE 2.0.
+SMILE 1.0 is the breaking Core BASIC alignment repository. Its current language is one canonical SMILE Core BASIC 2.1 — Text-Game Foundation profile selected from SMILE 2.0.
 
 Implemented in this baseline:
 
@@ -11,7 +11,10 @@ Implemented in this baseline:
 - canonical expressions and expression-list `Print`;
 - `If`, ascending/descending `For`, post-tested `Do`, typed exits, and `End Program`;
 - `Option Explicit`, Sub/Function routines, Call/Return, typed ByVal parameters, routine scope, and recursion;
-- selector-once `Select Case` and checked fixed one-dimensional arrays;
+- selector-once `Select Case` and checked fixed one- and two-dimensional arrays;
+- nonblocking `Get Key`, stable key constants, `Clear Screen`, millisecond `Wait`, inclusive `Random`, and `Timer`/`Abs`/`Min`/`Max`;
+- an injected evaluator host, virtual time/random/input, and a bounded-execution option for deterministic game tests;
+- complete original Trail Runner, Lantern Maze, and Sky Foundry terminal games;
 - explicit rejection of superseded source forms and excluded SMILE 2.0 features;
 - evaluator support for the complete profile;
 - deterministic generation and Build & Run integration for all ten active targets;
@@ -41,6 +44,6 @@ The active set is C#, C, Windows x64 MASM Assembly, JavaScript (Node.js), Java, 
 
 ## Next work
 
-Future work should be driven by observed defects, clearer generated teaching output, toolchain reliability, diagnostics, Desktop usability, and explicit new product direction. Console Input requires a separate authority-first design; it is not implied by this roadmap. Do not reintroduce compatibility modes or present ByRef, Optional/named arguments, multidimensional arrays, modules, Types, enums, OOP, graphics, or other SMILE 2.0 features as implemented.
+Future work should be driven by observed defects, clearer generated teaching output, toolchain reliability, diagnostics, Desktop usability, and explicit new product direction. Console Input requires a separate authority-first design; it is not implied by this roadmap. Do not reintroduce compatibility modes or present ByRef, Optional/named arguments, dynamic or rank-three arrays, modules, Types, enums, OOP, graphics, or other SMILE 2.0 features as implemented.
 
 Historical milestone narratives remain under `Requirements/` for research context and do not define current source behavior.

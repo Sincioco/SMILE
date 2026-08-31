@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-This document is the canonical current product strategy beneath `AGENTS.md`. The read-only SMILE 2.0 source implementation is authoritative whenever shared language behavior differs; the [Core BASIC 2 Official Specification](SMILE%20Language%20Specification/002%20-%20SMILE%20Core%20BASIC%202%20Official%20Specification.md) records the selected SMILE 1.0 profile. Historical requirement files explain past research but cannot restore superseded syntax or workflow.
+This document is the canonical current product strategy beneath `AGENTS.md`. The read-only SMILE 2.0 source implementation is authoritative whenever shared language behavior differs; the [Core BASIC 2.1 Text-Game Foundation Official Specification](SMILE%20Language%20Specification/003%20-%20SMILE%20Core%20BASIC%202.1%20Text-Game%20Foundation%20Official%20Specification.md) defines the current SMILE 1.0 language. Historical requirement files explain past research but cannot restore superseded syntax or workflow.
 
 ## 1. Beginner first
 
@@ -10,7 +10,7 @@ SMILE means **Simple Modern and Intuitive Language for Everyone**. The source la
 
 ## 2. One canonical source language
 
-SMILE 1.0 implements only SMILE Core BASIC 2, frozen from SMILE 2.0. Every public surface—engine, evaluator, CLI, Desktop, highlighting, examples, and tests—uses the same parser and binder.
+SMILE 1.0 implements only SMILE Core BASIC 2.1, selected from SMILE 2.0. Every public surface—engine, evaluator, CLI, Desktop, highlighting, examples, and tests—uses the same parser and binder.
 
 There is no language selector, compatibility profile, source auto-detection, or fallback. Unsupported source receives a diagnostic. A breaking error is safer and more teachable than silently changing its meaning.
 
@@ -27,7 +27,8 @@ Generated code should express the source using the normal destination-language c
 | `Do` | genuine post-test loop, or the clearest equivalent |
 | `Sub` / `Function` | ordinary native routine and call frame |
 | `Select Case` | native selection or a readable selector-once conditional chain |
-| fixed array | normal fixed storage plus an explicit bounds check where needed |
+| fixed rank-one/rank-two array | normal fixed storage plus an explicit bounds check where needed |
+| text-game terminal operation | the destination's normal console, timing, and random facility |
 | typed `Exit` | native break/label when it preserves lexical meaning |
 | `End Program` | normal successful process termination |
 
@@ -47,7 +48,7 @@ All targets consume the same bound program. Parsing establishes canonical struct
 
 A helper is acceptable only when the destination lacks a clear direct construct or when the helper is necessary to preserve the language rule. Keep it local, deterministic, plainly named, and absent from programs that do not need it.
 
-Current justified examples include C Text concatenation, deterministic array bounds helpers where target behavior is unsafe, and Python control transfer for `Exit For` or `Exit Do` across a differently nested loop kind. Ordinary programs that do not need a helper do not receive it.
+Current justified examples include C Text concatenation, deterministic array bounds helpers where target behavior is unsafe, Python control transfer for a cross-kind typed exit, and the smallest target-specific raw-key or inclusive-random helper where the destination has no direct equivalent. Ordinary programs that do not need a helper do not receive it.
 
 ## 7. Ten active destinations
 
@@ -61,7 +62,7 @@ Toolchain detection, compilation, linking, execution, process I/O, and noticeabl
 
 ## 9. Tests protect meaning and readability
 
-Focused tests must cover the canonical lexer/parser/binder rules, evaluation, obsolete-source rejection, Desktop and highlighting exposure, deterministic generation for all ten targets, and the native construct used by each changed backend.
+Focused tests must cover the canonical lexer/parser/binder rules, injected-host evaluation and execution budgets, obsolete-source rejection, Desktop and highlighting exposure, deterministic generation for all ten targets, and the native construct used by each changed backend. Terminal behavior needs a real attached or pseudo-console test; source-substring assertions are not a replacement.
 
 After language or generator changes, run the `MissionGuardrail` category plus the narrow functional tests and smallest relevant build. Major language migrations additionally justify all-target toolchain and cross-repository parity checks.
 

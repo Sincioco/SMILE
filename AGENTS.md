@@ -8,7 +8,7 @@ Generated target code is part of the teaching experience. It **MUST** use the no
 
 Do not introduce compiler-generated runtime machinery when the destination language already provides a normal native construct for the feature. Existing implementation complexity is not itself a requirement, and an old test does not make a superseded behavior permanent.
 
-SMILE 1.0 accepts one canonical Core BASIC 2 grammar. Write variables directly in statement and expression positions, including `Name = "Sin"`, `Print Name`, and `If Name = "Sin" Then`. Apostrophes start comments; historical raw Print templates, interpolation, `LET`, `SET`, `INPUT`, and `WHILE` forms are not active language syntax.
+SMILE 1.0 accepts one canonical Core BASIC 2.1 grammar. Write variables directly in statement and expression positions, including `Name = "Sin"`, `Print Name`, and `If Name = "Sin" Then`. The additive Text-Game Foundation includes fixed rank-two arrays, `Get Key`, `Clear Screen`, `Wait`, `Random`, `Timer`, `Abs`, `Min`, and `Max`; it does not add blocking console Input or graphics. Apostrophes start comments; historical raw Print templates, interpolation, `LET`, `SET`, `INPUT`, and `WHILE` forms are not active language syntax.
 
 Before changing the compiler, generators, language specifications, runtime behavior, or target tests, read [docs/SMILE Core Principles.md](docs/SMILE%20Core%20Principles.md) and the relevant current official specification.
 
@@ -78,7 +78,7 @@ When generator output changes, the completion report must include a small before
 
 - SMILE is public; write detailed public-reader-friendly commit messages.
 - When Codex creates a commit, prefix the subject with `Sin and Codex:`.
-- Do not commit or push unless Sin explicitly asks.
+- After completing a task, when every test run for that task is green, automatically commit the completed in-scope work and push `main` without waiting for a separate instruction. If any required or directly relevant test is failing, do not commit or push.
 - Work directly on `main`; do not create or recommend a branch unless Sin changes this rule.
 - "Commit all files" means stage all current non-ignored unstaged and untracked repository changes, while never force-adding ignored build output.
 - Never force-push, rewrite published history, discard user work, or commit unrelated local changes.

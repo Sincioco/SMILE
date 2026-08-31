@@ -23,6 +23,8 @@ Detection, compilation, linking, and execution are asynchronous and cancellation
 
 Toolchain messages expose the detected version/location or a concise installation requirement. Detection failure is recoverable.
 
+The Text-Game Foundation milestone was validated locally with .NET SDK 10.0.400, Visual Studio 2026 22.9.2 (MSVC 19.51.36256 and MASM 14.51.36256), Node.js 24.14.0, JDK 21.0.12.1, GnuCOBOL 3.2.0, Clang 21.1.6, Swift 6.3.3 for Windows, and Python 3.13.12. These are the versions tested by this repository, not a promise about older releases.
+
 ## C#
 
 Generated C# contains `Program.cs` and a minimal `GeneratedProgram.csproj` targeting .NET 10. The companion file is required for deterministic local compilation and contains no SMILE runtime package.
@@ -43,13 +45,22 @@ Generated assembly follows the Windows x64 ABI, including required shadow space 
 
 ## JavaScript (Node.js) and Python
 
-These are direct-run targets. `javascript` remains the stable CLI ID, the display name is JavaScript (Node.js), and generation produces dependency-free `Program.js` with no npm package or module requirement. Use a current supported Node.js LTS release. Detection validates the local runtime, and run results use the same timeout/cancellation model as compiled destinations. Python remains a top-level executable script.
+These are direct-run targets. `javascript` remains the stable CLI ID, the display name is JavaScript (Node.js), and generation produces dependency-free `Program.js` with no npm package or module requirement. Node syntax is checked before execution. Programs using `Get Key` or `Wait` receive a feature-driven async main; Wait uses a Promise, key input uses a raw-mode queue, and `finally` restores stdin. Python remains a top-level executable script and is syntax-compiled before execution; it uses Windows `msvcrt` only when key polling is present.
+
+## Text-game console integration
+
+- C#, C, Objective-C, MASM, Swift, and C++ use their normal Windows console/CRT facilities.
+- Java requires JDK 21 and uses the standard Foreign Function & Memory API with `--enable-preview` to call `_kbhit`/`_getwch`; no JNA or external JAR is used.
+- Swift uses Windows CRT symbols for key polling and WinSDK only for screen operations.
+- GnuCOBOL links a generated `SmileRuntime.c` only when a used primitive needs C/Win32 interop. The companion contains terminal mechanics, never learner or game logic.
+- `Clear Screen` is a safe no-op when output is redirected. `Get Key` returns `KEY_NONE` when no attached interactive input event exists.
+- Interactive conformance uses Windows ConPTY to prove W/A/S/D, real arrow sequences, Enter, Escape, Space, no-input polling, redraw, exit, and restored launcher input on every target.
 
 ## Build/run result model
 
 Every toolchain returns the target, detected status, build output, stdout, stderr, exit code, duration, timeout/cancellation flags, temporary working directory, and stage. A failed compiler or program does not crash Desktop.
 
-Compiler/linker stdin is closed. Core BASIC 2 deliberately has no console Input statement, so generated programs do not request interactive stdin.
+Compiler/linker stdin is closed. Ordinary runner execution supplies no input, so nonblocking `Get Key` observes `KEY_NONE`. Real-time key tests and games launch through an attached pseudo-console. Core BASIC 2.1 deliberately has no blocking console Input statement.
 
 ## Validation tiers
 

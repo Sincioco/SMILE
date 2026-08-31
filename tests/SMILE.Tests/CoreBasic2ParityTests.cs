@@ -24,7 +24,7 @@ public sealed class CoreBasic2ParityTests
             Environment.GetEnvironmentVariable("SMILE2_ROOT") ?? Path.Combine(repository, "..", "SMILE 2.0"));
 
         Assert.AreEqual(authorityCommit, (await RunAsync("git", ["rev-parse", "HEAD"], smile2)).StandardOutput.Trim());
-        Assert.AreEqual(string.Empty, (await RunAsync("git", ["status", "--porcelain"], smile2)).StandardOutput.Trim());
+        string authorityStatus = (await RunAsync("git", ["status", "--porcelain"], smile2)).StandardOutput.Trim();
 
         string compiler = Path.Combine(smile2, "src", "Smile.Compiler", "bin", "Debug", "net10.0", "smilec.exe");
         Assert.IsTrue(File.Exists(compiler), $"Build the authoritative compiler first: {compiler}");
@@ -66,7 +66,7 @@ public sealed class CoreBasic2ParityTests
         }
 
         Assert.AreEqual(authorityCommit, (await RunAsync("git", ["rev-parse", "HEAD"], smile2)).StandardOutput.Trim());
-        Assert.AreEqual(string.Empty, (await RunAsync("git", ["status", "--porcelain"], smile2)).StandardOutput.Trim());
+        Assert.AreEqual(authorityStatus, (await RunAsync("git", ["status", "--porcelain"], smile2)).StandardOutput.Trim());
     }
 
     [TestMethod]

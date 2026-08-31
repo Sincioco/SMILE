@@ -229,9 +229,20 @@ public sealed record VariableSymbol(
     bool IsConstant = false,
     string? RoutineName = null,
     int ArrayLength = 0,
-    bool IsParameter = false)
+    bool IsParameter = false,
+    int ArraySecondLength = 0)
 {
     public bool IsArray => ArrayLength > 0;
+
+    public int ArrayRank => !IsArray ? 0 : ArraySecondLength > 0 ? 2 : 1;
+
+    public IReadOnlyList<int> ArrayDimensions => ArrayRank == 2
+        ? new[] { ArrayLength, ArraySecondLength }
+        : IsArray ? new[] { ArrayLength } : Array.Empty<int>();
+
+    public int TotalElementCount => !IsArray
+        ? 0
+        : checked(ArrayLength * (ArraySecondLength > 0 ? ArraySecondLength : 1));
 
     public bool IsGlobal => RoutineName is null;
 }
@@ -315,8 +326,23 @@ public sealed record BoundRoutineDeclaration(
 
 public sealed record BoundArraySetStatement(
     VariableSymbol Array,
-    BoundExpression Index,
+    IReadOnlyList<BoundExpression> Indices,
     BoundExpression Value)
+    : BoundStatement;
+
+public sealed record BoundGetKeyStatement(VariableSymbol Target)
+    : BoundStatement;
+
+public sealed record BoundClearScreenStatement()
+    : BoundStatement;
+
+public sealed record BoundWaitStatement(BoundExpression Duration)
+    : BoundStatement;
+
+public sealed record BoundRandomStatement(
+    VariableSymbol Target,
+    BoundExpression LowerBound,
+    BoundExpression UpperBound)
     : BoundStatement;
 
 public sealed record BoundCallStatement(
@@ -436,8 +462,21 @@ public sealed record BoundVariableExpression(VariableSymbol Variable)
 
 public sealed record BoundArrayExpression(
     VariableSymbol Array,
-    BoundExpression Index)
+    IReadOnlyList<BoundExpression> Indices)
     : BoundExpression(Array.Type);
+
+public enum BoundIntrinsicKind
+{
+    Timer,
+    Abs,
+    Min,
+    Max
+}
+
+public sealed record BoundIntrinsicExpression(
+    BoundIntrinsicKind Kind,
+    IReadOnlyList<BoundExpression> Arguments)
+    : BoundExpression(SmileType.Integer);
 
 public sealed record BoundCallExpression(
     RoutineSymbol Routine,
@@ -684,10 +723,56 @@ public static class BoundExpressionEvaluator
             BoundVariableExpression variable when values.TryGetValue(variable.Variable, out SmileValue value) =>
                 StaticEvaluationResult.Known(value),
             BoundVariableExpression => StaticEvaluationResult.Unknown(),
+            BoundIntrinsicExpression intrinsic => EvaluateIntrinsic(intrinsic, values),
             BoundUnaryExpression unary => EvaluateUnary(unary, values),
             BoundBinaryExpression binary => EvaluateBinary(binary, values),
             _ => StaticEvaluationResult.Unknown()
         };
+
+    private static StaticEvaluationResult EvaluateIntrinsic(
+        BoundIntrinsicExpression intrinsic,
+        IReadOnlyDictionary<VariableSymbol, SmileValue> values)
+    {
+        if (intrinsic.Kind is BoundIntrinsicKind.Timer)
+        {
+            return StaticEvaluationResult.Unknown();
+        }
+
+        var arguments = new List<StaticEvaluationResult>(intrinsic.Arguments.Count);
+        bool mayFail = false;
+        foreach (BoundExpression argument in intrinsic.Arguments)
+        {
+            StaticEvaluationResult result = Evaluate(argument, values);
+            if (result.IsInvalid)
+            {
+                return result;
+            }
+
+            mayFail |= result.MayFailAtRuntime;
+            arguments.Add(result);
+        }
+
+        if (arguments.Any(result => !result.IsKnown))
+        {
+            return StaticEvaluationResult.Unknown(mayFailAtRuntime: mayFail);
+        }
+
+        try
+        {
+            long value = intrinsic.Kind switch
+            {
+                BoundIntrinsicKind.Abs => checked(Math.Abs(arguments[0].Value.IntegerValue)),
+                BoundIntrinsicKind.Min => Math.Min(arguments[0].Value.IntegerValue, arguments[1].Value.IntegerValue),
+                BoundIntrinsicKind.Max => Math.Max(arguments[0].Value.IntegerValue, arguments[1].Value.IntegerValue),
+                _ => 0
+            };
+            return StaticEvaluationResult.Known(SmileValue.FromInteger(value), mayFail);
+        }
+        catch (OverflowException)
+        {
+            return StaticEvaluationResult.Unknown(mayFailAtRuntime: true);
+        }
+    }
 
     // A result that is known only on successful runtime paths is deliberately
     // not returned as a foldable value when reaching it may itself fail.

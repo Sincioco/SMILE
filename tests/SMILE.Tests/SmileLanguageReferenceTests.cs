@@ -40,7 +40,7 @@ public sealed class SmileLanguageReferenceTests
         string[] labels = Regex.Matches(navigation.Groups[1].Value, @"<a\b[^>]*>(.*?)</a>", HtmlOptions)
             .Select(match => StripTags(match.Groups[1].Value).Trim())
             .ToArray();
-        Assert.HasCount(32, labels);
+        Assert.HasCount(37, labels);
         foreach (string label in labels)
         {
             Assert.IsTrue(Regex.IsMatch(label, @"^\d{2}\s·\s\D+$"), $"Navigation must contain exactly one authored number: {label}");
@@ -74,6 +74,16 @@ public sealed class SmileLanguageReferenceTests
         StringAssert.Contains(html, "no npm package");
         StringAssert.Contains(html, "There is no eleventh target");
         StringAssert.Contains(html, "does <strong>not</strong> implement console Input");
+        StringAssert.Contains(html, "Dim Board[Width, Height] As Text");
+        StringAssert.Contains(html, "Get Key KeyCode");
+        StringAssert.Contains(html, "KEY_ESCAPE");
+        StringAssert.Contains(html, "Clear Screen");
+        StringAssert.Contains(html, "Wait 40 Milliseconds");
+        StringAssert.Contains(html, "Random Roll From 6 To 6");
+        StringAssert.Contains(html, "Trail Runner");
+        StringAssert.Contains(html, "Lantern Maze");
+        StringAssert.Contains(html, "Sky Foundry");
+        StringAssert.Contains(html, "first, followed by user routines");
     }
 
     [TestMethod]

@@ -82,6 +82,10 @@ internal sealed class Parser
         TokenKind.Return => ParseReturn(),
         TokenKind.Select => ParseSelect(),
         TokenKind.Print => ParsePrint(),
+        TokenKind.Get => ParseGetKey(),
+        TokenKind.Clear => ParseClearScreen(),
+        TokenKind.Wait => ParseWait(),
+        TokenKind.Random => ParseRandom(),
         TokenKind.If => ParseIf(),
         TokenKind.For => ParseFor(),
         TokenKind.Do => ParseDo(),
@@ -103,27 +107,14 @@ internal sealed class Parser
         Token name = Next();
         if (Current.Kind is TokenKind.OpenBracket)
         {
-            Next();
-            _delimiterDepth++;
-            ExpressionSyntax index = ParseExpression();
-            if (Current.Kind is TokenKind.Comma)
-            {
-                Report("SMILE2010", "Core BASIC 2 arrays are fixed and one-dimensional.", Current.Span);
-                while (Current.Kind is TokenKind.Comma)
-                {
-                    Next();
-                    ParseExpression();
-                }
-            }
-
+            IReadOnlyList<ExpressionSyntax> indices = ParseBracketExpressionList("array index");
             Token close = Match(TokenKind.CloseBracket, "Expected ']' after the array index.");
-            _delimiterDepth--;
             Match(TokenKind.Equals, "Expected '=' after the array element target.");
             ExpressionSyntax value = ParseExpression();
             return new CoreArrayAssignmentStatementSyntax(
                 name.Text,
                 name.Span,
-                index,
+                indices,
                 value,
                 Combine(name.Span, value.Span.Length == 0 ? close.Span : value.Span));
         }
@@ -141,25 +132,12 @@ internal sealed class Parser
     {
         Token start = Next();
         Token name = Match(TokenKind.Identifier, "Expected an identifier after 'Dim'.");
-        ExpressionSyntax? arraySize = null;
+        IReadOnlyList<ExpressionSyntax> arraySizes = Array.Empty<ExpressionSyntax>();
         TextSpan endSpan = name.Span;
         if (Current.Kind is TokenKind.OpenBracket)
         {
-            Next();
-            _delimiterDepth++;
-            arraySize = ParseExpression();
-            if (Current.Kind is TokenKind.Comma)
-            {
-                Report("SMILE2010", "Core BASIC 2 arrays are fixed and one-dimensional.", Current.Span);
-                while (Current.Kind is TokenKind.Comma)
-                {
-                    Next();
-                    ParseExpression();
-                }
-            }
-
+            arraySizes = ParseBracketExpressionList("array dimension");
             Token close = Match(TokenKind.CloseBracket, "Expected ']' after the array size.");
-            _delimiterDepth--;
             endSpan = close.Span;
         }
 
@@ -167,7 +145,7 @@ internal sealed class Parser
         Token type = ParseType("Expected Number, Boolean, or Text after 'As'.");
         SmileType declaredType = ToSmileType(type.Kind);
         endSpan = type.Span.Length == 0 ? endSpan : type.Span;
-        return new DimStatementSyntax(name.Text, name.Span, declaredType, arraySize, Combine(start.Span, endSpan));
+        return new DimStatementSyntax(name.Text, name.Span, declaredType, arraySizes, Combine(start.Span, endSpan));
     }
 
     private StatementSyntax ParseConst()
@@ -349,6 +327,45 @@ internal sealed class Parser
         return new CorePrintStatementSyntax(values, suppressNewLine, Combine(start.Span, end));
     }
 
+    private StatementSyntax ParseGetKey()
+    {
+        Token start = Next();
+        Match(TokenKind.Key, "Expected 'Key' after 'Get'.");
+        Token target = Match(TokenKind.Identifier, "Get Key requires a writable Number variable.");
+        return new GetKeyStatementSyntax(target.Text, target.Span, Combine(start.Span, target.Span));
+    }
+
+    private StatementSyntax ParseClearScreen()
+    {
+        Token start = Next();
+        Token screen = Match(TokenKind.Screen, "Expected 'Screen' after 'Clear'.");
+        return new ClearScreenStatementSyntax(Combine(start.Span, screen.Span));
+    }
+
+    private StatementSyntax ParseWait()
+    {
+        Token start = Next();
+        ExpressionSyntax duration = ParseExpression();
+        Token milliseconds = Match(TokenKind.Milliseconds, "Wait requires the 'Milliseconds' unit.");
+        return new WaitStatementSyntax(duration, Combine(start.Span, milliseconds.Span));
+    }
+
+    private StatementSyntax ParseRandom()
+    {
+        Token start = Next();
+        Token target = Match(TokenKind.Identifier, "Random requires a writable Number variable.");
+        Match(TokenKind.From, "Expected 'From' after the Random target.");
+        ExpressionSyntax lower = ParseExpression();
+        Match(TokenKind.To, "Expected 'To' between Random bounds.");
+        ExpressionSyntax upper = ParseExpression();
+        return new RandomStatementSyntax(
+            target.Text,
+            target.Span,
+            lower,
+            upper,
+            Combine(start.Span, upper.Span));
+    }
+
     private StatementSyntax ParseIf()
     {
         Token start = Next();
@@ -524,7 +541,13 @@ internal sealed class Parser
             case TokenKind.False:
                 Next();
                 return new BooleanLiteralExpressionSyntax(token.Kind is TokenKind.True, token.Span);
+            case TokenKind.BuiltInConstant:
+                Next();
+                return new IntegerLiteralExpressionSyntax(
+                    Convert.ToInt64(token.Value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture),
+                    token.Span);
             case TokenKind.Identifier:
+            case TokenKind.BuiltInFunction:
                 Next();
                 if (Current.Kind is TokenKind.OpenParenthesis)
                 {
@@ -535,22 +558,15 @@ internal sealed class Parser
 
                 if (Current.Kind is TokenKind.OpenBracket)
                 {
-                    Next();
-                    _delimiterDepth++;
-                    ExpressionSyntax index = ParseExpression();
-                    if (Current.Kind is TokenKind.Comma)
-                    {
-                        Report("SMILE2010", "Core BASIC 2 arrays are fixed and one-dimensional.", Current.Span);
-                        while (Current.Kind is TokenKind.Comma)
-                        {
-                            Next();
-                            ParseExpression();
-                        }
-                    }
-
+                    IReadOnlyList<ExpressionSyntax> indices = ParseBracketExpressionList("array index");
                     Token close = Match(TokenKind.CloseBracket, "Expected ']' after the array index.");
-                    _delimiterDepth--;
-                    return new ArrayAccessExpressionSyntax(token.Text, token.Span, index, Combine(token.Span, close.Span));
+                    return new ArrayAccessExpressionSyntax(token.Text, token.Span, indices, Combine(token.Span, close.Span));
+                }
+
+                if (token.Kind is TokenKind.BuiltInFunction)
+                {
+                    Report("SMILE2017", $"Built-in function '{token.Text}' requires parentheses.", token.Span);
+                    return new ErrorExpressionSyntax(token.Span);
                 }
 
                 return new NameExpressionSyntax(token.Text, token.Span);
@@ -576,6 +592,40 @@ internal sealed class Parser
                 Report("SMILE2003", "Expected a Number, Boolean, Text, identifier, call, array access, or parenthesized expression.", token.Span);
                 return new ErrorExpressionSyntax(token.Span);
         }
+    }
+
+    private IReadOnlyList<ExpressionSyntax> ParseBracketExpressionList(string itemName)
+    {
+        Match(TokenKind.OpenBracket, $"Expected '[' before the {itemName}.");
+        var expressions = new List<ExpressionSyntax>();
+        if (Current.Kind is TokenKind.CloseBracket)
+        {
+            Report("SMILE2010", $"An {itemName} list cannot be empty.", Current.Span);
+            return expressions;
+        }
+
+        while (true)
+        {
+            if (AtLineEnd() || Current.Kind is TokenKind.CloseBracket)
+            {
+                Report("SMILE2010", $"Expected an expression for the {itemName}.", Current.Span);
+                break;
+            }
+
+            expressions.Add(ParseExpression());
+            if (Current.Kind is not TokenKind.Comma)
+            {
+                break;
+            }
+
+            Token comma = Next();
+            if (expressions.Count == 2)
+            {
+                Report("SMILE2010", "Arrays support at most two dimensions and indexes.", comma.Span);
+            }
+        }
+
+        return expressions;
     }
 
     private IReadOnlyList<ExpressionSyntax> ParseArgumentList(string openMessage)
@@ -780,9 +830,10 @@ internal sealed class Parser
     {
         Bad, EndOfFile, EndOfLine, Comment, Identifier, Number, String,
         Dim, If, Then, Else, End, For, To, Down, Do, Loop, Until, Print,
+        Get, Key, Clear, Screen, Wait, Milliseconds, Random, From,
         True, False, And, Or, Not, Const, Mod, Exit, Program, As,
         NumberType, BooleanType, TextType, Option, Explicit, Sub, Function,
-        Call, Return, Select, Case, ByVal, ByRef, Optional, UnsupportedKeyword,
+        Call, Return, Select, Case, ByVal, ByRef, Optional, BuiltInConstant, BuiltInFunction, UnsupportedKeyword,
         Plus, Minus, Star, Slash, Equals, NotEquals, Less, LessOrEquals,
         Greater, GreaterOrEquals, OpenParenthesis, CloseParenthesis,
         OpenBracket, CloseBracket, Semicolon, Comma, ColonEquals
@@ -798,6 +849,10 @@ internal sealed class Parser
             ["Else"] = TokenKind.Else, ["End"] = TokenKind.End, ["For"] = TokenKind.For,
             ["To"] = TokenKind.To, ["Down"] = TokenKind.Down, ["Do"] = TokenKind.Do,
             ["Loop"] = TokenKind.Loop, ["Until"] = TokenKind.Until, ["Print"] = TokenKind.Print,
+            ["Get"] = TokenKind.Get, ["Key"] = TokenKind.Key,
+            ["Clear"] = TokenKind.Clear, ["Screen"] = TokenKind.Screen,
+            ["Wait"] = TokenKind.Wait, ["Milliseconds"] = TokenKind.Milliseconds,
+            ["Random"] = TokenKind.Random, ["From"] = TokenKind.From,
             ["True"] = TokenKind.True, ["False"] = TokenKind.False, ["And"] = TokenKind.And,
             ["Or"] = TokenKind.Or, ["Not"] = TokenKind.Not, ["Const"] = TokenKind.Const,
             ["Mod"] = TokenKind.Mod, ["Exit"] = TokenKind.Exit, ["Program"] = TokenKind.Program,
@@ -808,7 +863,31 @@ internal sealed class Parser
             ["Call"] = TokenKind.Call, ["Return"] = TokenKind.Return,
             ["Select"] = TokenKind.Select, ["Case"] = TokenKind.Case,
             ["ByVal"] = TokenKind.ByVal, ["ByRef"] = TokenKind.ByRef,
-            ["Optional"] = TokenKind.Optional
+            ["Optional"] = TokenKind.Optional,
+            ["Timer"] = TokenKind.BuiltInFunction, ["Abs"] = TokenKind.BuiltInFunction,
+            ["Min"] = TokenKind.BuiltInFunction, ["Max"] = TokenKind.BuiltInFunction
+        };
+
+        private static readonly Dictionary<string, long> KeyConstants = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["KEY_NONE"] = 0,
+            ["KEY_W"] = 1,
+            ["KEY_A"] = 2,
+            ["KEY_S"] = 3,
+            ["KEY_D"] = 4,
+            ["KEY_UP"] = 10,
+            ["KEY_DOWN"] = 11,
+            ["KEY_LEFT"] = 12,
+            ["KEY_RIGHT"] = 13,
+            ["KEY_ENTER"] = 14,
+            ["KEY_ESCAPE"] = 15,
+            ["KEY_SPACE"] = 16,
+            ["KEY_1"] = 17,
+            ["KEY_2"] = 18,
+            ["KEY_OTHER"] = 19,
+            ["KEY_3"] = 20,
+            ["KEY_TAB"] = 21,
+            ["KEY_4"] = 22
         };
 
         private static readonly HashSet<string> ReservedWords = new(StringComparer.OrdinalIgnoreCase)
@@ -888,6 +967,11 @@ internal sealed class Parser
                 }
 
                 string text = _source[start.._position];
+                if (KeyConstants.TryGetValue(text, out long keyValue))
+                {
+                    return Make(TokenKind.BuiltInConstant, start, line, column, keyValue);
+                }
+
                 TokenKind kind = CoreKeywords.TryGetValue(text, out TokenKind coreKind)
                     ? coreKind
                     : ReservedWords.Contains(text) ? TokenKind.UnsupportedKeyword : TokenKind.Identifier;

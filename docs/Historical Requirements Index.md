@@ -10,7 +10,7 @@ The authority order is:
 2. root `AGENTS.md`;
 3. the read-only SMILE 2.0 source implementation for shared language behavior;
 4. [SMILE Core Principles](SMILE%20Core%20Principles.md);
-5. the single [SMILE Core BASIC 2 Official Specification](SMILE%20Language%20Specification/002%20-%20SMILE%20Core%20BASIC%202%20Official%20Specification.md);
+5. the single current [SMILE Core BASIC 2.1 Text-Game Foundation Official Specification](SMILE%20Language%20Specification/003%20-%20SMILE%20Core%20BASIC%202.1%20Text-Game%20Foundation%20Official%20Specification.md);
 6. current architecture, toolchain, target, and milestone documents;
 7. historical requirements.
 
@@ -23,8 +23,9 @@ The authority order is:
 | Velocity Mode brief | `ACTIVE WORKFLOW POLICY` | Focused validation and manual CI remain current beneath `AGENTS.md` |
 | Progress logs, audits, screenshots, and completion reports | `HISTORICAL ONLY` | Evidence of past work, not product behavior |
 | Old exact cross-runtime/toolchain gates | `HISTORICAL ONLY` | Do not restore without current explicit authority |
-| Core BASIC Profile 1 specification/report/migration set | `HISTORICAL VALID SUBSET` | Archived under `Requirements/Archive/Core-BASIC-1`; Profile 1 programs remain valid under Profile 2, but those files are not the current specification |
+| Core BASIC Profile 1 specification/report/migration set | `HISTORICAL VALID SUBSET` | Archived under `Requirements/Archive/Core-BASIC-1`; Profile 1 programs remain valid under the current language, but those files are not the current specification |
+| Core BASIC 2.0 specification/profile/parity set | `PRESERVED VALID SUBSET` | Reproducible shared-source record; its programs remain valid, while specification 003 defines the additive current language |
 
-No historical document can reactivate a compatibility parser, alternate profile, hidden syntax fallback, or obsolete test expectation. If historical prose conflicts with Core BASIC 2, the current compiler must follow the current official specification and pinned SMILE 2.0 behavior.
+No historical document can reactivate a compatibility parser, alternate profile, hidden syntax fallback, or obsolete test expectation. If historical prose conflicts with Core BASIC 2.1, the current compiler must follow the current official specification and pinned SMILE 2.0 behavior.
 
 Do not edit archived historical bodies merely to make them sound current.

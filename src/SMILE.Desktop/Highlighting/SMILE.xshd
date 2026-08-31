@@ -45,6 +45,36 @@
       <Word>SELECT</Word>
       <Word>CASE</Word>
       <Word>BYVAL</Word>
+      <Word>GET</Word>
+      <Word>KEY</Word>
+      <Word>CLEAR</Word>
+      <Word>SCREEN</Word>
+      <Word>WAIT</Word>
+      <Word>MILLISECONDS</Word>
+      <Word>RANDOM</Word>
+      <Word>FROM</Word>
+      <Word>TIMER</Word>
+      <Word>ABS</Word>
+      <Word>MIN</Word>
+      <Word>MAX</Word>
+      <Word>KEY_NONE</Word>
+      <Word>KEY_W</Word>
+      <Word>KEY_A</Word>
+      <Word>KEY_S</Word>
+      <Word>KEY_D</Word>
+      <Word>KEY_UP</Word>
+      <Word>KEY_DOWN</Word>
+      <Word>KEY_LEFT</Word>
+      <Word>KEY_RIGHT</Word>
+      <Word>KEY_ENTER</Word>
+      <Word>KEY_ESCAPE</Word>
+      <Word>KEY_SPACE</Word>
+      <Word>KEY_1</Word>
+      <Word>KEY_2</Word>
+      <Word>KEY_3</Word>
+      <Word>KEY_4</Word>
+      <Word>KEY_TAB</Word>
+      <Word>KEY_OTHER</Word>
     </Keywords>
 
     <Rule color="Number">\b\d+\b</Rule>

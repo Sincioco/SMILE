@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-This is the only current SMILE 1.0 language specification. It defines SMILE Core BASIC Profile 2.0, backported from the authoritative SMILE 2.0 repository at commit `9aa9583a651eab452ea3af80772b08b68fc03220`.
+This specification is the preserved Core BASIC 2.0 subset record. The additive [Core BASIC 2.1 Text-Game Foundation specification](003%20-%20SMILE%20Core%20BASIC%202.1%20Text-Game%20Foundation%20Official%20Specification.md) is the current complete SMILE 1.0 language specification. This document records Profile 2.0 as backported from the authoritative SMILE 2.0 repository; its programs remain valid without a profile selector or compatibility mode.
 
 SMILE 1.0 has one language, parser, binder, evaluator, and meaning. It has no legacy dialect, selector, source auto-detection, compatibility alias, or fallback parser. Core BASIC Profile 1.0 remains a valid subset of this language; historical SMILE 1.0 research syntax does not.
 

@@ -37,6 +37,7 @@ internal sealed class CobolWriter
         WritePlanStorage(main);
         Line("       PROCEDURE DIVISION.");
         AppendBody(main.Body);
+        Line("           MOVE 0 TO RETURN-CODE.");
         Line("           STOP RUN.");
         Line("       END PROGRAM Program.");
         Line();
@@ -127,8 +128,15 @@ internal sealed class CobolWriter
             string valueClause = linkage ? string.Empty : " " + DefaultClause(variable.Type);
             if (variable.IsArray)
             {
-                Line($"          05 {Name(variable)}.");
-                Line($"             10 {ArrayElementName(variable)} {Picture(variable.Type)}{valueClause} OCCURS {variable.ArrayLength} TIMES.");
+                if (variable.ArrayRank == 1)
+                {
+                    Line($"          05 {ArrayElementName(variable)} {Picture(variable.Type)}{valueClause} OCCURS {variable.ArrayLength} TIMES.");
+                }
+                else
+                {
+                    Line($"          05 {Name(variable)}-ROW OCCURS {variable.ArrayLength} TIMES.");
+                    Line($"             10 {ArrayElementName(variable)} {Picture(variable.Type)}{valueClause} OCCURS {variable.ArraySecondLength} TIMES.");
+                }
             }
             else
             {
@@ -143,7 +151,15 @@ internal sealed class CobolWriter
         if (variable.IsArray)
         {
             Line($"       01 {name}.");
-            Line($"          05 {ArrayElementName(variable)} {Picture(variable.Type)} {DefaultClause(variable.Type)} OCCURS {variable.ArrayLength} TIMES.");
+            if (variable.ArrayRank == 1)
+            {
+                Line($"          05 {ArrayElementName(variable)} {Picture(variable.Type)} {DefaultClause(variable.Type)} OCCURS {variable.ArrayLength} TIMES.");
+            }
+            else
+            {
+                Line($"          05 {name}-ROW OCCURS {variable.ArrayLength} TIMES.");
+                Line($"             10 {ArrayElementName(variable)} {Picture(variable.Type)} {DefaultClause(variable.Type)} OCCURS {variable.ArraySecondLength} TIMES.");
+            }
         }
         else
         {
@@ -282,9 +298,34 @@ internal sealed class CobolWriter
                     }
                     case BoundArraySetStatement set:
                     {
-                        string target = PrepareArrayElement(set.Array, set.Index, indent);
+                        string target = PrepareArrayElement(set.Array, set.Indices, indent);
                         string value = PrepareExpression(set.Value, indent);
                         Assign(target, set.Array.Type, set.Value, value, indent);
+                        break;
+                    }
+                    case BoundGetKeyStatement getKey:
+                        Line(indent, "CALL \"smile_get_key_cobol\" RETURNING " + _owner.Name(getKey.Target));
+                        break;
+                    case BoundClearScreenStatement:
+                        Line(indent, "CALL \"smile_clear_screen_cobol\"");
+                        break;
+                    case BoundWaitStatement wait:
+                    {
+                        string duration = PrepareExpression(wait.Duration, indent);
+                        Temporary captured = NewTemporary(SmileType.Integer);
+                        Assign(captured.Name, SmileType.Integer, wait.Duration, duration, indent);
+                        Line(indent, $"CALL \"smile_wait_cobol\" USING BY REFERENCE {captured.Name}");
+                        break;
+                    }
+                    case BoundRandomStatement random:
+                    {
+                        string lower = PrepareExpression(random.LowerBound, indent);
+                        Temporary capturedLower = NewTemporary(SmileType.Integer);
+                        Assign(capturedLower.Name, SmileType.Integer, random.LowerBound, lower, indent);
+                        string upper = PrepareExpression(random.UpperBound, indent);
+                        Temporary capturedUpper = NewTemporary(SmileType.Integer);
+                        Assign(capturedUpper.Name, SmileType.Integer, random.UpperBound, upper, indent);
+                        Line(indent, $"CALL \"smile_random_cobol\" USING BY REFERENCE {capturedLower.Name} BY REFERENCE {capturedUpper.Name} RETURNING {_owner.Name(random.Target)}");
                         break;
                     }
                     case BoundCallStatement call:
@@ -318,6 +359,7 @@ internal sealed class CobolWriter
                         WriteExit(exit, indent);
                         return true;
                     case BoundEndProgramStatement:
+                        Line(indent, "MOVE 0 TO RETURN-CODE");
                         Line(indent, "STOP RUN");
                         return true;
                 }
@@ -516,13 +558,15 @@ internal sealed class CobolWriter
                 case BoundVariableExpression variable:
                     return _owner.ExpressionName(variable.Variable);
                 case BoundArrayExpression array:
-                    return PrepareArrayElement(array.Array, array.Index, indent);
+                    return PrepareArrayElement(array.Array, array.Indices, indent);
                 case BoundCallExpression call:
                 {
                     Temporary result = NewTemporary(call.Type);
                     EmitCall(call.Routine, call.Arguments, indent, result.Name);
                     return result.Name;
                 }
+                case BoundIntrinsicExpression intrinsic:
+                    return PrepareIntrinsic(intrinsic, indent);
                 case BoundUnaryExpression unary:
                 {
                     string operand = PrepareExpression(unary.Operand, indent);
@@ -590,17 +634,60 @@ internal sealed class CobolWriter
             }
         }
 
-        private string PrepareArrayElement(VariableSymbol array, BoundExpression indexExpression, int indent)
+        private string PrepareArrayElement(VariableSymbol array, IReadOnlyList<BoundExpression> indexExpressions, int indent)
         {
-            string index = PrepareExpression(indexExpression, indent);
-            Temporary checkedIndex = NewTemporary(SmileType.Integer);
-            Assign(checkedIndex.Name, SmileType.Integer, indexExpression, index, indent);
-            Line(indent, $"IF {checkedIndex.Name} < 0 OR {checkedIndex.Name} >= {array.ArrayLength}");
-            Line(indent + 1, $"DISPLAY \"SMILE Runtime Error SMILER1210: Array index is outside the bounds of '{array.Name}'.\" UPON STDERR");
-            Line(indent + 1, "STOP RUN RETURNING 1");
-            Line(indent, "END-IF");
-            Line(indent, $"ADD 1 TO {checkedIndex.Name}");
-            return $"{_owner.ArrayElementName(array)}({checkedIndex.Name})";
+            var checkedIndices = new List<Temporary>(indexExpressions.Count);
+            for (int dimension = 0; dimension < indexExpressions.Count; dimension++)
+            {
+                BoundExpression indexExpression = indexExpressions[dimension];
+                string index = PrepareExpression(indexExpression, indent);
+                Temporary checkedIndex = NewTemporary(SmileType.Integer);
+                Assign(checkedIndex.Name, SmileType.Integer, indexExpression, index, indent);
+                checkedIndices.Add(checkedIndex);
+            }
+
+            for (int dimension = 0; dimension < checkedIndices.Count; dimension++)
+            {
+                Temporary checkedIndex = checkedIndices[dimension];
+                int length = dimension == 0 ? array.ArrayLength : array.ArraySecondLength;
+                Line(indent, $"IF {checkedIndex.Name} < 0 OR {checkedIndex.Name} >= {length}");
+                Line(indent + 1, $"DISPLAY \"SMILE Runtime Error SMILER1210: Array index is outside the bounds of '{array.Name}'.\" UPON STDERR");
+                Line(indent + 1, "STOP RUN RETURNING 1");
+                Line(indent, "END-IF");
+            }
+
+            foreach (Temporary checkedIndex in checkedIndices)
+            {
+                Line(indent, $"ADD 1 TO {checkedIndex.Name}");
+            }
+            return $"{_owner.ArrayElementName(array)}({string.Join(", ", checkedIndices.Select(item => item.Name))})";
+        }
+
+        private string PrepareIntrinsic(BoundIntrinsicExpression intrinsic, int indent)
+        {
+            var arguments = new List<Temporary>(intrinsic.Arguments.Count);
+            foreach (BoundExpression argument in intrinsic.Arguments)
+            {
+                string value = PrepareExpression(argument, indent);
+                Temporary captured = NewTemporary(SmileType.Integer);
+                Assign(captured.Name, SmileType.Integer, argument, value, indent);
+                arguments.Add(captured);
+            }
+
+            Temporary result = NewTemporary(SmileType.Integer);
+            string helper = intrinsic.Kind switch
+            {
+                BoundIntrinsicKind.Timer => "smile_timer_cobol",
+                BoundIntrinsicKind.Abs => "smile_abs_cobol",
+                BoundIntrinsicKind.Min => "smile_min_cobol",
+                BoundIntrinsicKind.Max => "smile_max_cobol",
+                _ => "smile_timer_cobol"
+            };
+            string usingClause = arguments.Count == 0
+                ? string.Empty
+                : " USING " + string.Join(" ", arguments.Select(item => $"BY REFERENCE {item.Name}"));
+            Line(indent, $"CALL \"{helper}\"{usingClause} RETURNING {result.Name}");
+            return result.Name;
         }
 
         private void EmitCall(

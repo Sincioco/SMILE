@@ -311,7 +311,7 @@ Print "unreachable"
             "Sub Change(ByRef Value As Number)\nEnd Sub",
             "Sub Greet(Optional Name As Text)\nEnd Sub",
             "Sub Greet(Name As Text)\nEnd Sub\nCall Greet(Name:=\"Sin\")",
-            "Dim Grid[2, 2] As Number",
+            "Dim Grid[2, 2, 2] As Number",
             "Module Demo",
             "Game Window 800 By 600"
         };

@@ -2,7 +2,7 @@
 
 SMILE is the **Simple Modern and Intuitive Language for Everyone**: a beginner-first educational programming language and transpiler. SMILE source is small and direct, and its generated target source uses the normal constructs a learner would ordinarily meet in that destination language.
 
-Version 1.0 is a deliberate breaking alignment with the SMILE 2.0 BASIC Core language. SMILE 1.0 now accepts one canonical language only—**SMILE Core BASIC 2**. There is no legacy mode, dialect selector, syntax auto-detection, or fallback parser.
+Version 1.0 is a deliberate breaking alignment with the SMILE 2.0 BASIC Core language. SMILE 1.0 now accepts one canonical language only—**SMILE Core BASIC 2.1 — Text-Game Foundation**. There is no legacy mode, dialect selector, syntax auto-detection, or fallback parser.
 
 ## A small program
 
@@ -52,10 +52,12 @@ Core BASIC 2 provides:
 - optional `Option Explicit`;
 - top-level `Sub` and `Function` routines, `Call`, `Return`, exact typed ByVal parameters, routine-local scope, and recursion;
 - `Select Case` over exact scalar constants;
-- checked fixed one-dimensional arrays with zero-based indexes;
+- checked fixed one- and two-dimensional arrays with zero-based indexes;
+- nonblocking `Get Key`, stable `KEY_*` constants, `Clear Screen`, and millisecond `Wait`;
+- inclusive `Random ... From ... To ...`, monotonic `Timer()`, and `Abs`/`Min`/`Max`;
 - `End Program`.
 
-The complete current language is defined by the [SMILE Core BASIC 2 Official Specification](docs/SMILE%20Language%20Specification/002%20-%20SMILE%20Core%20BASIC%202%20Official%20Specification.md). The compact [SMILE Core BASIC Profile 2.0](docs/SMILE%20Core%20BASIC%20Profile%202.0.md) records its SMILE 2.0 provenance, fixture hashes, and exclusions. See the [migration guide](docs/Migrating%20to%20Core%20BASIC%202.md) when updating research-era source and the [parity report](docs/Core%20BASIC%202%20Parity%20Report.md) for the reproducible authority check. The self-contained [student language reference](docs/smile-1-language-reference.html) works offline.
+The complete current language is defined by the [SMILE Core BASIC 2.1 Text-Game Foundation Official Specification](docs/SMILE%20Language%20Specification/003%20-%20SMILE%20Core%20BASIC%202.1%20Text-Game%20Foundation%20Official%20Specification.md). The [Core BASIC 2.0 specification](docs/SMILE%20Language%20Specification/002%20-%20SMILE%20Core%20BASIC%202%20Official%20Specification.md) and [Profile 2.0 record](docs/SMILE%20Core%20BASIC%20Profile%202.0.md) preserve the unchanged shared subset and parity corpus. See the [migration guide](docs/Migrating%20to%20Core%20BASIC%202.md), [parity report](docs/Core%20BASIC%202%20Parity%20Report.md), and self-contained [student language reference](docs/smile-1-language-reference.html).
 
 This release intentionally rejects earlier SMILE 1.0-only syntax. The compiler does not silently reinterpret old source. Core BASIC 1 remains a valid subset, while its former active documentation is preserved under `Requirements/Archive/Core-BASIC-1`.
 
@@ -78,6 +80,8 @@ The same parsed and bound program generates all ten active destinations:
 
 Generated code uses native destination constructs whenever practical: ordinary routines and call frames, locals/globals, arrays, conditionals, counted and post-test loops, direct output, and direct process termination. Helpers appear only when a target needs one to preserve semantics, such as checked indexes, C Text concatenation, or Python's typed exit across differently nested loop kinds. Python output is a direct module-level script—no synthetic `main()` wrapper. JavaScript remains dependency-free `.js` executed directly by Node.js; no npm dependency or module system is added.
 
+For interactive programs, generated code polls real terminal keys without requiring Enter, redraws the attached console, waits without a busy loop, and restores changed terminal state. Node.js uses an async `main` only when `Get Key` or `Wait` requires the console lifecycle; its delay remains Promise-based. Noninteractive programs receive none of that support.
+
 See [Architecture](docs/Architecture.md), [Toolchains](docs/Toolchains.md), and the [Target Code Generation Standard](docs/SMILE%20Target%20Code%20Generation%20Standard%20v1.0.md).
 
 ## Examples
@@ -94,9 +98,13 @@ See [Architecture](docs/Architecture.md), [Toolchains](docs/Toolchains.md), and 
 - [`examples/core-basic-2-evaluation-order.smile`](examples/core-basic-2-evaluation-order.smile) — left-to-right calls and short circuiting;
 - [`examples/core-basic-2-local-arrays.smile`](examples/core-basic-2-local-arrays.smile) — fresh local arrays in ordinary and recursive calls;
 - [`examples/core-basic-2-end-program-routine.smile`](examples/core-basic-2-end-program-routine.smile) — whole-program termination from a routine;
+- [`examples/text-game-foundation.smile`](examples/text-game-foundation.smile) — compact 2D array and terminal-primitive demonstration;
+- [`examples/text-snake.smile`](examples/text-snake.smile) — Trail Runner, a complete growing-trail text game;
+- [`examples/text-maze-muncher.smile`](examples/text-maze-muncher.smile) — Lantern Maze, an original collection-and-chase game;
+- [`examples/text-falling-blocks.smile`](examples/text-falling-blocks.smile) — Sky Foundry, an original seven-family falling-block game;
 - [`tests/CoreBasic2Parity/canonical.smile`](tests/CoreBasic2Parity/canonical.smile) — unchanged Profile 2 fixture compiled by both repositories.
 
-All examples use only the canonical Core BASIC 2 language.
+All examples use only the canonical Core BASIC 2.1 language. The three games are terminal programs, not graphical games; use an attached Windows console for real-time controls and full-frame redraw.
 
 ## Requirements
 
@@ -126,10 +134,11 @@ Run canonical conformance and generation tests:
 dotnet test tests/SMILE.Tests/SMILE.Tests.csproj -c Debug --filter TestCategory=CoreBasic -nologo
 ```
 
-Run the required 9-program × 10-target milestone matrix plus the ten-target bounds-failure matrix:
+Run the required profile and Text-Game Foundation milestone matrices:
 
 ```powershell
 dotnet test tests/SMILE.Tests/SMILE.Tests.csproj -c Debug --filter TestCategory=MilestoneMatrix -nologo
+powershell -ExecutionPolicy Bypass -File scripts/Test-TextGameFoundation.ps1
 ```
 
 Run the pinned cross-repository parity check:
@@ -138,7 +147,7 @@ Run the pinned cross-repository parity check:
 powershell -ExecutionPolicy Bypass -File scripts/Test-CoreBasicParity.ps1
 ```
 
-The parity command runs the retained Profile 1 gate and the new Profile 2 fixture/hash gate. It reads SMILE 2.0, verifies its pinned commit and clean status before and after, and writes all executable output beneath the system temporary directory. It never modifies SMILE 2.0.
+The parity command runs the retained Profile 1 gate and the new Profile 2 fixture/hash gate. It reads SMILE 2.0, verifies its pinned commit and exact working-tree status before and after, and writes all executable output beneath the system temporary directory. It never modifies SMILE 2.0 or pre-existing authority work.
 
 Transpile or build/run with the CLI:
 
@@ -156,11 +165,11 @@ dotnet run --project src/SMILE.Desktop
 
 ## Desktop
 
-Desktop loads the cumulative Core BASIC 2 reference after first paint and asynchronously transpiles the visible active target. It exposes all ten targets and Build & Run where the corresponding local toolchain is available. There is no language-profile selector: every source pane uses the same canonical front end.
+Desktop loads the cumulative Core BASIC 2.1 reference after first paint and asynchronously transpiles the visible active target. It exposes all ten targets and Build & Run where the corresponding local toolchain is available. There is no language-profile selector: every source pane uses the same canonical front end.
 
 Long process, detection, file, build, link, and run work stays off the WPF UI thread. Recoverable failures remain visible without closing the IDE.
 
-Current Desktop build version: `1.0.0 SMILE Core BASIC 2`.
+Current Desktop build version: `1.0.0 SMILE Core BASIC 2.1 - Text-Game Foundation`.
 
 ## Project policy
 
