@@ -26,13 +26,21 @@ public interface ISmileEvaluationHost
 {
     long ReadKeyNonBlocking();
 
-    void ClearScreen(string outputSnapshot);
+    void HomeCursor(string outputSnapshot);
 
     void WaitMilliseconds(long duration);
 
     long MonotonicMilliseconds { get; }
 
     long NextRandomInclusive(long lowerBound, long upperBound);
+}
+
+public static class SmileRuntimeRules
+{
+    public const long MaximumWaitMilliseconds = uint.MaxValue;
+
+    public static long NormalizeWaitMilliseconds(long duration) =>
+        Math.Clamp(duration, 0, MaximumWaitMilliseconds);
 }
 
 public sealed record SmileEvaluationOptions(
@@ -92,7 +100,7 @@ public sealed class ScriptedSmileEvaluationHost : ISmileEvaluationHost
             : SmileKeyCodes.None;
     }
 
-    public void ClearScreen(string outputSnapshot)
+    public void HomeCursor(string outputSnapshot)
     {
         ArgumentNullException.ThrowIfNull(outputSnapshot);
         int start = Math.Min(_lastFrameStart, outputSnapshot.Length);
@@ -102,7 +110,7 @@ public sealed class ScriptedSmileEvaluationHost : ISmileEvaluationHost
 
     public void WaitMilliseconds(long duration)
     {
-        long effective = Math.Max(0, duration);
+        long effective = SmileRuntimeRules.NormalizeWaitMilliseconds(duration);
         _waits.Add(effective);
         MonotonicMilliseconds = effective > long.MaxValue - MonotonicMilliseconds
             ? long.MaxValue
@@ -113,7 +121,7 @@ public sealed class ScriptedSmileEvaluationHost : ISmileEvaluationHost
     {
         if (lowerBound > upperBound)
         {
-            throw new ArgumentOutOfRangeException(nameof(upperBound));
+            return lowerBound;
         }
 
         if (_randomValues.Count > 0)

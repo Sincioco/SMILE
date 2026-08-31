@@ -93,6 +93,20 @@ public sealed class SmileCodeEditor : TextEditor
         }
     }
 
+    public void ReplaceAllTextAsSingleEdit(string replacement)
+    {
+        ArgumentNullException.ThrowIfNull(replacement);
+        if (string.Equals(Text, replacement, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        int caretOffset = Math.Min(CaretOffset, replacement.Length);
+        Document.Replace(0, Document.TextLength, replacement);
+        CaretOffset = Math.Min(caretOffset, Document.TextLength);
+        TextArea.Caret.BringCaretToView();
+    }
+
     internal bool TryGoToLine(int lineNumber)
     {
         if (lineNumber < 1 || lineNumber > Document.LineCount)

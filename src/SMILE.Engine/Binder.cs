@@ -637,11 +637,6 @@ internal sealed class Binder
         var clauses = new List<BoundSelectCaseClause>();
         var seen = new HashSet<SmileValue>();
         bool sawElse = false;
-        if (syntax.Cases.Count == 0)
-        {
-            Report("SMILE2136", "Select Case requires at least one Case clause.", syntax.Span);
-        }
-
         for (int index = 0; index < syntax.Cases.Count; index++)
         {
             SelectCaseClauseSyntax clause = syntax.Cases[index];

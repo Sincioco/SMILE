@@ -171,7 +171,7 @@ public sealed class SmileEvaluator
                     break;
 
                 case BoundClearScreenStatement:
-                    _host.ClearScreen(_output.ToString());
+                    _host.HomeCursor(_output.ToString());
                     break;
 
                 case BoundWaitStatement wait:
@@ -180,7 +180,7 @@ public sealed class SmileEvaluator
                         return waitError;
                     }
 
-                    _host.WaitMilliseconds(duration.IntegerValue);
+                    _host.WaitMilliseconds(SmileRuntimeRules.NormalizeWaitMilliseconds(duration.IntegerValue));
                     break;
 
                 case BoundRandomStatement random:
@@ -194,17 +194,12 @@ public sealed class SmileEvaluator
                         return upperError;
                     }
 
-                    if (lower.IntegerValue > upper.IntegerValue)
-                    {
-                        return new SmileRuntimeError(
-                            "SMILER1221",
-                            $"Random lower bound {lower.IntegerValue} is greater than upper bound {upper.IntegerValue}.");
-                    }
-
                     SetValue(
                         random.Target,
                         frame,
-                        SmileValue.FromInteger(_host.NextRandomInclusive(lower.IntegerValue, upper.IntegerValue)));
+                        SmileValue.FromInteger(lower.IntegerValue > upper.IntegerValue
+                            ? lower.IntegerValue
+                            : _host.NextRandomInclusive(lower.IntegerValue, upper.IntegerValue)));
                     break;
 
                 case BoundCallStatement call:

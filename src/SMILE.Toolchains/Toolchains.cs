@@ -852,6 +852,9 @@ public sealed class MasmX64Toolchain : ToolchainBase
         string workspace = await WriteGeneratedProgramAsync(generatedProgram, cancellationToken)
             .ConfigureAwait(false);
 
+        bool hasTextRuntime = generatedProgram.Files.Any(file =>
+            file.RelativePath.Equals("SmileTextRuntime.c", StringComparison.OrdinalIgnoreCase));
+
         await WriteCommandScriptAsync(
             workspace,
             "assemble.cmd",
@@ -860,7 +863,10 @@ public sealed class MasmX64Toolchain : ToolchainBase
                 "@echo off",
                 $"call {QuoteForCmd(status.Location)} >nul",
                 "if errorlevel 1 exit /b %errorlevel%",
-                "ml64 /nologo /c Program.asm /Fo:Program.obj"
+                "ml64 /nologo /c Program.asm /Fo:Program.obj",
+                hasTextRuntime
+                    ? "cl.exe /nologo /c /TC /GS- /utf-8 SmileTextRuntime.c /Fo:SmileTextRuntime.obj"
+                    : "rem No companion Text runtime is required."
             },
             cancellationToken).ConfigureAwait(false);
 
@@ -883,7 +889,7 @@ public sealed class MasmX64Toolchain : ToolchainBase
                 "@echo off",
                 $"call {QuoteForCmd(status.Location)} >nul",
                 "if errorlevel 1 exit /b %errorlevel%",
-                "link.exe /nologo /ignore:4210 Program.obj kernel32.lib legacy_stdio_definitions.lib ucrt.lib /subsystem:console /entry:main /out:Program.exe"
+                $"link.exe /nologo /ignore:4210 Program.obj{(hasTextRuntime ? " SmileTextRuntime.obj vcruntime.lib" : string.Empty)} kernel32.lib legacy_stdio_definitions.lib ucrt.lib /subsystem:console /entry:main /out:Program.exe"
             },
             cancellationToken).ConfigureAwait(false);
 

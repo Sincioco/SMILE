@@ -217,12 +217,13 @@ Print Abs(Value)
     }
 
     [TestMethod]
-    public void Random_reversed_bounds_fail_after_left_to_right_bound_evaluation()
+    public void Random_reversed_bounds_return_the_lower_bound_after_left_to_right_evaluation()
     {
         const string source = """
 Option Explicit
 Dim Result As Number
 Random Result From Mark(5, "L") To Mark(2, "U")
+Print Result
 Function Mark(Value As Number, Label As Text) As Number
     Print Label;
     Return Value
@@ -231,9 +232,8 @@ End Function
 
         EvaluationResult result = _evaluator.Evaluate(source);
 
-        Assert.IsFalse(result.Success);
-        Assert.AreEqual("LU", result.Output);
-        Assert.AreEqual("SMILER1221", result.RuntimeError?.Code);
+        Assert.IsTrue(result.Success, Join(result.Diagnostics));
+        Assert.AreEqual("LU5\n", result.Output);
     }
 
     [TestMethod]

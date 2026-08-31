@@ -4,7 +4,7 @@
   "profileVersion": "2.0",
   "authority": {
     "repository": "Sincioco/SMILE-2.0",
-    "commit": "0049c72eb80a8c1ea366cdfe5840f7db71e89d76"
+    "commit": "b34f4c5284f9f636e17a62ce5b6e2721d53be464"
   },
   "includedFeatures": [
     "SMILE Core BASIC Profile 1.0",
@@ -29,7 +29,7 @@
   "fixtures": [
     {
       "path": "canonical.smile",
-      "sha256": "508cd6032e712f3497872476583cda058505bde747670dcb3c541b4dd0d89249",
+      "sha256": "5b6992b6117487baaf37cea1280b423742c338d875a61b97ee4508ff8d5e6848",
       "expectedStandardOutput": "canonical.stdout"
     },
     {

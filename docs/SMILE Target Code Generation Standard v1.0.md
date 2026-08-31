@@ -22,6 +22,8 @@ Every backend receives the same bound Core BASIC program. A generator must not:
 
 Generated files are deterministic. Imports, helpers, declarations, labels, and companion files appear only when required by the actual source or destination toolchain.
 
+Every generated text file has no leading/trailing blank line or trailing whitespace, uses LF, ends with exactly one newline, and has no more than one consecutive blank line except Python's conventional two between top-level definitions. Semantic sections separate imports, constants/state, prototypes, entry code, learner routines, generated support, and the footer. Source-authored blanks are soft body boundaries; semantic control/output phases may add a hard boundary after lowering relocates declarations.
+
 ## Canonical source fixture
 
 ```smile
@@ -74,7 +76,7 @@ Values print in order with no inserted separator. Number uses invariant decimal 
 Use familiar output:
 
 - `Console.Write`/`Console.WriteLine` in C#;
-- `printf`, `fputs`, or `putchar` in C and Objective-C;
+- one combined `printf` where practical in C and Objective-C;
 - `process.stdout.write` in JavaScript;
 - `System.out.print` in Java;
 - exact reference-modified `DISPLAY` in COBOL;
@@ -90,6 +92,12 @@ Use familiar output:
 `Exit For` and `Exit Do` target the nearest lexically enclosing loop of that kind, not merely the innermost loop. Use ordinary `break` when those are the same loop. Java and JavaScript may use labeled `break`; C-family and Swift may use a clear target label where required. Python may use a tiny generated exception scoped to the targeted loop because Python has no labeled break. Generate that exception only when such a cross-kind exit exists.
 
 `Select Case` evaluates one selector then uses the destination's native selection when it directly supports the exact types/rules, or a readable first-match conditional chain. `End Program` uses the destination's normal successful termination path and propagates out of calls.
+
+Only-fallback Select emits its body unconditionally after the one selector capture. Empty Select captures once and emits no branch. Native selection is withheld when a typed loop exit inside the selection would bind to the destination's switch break rather than the SMILE loop.
+
+## Native Text lifetime
+
+C and Objective-C programs that concatenate Text emit an immutable allocation registry plus explicit roots for globals, parameters, locals, arrays, selectors, returned values, and expression temporaries. Collection occurs at safe source-statement boundaries; routine cleanup unregisters frame roots on fallthrough and Return; controlled process exit frees all owned allocations. MASM emits equivalent root operations and a feature-gated `SmileTextRuntime.c` companion because expressing the registry in C keeps the learner-facing assembly proportional. `SMILE_TEXT_LIFETIME_REPORT=1` exposes allocation, free, live, and peak counters for tests. Programs without Text `+` receive none of this machinery.
 
 ## Target direction
 

@@ -2,7 +2,7 @@
 
 ## Result
 
-SMILE 1.0 Core BASIC 2 parity is pinned to the read-only authoritative `Sincioco/SMILE-2.0` commit `0049c72eb80a8c1ea366cdfe5840f7db71e89d76`. Three unchanged Profile 2 programs compile in both repositories and produce the same recorded standard output. The retained Profile 1 corpus separately protects every earlier canonical subset program and the intentional rejection corpus. The pinned authority advance contains Renderer3D work only; shared source-language files for this corpus are unchanged.
+SMILE 1.0 Core BASIC 2 parity is pinned to the read-only authoritative `Sincioco/SMILE-2.0` commit `b34f4c5284f9f636e17a62ce5b6e2721d53be464`. Three unchanged Profile 2 programs compile in both repositories and produce the same recorded standard output. The retained Profile 1 corpus separately protects the canonical subset and intentional rejection corpus. The authority advance contains Renderer3D work only; shared source-language files for this corpus are unchanged. Valid parity source was run through the syntax-aware formatter and its governed SHA-256 values were updated without changing output.
 
 ## Reproducible corpora
 

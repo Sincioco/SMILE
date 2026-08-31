@@ -63,6 +63,18 @@ public sealed class CoreBasicDesktopTests
         Assert.IsFalse(xaml.Contains("next.png", StringComparison.OrdinalIgnoreCase));
     }
 
+    [TestMethod]
+    public void Desktop_exposes_explicit_smile_formatting_with_the_visual_studio_chord()
+    {
+        string xaml = File.ReadAllText(FindRepositoryFile("src", "SMILE.Desktop", "MainWindow.xaml"));
+        string codeBehind = File.ReadAllText(FindRepositoryFile("src", "SMILE.Desktop", "MainWindow.xaml.cs"));
+
+        StringAssert.Contains(xaml, "Header=\"_Format SMILE\"");
+        StringAssert.Contains(xaml, "InputGestureText=\"Ctrl+K, Ctrl+D\"");
+        StringAssert.Contains(codeBehind, "SmileSourceFormatter.Format(SourceEditor.Text");
+        StringAssert.Contains(codeBehind, "SourceEditor.ReplaceAllTextAsSingleEdit");
+    }
+
     private static string FindRepositoryFile(params string[] parts)
     {
         DirectoryInfo? current = new(AppContext.BaseDirectory);

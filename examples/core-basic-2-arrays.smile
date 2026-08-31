@@ -5,6 +5,7 @@ Const ArrayLength = 4
 Dim Numbers[ArrayLength] As Number
 Dim Labels[ArrayLength] As Text
 Dim Enabled[ArrayLength] As Boolean
+
 Dim Position As Number
 
 For Position = 0 To ArrayLength - 1

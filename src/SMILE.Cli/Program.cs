@@ -32,6 +32,11 @@ internal static class Program
             return 2;
         }
 
+        if (options.Format || options.Check)
+        {
+            return await FormatSourceAsync(options, source).ConfigureAwait(false);
+        }
+
         var transpiler = new SmileTranspiler();
         IReadOnlyList<TargetLanguage> targets = options.Targets;
         IReadOnlyList<TranspileResult> results = transpiler.TranspileMany(source, targets);
@@ -78,6 +83,63 @@ internal static class Program
         }
 
         return exitCode;
+    }
+
+    private static async Task<int> FormatSourceAsync(CliOptions options, string source)
+    {
+        SmileFormatResult result = SmileSourceFormatter.Format(source);
+        foreach (Diagnostic diagnostic in result.Diagnostics)
+        {
+            Console.Error.WriteLine(diagnostic);
+        }
+
+        if (!result.Success)
+        {
+            Console.Error.WriteLine("SMILE formatting was not applied because the source is invalid or could not be proven safe.");
+            return 1;
+        }
+
+        if (options.Check)
+        {
+            if (result.NeedsFormatting)
+            {
+                Console.Error.WriteLine($"Formatting required: {options.SourcePath}");
+                return 1;
+            }
+
+            Console.WriteLine($"Formatting is current: {options.SourcePath}");
+            return 0;
+        }
+
+        if (!result.NeedsFormatting)
+        {
+            Console.WriteLine($"Already formatted: {options.SourcePath}");
+            return 0;
+        }
+
+        string fullPath = Path.GetFullPath(options.SourcePath);
+        string directory = Path.GetDirectoryName(fullPath) ?? Directory.GetCurrentDirectory();
+        string temporaryPath = Path.Combine(directory, $".{Path.GetFileName(fullPath)}.{Guid.NewGuid():N}.tmp");
+        try
+        {
+            await File.WriteAllTextAsync(temporaryPath, result.FormattedSource).ConfigureAwait(false);
+            File.Move(temporaryPath, fullPath, overwrite: true);
+        }
+        catch (IOException ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            return 2;
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+            {
+                File.Delete(temporaryPath);
+            }
+        }
+
+        Console.WriteLine($"Formatted: {options.SourcePath}");
+        return 0;
     }
 
     private static void PrintGeneratedProgram(GeneratedProgram program)
@@ -145,6 +207,8 @@ internal static class Program
 
         Console.Error.WriteLine("Usage:");
         Console.Error.WriteLine($"  dotnet run --project src\\SMILE.Cli -- <file.smile> --target {targetList} [--run]");
+        Console.Error.WriteLine("  dotnet run --project src\\SMILE.Cli -- <file.smile> --format");
+        Console.Error.WriteLine("  dotnet run --project src\\SMILE.Cli -- <file.smile> --check");
         Console.Error.WriteLine("  javascript generates dependency-free JavaScript (Node.js) in Program.js.");
         Console.Error.WriteLine("  Current language: SMILE Core BASIC 2.1 - Text-Game Foundation (ten targets).");
         Console.Error.WriteLine("  Text-game programs use Get Key, Clear Screen, Wait, Random, Timer, and fixed 2D arrays.");
@@ -154,7 +218,9 @@ internal static class Program
 internal sealed record CliOptions(
     string SourcePath,
     IReadOnlyList<TargetLanguage> Targets,
-    bool Run)
+    bool Run,
+    bool Format,
+    bool Check)
 {
     public static CliOptions? Parse(string[] args, out string? error)
     {
@@ -169,6 +235,8 @@ internal sealed record CliOptions(
         string sourcePath = args[0];
         string? targetText = null;
         bool run = false;
+        bool format = false;
+        bool check = false;
 
         for (int index = 1; index < args.Length; index++)
         {
@@ -192,8 +260,37 @@ internal sealed record CliOptions(
                 continue;
             }
 
+            if (argument.Equals("--format", StringComparison.OrdinalIgnoreCase))
+            {
+                format = true;
+                continue;
+            }
+
+            if (argument.Equals("--check", StringComparison.OrdinalIgnoreCase))
+            {
+                check = true;
+                continue;
+            }
+
             error = $"Unknown argument: {argument}";
             return null;
+        }
+
+        if (format && check)
+        {
+            error = "--format and --check cannot be used together.";
+            return null;
+        }
+
+        if ((format || check) && (targetText is not null || run))
+        {
+            error = "Formatting commands cannot be combined with --target or --run.";
+            return null;
+        }
+
+        if (format || check)
+        {
+            return new CliOptions(sourcePath, Array.Empty<TargetLanguage>(), false, format, check);
         }
 
         if (targetText is null)
@@ -217,6 +314,6 @@ internal sealed record CliOptions(
             return null;
         }
 
-        return new CliOptions(sourcePath, targets, run);
+        return new CliOptions(sourcePath, targets, run, false, false);
     }
 }

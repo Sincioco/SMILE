@@ -1,15 +1,19 @@
 For Ascending = 1 To 2
 End For
+
 Print Ascending
 
 For Descending = 2 Down To 1
 End For
+
 Print Descending
 
 For EmptyAscending = 2 To 1
 End For
+
 Print EmptyAscending
 
 For EmptyDescending = 1 Down To 2
 End For
+
 Print EmptyDescending

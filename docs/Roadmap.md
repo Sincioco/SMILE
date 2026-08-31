@@ -19,6 +19,9 @@ Implemented in this baseline:
 - evaluator support for the complete profile;
 - deterministic generation and Build & Run integration for all ten active targets;
 - canonical CLI, Desktop, packaged example, and syntax highlighting with no language selector;
+- explicit, syntax-aware SMILE formatting through the API, CLI, repository check script, and Desktop one-undo command;
+- semantic generated-source layout, combined native output, and native selection where each target's type rules permit it;
+- bounded Text-concatenation lifetime management for C, Objective-C, and MASM x64;
 - pinned unchanged Profile 1 and Profile 2 parity fixtures compiled by both repositories;
 - current specification, migration, architecture, toolchain, target, and parity documentation.
 

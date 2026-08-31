@@ -107,6 +107,10 @@
                 <MenuItem Header="_Go to Line..."
                           InputGestureText="Ctrl+G"
                           Click="GoToLineMenuItem_Click" />
+                <Separator />
+                <MenuItem Header="_Format SMILE"
+                          InputGestureText="Ctrl+K, Ctrl+D"
+                          Click="FormatSmileMenuItem_Click" />
             </MenuItem>
             <MenuItem Header="_Options">
                 <MenuItem Header="_Open Generated Folder After Build"

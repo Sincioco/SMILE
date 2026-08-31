@@ -67,12 +67,12 @@ End If
         Dictionary<TargetLanguage, string[]> markers = new()
         {
             [TargetLanguage.CSharp] = ["for (", "do", "if (", "Console.Write"],
-            [TargetLanguage.C] = ["for (", "do", "if (", "fputs"],
+            [TargetLanguage.C] = ["for (", "do", "if (", "printf"],
             [TargetLanguage.MasmX64] = ["smile_for_", "smile_do_", "cmp", "printf"],
             [TargetLanguage.JavaScript] = ["for (", "do {", "if (", "process.stdout.write"],
             [TargetLanguage.Java] = ["for (", "do {", "if (", "System.out.print"],
             [TargetLanguage.Cobol] = ["PERFORM VARYING", "PERFORM WITH TEST AFTER", "IF ", "DISPLAY"],
-            [TargetLanguage.ObjectiveC] = ["for (", "do", "if (", "fputs"],
+            [TargetLanguage.ObjectiveC] = ["for (", "do", "if (", "printf"],
             [TargetLanguage.Swift] = ["for ", "repeat {", "if ", "print("],
             [TargetLanguage.Python] = ["for ", "while True:", "if ", "print("],
             [TargetLanguage.Cpp] = ["for (", "do", "if (", "std::cout"]
@@ -145,8 +145,9 @@ End If
 
         StringAssert.Contains(printed, "printf PROTO");
         StringAssert.Contains(indexed, "smile_bounds_fail PROC");
-        StringAssert.Contains(concatenated, "malloc PROTO");
-        StringAssert.Contains(concatenated, "sprintf PROTO");
+        StringAssert.Contains(concatenated, "smile_text_concat PROTO");
+        Assert.IsFalse(concatenated.Contains("malloc PROTO", StringComparison.Ordinal));
+        Assert.IsFalse(concatenated.Contains("sprintf PROTO", StringComparison.Ordinal));
         StringAssert.Contains(compared, "strcmp PROTO");
     }
 

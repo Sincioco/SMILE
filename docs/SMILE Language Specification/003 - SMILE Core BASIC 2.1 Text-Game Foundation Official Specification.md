@@ -4,7 +4,7 @@
 
 This is the only current complete SMILE 1.0 language specification. It additively extends the preserved [Core BASIC 2.0 subset](002%20-%20SMILE%20Core%20BASIC%202%20Official%20Specification.md) with the smallest console runtime and rank-two array surface needed for original text games.
 
-The shared source spelling and meaning were verified against the read-only SMILE 2.0 repository at commit `0049c72eb80a8c1ea366cdfe5840f7db71e89d76`. That commit advances only Renderer3D work relative to the package authority SHA; the language files governing this milestone are unchanged. SMILE 1.0 has one parser, binder, evaluator, and language—2.1 is a milestone label, not a dialect selector.
+The shared source spelling and meaning were verified against the read-only SMILE 2.0 repository at commit `b34f4c5284f9f636e17a62ce5b6e2721d53be464`. That authority advance contains Renderer3D work; the language files governing the shared Core BASIC parity corpus are unchanged. SMILE 1.0 has one parser, binder, evaluator, and language—2.1 is a milestone label, not a dialect selector.
 
 All Core BASIC 1 and Core BASIC 2 programs remain valid with the same observable behavior. Every source-model, typing, expression-order, Print, control-flow, routine, scope, Select Case, one-dimensional-array, and `End Program` rule in the 2.0 subset remains in force except where this document additively permits a second array dimension.
 
@@ -76,7 +76,7 @@ Uppercase and lowercase W/A/S/D normalize identically. Arrow events, Enter, Esca
 Clear Screen
 ```
 
-In an attached interactive terminal, this clears the visible console and homes the cursor without launching a child process. Output needed for the current frame is flushed. When output is redirected, the statement is a safe no-op and emits no terminal-control bytes.
+In an attached interactive terminal, this moves the cursor to the home position without erasing the visible console and without launching a child process. This matches the current SMILE 2.0 native runtime and permits frame-overwrite games without forced scrollback loss. Output needed for the current frame is flushed. When output is redirected, the statement is a safe no-op and emits no terminal-control bytes.
 
 ## Wait
 
@@ -84,7 +84,7 @@ In an attached interactive terminal, this clears the visible console and homes t
 Wait Duration Milliseconds
 ```
 
-The Number duration is evaluated exactly once. A positive value pauses for approximately that many milliseconds using a normal non-busy-wait destination facility. Zero returns promptly. In alignment with current SMILE 2.0 runtime behavior, a negative value is treated as zero. The evaluator advances injected virtual monotonic time immediately rather than sleeping.
+The Number duration is evaluated exactly once. A positive value pauses for approximately that many milliseconds using a normal non-busy-wait destination facility. Zero returns promptly. In alignment with current SMILE 2.0 runtime behavior, a negative value is treated as zero and a value above `4,294,967,295` is clamped to `4,294,967,295`. The evaluator advances injected virtual monotonic time immediately rather than sleeping.
 
 ## Random
 
@@ -94,7 +94,7 @@ Random Result From LowerBound To UpperBound
 
 `Result` is a writable Number variable. Bounds evaluate left to right exactly once. The stored whole Number is inclusive: `LowerBound <= Result <= UpperBound`. One random source is initialized per process; normal runs are not required to share sequences across targets. The evaluator accepts a deterministic injected source.
 
-When the lower bound is greater than the upper bound, execution fails deterministically with `SMILER1221`. Equal bounds always produce that value. Implementations must not silently swap bounds, return a constant substitute, or reseed per statement.
+When the lower bound is greater than the upper bound, the lower bound is stored without consuming randomness. Equal bounds always produce that value. Implementations must not silently swap bounds or reseed per statement.
 
 ## Timer, Abs, Min, and Max
 

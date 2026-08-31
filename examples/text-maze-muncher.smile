@@ -1,4 +1,5 @@
 ' Lantern Maze: an original pellet-collecting text game.
+
 Option Explicit
 
 Const WIDTH = 25
@@ -9,6 +10,7 @@ Const PELLET = 2
 Const ENEMY_DELAY = 220
 
 Dim Maze[WIDTH, HEIGHT] As Number
+
 Dim PlayerX As Number
 Dim PlayerY As Number
 Dim EnemyX As Number
@@ -29,20 +31,25 @@ Call ShowTitle()
 
 Do
     Get Key KeyCode
+
     If KeyCode = KEY_ESCAPE Then
         ProgramRunning = False
     Else If KeyCode = KEY_ENTER Then
         Call ResetGame()
+
         Do
             Call ReadPlayerMove()
+
             If ProgramRunning And RoundActive And Timer() >= NextEnemyTime Then
                 Call MoveEnemy()
                 NextEnemyTime = Timer() + ENEMY_DELAY
             End If
+
             If ProgramRunning And RoundActive Then
                 Call CheckCollision()
                 Call DrawMaze()
             End If
+
             Wait 20 Milliseconds
         Loop Until Not ProgramRunning Or Not RoundActive
 
@@ -50,6 +57,7 @@ Do
             Call EndRound()
         End If
     End If
+
     Wait 20 Milliseconds
 Loop Until Not ProgramRunning
 
@@ -57,14 +65,17 @@ Clear Screen
 Print "The lanterns dim. Thanks for exploring!"
 
 Sub ShowTitle()
+
     Clear Screen
     Print "LANTERN MAZE"
     Print "Collect every dot while avoiding the roaming shadow."
     Print "Move with WASD or arrows. A collision costs one lantern."
     Print "Press Enter to begin. Press Escape to leave."
+
 End Sub
 
 Sub ResetGame()
+
     Call BuildMaze()
     PlayerX = 1
     PlayerY = 1
@@ -77,10 +88,13 @@ Sub ResetGame()
     PlayerWon = False
     RoundActive = True
     NextEnemyTime = Timer() + ENEMY_DELAY
+
 End Sub
 
 Sub BuildMaze()
+
     PelletsLeft = 0
+
     For Y = 0 To HEIGHT - 1
         For X = 0 To WIDTH - 1
             If X = 0 Or X = WIDTH - 1 Or Y = 0 Or Y = HEIGHT - 1 Then
@@ -98,31 +112,40 @@ Sub BuildMaze()
             Call PutWall(18, Y)
         End If
     End For
+
     For Y = 1 To HEIGHT - 2
         If Y <> 2 And Y <> 7 Then
             Call PutWall(12, Y)
         End If
     End For
+
     For X = 2 To WIDTH - 3
         If X <> 4 And X <> 10 And X <> 15 And X <> 21 Then
             Call PutWall(X, 6)
         End If
     End For
+
 End Sub
 
 Sub PutWall(CellX As Number, CellY As Number)
+
     If Maze[CellX, CellY] = PELLET Then
         PelletsLeft = PelletsLeft - 1
     End If
+
     Maze[CellX, CellY] = WALL
+
 End Sub
 
 Sub ReadPlayerMove()
+
     Dim MoveX As Number
     Dim MoveY As Number
+
     Get Key KeyCode
     MoveX = 0
     MoveY = 0
+
     If KeyCode = KEY_ESCAPE Then
         ProgramRunning = False
     Else If KeyCode = KEY_W Or KeyCode = KEY_UP Then
@@ -144,45 +167,58 @@ Sub ReadPlayerMove()
         Maze[PlayerX, PlayerY] = EMPTY
         PelletsLeft = PelletsLeft - 1
         Score = Score + 5
+
         If PelletsLeft = 0 Then
             PlayerWon = True
             RoundActive = False
         End If
     End If
+
 End Sub
 
 Sub MoveEnemy()
+
     Dim Attempt As Number
     Dim Direction As Number
     Dim MoveX As Number
     Dim MoveY As Number
     Dim Moved As Boolean
+
     Moved = False
+
     For Attempt = 1 To 4
         Random Direction From 1 To 4
         MoveX = 0
         MoveY = 0
+
         Select Case Direction
-        Case 1
-            MoveY = -1
-        Case 2
-            MoveX = 1
-        Case 3
-            MoveY = 1
-        Case 4
-            MoveX = -1
+            Case 1
+                MoveY = -1
+
+            Case 2
+                MoveX = 1
+
+            Case 3
+                MoveY = 1
+
+            Case 4
+                MoveX = -1
         End Select
+
         If Not Moved And Maze[EnemyX + MoveX, EnemyY + MoveY] <> WALL Then
             EnemyX = EnemyX + MoveX
             EnemyY = EnemyY + MoveY
             Moved = True
         End If
     End For
+
 End Sub
 
 Sub CheckCollision()
+
     If PlayerX = EnemyX And PlayerY = EnemyY Then
         Lives = Lives - 1
+
         If Lives <= 0 Then
             RoundActive = False
         Else
@@ -192,11 +228,15 @@ Sub CheckCollision()
             EnemyY = 1
         End If
     End If
+
 End Sub
 
 Function SymbolAt(CellX As Number, CellY As Number) As Text
+
     Dim Symbol As Text
+
     Symbol = " "
+
     If CellX = PlayerX And CellY = PlayerY Then
         Symbol = "@"
     Else If CellX = EnemyX And CellY = EnemyY Then
@@ -206,28 +246,39 @@ Function SymbolAt(CellX As Number, CellY As Number) As Text
     Else If Maze[CellX, CellY] = PELLET Then
         Symbol = "."
     End If
+
     Return Symbol
+
 End Function
 
 Sub DrawMaze()
+
     Clear Screen
     Print "LANTERN MAZE    Score: "; Score; "    Lanterns: "; Lives; "    Dots: "; PelletsLeft
+
     For Y = 0 To HEIGHT - 1
         For X = 0 To WIDTH - 1
             Print SymbolAt(X, Y);
         End For
+
         Print
     End For
+
     Print "WASD/arrows move · Escape exits"
+
 End Sub
 
 Sub EndRound()
+
     Call DrawMaze()
     Print
+
     If PlayerWon Then
         Print "Every passage is bright! Score: "; Score
     Else
         Print "The shadow found the last lantern. Score: "; Score
     End If
+
     Print "Press Enter to explore again or Escape to leave."
+
 End Sub

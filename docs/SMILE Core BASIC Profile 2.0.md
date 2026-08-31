@@ -6,7 +6,7 @@
 |---|---|
 | Profile | SMILE Core BASIC Profile 2.0 (`Core BASIC 2`) |
 | Authority | `Sincioco/SMILE-2.0` |
-| Verified authority commit | `0049c72eb80a8c1ea366cdfe5840f7db71e89d76` |
+| Verified authority commit | `b34f4c5284f9f636e17a62ce5b6e2721d53be464` |
 | SMILE 1.0 status | valid preserved subset of the one current 2.1 grammar |
 | Profile 2 parity corpus | `tests/CoreBasic2Parity` |
 | Profile 1 regression corpus | `tests/CoreBasicParity` |

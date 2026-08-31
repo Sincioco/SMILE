@@ -5,6 +5,7 @@ Const PlayerCount = 3
 Dim Names[PlayerCount] As Text
 Dim Scores[PlayerCount] As Number
 Dim Active[PlayerCount] As Boolean
+
 Dim Index As Number
 Dim BestIndex As Number
 Dim Total As Number
@@ -39,7 +40,6 @@ Select Case Names[BestIndex]
 
     Case Else
         Print "Selected another player"
-
 End Select
 
 End Program

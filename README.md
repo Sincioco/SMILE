@@ -4,6 +4,8 @@ SMILE is the **Simple Modern and Intuitive Language for Everyone**: a beginner-f
 
 Version 1.0 is a deliberate breaking alignment with the SMILE 2.0 BASIC Core language. SMILE 1.0 now accepts one canonical language only—**SMILE Core BASIC 2.1 — Text-Game Foundation**. There is no legacy mode, dialect selector, syntax auto-detection, or fallback parser.
 
+SMILE 1.0 remains a research project with no external backward-compatibility obligation. Deliberate language improvements update the living examples, tests, and documentation together rather than preserving hidden legacy behavior.
+
 ## A small program
 
 ```smile
@@ -78,7 +80,7 @@ The same parsed and bound program generates all ten active destinations:
 | `python` | Python | `Program.py` |
 | `cpp` | C++ | `Program.cpp` |
 
-Generated code uses native destination constructs whenever practical: ordinary routines and call frames, locals/globals, arrays, conditionals, counted and post-test loops, direct output, and direct process termination. Helpers appear only when a target needs one to preserve semantics, such as checked indexes, C Text concatenation, or Python's typed exit across differently nested loop kinds. COBOL pairs its native fixed `PIC X(4096)` Text storage with an explicit logical length so `DISPLAY` preserves meaningful spaces in variables, arrays, routine calls, returns, comparisons, concatenation, and game cells. Python output is a direct module-level script—no synthetic `main()` wrapper. JavaScript remains dependency-free `.js` executed directly by Node.js; no npm dependency or module system is added.
+Generated code uses native destination constructs whenever practical: ordinary routines and call frames, locals/globals, arrays, conditionals, counted and post-test loops, combined destination-native output, native selection where its type rules are exact, and direct process termination. A shared semantic layout keeps imports, state, entry code, learner routines, and unavoidable support in readable sections. Helpers appear only when a target needs one to preserve semantics, such as checked indexes, C Text concatenation, or Python's typed exit across differently nested loop kinds. C, Objective-C, and MASM Text concatenation uses explicit generated roots and bounded statement-boundary collection; a feature-gated MASM C companion supplies only that lifetime mechanism. COBOL pairs its native fixed `PIC X(4096)` Text storage with an explicit logical length so `DISPLAY` preserves meaningful spaces in variables, arrays, routine calls, returns, comparisons, concatenation, and game cells. Python output is a direct module-level script—no synthetic `main()` wrapper. JavaScript remains dependency-free `.js` executed directly by Node.js; no npm dependency or module system is added.
 
 For interactive programs, generated code polls real terminal keys without requiring Enter, redraws the attached console, waits without a busy loop, and restores changed terminal state. Node.js uses an async `main` only when `Get Key` or `Wait` requires the console lifecycle; its delay remains Promise-based. Noninteractive programs receive none of that support.
 
@@ -157,6 +159,16 @@ dotnet run --project src/SMILE.Cli -- examples/core-basic.smile --target csharp 
 dotnet run --project src/SMILE.Cli -- examples/core-basic.smile --target all
 ```
 
+Format a valid SMILE source explicitly, or check it without writing:
+
+```powershell
+dotnet run --project src/SMILE.Cli -- examples/language.smile --format
+dotnet run --project src/SMILE.Cli -- examples/language.smile --check
+powershell -ExecutionPolicy Bypass -File scripts/Format-Smile.ps1 -Check
+```
+
+The formatter parses and binds first, preserves exact Text and apostrophe-comment content, normalizes logical paragraphs and four-space indentation, is idempotent, and leaves invalid source untouched.
+
 Run Desktop:
 
 ```powershell
@@ -165,7 +177,7 @@ dotnet run --project src/SMILE.Desktop
 
 ## Desktop
 
-Desktop loads the cumulative Core BASIC 2.1 reference after first paint and asynchronously transpiles the visible active target. It exposes all ten targets and Build & Run where the corresponding local toolchain is available. There is no language-profile selector: every source pane uses the same canonical front end. In whichever source or generated-code editor currently has focus, Ctrl+F opens a clearly labeled Find panel and Ctrl+G opens Go to Line; the same actions are available from the Edit menu.
+Desktop loads the cumulative Core BASIC 2.1 reference after first paint and asynchronously transpiles the visible active target. It exposes all ten targets and Build & Run where the corresponding local toolchain is available. There is no language-profile selector: every source pane uses the same canonical front end. In whichever source or generated-code editor currently has focus, Ctrl+F opens a clearly labeled Find panel and Ctrl+G opens Go to Line. `Format SMILE` applies only to the source editor through the Edit menu or the Visual Studio-style `Ctrl+K, Ctrl+D` chord, and the whole format is one undoable edit. Live transpilation never rewrites source.
 
 Long process, detection, file, build, link, and run work stays off the WPF UI thread. Recoverable failures remain visible without closing the IDE.
 
@@ -176,6 +188,8 @@ Current Desktop build version: `1.0.0 SMILE Core BASIC 2.1 - Text-Game Foundatio
 The active destination set is frozen at ten until Sin explicitly changes it. Routine validation follows Velocity Mode: use the smallest directly relevant checks, while broad all-target and cross-repository verification is appropriate for milestones such as this language replacement. Manual `SMILE CI` remains available through `workflow_dispatch`.
 
 Historical requirement files are retained for research context, not as current language authority. Current behavior is governed by `AGENTS.md`, [Core Principles](docs/SMILE%20Core%20Principles.md), and the single current official specification.
+
+The current hardening milestone is recorded in the [Human-Readable Formatting and Hardening Completion Report](docs/SMILE%201.0%20Human-Readable%20Formatting%20and%20Hardening%20Completion%20Report.md).
 
 ## License
 

@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using SMILE.Desktop.Controls;
+using SMILE.Engine;
 
 namespace SMILE.Desktop;
 
@@ -15,6 +16,7 @@ public partial class MainWindow : Window
     private readonly MainWindowViewModel _viewModel = new();
     private TargetPaneViewModel? _maximizedTargetPane;
     private SmileCodeEditor? _activeEditor;
+    private bool _formatChordPending;
 
     public MainWindow()
     {
@@ -23,6 +25,7 @@ public partial class MainWindow : Window
         _activeEditor = SourceEditor;
 
         ContentRendered += MainWindow_ContentRendered;
+        PreviewKeyDown += MainWindow_PreviewKeyDown;
     }
 
     private void CodeEditor_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
@@ -38,6 +41,59 @@ public partial class MainWindow : Window
 
     private void GoToLineMenuItem_Click(object sender, RoutedEventArgs e) =>
         (_activeEditor ?? SourceEditor).OpenGoToLine();
+
+    private void FormatSmileMenuItem_Click(object sender, RoutedEventArgs e) => FormatSmileSource();
+
+    private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        bool controlOnly = Keyboard.Modifiers == ModifierKeys.Control;
+        if (!_formatChordPending && controlOnly && e.Key == Key.K)
+        {
+            _formatChordPending = true;
+            _viewModel.OperationStatus = "Format chord started: press Ctrl+D";
+            e.Handled = true;
+            return;
+        }
+
+        if (!_formatChordPending)
+        {
+            return;
+        }
+
+        _formatChordPending = false;
+        if (controlOnly && e.Key == Key.D)
+        {
+            FormatSmileSource();
+            e.Handled = true;
+        }
+        else
+        {
+            _viewModel.OperationStatus = "Ready";
+        }
+    }
+
+    private void FormatSmileSource()
+    {
+        SmileFormatResult result = SmileSourceFormatter.Format(SourceEditor.Text ?? string.Empty);
+        if (!result.Success)
+        {
+            _viewModel.OperationStatus = "Formatting not applied";
+            _viewModel.OutputText = string.Join(Environment.NewLine, result.Diagnostics);
+            SourceEditor.Focus();
+            return;
+        }
+
+        if (!result.NeedsFormatting)
+        {
+            _viewModel.OperationStatus = "SMILE source is already formatted";
+            SourceEditor.Focus();
+            return;
+        }
+
+        SourceEditor.ReplaceAllTextAsSingleEdit(result.FormattedSource);
+        _viewModel.OperationStatus = "Formatted SMILE source";
+        SourceEditor.Focus();
+    }
 
     private async void MainWindow_ContentRendered(object? sender, EventArgs e)
     {

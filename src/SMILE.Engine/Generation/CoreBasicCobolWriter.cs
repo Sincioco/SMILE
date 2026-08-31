@@ -537,6 +537,17 @@ internal sealed class CobolWriter
                 return;
             }
 
+            if (!select.Cases.Any(clause => !clause.IsElse))
+            {
+                BoundSelectCaseClause? fallback = select.Cases.FirstOrDefault(clause => clause.IsElse);
+                if (fallback is not null)
+                {
+                    WriteItems(fallback.SourceItems, indent);
+                }
+
+                return;
+            }
+
             Line(indent, $"EVALUATE {captured.Name}");
             foreach (BoundSelectCaseClause clause in select.Cases)
             {

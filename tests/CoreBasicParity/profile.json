@@ -4,7 +4,7 @@
   "profileVersion": "1.0",
   "authority": {
     "repository": "Sincioco/SMILE-2.0",
-    "commit": "0049c72eb80a8c1ea366cdfe5840f7db71e89d76"
+    "commit": "b34f4c5284f9f636e17a62ce5b6e2721d53be464"
   },
   "includedLexicalFeatures": [
     "case-insensitive-keywords-and-identifiers",
@@ -34,7 +34,7 @@
   "fixtures": [
     {
       "path": "canonical.smile",
-      "sha256": "de958319adb71c7d36ac32cc6bc751a9880c7fec89b7bfae9274262c0b518b94",
+      "sha256": "a31c53c1be4089cad48bae2aafe509d5ad9907ce8444c7cc822ad3fa38851672",
       "expected": "success",
       "expectedStandardOutput": "canonical.stdout"
     },
@@ -45,7 +45,7 @@
     },
     {
       "path": "counter-semantics.smile",
-      "sha256": "b737ab9b7584fa37dd37a9fb9ba97a6ab9e80108180cd5e01a0e8aca1531e529",
+      "sha256": "81834ab668d10c8c0918048461e97ef50787a9c82ed85c49cb19862b60412dc8",
       "expected": "success",
       "expectedStandardOutput": "counter-semantics.stdout"
     },

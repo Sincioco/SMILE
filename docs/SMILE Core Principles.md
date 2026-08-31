@@ -4,6 +4,8 @@
 
 This document is the canonical current product strategy beneath `AGENTS.md`. The read-only SMILE 2.0 source implementation is authoritative whenever shared language behavior differs; the [Core BASIC 2.1 Text-Game Foundation Official Specification](SMILE%20Language%20Specification/003%20-%20SMILE%20Core%20BASIC%202.1%20Text-Game%20Foundation%20Official%20Specification.md) defines the current SMILE 1.0 language. Historical requirement files explain past research but cannot restore superseded syntax or workflow.
 
+SMILE 1.0 is a research project with no external backward-compatibility obligation. Current clarity and SMILE 2.0 parity take precedence over retaining superseded behavior, provided every affected living example, test, and document moves forward together.
+
 ## 1. Beginner first
 
 SMILE means **Simple Modern and Intuitive Language for Everyone**. The source language and generated code are teaching materials. Prefer the smallest complete design a beginner can read, explain, and change.
@@ -13,6 +15,8 @@ SMILE means **Simple Modern and Intuitive Language for Everyone**. The source la
 SMILE 1.0 implements only SMILE Core BASIC 2.1, selected from SMILE 2.0. Every public surface—engine, evaluator, CLI, Desktop, highlighting, examples, and tests—uses the same parser and binder.
 
 There is no language selector, compatibility profile, source auto-detection, or fallback. Unsupported source receives a diagnostic. A breaking error is safer and more teachable than silently changing its meaning.
+
+The syntax-aware formatter is an explicit teaching tool, not a compilation prerequisite. It preserves tokens, Text, comments, statement order, and meaning; live transpilation never silently rewrites a learner's source.
 
 ## 3. Native and idiomatic target code
 

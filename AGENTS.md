@@ -37,6 +37,7 @@ The permanent mission applies to every target now and in the future.
 - Routine work remains focused on the targets it changes; activating all ten does not require a full ten-toolchain matrix for every unrelated edit.
 - Do not add, recommend, prototype, or scaffold another destination language unless Sin explicitly changes the strategy.
 - Use a single-agent workflow by default. Do not delegate or spawn sub-agents unless Sin explicitly requests it.
+- Treat SMILE 1.0 as an active research project with no external compatibility obligation. Prefer the clearest current design; when a deliberate breaking change is made, update every living example, test, and document in the same task.
 
 SMILE is also in temporary **Velocity Mode**:
 
@@ -95,6 +96,12 @@ When generator output changes, the completion report must include a small before
 - Package `language.smile` beside the Desktop executable and preserve first-paint-before-load plus asynchronous visible-active-target transpilation.
 - Update README and other affected current documentation in the same commit as a feature, target, toolchain, UI, architecture, limitation, or generated-output change.
 - Never present a roadmap item as implemented.
+
+## Formatting
+
+- Current `.smile` sources use the syntax-aware Engine formatter. Formatting is explicit through Desktop `Format SMILE`, `Ctrl+K, Ctrl+D`, the CLI, or `scripts/Format-Smile.ps1`; live transpilation never rewrites learner source.
+- Living examples must pass `scripts/Format-Smile.ps1 -Check`. Preserve exact Text and comment content, four-space structural indentation, logical one-blank-line paragraphs, LF output, and one final newline.
+- Generated files use semantic sections and the shared generated-source layout policy. Keep imports, state, entry code, learner routines, and unavoidable generated support visually distinct; do not reintroduce dense machine-oriented helpers.
 
 ## Build Artifacts And Versioning
 

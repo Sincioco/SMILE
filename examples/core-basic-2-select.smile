@@ -11,8 +11,10 @@ Passed = True
 Select Case Score
     Case 1
         Print "one"
+
     Case 2
         Print "two"
+
     Case Else
         Print "another number"
 End Select
@@ -20,8 +22,10 @@ End Select
 Select Case Band
     Case "red"
         Print "red band"
+
     Case "blue"
         Print "blue band"
+
     Case Else
         Print "another band"
 End Select
@@ -29,6 +33,7 @@ End Select
 Select Case Passed
     Case True
         Print "passed"
+
     Case False
         Print "not passed"
 End Select

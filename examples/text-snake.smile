@@ -1,4 +1,5 @@
 ' Trail Runner: an original continuous text-board game.
+
 Option Explicit
 
 Const WIDTH = 24
@@ -8,6 +9,7 @@ Const MOVE_DELAY = 110
 
 Dim SnakeX[MAX_LENGTH] As Number
 Dim SnakeY[MAX_LENGTH] As Number
+
 Dim SnakeLength As Number
 Dim DirectionX As Number
 Dim DirectionY As Number
@@ -27,19 +29,24 @@ Call ShowTitle()
 
 Do
     Get Key KeyCode
+
     If KeyCode = KEY_ESCAPE Then
         ProgramRunning = False
     Else If KeyCode = KEY_ENTER Then
         Call ResetGame()
+
         Do
             Call ReadControls()
+
             If ProgramRunning And RoundActive And Timer() >= NextMoveTime Then
                 Call MoveSnake()
                 NextMoveTime = Timer() + MOVE_DELAY
             End If
+
             If ProgramRunning And RoundActive Then
                 Call DrawBoard()
             End If
+
             Wait 20 Milliseconds
         Loop Until Not ProgramRunning Or Not RoundActive
 
@@ -47,6 +54,7 @@ Do
             Call EndRound()
         End If
     End If
+
     Wait 20 Milliseconds
 Loop Until Not ProgramRunning
 
@@ -54,24 +62,30 @@ Clear Screen
 Print "Thanks for running the trail!"
 
 Sub ShowTitle()
+
     Clear Screen
     Print "TRAIL RUNNER"
     Print "Guide the growing trail with WASD or the arrow keys."
     Print "Avoid the border and your own path."
     Print "Press Enter to start. Press Escape to leave."
+
 End Sub
 
 Sub ResetGame()
+
     Dim Index As Number
+
     SnakeLength = 3
     DirectionX = 1
     DirectionY = 0
     Score = 0
     RoundActive = True
+
     For Index = 0 To MAX_LENGTH - 1
         SnakeX[Index] = 0
         SnakeY[Index] = 0
     End For
+
     SnakeX[0] = 5
     SnakeY[0] = HEIGHT / 2
     SnakeX[1] = 4
@@ -80,10 +94,13 @@ Sub ResetGame()
     SnakeY[2] = HEIGHT / 2
     Call SpawnFood()
     NextMoveTime = Timer()
+
 End Sub
 
 Sub ReadControls()
+
     Get Key KeyCode
+
     If KeyCode = KEY_ESCAPE Then
         ProgramRunning = False
     Else If (KeyCode = KEY_W Or KeyCode = KEY_UP) And DirectionY <> 1 Then
@@ -99,12 +116,15 @@ Sub ReadControls()
         DirectionX = 1
         DirectionY = 0
     End If
+
 End Sub
 
 Sub MoveSnake()
+
     Dim NextX As Number
     Dim NextY As Number
     Dim Index As Number
+
     NextX = SnakeX[0] + DirectionX
     NextY = SnakeY[0] + DirectionY
 
@@ -119,6 +139,7 @@ Sub MoveSnake()
     End If
 
     AteFood = NextX = FoodX And NextY = FoodY
+
     If AteFood And SnakeLength < MAX_LENGTH Then
         SnakeLength = SnakeLength + 1
     End If
@@ -127,6 +148,7 @@ Sub MoveSnake()
         SnakeX[Index] = SnakeX[Index - 1]
         SnakeY[Index] = SnakeY[Index - 1]
     End For
+
     SnakeX[0] = NextX
     SnakeY[0] = NextY
 
@@ -134,28 +156,38 @@ Sub MoveSnake()
         Score = Score + 10
         Call SpawnFood()
     End If
+
 End Sub
 
 Function ContainsSnake(CellX As Number, CellY As Number) As Boolean
+
     Dim Index As Number
     Dim Found As Boolean
+
     Found = False
+
     For Index = 0 To SnakeLength - 1
         If SnakeX[Index] = CellX And SnakeY[Index] = CellY Then
             Found = True
             Exit For
         End If
     End For
+
     Return Found
+
 End Function
 
 Sub SpawnFood()
+
     Dim Attempt As Number
     Dim Found As Boolean
+
     Found = False
+
     For Attempt = 1 To 100
         Random FoodX From 1 To WIDTH - 2
         Random FoodY From 1 To HEIGHT - 2
+
         If Not ContainsSnake(FoodX, FoodY) Then
             Found = True
             Exit For
@@ -177,12 +209,16 @@ Sub SpawnFood()
     If Not Found Then
         RoundActive = False
     End If
+
 End Sub
 
 Function SymbolAt(CellX As Number, CellY As Number) As Text
+
     Dim Index As Number
     Dim Symbol As Text
+
     Symbol = " "
+
     If CellX = 0 Or CellX = WIDTH - 1 Or CellY = 0 Or CellY = HEIGHT - 1 Then
         Symbol = "#"
     Else If CellX = FoodX And CellY = FoodY Then
@@ -198,24 +234,33 @@ Function SymbolAt(CellX As Number, CellY As Number) As Text
             End If
         End For
     End If
+
     Return Symbol
+
 End Function
 
 Sub DrawBoard()
+
     Clear Screen
     Print "TRAIL RUNNER    Score: "; Score; "    Length: "; SnakeLength
+
     For Y = 0 To HEIGHT - 1
         For X = 0 To WIDTH - 1
             Print SymbolAt(X, Y);
         End For
+
         Print
     End For
+
     Print "WASD/arrows move · Escape exits"
+
 End Sub
 
 Sub EndRound()
+
     Call DrawBoard()
     Print
     Print "Trail ended. Final score: "; Score
     Print "Press Enter to run again or Escape to leave."
+
 End Sub

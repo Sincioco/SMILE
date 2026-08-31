@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text;
 
 namespace SMILE.Engine;
 
@@ -21,6 +20,7 @@ internal static partial class CoreBasicCodeGenerator
             TargetLanguage.Cpp => new StructuredWriter(program, language).WriteCpp(),
             _ => throw new ArgumentOutOfRangeException(nameof(language), language, null)
         };
+        content = GeneratedSourceLayout.Normalize(content, language);
 
         var files = new List<GeneratedFile>
         {
@@ -38,15 +38,28 @@ internal static partial class CoreBasicCodeGenerator
   </PropertyGroup>
 </Project>
 """;
-            files.Add(new GeneratedFile("GeneratedProgram.csproj", project, IsPrimary: false));
+            files.Add(new GeneratedFile(
+                "GeneratedProgram.csproj",
+                GeneratedSourceLayout.Normalize(project, language),
+                IsPrimary: false));
         }
         else if (language is TargetLanguage.Cobol)
         {
             string? support = CoreBasicCobolRuntimeSupport.Generate(program);
             if (support is not null)
             {
-                files.Add(new GeneratedFile("SmileRuntime.c", support, IsPrimary: false));
+                files.Add(new GeneratedFile(
+                    "SmileRuntime.c",
+                    GeneratedSourceLayout.Normalize(support, TargetLanguage.C),
+                    IsPrimary: false));
             }
+        }
+        else if (language is TargetLanguage.MasmX64 && CoreBasicMasmTextRuntime.IsRequired(program))
+        {
+            files.Add(new GeneratedFile(
+                "SmileTextRuntime.c",
+                CoreBasicMasmTextRuntime.Generate(),
+                IsPrimary: false));
         }
 
         return new GeneratedProgram(language, files);
@@ -56,6 +69,22 @@ internal static partial class CoreBasicCodeGenerator
     {
         For,
         Do
+    }
+
+    internal static IEnumerable<BoundExpression> EnumerateExpressionsForSupport(BoundProgram program)
+    {
+        foreach (BoundRoutineDeclaration routine in program.Routines)
+        {
+            foreach (BoundExpression expression in StructuredWriter.EnumerateExpressions(routine.SourceItems))
+            {
+                yield return expression;
+            }
+        }
+
+        foreach (BoundExpression expression in StructuredWriter.EnumerateExpressions(program.SourceItems))
+        {
+            yield return expression;
+        }
     }
 
     private sealed record LoopFrame(
@@ -71,13 +100,21 @@ internal static partial class CoreBasicCodeGenerator
         private readonly TargetIdentifierMap _identifiers;
         private readonly CoreBasicProgramFeatureSet _features;
         private readonly HashSet<RoutineSymbol> _asyncJavaScriptRoutines;
-        private readonly StringBuilder _builder = new();
+        private readonly GeneratedSourceLayout _layout = new();
         private readonly List<LoopFrame> _loops = new();
         private int _indent;
         private int _loopId;
         private int _forTempId;
         private int _selectTempId;
         private int _orderedTempId;
+        private readonly Stack<List<string>> _managedTextTemporaryRoots = new();
+        private RoutineCleanupContext? _routineCleanup;
+
+        private sealed record RoutineCleanupContext(
+            BoundRoutineDeclaration Routine,
+            string EndLabel,
+            string? ResultName,
+            IReadOnlyList<VariableSymbol> Locals);
 
         public StructuredWriter(BoundProgram program, TargetLanguage language)
         {
@@ -242,7 +279,7 @@ internal static partial class CoreBasicCodeGenerator
                 Line();
             }
 
-            foreach (int id in GetPythonExitLoopIds(AllExecutableItemSets().SelectMany(items => items).ToArray()))
+            foreach (int id in GetPythonExitLoopIds(AllExecutableItemSets()))
             {
                 Line($"class _SmileExitLoop{id}(Exception):");
                 _indent++;
@@ -308,8 +345,18 @@ internal static partial class CoreBasicCodeGenerator
             Line("int main(void)");
             Line("{");
             _indent++;
+            if (UsesManagedCText)
+            {
+                Line("smile_text_initialize();");
+            }
             WriteArrayInitializers(_program.Variables);
+            WriteManagedTextRoots(_program.Variables, register: true);
             WriteItems(_program.SourceItems);
+            WriteManagedTextRoots(_program.Variables, register: false);
+            if (UsesManagedCText)
+            {
+                Line("smile_text_collect();");
+            }
             Line("return 0;");
             _indent--;
             Line("}");
@@ -347,8 +394,18 @@ internal static partial class CoreBasicCodeGenerator
             Line("int main(void)");
             Line("{");
             _indent++;
+            if (UsesManagedCText)
+            {
+                Line("smile_text_initialize();");
+            }
             WriteArrayInitializers(_program.Variables);
+            WriteManagedTextRoots(_program.Variables, register: true);
             WriteItems(_program.SourceItems);
+            WriteManagedTextRoots(_program.Variables, register: false);
+            if (UsesManagedCText)
+            {
+                Line("smile_text_collect();");
+            }
             Line("return 0;");
             _indent--;
             Line("}");
@@ -434,8 +491,13 @@ internal static partial class CoreBasicCodeGenerator
         {
             foreach (BoundRoutineDeclaration routine in _program.Routines)
             {
+                if (_language is TargetLanguage.Python)
+                {
+                    _layout.EnsureBlankLines(2);
+                }
+
                 WriteRoutine(routine);
-                Line();
+                _layout.EnsureBlankLines(_language is TargetLanguage.Python ? 2 : 1);
             }
         }
 
@@ -496,6 +558,36 @@ internal static partial class CoreBasicCodeGenerator
             }
 
             _indent++;
+            RoutineCleanupContext? priorCleanup = _routineCleanup;
+            if (UsesManagedCText)
+            {
+                VariableSymbol[] locals = routine.Locals.Where(variable => !variable.IsParameter).ToArray();
+                bool hasReturn = EnumerateStatements(routine.SourceItems)
+                    .Any(statement => statement is BoundReturnStatement);
+                string? resultName = routine.Symbol.IsFunction
+                    ? $"_smileRoutineResult{Math.Abs(routine.Symbol.DeclarationSpan.Start)}"
+                    : null;
+                _routineCleanup = new RoutineCleanupContext(
+                    routine,
+                    $"_smileRoutineEnd{Math.Abs(routine.Symbol.DeclarationSpan.Start)}",
+                    resultName,
+                    locals);
+                if (resultName is not null)
+                {
+                    Line($"{RoutineReturnType(routine.Symbol)} {resultName} = {DefaultLiteral(routine.Symbol.ReturnType!.Value)};");
+                    if (routine.Symbol.ReturnType is SmileType.String)
+                    {
+                        Line($"smile_text_register(&{resultName});");
+                    }
+                }
+
+                WriteManagedTextRoots(routine.Symbol.Parameters, register: true);
+                if (hasReturn || resultName is not null)
+                {
+                    Line();
+                }
+            }
+
             if (_language is TargetLanguage.Swift)
             {
                 for (int index = 0; index < symbol.Parameters.Count; index++)
@@ -513,6 +605,34 @@ internal static partial class CoreBasicCodeGenerator
 
             WriteLocalDeclarations(routine);
             WriteItems(routine.SourceItems);
+            if (UsesManagedCText)
+            {
+                RoutineCleanupContext cleanup = _routineCleanup!;
+                if (EnumerateStatements(routine.SourceItems).Any(statement => statement is BoundReturnStatement))
+                {
+                    Line(cleanup.EndLabel + ":");
+                }
+
+                if (cleanup.ResultName is not null && routine.Symbol.ReturnType is SmileType.String)
+                {
+                    Line($"smile_text_return_root = {cleanup.ResultName};");
+                }
+
+                WriteManagedTextRoots(cleanup.Locals, register: false);
+                WriteManagedTextRoots(routine.Symbol.Parameters, register: false);
+                if (cleanup.ResultName is not null && routine.Symbol.ReturnType is SmileType.String)
+                {
+                    Line($"smile_text_unregister(&{cleanup.ResultName});");
+                }
+
+                Line("smile_text_collect();");
+                if (cleanup.ResultName is not null)
+                {
+                    Line($"return {cleanup.ResultName};");
+                }
+
+                _routineCleanup = priorCleanup;
+            }
             _indent--;
             Line("}");
         }
@@ -526,6 +646,7 @@ internal static partial class CoreBasicCodeGenerator
             }
 
             WriteArrayInitializers(locals);
+            WriteManagedTextRoots(locals, register: true);
             if (locals.Length > 0)
             {
                 Line();
@@ -789,19 +910,43 @@ internal static partial class CoreBasicCodeGenerator
 
         private void WriteItems(IReadOnlyList<BoundSourceItem> items)
         {
-            foreach (BoundSourceItem item in items)
+            BoundStatement? previousStatement = null;
+            for (int index = 0; index < items.Count; index++)
             {
+                BoundSourceItem item = items[index];
                 switch (item)
                 {
                     case BoundBlankLine:
                         Line();
                         break;
                     case BoundFullLineComment comment:
+                        BoundStatement? documentedStatement = NextStatementAfterAttachedComments(items, index + 1);
+                        if (previousStatement is not null && documentedStatement is not null &&
+                            ShouldSeparateStatements(previousStatement, documentedStatement))
+                        {
+                            Line();
+                        }
+
                         Line(CommentPrefix() + comment.Payload);
                         break;
                     case BoundStatement statement:
+                        bool attachedComment = index > 0 && items[index - 1] is BoundFullLineComment;
+                        if (!attachedComment && previousStatement is not null &&
+                            ShouldSeparateStatements(previousStatement, statement))
+                        {
+                            Line();
+                        }
+
+                        BeginManagedTextStatement();
                         WriteStatement(statement);
-                        if (statement is BoundExitStatement or BoundEndProgramStatement)
+                        EndManagedTextStatement();
+                        previousStatement = statement;
+                        if (statement is BoundReturnStatement && UsesManagedCText && _routineCleanup is not null)
+                        {
+                            Line($"goto {_routineCleanup.EndLabel};");
+                        }
+
+                        if (statement is BoundReturnStatement or BoundExitStatement or BoundEndProgramStatement)
                         {
                             return;
                         }
@@ -809,6 +954,84 @@ internal static partial class CoreBasicCodeGenerator
                         break;
                 }
             }
+        }
+
+        private bool UsesManagedCText =>
+            (_language is TargetLanguage.C or TargetLanguage.ObjectiveC) && ProgramHasTextConcatenation();
+
+        private void BeginManagedTextStatement()
+        {
+            if (UsesManagedCText)
+            {
+                _managedTextTemporaryRoots.Push(new List<string>());
+            }
+        }
+
+        private void EndManagedTextStatement()
+        {
+            if (!UsesManagedCText)
+            {
+                return;
+            }
+
+            foreach (string root in _managedTextTemporaryRoots.Pop().AsEnumerable().Reverse())
+            {
+                Line($"smile_text_unregister(&{root});");
+            }
+
+            Line("smile_text_collect();");
+        }
+
+        private void WriteManagedTextRoots(IEnumerable<VariableSymbol> variables, bool register)
+        {
+            if (!UsesManagedCText)
+            {
+                return;
+            }
+
+            string operation = register ? "register" : "unregister";
+            foreach (VariableSymbol variable in variables.Where(variable =>
+                !variable.IsConstant && variable.Type is SmileType.String))
+            {
+                string name = Name(variable);
+                if (!variable.IsArray)
+                {
+                    Line($"smile_text_{operation}(&{name});");
+                    continue;
+                }
+
+                string index = $"_smileRoot{++_orderedTempId}";
+                Line($"for (size_t {index} = 0; {index} < {variable.TotalElementCount}; {index}++)");
+                Line("{");
+                _indent++;
+                Line($"smile_text_{operation}(&((const char **){name})[{index}]);");
+                _indent--;
+                Line("}");
+            }
+        }
+
+        private static bool ShouldSeparateStatements(BoundStatement previous, BoundStatement current) =>
+            IsMajorControl(previous) || IsMajorControl(current) ||
+            current is BoundReturnStatement && previous is not BoundSetStatement;
+
+        private static bool IsMajorControl(BoundStatement statement) =>
+            statement is BoundIfStatement or BoundSelectStatement or BoundForStatement or BoundDoStatement;
+
+        private static BoundStatement? NextStatementAfterAttachedComments(
+            IReadOnlyList<BoundSourceItem> items,
+            int start)
+        {
+            for (int index = start; index < items.Count; index++)
+            {
+                if (items[index] is BoundFullLineComment)
+                {
+                    continue;
+                }
+
+                return items[index] as BoundStatement;
+            }
+
+            return null;
         }
 
         private void WriteStatement(BoundStatement statement)
@@ -906,6 +1129,16 @@ internal static partial class CoreBasicCodeGenerator
 
         private void WriteReturn(BoundReturnStatement returnStatement)
         {
+            if (UsesManagedCText && _routineCleanup is not null)
+            {
+                if (returnStatement.Value is not null && _routineCleanup.ResultName is not null)
+                {
+                    Line($"{_routineCleanup.ResultName} = {PreparedExpression(returnStatement.Value)};");
+                }
+
+                return;
+            }
+
             string suffix = returnStatement.Value is null ? string.Empty : " " + PreparedExpression(returnStatement.Value);
             Line(_language is TargetLanguage.Swift or TargetLanguage.Python
                 ? "return" + suffix
@@ -928,11 +1161,23 @@ internal static partial class CoreBasicCodeGenerator
             };
             Line(declaration);
 
+            if (CanWriteNativeSelect(select))
+            {
+                WriteNativeSelect(select, temporary);
+                return;
+            }
+
             bool wroteCondition = false;
             foreach (BoundSelectCaseClause clause in select.Cases)
             {
                 if (clause.IsElse)
                 {
+                    if (!wroteCondition)
+                    {
+                        WriteUnconditionalSelectBody(clause.SourceItems);
+                        continue;
+                    }
+
                     if (_language is TargetLanguage.Python)
                     {
                         Line("else:");
@@ -979,6 +1224,123 @@ internal static partial class CoreBasicCodeGenerator
             }
         }
 
+        private bool CanWriteNativeSelect(BoundSelectStatement select)
+        {
+            if (!select.Cases.Any(clause => !clause.IsElse) ||
+                select.Cases.SelectMany(clause => EnumerateStatements(clause.SourceItems))
+                    .Any(statement => statement is BoundExitStatement))
+            {
+                return false;
+            }
+
+            return _language switch
+            {
+                TargetLanguage.CSharp or TargetLanguage.JavaScript or TargetLanguage.Swift or TargetLanguage.Python => true,
+                TargetLanguage.C or TargetLanguage.ObjectiveC or TargetLanguage.Cpp =>
+                    select.Selector.Type is not SmileType.String,
+                TargetLanguage.Java => select.Selector.Type is SmileType.String,
+                _ => false
+            };
+        }
+
+        private void WriteNativeSelect(BoundSelectStatement select, string temporary)
+        {
+            if (_language is TargetLanguage.Python)
+            {
+                Line($"match {temporary}:");
+                _indent++;
+                foreach (BoundSelectCaseClause clause in select.Cases)
+                {
+                    Line(clause.IsElse ? "case _:" : $"case {Literal(clause.Value!.Value)}:");
+                    WritePythonSuite(clause.SourceItems);
+                    Line();
+                }
+
+                _indent--;
+                return;
+            }
+
+            string nativeSelector = _language is TargetLanguage.ObjectiveC &&
+                select.Selector.Type is SmileType.Boolean
+                    ? $"(int){temporary}"
+                    : temporary;
+            Line(_language is TargetLanguage.Swift
+                ? $"switch {nativeSelector} {{"
+                : $"switch ({nativeSelector})");
+            if (_language is not TargetLanguage.Swift)
+            {
+                Line("{");
+            }
+
+            _indent++;
+            foreach (BoundSelectCaseClause clause in select.Cases)
+            {
+                Line(clause.IsElse
+                    ? (_language is TargetLanguage.Swift ? "default:" : "default:")
+                    : $"case {Literal(clause.Value!.Value)}:");
+                _indent++;
+                bool needsCaseScope = _language is TargetLanguage.C or
+                    TargetLanguage.ObjectiveC or TargetLanguage.Cpp;
+                if (needsCaseScope)
+                {
+                    Line("{");
+                    _indent++;
+                }
+
+                WriteItems(clause.SourceItems);
+                if (_language is not TargetLanguage.Swift && CaseNeedsBreak(clause.SourceItems))
+                {
+                    Line("break;");
+                }
+
+                if (needsCaseScope)
+                {
+                    _indent--;
+                    Line("}");
+                }
+
+                _indent--;
+                Line();
+            }
+
+            bool exhaustiveBoolean = select.Selector.Type is SmileType.Boolean &&
+                select.Cases.Any(clause => !clause.IsElse && clause.Value!.Value.BooleanValue) &&
+                select.Cases.Any(clause => !clause.IsElse && !clause.Value!.Value.BooleanValue);
+            if (_language is TargetLanguage.Swift &&
+                select.Cases.All(clause => !clause.IsElse) &&
+                !exhaustiveBoolean)
+            {
+                Line("default:");
+                _indent++;
+                Line("break");
+                _indent--;
+            }
+
+            _indent--;
+            Line("}");
+        }
+
+        private static bool CaseNeedsBreak(IReadOnlyList<BoundSourceItem> items)
+        {
+            BoundStatement? last = items.OfType<BoundStatement>().LastOrDefault();
+            return last is not (BoundReturnStatement or BoundExitStatement or BoundEndProgramStatement);
+        }
+
+        private void WriteUnconditionalSelectBody(IReadOnlyList<BoundSourceItem> items)
+        {
+            if (_language is TargetLanguage.Python)
+            {
+                WriteItems(items);
+                return;
+            }
+
+            Line(_language is TargetLanguage.Swift ? "do {" : "{");
+            _indent++;
+            WriteItems(items);
+            _indent--;
+            Line("}");
+        }
+
         private string SelectCondition(string selector, SmileValue value)
         {
             string literal = Literal(value);
@@ -997,43 +1359,61 @@ internal static partial class CoreBasicCodeGenerator
 
         private void WritePrint(BoundCorePrintStatement print)
         {
-            foreach (BoundExpression value in print.Values)
+            if (print.Values.Count == 0)
             {
-                string display = DisplayExpression(value, PreparedExpression(value));
-                switch (_language)
+                if (!print.SuppressNewLine)
                 {
-                    case TargetLanguage.CSharp:
-                        Line($"Console.Write({display});");
-                        break;
-                    case TargetLanguage.JavaScript:
-                        Line($"process.stdout.write({display});");
-                        break;
-                    case TargetLanguage.Java:
-                        Line($"System.out.print({display});");
-                        break;
-                    case TargetLanguage.Swift:
-                        Line($"print({display}, terminator: \"\")");
-                        break;
-                    case TargetLanguage.Python:
-                        Line($"print({display}, end=\"\")");
-                        break;
-                    case TargetLanguage.Cpp:
-                        Line($"std::cout << {display};");
-                        break;
-                    case TargetLanguage.C:
-                        WriteCPrint(value, display, objectiveC: false);
-                        break;
-                    case TargetLanguage.ObjectiveC:
-                        WriteCPrint(value, display, objectiveC: false);
-                        break;
+                    WriteBlankPrint();
                 }
-            }
 
-            if (print.SuppressNewLine)
-            {
                 return;
             }
 
+            var displays = new List<string>(print.Values.Count);
+            foreach (BoundExpression value in print.Values)
+            {
+                displays.Add(DisplayExpression(value, PreparedExpression(value)));
+            }
+
+            string terminator = print.SuppressNewLine ? string.Empty : "\\n";
+            switch (_language)
+            {
+                case TargetLanguage.CSharp:
+                    if (displays.Count == 1)
+                    {
+                        Line($"Console.{(print.SuppressNewLine ? "Write" : "WriteLine")}({displays[0]});");
+                    }
+                    else
+                    {
+                        string interpolation = string.Concat(displays.Select(display => $"{{{display}}}"));
+                        Line($"Console.{(print.SuppressNewLine ? "Write" : "WriteLine")}($\"{interpolation}\");");
+                    }
+                    break;
+                case TargetLanguage.JavaScript:
+                    Line($"process.stdout.write({string.Join(" + ", displays)} + \"{terminator}\");");
+                    break;
+                case TargetLanguage.Java:
+                    string javaValue = displays.Count == 1 ? displays[0] : "\"\" + " + string.Join(" + ", displays);
+                    Line($"System.out.{(print.SuppressNewLine ? "print" : "println")}({javaValue});");
+                    break;
+                case TargetLanguage.Swift:
+                    Line($"print({string.Join(", ", displays)}, separator: \"\", terminator: \"{terminator}\")");
+                    break;
+                case TargetLanguage.Python:
+                    Line($"print({string.Join(", ", displays)}, sep=\"\", end=\"{terminator}\")");
+                    break;
+                case TargetLanguage.Cpp:
+                    Line($"std::cout << {string.Join(" << ", displays)}{(print.SuppressNewLine ? string.Empty : " << '\\n'")};");
+                    break;
+                case TargetLanguage.C:
+                case TargetLanguage.ObjectiveC:
+                    WriteCombinedCPrint(print, displays);
+                    break;
+            }
+        }
+
+        private void WriteBlankPrint()
+        {
             Line(_language switch
             {
                 TargetLanguage.CSharp => "Console.WriteLine();",
@@ -1042,28 +1422,26 @@ internal static partial class CoreBasicCodeGenerator
                 TargetLanguage.Swift => "print()",
                 TargetLanguage.Python => "print()",
                 TargetLanguage.Cpp => "std::cout << '\\n';",
-                TargetLanguage.C => "fputc('\\n', stdout);",
-                TargetLanguage.ObjectiveC => "fputc('\\n', stdout);",
+                TargetLanguage.C or TargetLanguage.ObjectiveC => "fputc('\\n', stdout);",
                 _ => string.Empty
             });
         }
 
-        private void WriteCPrint(BoundExpression value, string display, bool objectiveC)
+        private void WriteCombinedCPrint(BoundCorePrintStatement print, IReadOnlyList<string> displays)
         {
-            if (value.Type is SmileType.String)
+            string format = "\"";
+            foreach (BoundExpression expression in print.Values)
             {
-                Line(objectiveC
-                    ? $"fputs([{display} UTF8String], stdout);"
-                    : $"fputs({display}, stdout);");
+                format += expression.Type is SmileType.Integer ? "%\" PRId64 \"" : "%s";
             }
-            else if (value.Type is SmileType.Boolean)
+
+            if (!print.SuppressNewLine)
             {
-                Line($"fputs({display}, stdout);");
+                format += "\\n";
             }
-            else
-            {
-                Line($"printf(\"%\" PRId64, {display});");
-            }
+
+            format += "\"";
+            Line($"printf({format}, {string.Join(", ", displays)});");
         }
 
         private void WriteIf(BoundIfStatement conditional)
@@ -1135,8 +1513,12 @@ internal static partial class CoreBasicCodeGenerator
             string upper = PreparedExpression(loop.UpperBound);
             string comparison = loop.IsDescending ? ">=" : "<=";
             string step = loop.IsDescending ? "--" : "++";
-            bool hasCrossKindExit = HasCrossKindExitTargetingLoop(loop.SourceItems, LoopKind.For);
-            string? completionFlag = _language is TargetLanguage.Swift && HasExitTargetingLoop(loop.SourceItems, LoopKind.For)
+            bool hasCrossKindExit = CoreBasicBoundControlFlow.ContainsExitTargetingLoop(
+                loop.SourceItems,
+                BoundExitKind.For,
+                requireInterveningOtherLoop: true);
+            string? completionFlag = _language is TargetLanguage.Swift &&
+                CoreBasicBoundControlFlow.ContainsExitTargetingLoop(loop.SourceItems, BoundExitKind.For)
                 ? $"_smileForCompleted{temp}"
                 : null;
             var frame = new LoopFrame(LoopKind.For, id, label, completionFlag);
@@ -1268,7 +1650,10 @@ internal static partial class CoreBasicCodeGenerator
             int id = ++_loopId;
             string label = $"smile_do_{id}";
             string endLabel = $"{label}_end";
-            bool hasCrossKindExit = HasCrossKindExitTargetingLoop(loop.SourceItems, LoopKind.Do);
+            bool hasCrossKindExit = CoreBasicBoundControlFlow.ContainsExitTargetingLoop(
+                loop.SourceItems,
+                BoundExitKind.Do,
+                requireInterveningOtherLoop: true);
             _loops.Add(new LoopFrame(LoopKind.Do, id, label));
 
             if (UsesOrderedCExpressions)
@@ -1408,6 +1793,11 @@ internal static partial class CoreBasicCodeGenerator
 
         private void WriteEndProgram()
         {
+            if (UsesManagedCText)
+            {
+                Line("smile_text_shutdown();");
+            }
+
             Line(_language switch
             {
                 TargetLanguage.CSharp => "Environment.Exit(0);",
@@ -1552,6 +1942,11 @@ internal static partial class CoreBasicCodeGenerator
                 TargetLanguage.Python => $"{name} = {expression}",
                 _ => $"{TypeName(type)} {name} = {expression};"
             });
+            if (UsesManagedCText && type is SmileType.String)
+            {
+                Line($"smile_text_register(&{name});");
+                _managedTextTemporaryRoots.Peek().Add(name);
+            }
             return name;
         }
 
@@ -1938,29 +2333,116 @@ internal static partial class CoreBasicCodeGenerator
 
         private void WriteCTextConcatHelper()
         {
-            Line("static char *smile_text_concat(const char *left, const char *right)");
-            Line("{");
-            _indent++;
-            Line("size_t length = strlen(left) + strlen(right) + 1;");
-            Line("char *result = malloc(length);");
-            Line("if (result == NULL) { exit(1); }");
-            Line("snprintf(result, length, \"%s%s\", left, right);");
-            Line("return result;");
-            _indent--;
-            Line("}");
+            Lines(
+                "typedef struct SmileTextAllocation",
+                "{",
+                "    struct SmileTextAllocation *next;",
+                "    char text[1];",
+                "} SmileTextAllocation;",
+                "static SmileTextAllocation *smile_text_allocations = NULL;",
+                "static const char **smile_text_roots[65536];",
+                "static size_t smile_text_root_count = 0;",
+                "static size_t smile_text_allocation_count = 0;",
+                "static size_t smile_text_free_count = 0;",
+                "static size_t smile_text_live_count = 0;",
+                "static size_t smile_text_peak_count = 0;",
+                "static bool smile_text_shutdown_complete = false;");
+            Lines(
+                "static void smile_text_register(const char **root)",
+                "{",
+                "    if (smile_text_root_count >= 65536)",
+                "    {",
+                "        fputs(\"SMILE Runtime Error: too many live Text roots.\\n\", stderr);",
+                "        exit(1);",
+                "    }",
+                "    smile_text_roots[smile_text_root_count++] = root;",
+                "}");
+            Lines(
+                "static void smile_text_unregister(const char **root)",
+                "{",
+                "    for (size_t index = smile_text_root_count; index > 0; index--)",
+                "    {",
+                "        if (smile_text_roots[index - 1] == root)",
+                "        {",
+                "            smile_text_roots[index - 1] = smile_text_roots[--smile_text_root_count];",
+                "            return;",
+                "        }",
+                "    }",
+                "}");
+            Lines(
+                "static void smile_text_collect(void)",
+                "{",
+                "    SmileTextAllocation **link = &smile_text_allocations;",
+                "    while (*link != NULL)",
+                "    {",
+                "        SmileTextAllocation *candidate = *link;",
+                "        bool rooted = candidate->text == smile_text_return_root;",
+                "        for (size_t index = 0; !rooted && index < smile_text_root_count; index++)",
+                "        {",
+                "            rooted = *smile_text_roots[index] == candidate->text;",
+                "        }",
+                "        if (rooted)",
+                "        {",
+                "            link = &candidate->next;",
+                "            continue;",
+                "        }",
+                "        *link = candidate->next;",
+                "        free(candidate);",
+                "        smile_text_free_count++;",
+                "        smile_text_live_count--;",
+                "    }",
+                "}");
+            Lines(
+                "static void smile_text_shutdown(void)",
+                "{",
+                "    if (smile_text_shutdown_complete)",
+                "    {",
+                "        return;",
+                "    }",
+                "    smile_text_shutdown_complete = true;",
+                "    smile_text_root_count = 0;",
+                "    smile_text_return_root = NULL;",
+                "    smile_text_collect();",
+                "    if (getenv(\"SMILE_TEXT_LIFETIME_REPORT\") != NULL)",
+                "    {",
+                "        fprintf(stderr, \"SMILE Text lifetime: allocations=%zu frees=%zu live=%zu peak=%zu\\n\",",
+                "            smile_text_allocation_count, smile_text_free_count, smile_text_live_count, smile_text_peak_count);",
+                "    }",
+                "}");
+            Lines(
+                "static void smile_text_initialize(void)",
+                "{",
+                "    atexit(smile_text_shutdown);",
+                "}");
+            Lines(
+                "static const char *smile_text_concat(const char *left, const char *right)",
+                "{",
+                "    size_t length = strlen(left) + strlen(right) + 1;",
+                "    SmileTextAllocation *allocation = malloc(sizeof(*allocation) + length);",
+                "    if (allocation == NULL)",
+                "    {",
+                "        fputs(\"SMILE Runtime Error: Text allocation failed.\\n\", stderr);",
+                "        exit(1);",
+                "    }",
+                "    snprintf(allocation->text, length, \"%s%s\", left, right);",
+                "    allocation->next = smile_text_allocations;",
+                "    smile_text_allocations = allocation;",
+                "    smile_text_allocation_count++;",
+                "    smile_text_live_count++;",
+                "    if (smile_text_live_count > smile_text_peak_count)",
+                "    {",
+                "        smile_text_peak_count = smile_text_live_count;",
+                "    }",
+                "    return allocation->text;",
+                "}");
         }
 
         private void Line(string text = "")
         {
-            if (text.Length > 0)
-            {
-                _builder.Append(' ', _indent * 4);
-            }
-
-            _builder.AppendLine(text);
+            _layout.WriteLine(text, _indent);
         }
 
-        private string Finish() => _builder.ToString().Replace("\r\n", "\n", StringComparison.Ordinal);
+        private string Finish() => _layout.Finish(_language);
 
         public static IEnumerable<BoundStatement> EnumerateStatements(IReadOnlyList<BoundSourceItem> items)
         {
@@ -2169,183 +2651,34 @@ internal static partial class CoreBasicCodeGenerator
                 _ => false
             });
 
-        private static IReadOnlyList<int> GetPythonExitLoopIds(IReadOnlyList<BoundSourceItem> items)
+        private static IReadOnlyList<int> GetPythonExitLoopIds(
+            IEnumerable<IReadOnlyList<BoundSourceItem>> executableItemSets)
         {
             var ids = new List<int>();
-            int next = 0;
-            void Visit(IReadOnlyList<BoundSourceItem> sourceItems)
+            int loopId = 0;
+            foreach (IReadOnlyList<BoundSourceItem> items in executableItemSets)
             {
-                foreach (BoundSourceItem item in sourceItems)
+                foreach ((BoundStatement statement, BoundExitKind kind) in
+                    CoreBasicBoundControlFlow.EnumerateLoops(items))
                 {
-                    if (item is not BoundStatement statement)
+                    loopId++;
+                    IReadOnlyList<BoundSourceItem> body = statement switch
                     {
-                        continue;
-                    }
-
-                    switch (statement)
+                        BoundForStatement loop => loop.SourceItems,
+                        BoundDoStatement loop => loop.SourceItems,
+                        _ => Array.Empty<BoundSourceItem>()
+                    };
+                    if (CoreBasicBoundControlFlow.ContainsExitTargetingLoop(
+                            body,
+                            kind,
+                            requireInterveningOtherLoop: true))
                     {
-                        case BoundForStatement loop:
-                            next++;
-                            if (HasCrossKindExitTargetingLoop(loop.SourceItems, LoopKind.For))
-                            {
-                                ids.Add(next);
-                            }
-                            Visit(loop.SourceItems);
-                            break;
-                        case BoundDoStatement loop:
-                            next++;
-                            if (HasCrossKindExitTargetingLoop(loop.SourceItems, LoopKind.Do))
-                            {
-                                ids.Add(next);
-                            }
-                            Visit(loop.SourceItems);
-                            break;
-                        case BoundIfStatement conditional:
-                            foreach (BoundConditionalClause clause in conditional.Clauses) Visit(clause.SourceItems);
-                            Visit(conditional.ElseSourceItems);
-                            break;
-                    }
-
-                    if (statement is BoundExitStatement or BoundEndProgramStatement)
-                    {
-                        return;
+                        ids.Add(loopId);
                     }
                 }
             }
 
-            Visit(items);
             return ids;
-        }
-
-        private static bool HasCrossKindExitTargetingLoop(
-            IReadOnlyList<BoundSourceItem> items,
-            LoopKind targetKind,
-            int nestedSameKindDepth = 0,
-            int nestedLoopDepth = 0)
-        {
-            foreach (BoundSourceItem item in items)
-            {
-                if (item is not BoundStatement statement)
-                {
-                    continue;
-                }
-
-                if (statement is BoundExitStatement exit &&
-                    nestedSameKindDepth == 0 &&
-                    nestedLoopDepth > 0 &&
-                    ((targetKind is LoopKind.For && exit.Kind is BoundExitKind.For) ||
-                     (targetKind is LoopKind.Do && exit.Kind is BoundExitKind.Do)))
-                {
-                    return true;
-                }
-
-                if (statement is BoundExitStatement or BoundEndProgramStatement)
-                {
-                    return false;
-                }
-
-                switch (statement)
-                {
-                    case BoundIfStatement conditional:
-                        if (conditional.Clauses.Any(clause =>
-                                HasCrossKindExitTargetingLoop(
-                                    clause.SourceItems,
-                                    targetKind,
-                                    nestedSameKindDepth,
-                                    nestedLoopDepth)) ||
-                            HasCrossKindExitTargetingLoop(
-                                conditional.ElseSourceItems,
-                                targetKind,
-                                nestedSameKindDepth,
-                                nestedLoopDepth))
-                        {
-                            return true;
-                        }
-
-                        break;
-                    case BoundForStatement loop:
-                        if (HasCrossKindExitTargetingLoop(
-                                loop.SourceItems,
-                                targetKind,
-                                nestedSameKindDepth + (targetKind is LoopKind.For ? 1 : 0),
-                                nestedLoopDepth + 1))
-                        {
-                            return true;
-                        }
-
-                        break;
-                    case BoundDoStatement loop:
-                        if (HasCrossKindExitTargetingLoop(
-                                loop.SourceItems,
-                                targetKind,
-                                nestedSameKindDepth + (targetKind is LoopKind.Do ? 1 : 0),
-                                nestedLoopDepth + 1))
-                        {
-                            return true;
-                        }
-
-                        break;
-                }
-            }
-
-            return false;
-        }
-
-        private static bool HasExitTargetingLoop(
-            IReadOnlyList<BoundSourceItem> items,
-            LoopKind targetKind,
-            int nestedSameKindDepth = 0)
-        {
-            foreach (BoundSourceItem item in items)
-            {
-                if (item is not BoundStatement statement)
-                {
-                    continue;
-                }
-
-                if (statement is BoundExitStatement exit &&
-                    nestedSameKindDepth == 0 &&
-                    ((targetKind is LoopKind.For && exit.Kind is BoundExitKind.For) ||
-                     (targetKind is LoopKind.Do && exit.Kind is BoundExitKind.Do)))
-                {
-                    return true;
-                }
-
-                switch (statement)
-                {
-                    case BoundIfStatement conditional:
-                        if (conditional.Clauses.Any(clause => HasExitTargetingLoop(clause.SourceItems, targetKind, nestedSameKindDepth)) ||
-                            HasExitTargetingLoop(conditional.ElseSourceItems, targetKind, nestedSameKindDepth))
-                        {
-                            return true;
-                        }
-
-                        break;
-                    case BoundSelectStatement select:
-                        if (select.Cases.Any(clause => HasExitTargetingLoop(clause.SourceItems, targetKind, nestedSameKindDepth)))
-                        {
-                            return true;
-                        }
-
-                        break;
-                    case BoundForStatement loop:
-                        if (HasExitTargetingLoop(loop.SourceItems, targetKind, nestedSameKindDepth + (targetKind is LoopKind.For ? 1 : 0)))
-                        {
-                            return true;
-                        }
-
-                        break;
-                    case BoundDoStatement loop:
-                        if (HasExitTargetingLoop(loop.SourceItems, targetKind, nestedSameKindDepth + (targetKind is LoopKind.Do ? 1 : 0)))
-                        {
-                            return true;
-                        }
-
-                        break;
-                }
-            }
-
-            return false;
         }
     }
 

@@ -23,9 +23,13 @@ Dim Counter As Number
 Dim Outer As Number
 Dim Tally As Number
 Dim Inner As Number
+
 Dim SampleValues[3] As Number
+
 Dim SamplePosition As Number
+
 Dim Board[BoardWidth, BoardHeight] As Text
+
 Dim LastKey As Number
 Dim FixedRoll As Number
 Dim StartedAt As Number
@@ -59,17 +63,21 @@ Else If Adult Then
 Else
     Grade = "Learner"
 End If
+
 Print "Branch="; Grade
 
 Sum = 0
+
 For Counter = 1 To 3
     Sum = Sum + Counter
 End For
+
 Print "Ascending sum="; Sum
 
 For Counter = 3 Down To 1
     Print Counter;
 End For
+
 Print
 
 For Outer = 1 To 3
@@ -80,9 +88,11 @@ For Outer = 1 To 3
 End For
 
 Tally = 0
+
 Do
     Tally = Tally + 1
 Loop Until Tally = 2
+
 Print "Post-tested Do count="; Tally
 
 Do
@@ -98,6 +108,7 @@ Print "Array total="; SampleTotal()
 Select Case SampleTotal()
     Case 26
         Print "Select Case matched a constant value."
+
     Case Else
         Print "Select Case used its fallback."
 End Select
@@ -118,14 +129,20 @@ End Program
 Print "unreachable"
 
 Sub StoreSample(ByVal SamplePosition As Number, ByVal Value As Number)
+
     SampleValues[SamplePosition] = Value
+
 End Sub
 
 Function SampleTotal() As Number
+
     Dim Position As Number
     Dim Result As Number
+
     For Position = 0 To 2
         Result = Result + SampleValues[Position]
     End For
+
     Return Result
+
 End Function

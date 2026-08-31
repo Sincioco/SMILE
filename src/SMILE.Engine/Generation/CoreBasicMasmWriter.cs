@@ -12,12 +12,11 @@ internal sealed class CoreBasicMasmWriter
     private readonly TargetIdentifierMap _identifiers;
     private readonly IReadOnlyDictionary<VariableSymbol, SmileValue> _constants;
     private readonly CoreBasicProgramFeatureSet _features;
+    private readonly bool _usesManagedText;
     private readonly Dictionary<string, string> _strings = new(StringComparer.Ordinal);
     private readonly StringBuilder _builder = new();
     private bool _usesBounds;
-    private bool _usesMalloc;
     private bool _usesPrintf;
-    private bool _usesSprintf;
     private bool _usesStrcmp;
     private int _labelId;
 
@@ -29,6 +28,7 @@ internal sealed class CoreBasicMasmWriter
             .OfType<BoundConstStatement>()
             .ToDictionary(statement => statement.Variable, statement => statement.Value);
         _features = CoreBasicProgramFeatureSet.Create(program);
+        _usesManagedText = CoreBasicMasmTextRuntime.IsRequired(program);
         if (_program.Variables.Any(variable =>
             !variable.IsConstant && variable.Type is SmileType.String))
         {
@@ -52,9 +52,6 @@ internal sealed class CoreBasicMasmWriter
         string? boundsMessage = _usesBounds
             ? InternString("SMILE Runtime Error SMILER1210: Array index is outside the declared bounds.\n")
             : null;
-        string? randomMessage = _features.HasRandom
-            ? InternString("SMILE Runtime Error SMILER1221: Random lower bound exceeds upper bound.\n")
-            : null;
         string? overflowMessage = _features.HasAbs
             ? InternString("SMILE Runtime Error SMILER1206: Number arithmetic overflow.\n")
             : null;
@@ -63,8 +60,16 @@ internal sealed class CoreBasicMasmWriter
         Line("ExitProcess PROTO :DWORD");
         if (_usesPrintf) Line("printf PROTO :PTR BYTE, :VARARG");
         if (_usesStrcmp) Line("strcmp PROTO :PTR BYTE, :PTR BYTE");
-        if (_usesSprintf) Line("sprintf PROTO :PTR BYTE, :PTR BYTE, :VARARG");
-        if (_usesMalloc) Line("malloc PROTO :QWORD");
+        if (_usesManagedText)
+        {
+            Line("smile_text_initialize PROTO");
+            Line("smile_text_register_range PROTO :PTR QWORD, :QWORD");
+            Line("smile_text_unregister_range PROTO :PTR QWORD, :QWORD");
+            Line("smile_text_set_return_root PROTO :PTR BYTE");
+            Line("smile_text_collect PROTO");
+            Line("smile_text_shutdown PROTO");
+            Line("smile_text_concat PROTO :PTR BYTE, :PTR BYTE");
+        }
         if (_features.HasGetKey)
         {
             Line("_kbhit PROTO");
@@ -76,13 +81,10 @@ internal sealed class CoreBasicMasmWriter
         {
             Line("GetStdHandle PROTO :DWORD");
             Line("GetConsoleMode PROTO :QWORD, :PTR DWORD");
-            Line("GetConsoleScreenBufferInfo PROTO :QWORD, :PTR BYTE");
-            Line("FillConsoleOutputCharacterA PROTO :QWORD, :DWORD, :DWORD, :DWORD, :PTR DWORD");
-            Line("FillConsoleOutputAttribute PROTO :QWORD, :WORD, :DWORD, :DWORD, :PTR DWORD");
             Line("SetConsoleCursorPosition PROTO :QWORD, :DWORD");
         }
         Line("includelib kernel32.lib");
-        if (_usesPrintf || _usesStrcmp || _usesSprintf || _usesMalloc || _features.HasGetKey)
+        if ((_usesPrintf || _usesStrcmp || _features.HasGetKey) && !_usesManagedText)
         {
             Line("includelib msvcrt.lib");
         }
@@ -125,7 +127,7 @@ internal sealed class CoreBasicMasmWriter
             Line();
         }
 
-        WriteRuntimeHelpers(boundsMessage, randomMessage, overflowMessage);
+        WriteRuntimeHelpers(boundsMessage, overflowMessage);
         // ml64 uses the object-file entry point supplied by the linker; unlike
         // 32-bit ml, its validated x64 syntax requires the bare END directive.
         Line("END");
@@ -144,12 +146,22 @@ internal sealed class CoreBasicMasmWriter
         if (procedure.IsMain)
         {
             Line("smile_program_end:");
+            _builder.Append(procedure.Cleanup);
+            if (_usesManagedText)
+            {
+                Line("    call smile_text_shutdown");
+            }
             Line("    xor ecx, ecx");
             Line("    call ExitProcess");
         }
         else
         {
             Line(procedure.ReturnLabel + ":");
+            _builder.Append(procedure.Cleanup);
+            if (procedure.ReturnOffset is int returnOffset)
+            {
+                Line($"    mov rax, QWORD PTR {ProcedureEmitter.FormatAddress(returnOffset)}");
+            }
             Line("    mov rsp, rbp");
             Line("    pop rbp");
             Line("    ret");
@@ -185,7 +197,7 @@ internal sealed class CoreBasicMasmWriter
         };
     }
 
-    private void WriteRuntimeHelpers(string? boundsMessage, string? randomMessage, string? overflowMessage)
+    private void WriteRuntimeHelpers(string? boundsMessage, string? overflowMessage)
     {
         if (_usesBounds)
         {
@@ -193,6 +205,7 @@ internal sealed class CoreBasicMasmWriter
             Line("    sub rsp, 40");
             Line($"    lea rcx, {boundsMessage}");
             Line("    call printf");
+            if (_usesManagedText) Line("    call smile_text_shutdown");
             Line("    mov ecx, 1");
             Line("    call ExitProcess");
             Line("smile_bounds_fail ENDP");
@@ -238,24 +251,42 @@ internal sealed class CoreBasicMasmWriter
         if (_features.HasClearScreen)
         {
             Line("smile_clear_screen PROC");
-            Line("    sub rsp, 104");
+            Line("    push rbx");
+            Line("    sub rsp, 48");
             Line("    mov ecx, -11");
             Line("    call GetStdHandle");
-            Line("    mov QWORD PTR [rsp+40], rax");
-            Line("    mov rcx, rax"); Line("    lea rdx, [rsp+48]"); Line("    call GetConsoleMode"); Line("    test eax, eax"); Line("    jz smile_clear_done");
-            Line("    mov rcx, QWORD PTR [rsp+40]"); Line("    lea rdx, [rsp+56]"); Line("    call GetConsoleScreenBufferInfo"); Line("    test eax, eax"); Line("    jz smile_clear_done");
-            Line("    movzx eax, WORD PTR [rsp+56]"); Line("    movzx r10d, WORD PTR [rsp+58]"); Line("    imul eax, r10d"); Line("    mov DWORD PTR [rsp+52], eax");
-            Line("    lea rax, [rsp+48]"); Line("    mov QWORD PTR [rsp+32], rax"); Line("    mov rcx, QWORD PTR [rsp+40]"); Line("    mov edx, 32"); Line("    mov r8d, DWORD PTR [rsp+52]"); Line("    xor r9d, r9d"); Line("    call FillConsoleOutputCharacterA");
-            Line("    lea rax, [rsp+48]"); Line("    mov QWORD PTR [rsp+32], rax"); Line("    mov rcx, QWORD PTR [rsp+40]"); Line("    movzx edx, WORD PTR [rsp+64]"); Line("    mov r8d, DWORD PTR [rsp+52]"); Line("    xor r9d, r9d"); Line("    call FillConsoleOutputAttribute");
-            Line("    mov rcx, QWORD PTR [rsp+40]"); Line("    xor edx, edx"); Line("    call SetConsoleCursorPosition");
-            Line("smile_clear_done:"); Line("    add rsp, 104"); Line("    ret"); Line("smile_clear_screen ENDP"); Line();
+            Line("    mov rbx, rax");
+            Line("    mov rcx, rbx");
+            Line("    lea rdx, [rsp+32]");
+            Line("    call GetConsoleMode");
+            Line("    test eax, eax");
+            Line("    jz smile_clear_done");
+            Line("    mov rcx, rbx");
+            Line("    xor edx, edx");
+            Line("    call SetConsoleCursorPosition");
+            Line("smile_clear_done:");
+            Line("    add rsp, 48");
+            Line("    pop rbx");
+            Line("    ret");
+            Line("smile_clear_screen ENDP");
+            Line();
         }
 
         if (_features.HasWait)
         {
-            Line("smile_wait PROC"); Line("    push rbx"); Line("    sub rsp, 32"); Line("    xor ebx, ebx"); Line("    test rcx, rcx"); Line("    cmovg rbx, rcx");
-            Line("smile_wait_loop:"); Line("    test rbx, rbx"); Line("    jz smile_wait_done"); Line("    mov rcx, rbx"); Line("    mov eax, 0FFFFFFFFh"); Line("    cmp rbx, rax"); Line("    cmova rcx, rax"); Line("    sub rbx, rcx"); Line("    call Sleep"); Line("    jmp smile_wait_loop");
-            Line("smile_wait_done:"); Line("    add rsp, 32"); Line("    pop rbx"); Line("    ret"); Line("smile_wait ENDP"); Line();
+            Line("smile_wait PROC");
+            Line("    sub rsp, 40");
+            Line("    xor eax, eax");
+            Line("    test rcx, rcx");
+            Line("    cmovle rcx, rax");
+            Line("    mov eax, 0FFFFFFFFh");
+            Line("    cmp rcx, rax");
+            Line("    cmova rcx, rax");
+            Line("    call Sleep");
+            Line("    add rsp, 40");
+            Line("    ret");
+            Line("smile_wait ENDP");
+            Line();
         }
 
         if (_features.HasTimer)
@@ -267,9 +298,8 @@ internal sealed class CoreBasicMasmWriter
         {
             Line("smile_random_bits PROC"); Line("    mov rax, QWORD PTR [smile_random_state]"); Line("    test rax, rax"); Line("    jnz smile_random_seeded"); Line("    sub rsp, 40"); Line("    call GetTickCount64"); Line("    add rsp, 40"); Line("    lea r11, smile_random_state"); Line("    xor rax, r11"); Line("    mov r11, 09E3779B97F4A7C15h"); Line("    xor rax, r11");
             Line("smile_random_seeded:"); Line("    mov r11, rax"); Line("    shr r11, 12"); Line("    xor rax, r11"); Line("    mov r11, rax"); Line("    shl r11, 25"); Line("    xor rax, r11"); Line("    mov r11, rax"); Line("    shr r11, 27"); Line("    xor rax, r11"); Line("    mov QWORD PTR [smile_random_state], rax"); Line("    mov r11, 2545F4914F6CDD1Dh"); Line("    mul r11"); Line("    ret"); Line("smile_random_bits ENDP"); Line();
-            Line("smile_random PROC"); Line("    sub rsp, 40"); Line("    cmp rcx, rdx"); Line("    jg smile_random_failed"); Line("    mov r9, rcx"); Line("    mov r8, rdx"); Line("    sub r8, rcx"); Line("    inc r8"); Line("    xor r10d, r10d"); Line("    test r8, r8"); Line("    jz smile_random_sample"); Line("    xor eax, eax"); Line("    sub rax, r8"); Line("    xor edx, edx"); Line("    div r8"); Line("    mov r10, rdx");
-            Line("smile_random_sample:"); Line("    call smile_random_bits"); Line("    cmp rax, r10"); Line("    jb smile_random_sample"); Line("    test r8, r8"); Line("    jz smile_random_ready"); Line("    xor edx, edx"); Line("    div r8"); Line("    mov rax, rdx"); Line("smile_random_ready:"); Line("    add rax, r9"); Line("    add rsp, 40"); Line("    ret");
-            Line("smile_random_failed:"); Line($"    lea rcx, {randomMessage}"); Line("    call printf"); Line("    mov ecx, 1"); Line("    call ExitProcess"); Line("smile_random ENDP"); Line();
+            Line("smile_random PROC"); Line("    cmp rcx, rdx"); Line("    jle smile_random_bounds_ready"); Line("    mov rax, rcx"); Line("    ret"); Line("smile_random_bounds_ready:"); Line("    sub rsp, 40"); Line("    mov r9, rcx"); Line("    mov r8, rdx"); Line("    sub r8, rcx"); Line("    inc r8"); Line("    xor r10d, r10d"); Line("    test r8, r8"); Line("    jz smile_random_sample"); Line("    xor eax, eax"); Line("    sub rax, r8"); Line("    xor edx, edx"); Line("    div r8"); Line("    mov r10, rdx");
+            Line("smile_random_sample:"); Line("    call smile_random_bits"); Line("    cmp rax, r10"); Line("    jb smile_random_sample"); Line("    test r8, r8"); Line("    jz smile_random_ready"); Line("    xor edx, edx"); Line("    div r8"); Line("    mov rax, rdx"); Line("smile_random_ready:"); Line("    add rax, r9"); Line("    add rsp, 40"); Line("    ret"); Line("smile_random ENDP"); Line();
         }
 
         if (_features.HasAbs)
@@ -335,7 +365,10 @@ internal sealed class CoreBasicMasmWriter
         private readonly Dictionary<VariableSymbol, Storage> _storage = new();
         private readonly StringBuilder _initialization = new();
         private readonly StringBuilder _body = new();
+        private readonly StringBuilder _cleanup = new();
         private readonly List<LoopFrame> _loops = new();
+        private readonly HashSet<Storage> _textTemporaryRoots = new();
+        private readonly Storage? _returnStorage;
         private int _usedBytes;
         private int _maxCallArguments;
 
@@ -348,6 +381,10 @@ internal sealed class CoreBasicMasmWriter
             foreach (VariableSymbol variable in routine.Locals.Distinct())
             {
                 _storage[variable] = Allocate(variable.IsArray ? variable.TotalElementCount * 8 : 8, variable.TotalElementCount);
+            }
+            if (routine.Symbol.IsFunction)
+            {
+                _returnStorage = Allocate(8);
             }
         }
 
@@ -369,6 +406,10 @@ internal sealed class CoreBasicMasmWriter
 
         public string Body => _body.ToString();
 
+        public string Cleanup => _cleanup.ToString();
+
+        public int? ReturnOffset => _returnStorage?.Offset;
+
         public int FrameSize
         {
             get
@@ -387,6 +428,61 @@ internal sealed class CoreBasicMasmWriter
             }
 
             WriteItems(_items, 1);
+            if (_owner._usesManagedText)
+            {
+                BuildManagedTextLifetime();
+            }
+        }
+
+        private void BuildManagedTextLifetime()
+        {
+            NoteCall(2);
+            if (IsMain)
+            {
+                Append(_initialization, 1, "call smile_text_initialize");
+            }
+
+            var roots = new List<(string Address, int Count)>();
+            if (IsMain)
+            {
+                roots.AddRange(_owner._program.Variables
+                    .Where(variable => !variable.IsConstant && variable.Type is SmileType.String)
+                    .Select(variable => (_owner.Name(variable), variable.IsArray ? variable.TotalElementCount : 1)));
+            }
+            else
+            {
+                roots.AddRange(Routine!.Locals
+                    .Distinct()
+                    .Where(variable => variable.Type is SmileType.String)
+                    .Select(variable =>
+                    {
+                        Storage storage = _storage[variable];
+                        return (Address(storage.Offset), variable.IsArray ? variable.TotalElementCount : 1);
+                    }));
+            }
+
+            string empty = _owner.InternString(string.Empty);
+            foreach (Storage temporary in _textTemporaryRoots.OrderBy(storage => storage.Offset))
+            {
+                Append(_initialization, 1, $"lea rax, {empty}");
+                Append(_initialization, 1, $"mov QWORD PTR {Address(temporary.Offset)}, rax");
+                roots.Add((Address(temporary.Offset), 1));
+            }
+
+            foreach ((string address, int count) in roots)
+            {
+                Append(_initialization, 1, $"lea rcx, {address}");
+                Append(_initialization, 1, $"mov edx, {count}");
+                Append(_initialization, 1, "call smile_text_register_range");
+            }
+
+            foreach ((string address, int count) in roots.AsEnumerable().Reverse())
+            {
+                Append(_cleanup, 1, $"lea rcx, {address}");
+                Append(_cleanup, 1, $"mov edx, {count}");
+                Append(_cleanup, 1, "call smile_text_unregister_range");
+            }
+            Append(_cleanup, 1, "call smile_text_collect");
         }
 
         private void InitializeRoutineFrame()
@@ -494,6 +590,13 @@ internal sealed class CoreBasicMasmWriter
                         if (returnStatement.Value is not null)
                         {
                             EmitExpression(returnStatement.Value, indent);
+                            Emit(indent, $"mov QWORD PTR {Address(_returnStorage!.Offset)}, rax");
+                            if (_owner._usesManagedText && returnStatement.Value.Type is SmileType.String)
+                            {
+                                Emit(indent, "mov rcx, rax");
+                                NoteCall(1);
+                                Emit(indent, "call smile_text_set_return_root");
+                            }
                         }
 
                         Emit(indent, $"jmp {ReturnLabel}");
@@ -527,10 +630,21 @@ internal sealed class CoreBasicMasmWriter
                         }
                         else
                         {
+                            if (_owner._usesManagedText)
+                            {
+                                Emit(indent, "call smile_text_shutdown");
+                            }
                             Emit(indent, "xor ecx, ecx");
                             Emit(indent, "call ExitProcess");
                         }
                         return true;
+                }
+
+                if (_owner._usesManagedText && item is BoundStatement and
+                    not (BoundDimStatement or BoundConstStatement))
+                {
+                    NoteCall(0);
+                    Emit(indent, "call smile_text_collect");
                 }
             }
 
@@ -573,6 +687,10 @@ internal sealed class CoreBasicMasmWriter
             EmitExpression(select.Selector, indent);
             Storage selector = NewTemporary();
             Emit(indent, $"mov QWORD PTR {Address(selector.Offset)}, rax");
+            if (_owner._usesManagedText && select.Selector.Type is SmileType.String)
+            {
+                _textTemporaryRoots.Add(selector);
+            }
             string end = NewLabel("select_end");
             BoundSelectCaseClause? fallback = null;
             foreach (BoundSelectCaseClause clause in select.Cases)
@@ -741,27 +859,29 @@ internal sealed class CoreBasicMasmWriter
             EmitExpression(binary.Left, indent);
             Storage left = NewTemporary();
             Emit(indent, $"mov QWORD PTR {Address(left.Offset)}, rax");
+            if (_owner._usesManagedText && binary.Left.Type is SmileType.String)
+            {
+                _textTemporaryRoots.Add(left);
+            }
             EmitExpression(binary.Right, indent);
             Storage right = NewTemporary();
             Emit(indent, $"mov QWORD PTR {Address(right.Offset)}, rax");
+            if (_owner._usesManagedText && binary.Right.Type is SmileType.String)
+            {
+                _textTemporaryRoots.Add(right);
+            }
             Emit(indent, $"mov rax, QWORD PTR {Address(left.Offset)}");
             Emit(indent, $"mov r10, QWORD PTR {Address(right.Offset)}");
 
             if (binary.Operator.Kind is BoundBinaryOperatorKind.StringConcatenation)
             {
-                _owner._usesMalloc = true;
-                _owner._usesSprintf = true;
-                NoteCall(1);
-                Emit(indent, "mov ecx, 65536");
-                Emit(indent, "call malloc");
+                Emit(indent, $"mov rcx, QWORD PTR {Address(left.Offset)}");
+                Emit(indent, $"mov rdx, QWORD PTR {Address(right.Offset)}");
+                NoteCall(2);
+                Emit(indent, "call smile_text_concat");
                 Storage buffer = NewTemporary();
                 Emit(indent, $"mov QWORD PTR {Address(buffer.Offset)}, rax");
-                Emit(indent, "mov rcx, rax");
-                Emit(indent, $"lea rdx, {_owner.InternString("%s%s")}");
-                Emit(indent, $"mov r8, QWORD PTR {Address(left.Offset)}");
-                Emit(indent, $"mov r9, QWORD PTR {Address(right.Offset)}");
-                NoteCall(4);
-                Emit(indent, "call sprintf");
+                _textTemporaryRoots.Add(buffer);
                 Emit(indent, $"mov rax, QWORD PTR {Address(buffer.Offset)}");
                 return;
             }
@@ -839,6 +959,10 @@ internal sealed class CoreBasicMasmWriter
                 EmitExpression(argument, indent);
                 Storage temporary = NewTemporary();
                 Emit(indent, $"mov QWORD PTR {Address(temporary.Offset)}, rax");
+                if (_owner._usesManagedText && argument.Type is SmileType.String)
+                {
+                    _textTemporaryRoots.Add(temporary);
+                }
                 captured.Add(temporary);
             }
 
@@ -969,5 +1093,7 @@ internal sealed class CoreBasicMasmWriter
         private static string Address(int offset) => offset < 0
             ? $"[rbp{offset}]"
             : $"[rbp+{offset}]";
+
+        public static string FormatAddress(int offset) => Address(offset);
     }
 }

@@ -1,5 +1,7 @@
 ' A compact SMILE 2.0-compatible Core BASIC program.
+
 Const Greeting = "Hello"
+
 Name = "Sin"
 Score = 0
 

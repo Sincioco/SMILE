@@ -18,7 +18,7 @@ internal static class CoreBasicCobolRuntimeSupport
         var text = new StringBuilder();
         if (features.HasGetKey) text.AppendLine("#include <conio.h>");
         text.AppendLine("#include <stdint.h>");
-        if (features.HasRandom || features.HasAbs)
+        if (features.HasAbs)
         {
             text.AppendLine("#include <stdio.h>");
             text.AppendLine("#include <stdlib.h>");
@@ -58,12 +58,7 @@ internal static class CoreBasicCobolRuntimeSupport
             text.AppendLine("    HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);");
             text.AppendLine("    DWORD mode;");
             text.AppendLine("    if (output == INVALID_HANDLE_VALUE || !GetConsoleMode(output, &mode)) return 0;");
-            text.AppendLine("    CONSOLE_SCREEN_BUFFER_INFO info;");
-            text.AppendLine("    if (!GetConsoleScreenBufferInfo(output, &info)) return 0;");
-            text.AppendLine("    DWORD cells = (DWORD)info.dwSize.X * (DWORD)info.dwSize.Y, written;");
             text.AppendLine("    COORD origin = {0, 0};");
-            text.AppendLine("    FillConsoleOutputCharacterA(output, ' ', cells, origin, &written);");
-            text.AppendLine("    FillConsoleOutputAttribute(output, info.wAttributes, cells, origin, &written);");
             text.AppendLine("    SetConsoleCursorPosition(output, origin);");
             text.AppendLine("    return 0;");
             text.AppendLine("}");
@@ -74,9 +69,10 @@ internal static class CoreBasicCobolRuntimeSupport
         {
             text.AppendLine("int smile_wait_cobol(const int64_t *milliseconds)");
             text.AppendLine("{");
-            text.AppendLine("    uint64_t remaining = *milliseconds > 0 ? (uint64_t)*milliseconds : 0;");
-            text.AppendLine("    while (remaining > UINT32_MAX) { Sleep(UINT32_MAX); remaining -= UINT32_MAX; }");
-            text.AppendLine("    Sleep((DWORD)remaining);");
+            text.AppendLine("    DWORD normalized = *milliseconds <= 0");
+            text.AppendLine("        ? 0");
+            text.AppendLine("        : *milliseconds > UINT32_MAX ? UINT32_MAX : (DWORD)*milliseconds;");
+            text.AppendLine("    Sleep(normalized);");
             text.AppendLine("    return 0;");
             text.AppendLine("}");
             text.AppendLine();
@@ -99,7 +95,7 @@ internal static class CoreBasicCobolRuntimeSupport
             text.AppendLine("}");
             text.AppendLine("int64_t smile_random_cobol(const int64_t *lower, const int64_t *upper)");
             text.AppendLine("{");
-            text.AppendLine("    if (*lower > *upper) { fputs(\"SMILE Runtime Error SMILER1221: Random lower bound exceeds upper bound.\\n\", stderr); exit(1); }");
+            text.AppendLine("    if (*lower > *upper) return *lower;");
             text.AppendLine("    uint64_t range = (uint64_t)*upper - (uint64_t)*lower + 1;");
             text.AppendLine("    uint64_t sample, threshold = range == 0 ? 0 : (0 - range) % range;");
             text.AppendLine("    do { sample = smile_random_bits(); } while (sample < threshold);");

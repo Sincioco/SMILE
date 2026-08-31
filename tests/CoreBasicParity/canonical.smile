@@ -1,5 +1,7 @@
 ' This exact source is compiled by both SMILE 1.0 and SMILE 2.0.
+
 Const Greeting = "Core ""BASIC"""
+
 Dim Total As Number
 Dim Enabled As Boolean
 Dim Name As Text
@@ -22,10 +24,12 @@ Print "Total="; Total
 For J = 3 Down To 1
     Print J;
 End For
+
 Print
 
 Do
     Total = Total - 1
+
     If Total = 2 Then
         Exit Do
     End If

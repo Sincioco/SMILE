@@ -1,7 +1,9 @@
 ' Core BASIC 2.1 text-game runtime and two-dimensional array tour.
+
 Option Explicit
 
 Dim Board[4, 3] As Number
+
 Dim X As Number
 Dim Y As Number
 Dim PressedKey As Number

@@ -10,20 +10,27 @@ Print "combined="; Combined
 If False And Touch(9) Then
     Print "unreachable"
 End If
+
 Print "after short circuit="; Trace
 
 End Program
 
 Function Mark(ByVal Digit As Number) As Number
+
     Trace = Trace * 10 + Digit
     Return Digit
+
 End Function
 
 Function Combine(P01 As Number, P02 As Number, P03 As Number, P04 As Number, P05 As Number) As Number
+
     Return P01 + P02 + P03 + P04 + P05
+
 End Function
 
 Function Touch(ByVal Digit As Number) As Boolean
+
     Trace = Trace * 10 + Digit
     Return True
+
 End Function
