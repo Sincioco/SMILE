@@ -8,6 +8,7 @@ namespace SMILE.Engine;
 // storage remains visible to every routine.
 internal sealed class CobolWriter
 {
+    private const int TextCapacity = 4096;
     private readonly BoundProgram _program;
     private readonly TargetIdentifierMap _identifiers;
     private readonly IReadOnlyDictionary<VariableSymbol, SmileValue> _constants;
@@ -64,7 +65,7 @@ internal sealed class CobolWriter
             Line("       LOCAL-STORAGE SECTION.");
             foreach (VariableSymbol local in locals)
             {
-            WriteDataDeclaration(local);
+                WriteDataDeclaration(local);
             }
 
             WritePlanStorage(plan);
@@ -75,18 +76,37 @@ internal sealed class CobolWriter
         foreach (VariableSymbol parameter in symbol.Parameters)
         {
             Line($"       01 {Name(parameter)} {Picture(parameter.Type)}.");
+            if (parameter.Type is SmileType.String)
+            {
+                Line($"       01 {LengthName(parameter)} PIC S9(18) COMP-5.");
+            }
         }
 
         if (symbol.IsFunction)
         {
             Line($"       01 SMILE-RETURN-VALUE {Picture(symbol.ReturnType ?? SmileType.Integer)}.");
+            if (symbol.ReturnType is SmileType.String)
+            {
+                Line("       01 SMILE-RETURN-LENGTH PIC S9(18) COMP-5.");
+            }
         }
 
         var usingItems = new List<string> { "BY REFERENCE SMILE-STATE" };
-        usingItems.AddRange(symbol.Parameters.Select(parameter => $"BY REFERENCE {Name(parameter)}"));
+        foreach (VariableSymbol parameter in symbol.Parameters)
+        {
+            usingItems.Add($"BY REFERENCE {Name(parameter)}");
+            if (parameter.Type is SmileType.String)
+            {
+                usingItems.Add($"BY REFERENCE {LengthName(parameter)}");
+            }
+        }
         if (symbol.IsFunction)
         {
             usingItems.Add("BY REFERENCE SMILE-RETURN-VALUE");
+            if (symbol.ReturnType is SmileType.String)
+            {
+                usingItems.Add("BY REFERENCE SMILE-RETURN-LENGTH");
+            }
         }
 
         Line("       PROCEDURE DIVISION USING");
@@ -105,6 +125,10 @@ internal sealed class CobolWriter
         foreach (Temporary temporary in plan.Temporaries)
         {
             Line($"       01 {temporary.Name} {Picture(temporary.Type)} {DefaultClause(temporary.Type)}.");
+            if (temporary.Type is SmileType.String)
+            {
+                Line($"       01 {LengthName(temporary)} PIC S9(18) COMP-5 VALUE 0.");
+            }
         }
 
         if (plan.NeedsDisplayNumber)
@@ -131,16 +155,29 @@ internal sealed class CobolWriter
                 if (variable.ArrayRank == 1)
                 {
                     Line($"          05 {ArrayElementName(variable)} {Picture(variable.Type)}{valueClause} OCCURS {variable.ArrayLength} TIMES.");
+                    if (variable.Type is SmileType.String)
+                    {
+                        Line($"          05 {ArrayLengthElementName(variable)} PIC S9(18) COMP-5{(linkage ? string.Empty : " VALUE 0")} OCCURS {variable.ArrayLength} TIMES.");
+                    }
                 }
                 else
                 {
                     Line($"          05 {Name(variable)}-ROW OCCURS {variable.ArrayLength} TIMES.");
                     Line($"             10 {ArrayElementName(variable)} {Picture(variable.Type)}{valueClause} OCCURS {variable.ArraySecondLength} TIMES.");
+                    if (variable.Type is SmileType.String)
+                    {
+                        Line($"          05 {Name(variable)}-LENGTH-ROW OCCURS {variable.ArrayLength} TIMES.");
+                        Line($"             10 {ArrayLengthElementName(variable)} PIC S9(18) COMP-5{(linkage ? string.Empty : " VALUE 0")} OCCURS {variable.ArraySecondLength} TIMES.");
+                    }
                 }
             }
             else
             {
                 Line($"          05 {Name(variable)} {Picture(variable.Type)}{valueClause}.");
+                if (variable.Type is SmileType.String)
+                {
+                    Line($"          05 {LengthName(variable)} PIC S9(18) COMP-5{(linkage ? string.Empty : " VALUE 0")}.");
+                }
             }
         }
     }
@@ -154,16 +191,29 @@ internal sealed class CobolWriter
             if (variable.ArrayRank == 1)
             {
                 Line($"          05 {ArrayElementName(variable)} {Picture(variable.Type)} {DefaultClause(variable.Type)} OCCURS {variable.ArrayLength} TIMES.");
+                if (variable.Type is SmileType.String)
+                {
+                    Line($"          05 {ArrayLengthElementName(variable)} PIC S9(18) COMP-5 VALUE 0 OCCURS {variable.ArrayLength} TIMES.");
+                }
             }
             else
             {
                 Line($"          05 {name}-ROW OCCURS {variable.ArrayLength} TIMES.");
                 Line($"             10 {ArrayElementName(variable)} {Picture(variable.Type)} {DefaultClause(variable.Type)} OCCURS {variable.ArraySecondLength} TIMES.");
+                if (variable.Type is SmileType.String)
+                {
+                    Line($"          05 {name}-LENGTH-ROW OCCURS {variable.ArrayLength} TIMES.");
+                    Line($"             10 {ArrayLengthElementName(variable)} PIC S9(18) COMP-5 VALUE 0 OCCURS {variable.ArraySecondLength} TIMES.");
+                }
             }
         }
         else
         {
             Line($"       01 {name} {Picture(variable.Type)} {DefaultClause(variable.Type)}.");
+            if (variable.Type is SmileType.String)
+            {
+                Line($"       01 {LengthName(variable)} PIC S9(18) COMP-5 VALUE 0.");
+            }
         }
     }
 
@@ -171,7 +221,7 @@ internal sealed class CobolWriter
     {
         SmileType.Integer => "PIC S9(18) COMP-5",
         SmileType.Boolean => "PIC 9 COMP-5",
-        _ => "PIC X(4096)"
+        _ => $"PIC X({TextCapacity})"
     };
 
     private static string DefaultClause(SmileType type) => type is SmileType.String
@@ -191,6 +241,12 @@ internal sealed class CobolWriter
 
     private string ArrayElementName(VariableSymbol array) => Name(array) + "-ITEM";
 
+    private string LengthName(VariableSymbol variable) => Name(variable) + "-LENGTH";
+
+    private string ArrayLengthElementName(VariableSymbol array) => Name(array) + "-LENGTH-ITEM";
+
+    private static string LengthName(Temporary temporary) => temporary.Name + "-LENGTH";
+
     private string Literal(SmileValue value) => value.Type switch
     {
         SmileType.Integer => value.IntegerValue.ToString(CultureInfo.InvariantCulture),
@@ -201,6 +257,12 @@ internal sealed class CobolWriter
     private string ExpressionName(VariableSymbol variable) => variable.IsConstant && _constants.TryGetValue(variable, out SmileValue value)
         ? Literal(value)
         : Name(variable);
+
+    private bool IsEmptyTextConstant(VariableSymbol variable) =>
+        variable.IsConstant &&
+        _constants.TryGetValue(variable, out SmileValue value) &&
+        value.Type is SmileType.String &&
+        value.StringValue.Length == 0;
 
     private static IEnumerable<BoundStatement> StructuredStatements(IReadOnlyList<BoundSourceItem> items)
     {
@@ -241,6 +303,8 @@ internal sealed class CobolWriter
 
     private sealed record Temporary(string Name, SmileType Type);
 
+    private sealed record PreparedArrayElement(string Value, string? Length);
+
     private sealed record ProcedurePlan(
         string Body,
         IReadOnlyList<Temporary> Temporaries,
@@ -256,6 +320,7 @@ internal sealed class CobolWriter
         private readonly StringBuilder _body = new();
         private readonly List<Temporary> _temporaries = new();
         private readonly List<LoopFrame> _loops = new();
+        private readonly Dictionary<BoundExpression, string> _preparedTextLengths = new();
         private int _tempId;
         private int _loopId;
         private bool _needsDisplayNumber;
@@ -293,14 +358,20 @@ internal sealed class CobolWriter
                     case BoundSetStatement set:
                     {
                         string value = PrepareExpression(set.Value, indent);
-                        Assign(_owner.Name(set.Variable), set.Variable.Type, set.Value, value, indent);
+                        Assign(
+                            _owner.Name(set.Variable),
+                            set.Variable.Type,
+                            set.Value,
+                            value,
+                            indent,
+                            set.Variable.Type is SmileType.String ? _owner.LengthName(set.Variable) : null);
                         break;
                     }
                     case BoundArraySetStatement set:
                     {
-                        string target = PrepareArrayElement(set.Array, set.Indices, indent);
+                        PreparedArrayElement target = PrepareArrayElement(set.Array, set.Indices, indent);
                         string value = PrepareExpression(set.Value, indent);
-                        Assign(target, set.Array.Type, set.Value, value, indent);
+                        Assign(target.Value, set.Array.Type, set.Value, value, indent, target.Length);
                         break;
                     }
                     case BoundGetKeyStatement getKey:
@@ -335,7 +406,13 @@ internal sealed class CobolWriter
                         if (returnStatement.Value is not null)
                         {
                             string value = PrepareExpression(returnStatement.Value, indent);
-                            Assign("SMILE-RETURN-VALUE", returnStatement.Value.Type, returnStatement.Value, value, indent);
+                            Assign(
+                                "SMILE-RETURN-VALUE",
+                                returnStatement.Value.Type,
+                                returnStatement.Value,
+                                value,
+                                indent,
+                                returnStatement.Value.Type is SmileType.String ? "SMILE-RETURN-LENGTH" : null);
                         }
 
                         Line(indent, "GOBACK");
@@ -390,9 +467,23 @@ internal sealed class CobolWriter
                         Line(indent, "END-IF");
                         break;
                     default:
-                        Line(indent, expression is BoundStringLiteralExpression
-                            ? $"DISPLAY {value} WITH NO ADVANCING"
-                            : $"DISPLAY FUNCTION TRIM({value}, TRAILING) WITH NO ADVANCING");
+                        if (IsEmptyTextExpression(expression))
+                        {
+                            break;
+                        }
+
+                        if (expression is BoundStringLiteralExpression or
+                            BoundVariableExpression { Variable.IsConstant: true })
+                        {
+                            Line(indent, $"DISPLAY {value} WITH NO ADVANCING");
+                        }
+                        else
+                        {
+                            string length = TextLength(expression, value);
+                            Line(indent, $"IF {length} > 0");
+                            Line(indent + 1, $"DISPLAY {value}(1:{length}) WITH NO ADVANCING");
+                            Line(indent, "END-IF");
+                        }
                         break;
                 }
             }
@@ -432,7 +523,20 @@ internal sealed class CobolWriter
         {
             string selector = PrepareExpression(select.Selector, indent);
             Temporary captured = NewTemporary(select.Selector.Type);
-            Assign(captured.Name, select.Selector.Type, select.Selector, selector, indent);
+            Assign(
+                captured.Name,
+                select.Selector.Type,
+                select.Selector,
+                selector,
+                indent,
+                select.Selector.Type is SmileType.String ? LengthName(captured) : null);
+
+            if (select.Selector.Type is SmileType.String)
+            {
+                WriteTextSelectCases(select.Cases, 0, captured, indent);
+                return;
+            }
+
             Line(indent, $"EVALUATE {captured.Name}");
             foreach (BoundSelectCaseClause clause in select.Cases)
             {
@@ -443,6 +547,60 @@ internal sealed class CobolWriter
             }
 
             Line(indent, "END-EVALUATE");
+        }
+
+        private void WriteTextSelectCases(
+            IReadOnlyList<BoundSelectCaseClause> clauses,
+            int clauseIndex,
+            Temporary selector,
+            int indent)
+        {
+            if (clauseIndex >= clauses.Count)
+            {
+                return;
+            }
+
+            BoundSelectCaseClause clause = clauses[clauseIndex];
+            if (clause.IsElse)
+            {
+                WriteItems(clause.SourceItems, indent);
+                return;
+            }
+
+            SmileValue value = clause.Value!.Value;
+            if (value.StringValue.Length == 0)
+            {
+                Line(indent, $"IF {LengthName(selector)} = 0");
+                WriteItems(clause.SourceItems, indent + 1);
+                if (clauseIndex + 1 < clauses.Count)
+                {
+                    Line(indent, "ELSE");
+                    WriteTextSelectCases(clauses, clauseIndex + 1, selector, indent + 1);
+                }
+                Line(indent, "END-IF");
+                return;
+            }
+
+            string caseValue = _owner.Literal(value);
+            Temporary equal = NewTemporary(SmileType.Boolean);
+            Line(indent, $"MOVE 0 TO {equal.Name}");
+            Line(indent, $"IF {LengthName(selector)} = FUNCTION LENGTH({caseValue})");
+            Line(indent + 1, $"IF {LengthName(selector)} = 0");
+            Line(indent + 2, $"MOVE 1 TO {equal.Name}");
+            Line(indent + 1, "ELSE");
+            Line(indent + 2, $"IF {selector.Name}(1:{LengthName(selector)}) = {caseValue}");
+            Line(indent + 3, $"MOVE 1 TO {equal.Name}");
+            Line(indent + 2, "END-IF");
+            Line(indent + 1, "END-IF");
+            Line(indent, "END-IF");
+            Line(indent, $"IF {equal.Name} = 1");
+            WriteItems(clause.SourceItems, indent + 1);
+            if (clauseIndex + 1 < clauses.Count)
+            {
+                Line(indent, "ELSE");
+                WriteTextSelectCases(clauses, clauseIndex + 1, selector, indent + 1);
+            }
+            Line(indent, "END-IF");
         }
 
         private void WriteFor(BoundForStatement loop, int indent)
@@ -558,11 +716,22 @@ internal sealed class CobolWriter
                 case BoundVariableExpression variable:
                     return _owner.ExpressionName(variable.Variable);
                 case BoundArrayExpression array:
-                    return PrepareArrayElement(array.Array, array.Indices, indent);
+                {
+                    PreparedArrayElement prepared = PrepareArrayElement(array.Array, array.Indices, indent);
+                    if (prepared.Length is not null)
+                    {
+                        _preparedTextLengths[array] = prepared.Length;
+                    }
+                    return prepared.Value;
+                }
                 case BoundCallExpression call:
                 {
                     Temporary result = NewTemporary(call.Type);
                     EmitCall(call.Routine, call.Arguments, indent, result.Name);
+                    if (call.Type is SmileType.String)
+                    {
+                        _preparedTextLengths[call] = LengthName(result);
+                    }
                     return result.Name;
                 }
                 case BoundIntrinsicExpression intrinsic:
@@ -597,7 +766,13 @@ internal sealed class CobolWriter
                     string right = PrepareExpression(binary.Right, indent);
                     if (binary.Operator.Kind is BoundBinaryOperatorKind.StringConcatenation)
                     {
-                        return $"FUNCTION CONCATENATE({left}, {right})";
+                        return PrepareStringConcatenation(binary, left, right, indent);
+                    }
+
+                    if (binary.Left.Type is SmileType.String && binary.Operator.Kind is
+                        BoundBinaryOperatorKind.Equality or BoundBinaryOperatorKind.Inequality)
+                    {
+                        return PrepareStringComparison(binary, left, right, indent);
                     }
 
                     if (binary.Operator.Kind is BoundBinaryOperatorKind.Modulo)
@@ -634,7 +809,10 @@ internal sealed class CobolWriter
             }
         }
 
-        private string PrepareArrayElement(VariableSymbol array, IReadOnlyList<BoundExpression> indexExpressions, int indent)
+        private PreparedArrayElement PrepareArrayElement(
+            VariableSymbol array,
+            IReadOnlyList<BoundExpression> indexExpressions,
+            int indent)
         {
             var checkedIndices = new List<Temporary>(indexExpressions.Count);
             for (int dimension = 0; dimension < indexExpressions.Count; dimension++)
@@ -660,7 +838,81 @@ internal sealed class CobolWriter
             {
                 Line(indent, $"ADD 1 TO {checkedIndex.Name}");
             }
-            return $"{_owner.ArrayElementName(array)}({string.Join(", ", checkedIndices.Select(item => item.Name))})";
+            string indices = string.Join(", ", checkedIndices.Select(item => item.Name));
+            return new PreparedArrayElement(
+                $"{_owner.ArrayElementName(array)}({indices})",
+                array.Type is SmileType.String
+                    ? $"{_owner.ArrayLengthElementName(array)}({indices})"
+                    : null);
+        }
+
+        private string PrepareStringConcatenation(
+            BoundBinaryExpression binary,
+            string left,
+            string right,
+            int indent)
+        {
+            Temporary capturedLeft = NewTemporary(SmileType.String);
+            Assign(capturedLeft.Name, SmileType.String, binary.Left, left, indent, LengthName(capturedLeft));
+            Temporary capturedRight = NewTemporary(SmileType.String);
+            Assign(capturedRight.Name, SmileType.String, binary.Right, right, indent, LengthName(capturedRight));
+
+            Temporary result = NewTemporary(SmileType.String);
+            Temporary leftCopyLength = NewTemporary(SmileType.Integer);
+            Temporary rightCopyLength = NewTemporary(SmileType.Integer);
+            Temporary remainingLength = NewTemporary(SmileType.Integer);
+            Temporary rightOffset = NewTemporary(SmileType.Integer);
+
+            Line(indent, $"MOVE SPACES TO {result.Name}");
+            Line(indent, $"COMPUTE {leftCopyLength.Name} = {LengthName(capturedLeft)}");
+            Line(indent, $"IF {leftCopyLength.Name} > {TextCapacity}");
+            Line(indent + 1, $"MOVE {TextCapacity} TO {leftCopyLength.Name}");
+            Line(indent, "END-IF");
+            Line(indent, $"IF {leftCopyLength.Name} > 0");
+            Line(indent + 1, $"MOVE {capturedLeft.Name}(1:{leftCopyLength.Name}) TO {result.Name}(1:{leftCopyLength.Name})");
+            Line(indent, "END-IF");
+
+            Line(indent, $"COMPUTE {remainingLength.Name} = {TextCapacity} - {leftCopyLength.Name}");
+            Line(indent, $"COMPUTE {rightCopyLength.Name} = {LengthName(capturedRight)}");
+            Line(indent, $"IF {rightCopyLength.Name} > {remainingLength.Name}");
+            Line(indent + 1, $"MOVE {remainingLength.Name} TO {rightCopyLength.Name}");
+            Line(indent, "END-IF");
+            Line(indent, $"IF {rightCopyLength.Name} > 0");
+            Line(indent + 1, $"COMPUTE {rightOffset.Name} = {leftCopyLength.Name} + 1");
+            Line(indent + 1, $"MOVE {capturedRight.Name}(1:{rightCopyLength.Name}) TO {result.Name}({rightOffset.Name}:{rightCopyLength.Name})");
+            Line(indent, "END-IF");
+            Line(indent, $"COMPUTE {LengthName(result)} = {leftCopyLength.Name} + {rightCopyLength.Name}");
+
+            _preparedTextLengths[binary] = LengthName(result);
+            return result.Name;
+        }
+
+        private string PrepareStringComparison(
+            BoundBinaryExpression binary,
+            string left,
+            string right,
+            int indent)
+        {
+            Temporary capturedLeft = NewTemporary(SmileType.String);
+            Assign(capturedLeft.Name, SmileType.String, binary.Left, left, indent, LengthName(capturedLeft));
+            Temporary capturedRight = NewTemporary(SmileType.String);
+            Assign(capturedRight.Name, SmileType.String, binary.Right, right, indent, LengthName(capturedRight));
+            Temporary equal = NewTemporary(SmileType.Boolean);
+
+            Line(indent, $"MOVE 0 TO {equal.Name}");
+            Line(indent, $"IF {LengthName(capturedLeft)} = {LengthName(capturedRight)}");
+            Line(indent + 1, $"IF {LengthName(capturedLeft)} = 0");
+            Line(indent + 2, $"MOVE 1 TO {equal.Name}");
+            Line(indent + 1, "ELSE");
+            Line(indent + 2, $"IF {capturedLeft.Name}(1:{LengthName(capturedLeft)}) = {capturedRight.Name}(1:{LengthName(capturedRight)})");
+            Line(indent + 3, $"MOVE 1 TO {equal.Name}");
+            Line(indent + 2, "END-IF");
+            Line(indent + 1, "END-IF");
+            Line(indent, "END-IF");
+
+            return binary.Operator.Kind is BoundBinaryOperatorKind.Equality
+                ? $"({equal.Name} = 1)"
+                : $"({equal.Name} = 0)";
         }
 
         private string PrepareIntrinsic(BoundIntrinsicExpression intrinsic, int indent)
@@ -702,15 +954,32 @@ internal sealed class CobolWriter
                 BoundExpression argument = arguments[index];
                 string expression = PrepareExpression(argument, indent);
                 Temporary temporary = NewTemporary(argument.Type);
-                Assign(temporary.Name, argument.Type, argument, expression, indent);
+                Assign(
+                    temporary.Name,
+                    argument.Type,
+                    argument,
+                    expression,
+                    indent,
+                    argument.Type is SmileType.String ? LengthName(temporary) : null);
                 captured.Add((routine.Parameters[index], temporary));
             }
 
             var usingItems = new List<string> { "BY REFERENCE SMILE-STATE" };
-            usingItems.AddRange(captured.Select(item => $"BY REFERENCE {item.Value.Name}"));
+            foreach ((VariableSymbol parameter, Temporary value) in captured)
+            {
+                usingItems.Add($"BY REFERENCE {value.Name}");
+                if (parameter.Type is SmileType.String)
+                {
+                    usingItems.Add($"BY REFERENCE {LengthName(value)}");
+                }
+            }
             if (resultTarget is not null)
             {
                 usingItems.Add($"BY REFERENCE {resultTarget}");
+                if (routine.ReturnType is SmileType.String)
+                {
+                    usingItems.Add($"BY REFERENCE {resultTarget}-LENGTH");
+                }
             }
 
             Line(indent, $"CALL \"{_owner.RoutineName(routine)}\" USING");
@@ -725,7 +994,8 @@ internal sealed class CobolWriter
             SmileType type,
             BoundExpression sourceExpression,
             string expression,
-            int indent)
+            int indent,
+            string? textTargetLength = null)
         {
             switch (type)
             {
@@ -740,10 +1010,52 @@ internal sealed class CobolWriter
                     Line(indent, $"COMPUTE {target} = {expression}");
                     break;
                 default:
+                    if (textTargetLength is null)
+                    {
+                        throw new InvalidOperationException("COBOL Text assignments require logical-length storage.");
+                    }
+
+                    if (IsEmptyTextExpression(sourceExpression))
+                    {
+                        Line(indent, $"MOVE SPACES TO {target}");
+                        Line(indent, $"MOVE 0 TO {textTargetLength}");
+                        break;
+                    }
+
                     Line(indent, $"MOVE {expression} TO {target}");
+                    Line(indent, $"COMPUTE {textTargetLength} = {TextLength(sourceExpression, expression)}");
+                    Line(indent, $"IF {textTargetLength} > {TextCapacity}");
+                    Line(indent + 1, $"MOVE {TextCapacity} TO {textTargetLength}");
+                    Line(indent, "END-IF");
                     break;
             }
         }
+
+        private string TextLength(BoundExpression expression, string rendered)
+        {
+            if (_preparedTextLengths.TryGetValue(expression, out string? preparedLength))
+            {
+                return preparedLength;
+            }
+
+            return expression switch
+            {
+                BoundStringLiteralExpression { Value.Length: 0 } => "0",
+                BoundStringLiteralExpression => $"FUNCTION LENGTH({rendered})",
+                BoundVariableExpression variable when _owner.IsEmptyTextConstant(variable.Variable) => "0",
+                BoundVariableExpression { Variable.IsConstant: true } => $"FUNCTION LENGTH({rendered})",
+                BoundVariableExpression variable => _owner.LengthName(variable.Variable),
+                _ => throw new InvalidOperationException(
+                    $"COBOL Text expression '{expression.GetType().Name}' has no logical length.")
+            };
+        }
+
+        private bool IsEmptyTextExpression(BoundExpression expression) => expression switch
+        {
+            BoundStringLiteralExpression { Value.Length: 0 } => true,
+            BoundVariableExpression variable => _owner.IsEmptyTextConstant(variable.Variable),
+            _ => false
+        };
 
         private static string Condition(BoundExpression expression, string rendered) => expression switch
         {

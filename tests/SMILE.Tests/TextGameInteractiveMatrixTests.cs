@@ -272,6 +272,76 @@ Print "SMILE INTERACTIVE CLEAN"
         }
     }
 
+    [TestMethod]
+    [TestCategory("CobolFocused")]
+    public async Task Cobol_preserves_the_complete_playfield_geometry_of_all_three_games()
+    {
+        var transpiler = new SmileTranspiler();
+        IToolchain toolchain = ToolchainRegistry.CreateDefault().Get(TargetLanguage.Cobol);
+        var games = new[]
+        {
+            (
+                File: "text-snake.smile",
+                Title: "TRAIL RUNNER",
+                Exit: "Thanks for running the trail!",
+                FramePattern: @"(?m)^#(?=[^\r\n]{22}#\r?$)[^\r\n]* [^\r\n]*#\r?$"),
+            (
+                File: "text-maze-muncher.smile",
+                Title: "LANTERN MAZE",
+                Exit: "The lanterns dim. Thanks for exploring!",
+                FramePattern: @"(?m)^#(?=[^\r\n]{23}#\r?$)[^\r\n]* [^\r\n]*#\r?$"),
+            (
+                File: "text-falling-blocks.smile",
+                Title: "SKY FOUNDRY",
+                Exit: "The foundry closes. Thanks for building!",
+                FramePattern: @"(?m)^\|(?=[^\r\n]{10}\|\r?$)[^\r\n]* [^\r\n]*\|\r?$")
+        };
+        IReadOnlyList<PseudoConsoleInput> input = new[]
+        {
+            PseudoConsoleInput.BytesAfter(250, 0x0D),
+            PseudoConsoleInput.Text(180, "d"),
+            PseudoConsoleInput.BytesAfter(180, 0x1B, 0x5B, 0x41),
+            PseudoConsoleInput.BytesAfter(220, 0x1B),
+            PseudoConsoleInput.Text(350, "x")
+        };
+
+        foreach ((string file, string title, string exit, string framePattern) in games)
+        {
+            string source = await File.ReadAllTextAsync(Path.Combine(FindExamplesDirectory(), file));
+            TranspileResult transpile = transpiler.Transpile(source, TargetLanguage.Cobol);
+            Assert.IsTrue(transpile.Success, $"{file} / COBOL: {Join(transpile.Diagnostics)}");
+
+            BuildRunResult build = await BuildForPseudoConsoleAsync(toolchain, transpile.GeneratedProgram!);
+            Assert.IsTrue(
+                build.Success,
+                $"{file} / COBOL: {build.Stage}{Environment.NewLine}" +
+                build.BuildOutput + Environment.NewLine + build.StandardError);
+            Assert.IsFalse(
+                HasCompilerWarning(build.BuildOutput),
+                $"{file} / COBOL emitted a compiler warning.{Environment.NewLine}{build.BuildOutput}");
+
+            PseudoConsoleResult run = await WindowsPseudoConsole.RunBatchFileAsync(
+                build.PauseLauncherPath!,
+                input,
+                TimeSpan.FromSeconds(20),
+                CancellationToken.None);
+
+            Assert.IsFalse(run.TimedOut, $"{file} / COBOL timed out.{Environment.NewLine}{run.Output}");
+            Assert.AreEqual(0, run.ExitCode, $"{file} / COBOL:{Environment.NewLine}{run.Output}");
+            StringAssert.Contains(run.Output, title);
+            StringAssert.Contains(run.Output, exit);
+            string visibleOutput = Regex.Replace(
+                run.Output,
+                "\\x1B\\[[0-?]*[ -/]*[@-~]",
+                string.Empty);
+            Assert.IsTrue(
+                Regex.IsMatch(visibleOutput, framePattern),
+                $"{file} / COBOL did not preserve a full-width playfield row.{Environment.NewLine}{run.Output}");
+
+            Console.WriteLine($"PASS COBOL frame geometry / {file} / {run.Duration.TotalMilliseconds:F0} ms");
+        }
+    }
+
     private static async Task<BuildRunResult> BuildForPseudoConsoleAsync(
         IToolchain toolchain,
         GeneratedProgram program)

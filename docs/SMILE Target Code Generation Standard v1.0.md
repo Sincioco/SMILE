@@ -63,6 +63,8 @@ Implicit assignment, `Dim`, constants, parameters, local/global variables, array
 
 Fixed rank-one and rank-two arrays use native fixed storage where practical. Every dynamic index is checked against its SMILE zero-based dimension before access, even when the target would otherwise allow negative indexing, sparse extension, one-based subscripts, or unchecked memory. Index expressions run left to right exactly once; every assignment index is checked before its right-hand value. Text cells start as empty Text. Routine-local arrays are new/defaulted per call.
 
+COBOL's native fixed `PIC X(4096)` fields require a parallel logical length for mutable Text scalars, array cells, parameters, returns, and expression temporaries. Propagate that length through normal COBOL call linkage and use guarded reference modification for exact output, equality, selection, and concatenation. Never infer SMILE Text length with trailing trim: an all-space value is data, not padding.
+
 Do not generate unused declarations. Preserve case-insensitive SMILE identity while mapping names deterministically away from destination reserved words and collisions.
 
 ## Print
@@ -75,7 +77,7 @@ Use familiar output:
 - `printf`, `fputs`, or `putchar` in C and Objective-C;
 - `process.stdout.write` in JavaScript;
 - `System.out.print` in Java;
-- `DISPLAY` in COBOL;
+- exact reference-modified `DISPLAY` in COBOL;
 - `print(..., terminator:)` in Swift;
 - `print(..., end=...)` in Python;
 - `std::cout` in C++;
@@ -98,7 +100,7 @@ Use familiar output:
 | MASM x64 | main-first ABI-correct `PROC`, flattened checked 2D offsets, direct CRT/Win64 primitives |
 | JavaScript (Node.js) | dependency-free `.js`, independent nested arrays, feature-driven async main, Promise Wait, raw queue/finally cleanup |
 | Java | main-first small `Program`, primitive arrays, standard JDK 21 FFM for Windows CRT key polling |
-| COBOL | primary-first recursive program units, nested `OCCURS`, and a feature-gated C console companion |
+| COBOL | primary-first recursive program units, nested `OCCURS`, exact logical-length Text, and a feature-gated C console companion |
 | Objective-C | dependency-light C-compatible console source in `.m` |
 | Swift | top-level script statements, nested arrays, WinSDK/CRT console interop only when used |
 | Python | direct module-level script, list comprehensions, `msvcrt`, and no synthetic main |

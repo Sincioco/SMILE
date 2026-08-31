@@ -228,7 +228,7 @@ The pre-existing `.codex/config.toml` contains only `sandbox_mode = "danger-full
 - Interactive behavior requires an attached Windows terminal. Redirected input returns `KEY_NONE`; redirected clear is a no-op. CLI/Desktop captured execution is noninteractive, so learners should run the generated program or pause launcher in an attached console for games.
 - Wait duration and frame cadence are subject to the destination OS scheduler and timer granularity. Exact cross-target wall-clock timing is not promised.
 - Random results are inclusive and unbiased for the implemented range mapping, but sequences intentionally differ by target and run.
-- Java key polling requires JDK 21 preview FFM flags and the Windows UCRT. Swift key polling/clear uses Windows CRT/WinSDK declarations. COBOL needs its tiny generated C companion only for used console/time/random primitives.
+- Java key polling requires JDK 21 preview FFM flags and the Windows UCRT. Swift key polling/clear uses Windows CRT/WinSDK declarations. COBOL needs its tiny generated C companion only for used console/time/random primitives; its fixed-width Text fields carry a parallel logical length so all-space game cells remain visible.
 - Full-frame terminal clear can visibly flicker on some console hosts.
 - Fixed array dimensions and their product are limited to 2,147,483,647 by the compiler model; practical memory/toolchain limits are lower.
 - `Abs(Int64.MinValue)` is a stable evaluator error. Generated destinations follow documented native extreme-overflow behavior rather than receiving a universal checked-arithmetic runtime.

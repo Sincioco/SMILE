@@ -275,6 +275,35 @@ Print Grid[1, 2]; KeyCode
     }
 
     [TestMethod]
+    [TestCategory("MissionGuardrail")]
+    public void Cobol_preserves_the_logical_length_of_dynamic_Text_without_trimming_game_cells()
+    {
+        const string source = """
+Option Explicit
+Dim Cell As Text
+Dim Cells[2] As Text
+Cell = " "
+Cells[0] = " A "
+Print "["; Cell; Cells[0]; Echo(" x "); "a" + " " + "b"; "]"
+Function Echo(Value As Text) As Text
+    Return Value
+End Function
+""";
+
+        TranspileResult result = _transpiler.Transpile(source, TargetLanguage.Cobol);
+
+        Assert.IsTrue(result.Success, Join(result.Diagnostics));
+        string generated = result.GeneratedProgram!.PrimaryFile.Content;
+        StringAssert.Contains(generated, "STUDENT-Cell-LENGTH PIC S9(18) COMP-5");
+        StringAssert.Contains(generated, "STUDENT-Cells-LENGTH-ITEM");
+        StringAssert.Contains(generated, "SMILE-RETURN-LENGTH");
+        StringAssert.Contains(generated, "DISPLAY STUDENT-Cell(1:STUDENT-Cell-LENGTH) WITH NO ADVANCING");
+        Assert.IsFalse(
+            generated.Contains("FUNCTION TRIM(STUDENT-Cell, TRAILING)", StringComparison.Ordinal),
+            "Dynamic Text must use its logical length; trimming destroys meaningful game spaces.");
+    }
+
+    [TestMethod]
     public void Generated_console_support_uses_normal_dependency_free_target_facilities()
     {
         const string source = "Dim KeyCode As Number\nGet Key KeyCode\nWait 1 Milliseconds\nPrint KeyCode";

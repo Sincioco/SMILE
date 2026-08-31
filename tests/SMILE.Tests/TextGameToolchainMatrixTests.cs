@@ -73,6 +73,60 @@ Print Elapsed >= 20
         Console.WriteLine($"PASS text-game deterministic matrix / {language} / {run.Duration.TotalMilliseconds:F0} ms");
     }
 
+    [TestMethod]
+    [TestCategory("CobolFocused")]
+    public async Task Cobol_dynamic_Text_preserves_spaces_through_variables_arrays_routines_and_concatenation()
+    {
+        const string source = """
+Option Explicit
+Dim Cell As Text
+Dim Empty As Text
+Dim Cells[1] As Text
+Dim Grid[1, 1] As Text
+Cell = " "
+Cells[0] = " A "
+Grid[0, 0] = " G "
+Print "["; Cell; "]"
+Print "["; Empty; "]"
+Print "["; Cells[0]; "]"
+Print "["; Grid[0, 0]; "]"
+Print "["; Echo(" x "); "]"
+Print "["; "a" + " " + "b"; "]"
+If Cell = " " And Cell <> "" Then
+    Print "[equal]"
+End If
+Select Case Cell
+    Case ""
+        Print "[wrong]"
+    Case " "
+        Print "[selected]"
+End Select
+Function Echo(Value As Text) As Text
+    Return Value
+End Function
+""";
+        var transpiler = new SmileTranspiler();
+        TranspileResult transpile = transpiler.Transpile(source, TargetLanguage.Cobol);
+        Assert.IsTrue(transpile.Success, Join(transpile.Diagnostics));
+
+        IToolchain toolchain = ToolchainRegistry.CreateDefault().Get(TargetLanguage.Cobol);
+        ToolchainStatus status = await toolchain.DetectAsync(CancellationToken.None);
+        Assert.IsTrue(status.IsAvailable, $"COBOL: required toolchain unavailable — {status.Message}");
+
+        BuildRunResult run = await toolchain.BuildAndRunAsync(
+            transpile.GeneratedProgram!,
+            CancellationToken.None);
+
+        Assert.IsTrue(
+            run.Success,
+            $"COBOL: {run.Stage}{Environment.NewLine}{run.BuildOutput}{Environment.NewLine}{run.StandardError}");
+        Assert.AreEqual(
+            "[ ]\n[]\n[ A ]\n[ G ]\n[ x ]\n[a b]\n[equal]\n[selected]\n",
+            Normalize(run.StandardOutput));
+        Assert.IsFalse(HasCompilerWarning(run.BuildOutput),
+            $"COBOL emitted a compiler warning.{Environment.NewLine}{run.BuildOutput}");
+    }
+
     private static string Normalize(string text) =>
         text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
 
