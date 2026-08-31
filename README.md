@@ -165,7 +165,7 @@ dotnet run --project src/SMILE.Desktop
 
 ## Desktop
 
-Desktop loads the cumulative Core BASIC 2.1 reference after first paint and asynchronously transpiles the visible active target. It exposes all ten targets and Build & Run where the corresponding local toolchain is available. There is no language-profile selector: every source pane uses the same canonical front end. In whichever source or generated-code editor currently has focus, Ctrl+F opens Find and Ctrl+G opens Go to Line; the same actions are available from the Edit menu.
+Desktop loads the cumulative Core BASIC 2.1 reference after first paint and asynchronously transpiles the visible active target. It exposes all ten targets and Build & Run where the corresponding local toolchain is available. There is no language-profile selector: every source pane uses the same canonical front end. In whichever source or generated-code editor currently has focus, Ctrl+F opens a clearly labeled Find panel and Ctrl+G opens Go to Line; the same actions are available from the Edit menu.
 
 Long process, detection, file, build, link, and run work stays off the WPF UI thread. Recoverable failures remain visible without closing the IDE.
 

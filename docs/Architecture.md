@@ -85,7 +85,7 @@ Text-game operations map to normal facilities: attached-console key polling and 
 
 The CLI requires a source path and target ID, with optional `--run`. `all` requests all ten targets. There is no language-related option.
 
-Desktop creates one `SmileTranspiler`, loads the packaged `language.smile` after first paint, and asynchronously regenerates the visible active target. The UI has no profile selector. Highlighting includes the current Core BASIC 2.1 keywords and key constants, doubled-quote Text, numbers, operators, and apostrophe comments. Every source/generated `SmileCodeEditor` installs AvalonEdit's native Find panel on Ctrl+F and a validated Go to Line command on Ctrl+G. The Edit menu remembers the last focused editor so both actions target the pane the learner was using.
+Desktop creates one `SmileTranspiler`, loads the packaged `language.smile` after first paint, and asynchronously regenerates the visible active target. The UI has no profile selector. Highlighting includes the current Core BASIC 2.1 keywords and key constants, doubled-quote Text, numbers, operators, and apostrophe comments. Every source/generated `SmileCodeEditor` installs AvalonEdit's Find behavior on Ctrl+F with a SMILE-owned template whose Previous, Next, Close, and option controls use visible text labels. Ctrl+G opens a validated Go to Line dialog. The Edit menu remembers the last focused editor so both actions target the pane the learner was using.
 
 Process work is cancellation-aware and off the WPF UI thread. Generated programs build in unique `%TEMP%\SMILE\Runs` workspaces. Recoverable diagnostics and toolchain failures remain visible.
 

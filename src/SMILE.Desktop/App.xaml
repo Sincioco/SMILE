@@ -2,8 +2,110 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:SMILE.Desktop"
+             xmlns:search="clr-namespace:ICSharpCode.AvalonEdit.Search;assembly=ICSharpCode.AvalonEdit"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-         
+        <Style TargetType="{x:Type search:SearchPanel}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type search:SearchPanel}">
+                        <Border Width="310"
+                                Padding="7"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Top"
+                                Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                                BorderBrush="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
+                                BorderThickness="1"
+                                Cursor="Arrow">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Grid.Row="0"
+                                           Grid.Column="0"
+                                           Margin="0,0,7,0"
+                                           VerticalAlignment="Center"
+                                           Text="Find:" />
+                                <TextBox x:Name="PART_searchTextBox"
+                                         Grid.Row="0"
+                                         Grid.Column="1"
+                                         Height="27"
+                                         VerticalContentAlignment="Center"
+                                         AutomationProperties.Name="Find text">
+                                    <TextBox.Text>
+                                        <Binding Path="SearchPattern"
+                                                 RelativeSource="{RelativeSource TemplatedParent}"
+                                                 UpdateSourceTrigger="PropertyChanged">
+                                            <Binding.ValidationRules>
+                                                <ExceptionValidationRule />
+                                            </Binding.ValidationRules>
+                                        </Binding>
+                                    </TextBox.Text>
+                                </TextBox>
+                                <Button Grid.Row="0"
+                                        Grid.Column="2"
+                                        MinWidth="52"
+                                        Height="27"
+                                        Margin="7,0,0,0"
+                                        Padding="7,1"
+                                        Content="Close"
+                                        Command="{x:Static search:SearchCommands.CloseSearchPanel}"
+                                        AutomationProperties.Name="Close Find" />
+
+                                <StackPanel Grid.Row="1"
+                                            Grid.Column="0"
+                                            Grid.ColumnSpan="3"
+                                            Margin="0,7,0,0"
+                                            Orientation="Horizontal">
+                                    <Button MinWidth="76"
+                                            Height="27"
+                                            Padding="8,1"
+                                            Content="Previous"
+                                            Command="{x:Static search:SearchCommands.FindPrevious}"
+                                            ToolTip="{Binding Localization.FindPreviousText, RelativeSource={RelativeSource TemplatedParent}}"
+                                            AutomationProperties.Name="Find previous" />
+                                    <Button MinWidth="58"
+                                            Height="27"
+                                            Margin="7,0,0,0"
+                                            Padding="8,1"
+                                            Content="Next"
+                                            Command="{x:Static search:SearchCommands.FindNext}"
+                                            ToolTip="{Binding Localization.FindNextText, RelativeSource={RelativeSource TemplatedParent}}"
+                                            AutomationProperties.Name="Find next" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="2"
+                                            Grid.Column="0"
+                                            Grid.ColumnSpan="3"
+                                            Margin="0,7,0,0"
+                                            Orientation="Horizontal">
+                                    <CheckBox Margin="0,0,10,0"
+                                              VerticalAlignment="Center"
+                                              Content="Match case"
+                                              IsChecked="{Binding MatchCase, RelativeSource={RelativeSource TemplatedParent}}" />
+                                    <CheckBox Margin="0,0,10,0"
+                                              VerticalAlignment="Center"
+                                              Content="Whole words"
+                                              IsChecked="{Binding WholeWords, RelativeSource={RelativeSource TemplatedParent}}" />
+                                    <CheckBox VerticalAlignment="Center"
+                                              Content="Regex"
+                                              IsChecked="{Binding UseRegex, RelativeSource={RelativeSource TemplatedParent}}" />
+                                </StackPanel>
+
+                                <Popup x:Name="PART_dropdownPopup" />
+                            </Grid>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Application.Resources>
 </Application>

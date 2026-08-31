@@ -48,6 +48,21 @@ public sealed class CoreBasicDesktopTests
         Assert.HasCount(2, xaml.Split("GotKeyboardFocus=\"CodeEditor_GotKeyboardFocus\"").Skip(1));
     }
 
+    [TestMethod]
+    public void Find_panel_uses_visible_text_labels_instead_of_ambiguous_bitmap_buttons()
+    {
+        string xaml = File.ReadAllText(FindRepositoryFile("src", "SMILE.Desktop", "App.xaml"));
+
+        StringAssert.Contains(xaml, "Content=\"Previous\"");
+        StringAssert.Contains(xaml, "Content=\"Next\"");
+        StringAssert.Contains(xaml, "Content=\"Close\"");
+        StringAssert.Contains(xaml, "Content=\"Match case\"");
+        StringAssert.Contains(xaml, "Content=\"Whole words\"");
+        StringAssert.Contains(xaml, "Content=\"Regex\"");
+        Assert.IsFalse(xaml.Contains("prev.png", StringComparison.OrdinalIgnoreCase));
+        Assert.IsFalse(xaml.Contains("next.png", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static string FindRepositoryFile(params string[] parts)
     {
         DirectoryInfo? current = new(AppContext.BaseDirectory);
