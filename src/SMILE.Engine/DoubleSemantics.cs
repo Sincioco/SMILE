@@ -21,7 +21,7 @@ internal static class DoubleSemantics
     };
 
     public static bool UsesDouble(BoundIntrinsicExpression expression) =>
-        IsIntrinsic(expression.Kind) || expression.Type is SmileType.Double;
+        IsIntrinsic(expression.Kind) || expression.Type is { Kind: SmileTypeKind.Double };
 
     public static string Format(double value)
     {

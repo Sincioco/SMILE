@@ -30,7 +30,7 @@ internal sealed partial class CoreBasicMasmWriter
         _features = CoreBasicProgramFeatureSet.Create(program);
         _usesManagedText = CoreBasicMasmTextRuntime.NeedsManagedText(program);
         if (_program.Variables.Any(variable =>
-            !variable.IsConstant && variable.Type is SmileType.String))
+            !variable.IsConstant && variable.Type is { Kind: SmileTypeKind.String }))
         {
             InternString(string.Empty);
         }
@@ -124,21 +124,21 @@ internal sealed partial class CoreBasicMasmWriter
         foreach (VariableSymbol variable in _program.Variables.Where(item => !item.IsConstant))
         {
             string name = Name(variable);
-            if (variable.Type is SmileType.Double)
+            if (variable.Type is { Kind: SmileTypeKind.Double })
             {
                 Line(variable.IsArray ? $"{name} REAL8 {variable.TotalElementCount} DUP(0.0)" : $"{name} REAL8 0.0");
                 continue;
             }
             if (variable.IsArray)
             {
-                string value = variable.Type is SmileType.String
+                string value = variable.Type is { Kind: SmileTypeKind.String }
                     ? $"OFFSET {InternString(string.Empty)}"
                     : "0";
                 Line($"{name} QWORD {variable.TotalElementCount} DUP({value})");
             }
             else
             {
-                string value = variable.Type is SmileType.String
+                string value = variable.Type is { Kind: SmileTypeKind.String }
                     ? $"OFFSET {InternString(string.Empty)}"
                     : "0";
                 Line($"{name} QWORD {value}");
@@ -195,7 +195,7 @@ internal sealed partial class CoreBasicMasmWriter
             if (procedure.ReturnOffset is int returnOffset)
             {
                 Line($"    mov rax, QWORD PTR {ProcedureEmitter.FormatAddress(returnOffset)}");
-                if (procedure.Routine!.Symbol.ReturnType is SmileType.Double) Line("    movq xmm0, rax");
+                if (procedure.Routine!.Symbol.ReturnType is { Kind: SmileTypeKind.Double }) Line("    movq xmm0, rax");
             }
             Line("    mov rsp, rbp");
             Line("    pop rbp");
@@ -226,9 +226,9 @@ internal sealed partial class CoreBasicMasmWriter
         SmileValue value = _constants[variable];
         return value.Type switch
         {
-            SmileType.Double => $"QWORD PTR {InternDouble(value.DoubleValue)}",
-            SmileType.Integer => value.IntegerValue.ToString(CultureInfo.InvariantCulture),
-            SmileType.Boolean => value.BooleanValue ? "1" : "0",
+            { Kind: SmileTypeKind.Double } => $"QWORD PTR {InternDouble(value.DoubleValue)}",
+            { Kind: SmileTypeKind.Integer } => value.IntegerValue.ToString(CultureInfo.InvariantCulture),
+            { Kind: SmileTypeKind.Boolean } => value.BooleanValue ? "1" : "0",
             _ => $"OFFSET {InternString(value.StringValue)}"
         };
     }
@@ -654,14 +654,14 @@ internal sealed partial class CoreBasicMasmWriter
             if (IsMain)
             {
                 roots.AddRange(_owner._program.Variables
-                    .Where(variable => !variable.IsConstant && variable.Type is SmileType.String)
+                    .Where(variable => !variable.IsConstant && variable.Type is { Kind: SmileTypeKind.String })
                     .Select(variable => (_owner.Name(variable), variable.IsArray ? variable.TotalElementCount : 1)));
             }
             else
             {
                 roots.AddRange(Routine!.Locals
                     .Distinct()
-                    .Where(variable => !variable.IsByRef && variable.Type is SmileType.String)
+                    .Where(variable => !variable.IsByRef && variable.Type is { Kind: SmileTypeKind.String })
                     .Select(variable =>
                     {
                         Storage storage = _storage[variable];
@@ -703,7 +703,7 @@ internal sealed partial class CoreBasicMasmWriter
                 Storage storage = _storage[symbol.Parameters[index]];
                 if (index < 4)
                 {
-                    Append(_initialization, 1, symbol.Parameters[index] is { Type: SmileType.Double, IsByRef: false }
+                    Append(_initialization, 1, symbol.Parameters[index] is { Type: { Kind: SmileTypeKind.Double }, IsByRef: false }
                         ? $"movsd QWORD PTR {Address(storage.Offset)}, xmm{index}"
                         : $"mov QWORD PTR {Address(storage.Offset)}, {ParameterRegisters[index]}");
                 }
@@ -719,7 +719,7 @@ internal sealed partial class CoreBasicMasmWriter
                 Storage storage = _storage[variable];
                 if (variable.IsArray)
                 {
-                    string defaultOperand = variable.Type is SmileType.String
+                    string defaultOperand = variable.Type is { Kind: SmileTypeKind.String }
                         ? $"OFFSET {_owner.InternString(string.Empty)}"
                         : "0";
                     string loop = $"smile_init_{++_owner._labelId}";
@@ -734,7 +734,7 @@ internal sealed partial class CoreBasicMasmWriter
                 }
                 else
                 {
-                    string defaultOperand = variable.Type is SmileType.String
+                    string defaultOperand = variable.Type is { Kind: SmileTypeKind.String }
                         ? $"OFFSET {_owner.InternString(string.Empty)}"
                         : "0";
                     Append(_initialization, 1, $"mov rax, {defaultOperand}");
@@ -838,7 +838,7 @@ internal sealed partial class CoreBasicMasmWriter
                         {
                             EmitExpression(returnStatement.Value, indent);
                             Emit(indent, $"mov QWORD PTR {Address(_returnStorage!.Offset)}, rax");
-                            if (_owner._usesManagedText && returnStatement.Value.Type is SmileType.String)
+                            if (_owner._usesManagedText && returnStatement.Value.Type is { Kind: SmileTypeKind.String })
                             {
                                 Emit(indent, "mov rcx, rax");
                                 NoteCall(1);
@@ -934,7 +934,7 @@ internal sealed partial class CoreBasicMasmWriter
             EmitExpression(select.Selector, indent);
             Storage selector = NewTemporary();
             Emit(indent, $"mov QWORD PTR {Address(selector.Offset)}, rax");
-            if (_owner._usesManagedText && select.Selector.Type is SmileType.String)
+            if (_owner._usesManagedText && select.Selector.Type is { Kind: SmileTypeKind.String })
             {
                 _textTemporaryRoots.Add(selector);
             }
@@ -950,13 +950,13 @@ internal sealed partial class CoreBasicMasmWriter
 
                 string next = NewLabel("select_next");
                 SmileValue value = clause.Value!.Value;
-                if (value.Type is SmileType.Double)
+                if (value.Type is { Kind: SmileTypeKind.Double })
                 {
                     Emit(indent, $"movsd xmm0, QWORD PTR {Address(selector.Offset)}");
                     Emit(indent, $"ucomisd xmm0, QWORD PTR {_owner.InternDouble(value.DoubleValue)}");
                     Emit(indent, $"jne {next}");
                 }
-                else if (value.Type is SmileType.String)
+                else if (value.Type is { Kind: SmileTypeKind.String })
                 {
                     _owner._usesStrcmp = true;
                     Emit(indent, $"mov rcx, QWORD PTR {Address(selector.Offset)}");
@@ -969,7 +969,7 @@ internal sealed partial class CoreBasicMasmWriter
                 else
                 {
                     Emit(indent, $"mov rax, QWORD PTR {Address(selector.Offset)}");
-                    Emit(indent, $"cmp rax, {(value.Type is SmileType.Boolean ? (value.BooleanValue ? "1" : "0") : value.IntegerValue.ToString(CultureInfo.InvariantCulture))}");
+                    Emit(indent, $"cmp rax, {(value.Type is { Kind: SmileTypeKind.Boolean } ? (value.BooleanValue ? "1" : "0") : value.IntegerValue.ToString(CultureInfo.InvariantCulture))}");
                     Emit(indent, $"jne {next}");
                 }
 
@@ -1035,14 +1035,14 @@ internal sealed partial class CoreBasicMasmWriter
         {
             _owner._usesPrintf = true;
             EmitExpression(expression, indent);
-            if (expression.Type is SmileType.Double)
+            if (expression.Type is { Kind: SmileTypeKind.Double })
             {
                 Emit(indent, "movq xmm0, rax");
                 NoteCall(1);
                 Emit(indent, "call smile_print_double");
                 return;
             }
-            if (expression.Type is SmileType.Boolean)
+            if (expression.Type is { Kind: SmileTypeKind.Boolean })
             {
                 string falseLabel = NewLabel("bool_false");
                 string ready = NewLabel("bool_ready");
@@ -1056,7 +1056,7 @@ internal sealed partial class CoreBasicMasmWriter
             }
 
             Emit(indent, "mov rdx, rax");
-            Emit(indent, $"lea rcx, {_owner.InternString(expression.Type is SmileType.Integer ? "%lld" : "%s")}");
+            Emit(indent, $"lea rcx, {_owner.InternString(expression.Type is { Kind: SmileTypeKind.Integer } ? "%lld" : "%s")}");
             NoteCall(2);
             Emit(indent, "call printf");
         }
@@ -1094,7 +1094,7 @@ internal sealed partial class CoreBasicMasmWriter
                     return;
                 case BoundUnaryExpression unary:
                     EmitExpression(unary.Operand, indent);
-                    if (unary.Operator.Kind is BoundUnaryOperatorKind.Negation) Emit(indent, unary.Type is SmileType.Double ? "btc rax, 63" : "neg rax");
+                    if (unary.Operator.Kind is BoundUnaryOperatorKind.Negation) Emit(indent, unary.Type is { Kind: SmileTypeKind.Double } ? "btc rax, 63" : "neg rax");
                     if (unary.Operator.Kind is BoundUnaryOperatorKind.LogicalNegation) Emit(indent, "xor rax, 1");
                     return;
                 case BoundBinaryExpression binary:
@@ -1122,21 +1122,21 @@ internal sealed partial class CoreBasicMasmWriter
             EmitExpression(binary.Left, indent);
             Storage left = NewTemporary();
             Emit(indent, $"mov QWORD PTR {Address(left.Offset)}, rax");
-            if (_owner._usesManagedText && binary.Left.Type is SmileType.String)
+            if (_owner._usesManagedText && binary.Left.Type is { Kind: SmileTypeKind.String })
             {
                 _textTemporaryRoots.Add(left);
             }
             EmitExpression(binary.Right, indent);
             Storage right = NewTemporary();
             Emit(indent, $"mov QWORD PTR {Address(right.Offset)}, rax");
-            if (_owner._usesManagedText && binary.Right.Type is SmileType.String)
+            if (_owner._usesManagedText && binary.Right.Type is { Kind: SmileTypeKind.String })
             {
                 _textTemporaryRoots.Add(right);
             }
             Emit(indent, $"mov rax, QWORD PTR {Address(left.Offset)}");
             Emit(indent, $"mov r10, QWORD PTR {Address(right.Offset)}");
 
-            if (binary.Left.Type is SmileType.Double)
+            if (binary.Left.Type is { Kind: SmileTypeKind.Double })
             {
                 EmitDoubleBinary(binary, left, right, indent);
                 return;
@@ -1154,7 +1154,7 @@ internal sealed partial class CoreBasicMasmWriter
                 return;
             }
 
-            if (binary.Left.Type is SmileType.String &&
+            if (binary.Left.Type is { Kind: SmileTypeKind.String } &&
                 binary.Operator.Kind is BoundBinaryOperatorKind.Equality or BoundBinaryOperatorKind.Inequality)
             {
                 _owner._usesStrcmp = true;
@@ -1217,7 +1217,7 @@ internal sealed partial class CoreBasicMasmWriter
                 EmitExpression(argument, indent);
                 Storage temporary = NewTemporary();
                 Emit(indent, $"mov QWORD PTR {Address(temporary.Offset)}, rax");
-                if (_owner._usesManagedText && argument.Type is SmileType.String) _textTemporaryRoots.Add(temporary);
+                if (_owner._usesManagedText && argument.Type is { Kind: SmileTypeKind.String }) _textTemporaryRoots.Add(temporary);
                 captured.Add(temporary);
             }
             string[] registers = { "rcx", "rdx", "r8" };
@@ -1227,7 +1227,7 @@ internal sealed partial class CoreBasicMasmWriter
             }
             NoteCall(intrinsic.Arguments.Count);
             Emit(indent, $"call {intrinsic.Kind switch { BoundIntrinsicKind.Abs => "smile_abs", BoundIntrinsicKind.Min => "smile_min", BoundIntrinsicKind.Max => "smile_max", BoundIntrinsicKind.TextLength => "smile_text_length", BoundIntrinsicKind.TextCodeAt => "smile_text_code_at", BoundIntrinsicKind.TextSlice => "smile_text_slice", _ => "smile_timer" }}");
-            if (intrinsic.Type is SmileType.String)
+            if (intrinsic.Type is { Kind: SmileTypeKind.String })
             {
                 Storage result = NewTemporary();
                 Emit(indent, $"mov QWORD PTR {Address(result.Offset)}, rax");
@@ -1246,7 +1246,7 @@ internal sealed partial class CoreBasicMasmWriter
                 else EmitExpression(argument, indent);
                 Storage temporary = NewTemporary();
                 Emit(indent, $"mov QWORD PTR {Address(temporary.Offset)}, rax");
-                if (!byRef && _owner._usesManagedText && argument.Type is SmileType.String)
+                if (!byRef && _owner._usesManagedText && argument.Type is { Kind: SmileTypeKind.String })
                 {
                     _textTemporaryRoots.Add(temporary);
                 }
@@ -1258,7 +1258,7 @@ internal sealed partial class CoreBasicMasmWriter
             {
                 if (index < 4)
                 {
-                    Emit(indent, routine.Parameters[index] is { Type: SmileType.Double, IsByRef: false }
+                    Emit(indent, routine.Parameters[index] is { Type: { Kind: SmileTypeKind.Double }, IsByRef: false }
                         ? $"movsd xmm{index}, QWORD PTR {Address(captured[index].Offset)}"
                         : $"mov {ParameterRegisters[index]}, QWORD PTR {Address(captured[index].Offset)}");
                 }
@@ -1271,7 +1271,7 @@ internal sealed partial class CoreBasicMasmWriter
 
             NoteCall(arguments.Count);
             Emit(indent, $"call {_owner.RoutineName(routine)}");
-            if (routine.ReturnType is SmileType.Double) Emit(indent, "movq rax, xmm0");
+            if (routine.ReturnType is { Kind: SmileTypeKind.Double }) Emit(indent, "movq rax, xmm0");
         }
 
         private void EmitBoundsCheck(VariableSymbol array, int dimension, int indent)

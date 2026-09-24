@@ -48,7 +48,7 @@ internal sealed partial class CoreBasicMasmWriter
             EmitExpression(expression, indent);
             Storage temporary = NewTemporary();
             Emit(indent, $"mov QWORD PTR {Address(temporary.Offset)}, rax");
-            if (_owner._usesManagedText && expression.Type is SmileType.String) _textTemporaryRoots.Add(temporary);
+            if (_owner._usesManagedText && expression.Type is { Kind: SmileTypeKind.String }) _textTemporaryRoots.Add(temporary);
             return temporary;
         }
 

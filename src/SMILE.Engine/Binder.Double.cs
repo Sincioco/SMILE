@@ -12,7 +12,7 @@ internal sealed partial class Binder
         if (arguments.Length != expected)
             Report("SMILE2153", $"Built-in function '{syntax.Name}' expects {expected} argument(s).", syntax.NameSpan);
         foreach (BoundExpression argument in arguments)
-            if (argument.Type != required && argument.Type is not SmileType.Error)
+            if (argument.Type != required && argument.Type is not { Kind: SmileTypeKind.Error })
                 Report("SMILE3901", $"{syntax.Name} requires exact {DisplayType(required)} arguments; use explicit conversion.", syntax.Span);
         return prior == _diagnostics.Count ? new BoundIntrinsicExpression(kind, arguments, syntax.Span) : new BoundErrorExpression();
     }

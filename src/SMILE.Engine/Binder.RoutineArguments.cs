@@ -56,7 +56,7 @@ internal sealed partial class Binder
             {
                 Report("SMILE2165", "ByRef requires an exact-type writable variable or array element.", source.Span);
             }
-            if (value.Type is not SmileType.Error && value.Type != routine.Parameters[parameterIndex].Type)
+            if (value.Type is not { Kind: SmileTypeKind.Error } && value.Type != routine.Parameters[parameterIndex].Type)
             {
                 Report("SMILE2149", $"Argument {parameterIndex + 1} for '{routine.Parameters[parameterIndex].Name}' must be {DisplayType(routine.Parameters[parameterIndex].Type)}.", source.Span);
             }

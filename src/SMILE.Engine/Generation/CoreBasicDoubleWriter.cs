@@ -18,7 +18,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private string DoubleBinary(BoundBinaryExpression binary, string left, string right)
         {
-            if (binary.Type is not SmileType.Double) return $"({left} {Operator(binary.Operator.Kind)} {right})";
+            if (binary.Type is not { Kind: SmileTypeKind.Double }) return $"({left} {Operator(binary.Operator.Kind)} {right})";
             string line = binary.OperatorSpan.Line.ToString(System.Globalization.CultureInfo.InvariantCulture);
             if (binary.Operator.Kind is BoundBinaryOperatorKind.Division) right = DoubleCall("double_divisor", right, line);
             return DoubleCall("check_double", $"({left} {Operator(binary.Operator.Kind)} {right})", line);

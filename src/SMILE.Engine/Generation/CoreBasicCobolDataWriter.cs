@@ -27,7 +27,7 @@ internal sealed partial class CobolWriter
         {
             string value = PrepareExpression(expression, indent);
             Temporary temporary = NewTemporary(expression.Type);
-            Assign(temporary.Name, expression.Type, expression, value, indent, expression.Type is SmileType.String ? LengthName(temporary) : null);
+            Assign(temporary.Name, expression.Type, expression, value, indent, expression.Type is { Kind: SmileTypeKind.String } ? LengthName(temporary) : null);
             return temporary;
         }
 

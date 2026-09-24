@@ -224,6 +224,13 @@ For complete interactive programs, follow the three game sources above or the sm
 
 ## How the compiler works
 
+The engine carries immutable type symbols through binding, evaluation and
+generation. Built-in types are shared symbols; storage categories are separate
+from exact type identity, preparing the pending enum/record/class back-port.
+For Engine API callers, `SmileType` is now a symbol class with `Kind` and `Name`;
+the existing `SmileType.Integer`, `Double`, `String`, `Boolean`, and `Error`
+members remain available. Existing scalar source and generated code are unchanged.
+
 ![SMILE compiler pipeline: source to lexer and parser, binder, typed bound program, then evaluator or ten target writers, with optional local build and run.](docs/assets/readme/compiler-pipeline.svg)
 
 1. **Parse the structure.** The lexer and parser recognize the canonical language and preserve source locations for diagnostics.

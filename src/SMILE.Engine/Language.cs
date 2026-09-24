@@ -172,29 +172,21 @@ public sealed record ParseResult(
         Diagnostics.All(diagnostic => diagnostic.Severity != DiagnosticSeverity.Error);
 }
 
-public enum SmileType
-{
-    String,
-    Double,
-    Integer,
-    Boolean,
-    Error
-}
-
 public readonly record struct SmileValue
 {
+    private readonly SmileType? _type;
     private readonly string? _stringValue;
 
     private SmileValue(SmileType type, string? stringValue, long integerValue, bool booleanValue, double doubleValue = 0)
     {
-        Type = type;
+        _type = type;
         _stringValue = stringValue;
         IntegerValue = integerValue;
         BooleanValue = booleanValue;
         DoubleValue = doubleValue;
     }
 
-    public SmileType Type { get; }
+    public SmileType Type => _type ?? SmileType.String;
 
     public string StringValue =>
         Type == SmileType.String
@@ -221,10 +213,10 @@ public readonly record struct SmileValue
     public string ToDisplayText() =>
         Type switch
         {
-            SmileType.String => StringValue,
-            SmileType.Double => DoubleSemantics.Format(DoubleValue),
-            SmileType.Integer => IntegerValue.ToString(CultureInfo.InvariantCulture),
-            SmileType.Boolean => BooleanValue ? "True" : "False",
+            { Kind: SmileTypeKind.String } => StringValue,
+            { Kind: SmileTypeKind.Double } => DoubleSemantics.Format(DoubleValue),
+            { Kind: SmileTypeKind.Integer } => IntegerValue.ToString(CultureInfo.InvariantCulture),
+            { Kind: SmileTypeKind.Boolean } => BooleanValue ? "True" : "False",
             _ => string.Empty
         };
 }
@@ -913,7 +905,7 @@ public static class BoundExpressionEvaluator
             SmileValue value = unary.Operator.Kind switch
             {
                 BoundUnaryOperatorKind.Identity => operand.Value,
-                BoundUnaryOperatorKind.Negation when operand.Value.Type is SmileType.Double => SmileValue.FromDouble(-operand.Value.DoubleValue),
+                BoundUnaryOperatorKind.Negation when operand.Value.Type is { Kind: SmileTypeKind.Double } => SmileValue.FromDouble(-operand.Value.DoubleValue),
                 BoundUnaryOperatorKind.Negation =>
                     SmileValue.FromInteger(checked(-operand.Value.IntegerValue)),
                 BoundUnaryOperatorKind.LogicalNegation =>
@@ -960,7 +952,7 @@ public static class BoundExpressionEvaluator
                 : right;
         }
 
-        if (binary.Left.Type is SmileType.Double)
+        if (binary.Left.Type is { Kind: SmileTypeKind.Double })
         {
             if (!left.IsKnown || !right.IsKnown) return StaticEvaluationResult.Unknown(mayFailAtRuntime: true);
             try { return StaticEvaluationResult.Known(DoubleSemantics.Binary(binary.Operator.Kind, left.Value.DoubleValue, right.Value.DoubleValue), left.MayFailAtRuntime || right.MayFailAtRuntime); }
@@ -1148,10 +1140,10 @@ public static class BoundExpressionEvaluator
     private static bool ValuesEqual(SmileValue left, SmileValue right) =>
         left.Type switch
         {
-            SmileType.String => string.Equals(left.StringValue, right.StringValue, StringComparison.Ordinal),
-            SmileType.Double => left.DoubleValue == right.DoubleValue,
-            SmileType.Integer => left.IntegerValue == right.IntegerValue,
-            SmileType.Boolean => left.BooleanValue == right.BooleanValue,
+            { Kind: SmileTypeKind.String } => string.Equals(left.StringValue, right.StringValue, StringComparison.Ordinal),
+            { Kind: SmileTypeKind.Double } => left.DoubleValue == right.DoubleValue,
+            { Kind: SmileTypeKind.Integer } => left.IntegerValue == right.IntegerValue,
+            { Kind: SmileTypeKind.Boolean } => left.BooleanValue == right.BooleanValue,
             _ => false
         };
 }

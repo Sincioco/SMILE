@@ -86,7 +86,7 @@ const char *smile_text_from_double(double value)
             }
             else Emit(indent, $"movsd xmm1, QWORD PTR {Address(right.Offset)}");
             Emit(indent, $"movsd xmm0, QWORD PTR {Address(left.Offset)}");
-            if (binary.Type is SmileType.Boolean)
+            if (binary.Type is { Kind: SmileTypeKind.Boolean })
             {
                 string comparison = binary.Operator.Kind switch
                 {
@@ -124,11 +124,11 @@ const char *smile_text_from_double(double value)
                 EmitExpression(argument, indent);
                 Storage temporary = NewTemporary();
                 Emit(indent, $"mov QWORD PTR {Address(temporary.Offset)}, rax");
-                if (_owner._usesManagedText && argument.Type is SmileType.String) _textTemporaryRoots.Add(temporary);
+                if (_owner._usesManagedText && argument.Type is { Kind: SmileTypeKind.String }) _textTemporaryRoots.Add(temporary);
                 captured.Add(temporary);
             }
             for (int index = 0; index < captured.Count; index++)
-                Emit(indent, intrinsic.Arguments[index].Type is SmileType.Double
+                Emit(indent, intrinsic.Arguments[index].Type is { Kind: SmileTypeKind.Double }
                     ? $"movsd xmm{index}, QWORD PTR {Address(captured[index].Offset)}"
                     : $"mov {ParameterRegisters[index]}, QWORD PTR {Address(captured[index].Offset)}");
             if (intrinsic.Kind is BoundIntrinsicKind.ToDouble)
@@ -161,8 +161,8 @@ const char *smile_text_from_double(double value)
                     return;
                 }
             }
-            if (intrinsic.Type is SmileType.Double) Emit(indent, "movq rax, xmm0");
-            else if (intrinsic.Type is SmileType.String)
+            if (intrinsic.Type is { Kind: SmileTypeKind.Double }) Emit(indent, "movq rax, xmm0");
+            else if (intrinsic.Type is { Kind: SmileTypeKind.String })
             {
                 Storage result = NewTemporary();
                 Emit(indent, $"mov QWORD PTR {Address(result.Offset)}, rax");

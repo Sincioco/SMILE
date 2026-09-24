@@ -14,7 +14,7 @@ internal static class NativeDoubleSupport
         // C interoperability is required to retain binary64 rounding and signed zero.
         BoundExpression[] expressions = CoreBasicCodeGenerator.EnumerateExpressionsForSupport(program, includeConstants: false).ToArray();
         IEnumerable<BoundBinaryOperatorKind> operations = expressions.OfType<BoundBinaryExpression>()
-            .Where(expression => expression.Left.Type is SmileType.Double).Select(expression => expression.Operator.Kind);
+            .Where(expression => expression.Left.Type is { Kind: SmileTypeKind.Double }).Select(expression => expression.Operator.Kind);
         if (features.HasSelection) operations = operations.Append(BoundBinaryOperatorKind.Equality);
         foreach (BoundBinaryOperatorKind kind in operations.Distinct())
         {

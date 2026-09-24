@@ -30,6 +30,15 @@ The parser preserves ordered comments and blank lines alongside statements, buil
 
 ## Binding and evaluation
 
+`SmileType` is an immutable type symbol. The five existing scalar/error symbols
+are shared singletons; exact assignment, argument and return checks compare
+symbol identity. `SmileTypeKind` describes their storage/operation category.
+This separates nominal identity from representation before the enum/record/class
+back-port, without enabling that syntax yet. Scalar type-pattern matching uses
+Kind, while semantic equality stays exact. The bound program, symbols and values
+carry the type directly; no process-wide registry or numeric type-ID allocation
+is involved. Existing generated scalar code remains unchanged.
+
 Binding is case-insensitive with a shared program namespace and per-routine scopes:
 
 - `Dim` creates fixed typed storage with a scalar default;

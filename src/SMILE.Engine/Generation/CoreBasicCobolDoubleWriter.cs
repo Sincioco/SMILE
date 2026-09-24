@@ -35,7 +35,7 @@ internal sealed partial class CobolWriter
             string value = PrepareExpression(expression, indent);
             Temporary captured = NewTemporary(expression.Type);
             Assign(captured.Name, expression.Type, expression, value, indent,
-                expression.Type is SmileType.String ? LengthName(captured) : null);
+                expression.Type is { Kind: SmileTypeKind.String } ? LengthName(captured) : null);
             return captured;
         }
 
@@ -46,7 +46,7 @@ internal sealed partial class CobolWriter
             Temporary result = NewTemporary(binary.Type);
             string operation = binary.Operator.Kind.ToString().ToLowerInvariant();
             Line(indent, $"CALL \"smile_dbl_{operation}_cobol\" USING BY REFERENCE {left.Name} {right.Name} {result.Name} BY VALUE {binary.OperatorSpan.Line}");
-            return binary.Type is SmileType.Boolean ? $"({result.Name} = 1)" : result.Name;
+            return binary.Type is { Kind: SmileTypeKind.Boolean } ? $"({result.Name} = 1)" : result.Name;
         }
 
         private string PrepareDoubleNegation(BoundUnaryExpression unary, int indent)
@@ -65,10 +65,10 @@ internal sealed partial class CobolWriter
             foreach (Temporary argument in arguments)
             {
                 parameters.Add(argument.Name);
-                if (argument.Type is SmileType.String) parameters.Add(LengthName(argument));
+                if (argument.Type is { Kind: SmileTypeKind.String }) parameters.Add(LengthName(argument));
             }
             parameters.Add(result.Name);
-            if (intrinsic.Type is SmileType.String)
+            if (intrinsic.Type is { Kind: SmileTypeKind.String })
             {
                 parameters.Add(LengthName(result));
                 _preparedTextLengths[intrinsic] = LengthName(result);

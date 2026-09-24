@@ -248,13 +248,13 @@ internal sealed partial class Binder
         BoundExpression initializer = BindExpression(syntax.Initializer, constantsOnly: true);
         StaticEvaluationResult evaluation = BoundExpressionEvaluator.Evaluate(initializer, _constantValues);
         _resolvingConstants.Remove(name);
-        if (initializer.Type is SmileType.Error || !evaluation.IsKnown || evaluation.MayFailAtRuntime)
+        if (initializer.Type is { Kind: SmileTypeKind.Error } || !evaluation.IsKnown || evaluation.MayFailAtRuntime)
         {
             if (evaluation.IsInvalid && evaluation.Error is SmileArithmeticError error)
             {
                 Report(error.CompileCode, error.Message, error.Span);
             }
-            else if (initializer.Type is not SmileType.Error)
+            else if (initializer.Type is not { Kind: SmileTypeKind.Error })
             {
                 Report("SMILE2104", $"Constant '{name}' requires a compile-time scalar value.", syntax.Initializer.Span);
             }
@@ -297,9 +297,9 @@ internal sealed partial class Binder
                 continue;
             }
 
-            if (!evaluation.IsKnown || evaluation.MayFailAtRuntime || size.Type is not SmileType.Integer)
+            if (!evaluation.IsKnown || evaluation.MayFailAtRuntime || size.Type is not { Kind: SmileTypeKind.Integer })
             {
-                if (size.Type is not SmileType.Error)
+                if (size.Type is not { Kind: SmileTypeKind.Error })
                 {
                     Report("SMILE2120", "An array dimension must be a compile-time Number expression.", sizeSyntax.Span);
                 }
@@ -505,7 +505,7 @@ internal sealed partial class Binder
         {
             Report("SMILE2105", $"Constant '{variable.Name}' cannot be assigned.", syntax.NameSpan);
         }
-        else if (value.Type is not SmileType.Error && variable.Type != value.Type)
+        else if (value.Type is not { Kind: SmileTypeKind.Error } && variable.Type != value.Type)
         {
             Report(
                 "SMILE2106",
@@ -536,7 +536,7 @@ internal sealed partial class Binder
             return ErrorVariable(name, span, inferredType);
         }
 
-        SmileType type = inferredType is SmileType.Error ? SmileType.Integer : inferredType;
+        SmileType type = inferredType is { Kind: SmileTypeKind.Error } ? SmileType.Integer : inferredType;
         var variable = new VariableSymbol(
             name,
             span,
@@ -561,7 +561,7 @@ internal sealed partial class Binder
         VariableSymbol array = ResolveArray(syntax.Name, syntax.NameSpan);
         IReadOnlyList<BoundExpression> indices = BindArrayIndices(array, syntax.Indices, syntax.Span);
         BoundExpression value = BindExpression(syntax.Value);
-        if (value.Type is not SmileType.Error && array.Type != value.Type)
+        if (value.Type is not { Kind: SmileTypeKind.Error } && array.Type != value.Type)
         {
             Report("SMILE2130", $"Cannot assign {DisplayType(value.Type)} to {DisplayType(array.Type)} array '{array.Name}'.", syntax.Value.Span);
         }
@@ -600,7 +600,7 @@ internal sealed partial class Binder
         {
             Report("SMILE2150", $"{context} requires a writable scalar Number variable.", span);
         }
-        else if (target.Type is not SmileType.Integer and not SmileType.Error)
+        else if (target.Type is not { Kind: SmileTypeKind.Integer } and not { Kind: SmileTypeKind.Error })
         {
             Report("SMILE2151", $"{context} target must have type Number.", span);
         }
@@ -648,7 +648,7 @@ internal sealed partial class Binder
             Report("SMILE2134", $"Function '{_currentRoutine.Name}' must return a value.", syntax.Span);
         }
         else if (_currentRoutine.IsFunction && value is not null &&
-                 value.Type is not SmileType.Error && value.Type != _currentRoutine.ReturnType)
+                 value.Type is not { Kind: SmileTypeKind.Error } && value.Type != _currentRoutine.ReturnType)
         {
             Report(
                 "SMILE2135",
@@ -690,7 +690,7 @@ internal sealed partial class Binder
                 }
 
                 BoundExpression value = BindExpression(clause.Value!, constantsOnly: true);
-                if (selector.Type is not SmileType.Error && value.Type is not SmileType.Error && selector.Type != value.Type)
+                if (selector.Type is not { Kind: SmileTypeKind.Error } && value.Type is not { Kind: SmileTypeKind.Error } && selector.Type != value.Type)
                 {
                     Report("SMILE2139", "A Case value must have exactly the selector's scalar type.", clause.Value!.Span);
                 }
@@ -698,7 +698,7 @@ internal sealed partial class Binder
                 StaticEvaluationResult evaluation = BoundExpressionEvaluator.Evaluate(value, _constantValues);
                 if (!evaluation.IsKnown || evaluation.MayFailAtRuntime)
                 {
-                    if (value.Type is not SmileType.Error)
+                    if (value.Type is not { Kind: SmileTypeKind.Error })
                     {
                         Report("SMILE2140", "A Case value must be a compile-time scalar expression.", clause.Value!.Span);
                     }
@@ -788,7 +788,7 @@ internal sealed partial class Binder
         {
             Report("SMILE2107", "A FOR counter must be a writable scalar variable.", syntax.CounterSpan);
         }
-        else if (counter.Type is not SmileType.Integer)
+        else if (counter.Type is not { Kind: SmileTypeKind.Integer })
         {
             Report("SMILE2108", "A FOR counter must have type Number.", syntax.CounterSpan);
         }
@@ -884,7 +884,7 @@ internal sealed partial class Binder
                 BoundUnaryOperator? unaryOperator = BoundUnaryOperator.Bind(unary.OperatorToken.Kind, operand.Type);
                 if (unaryOperator is null)
                 {
-                    if (operand.Type is not SmileType.Error)
+                    if (operand.Type is not { Kind: SmileTypeKind.Error })
                     {
                         Report("SMILE2113", $"Operator '{unary.OperatorToken.Text}' is not defined for {DisplayType(operand.Type)}.", unary.OperatorToken.Span);
                     }
@@ -899,7 +899,7 @@ internal sealed partial class Binder
                 BoundBinaryOperator? binaryOperator = BoundBinaryOperator.Bind(binary.OperatorToken.Kind, left.Type, right.Type);
                 if (binaryOperator is null)
                 {
-                    if (left.Type is not SmileType.Error && right.Type is not SmileType.Error)
+                    if (left.Type is not { Kind: SmileTypeKind.Error } && right.Type is not { Kind: SmileTypeKind.Error })
                     {
                         Report(
                             "SMILE2114",
@@ -1008,7 +1008,7 @@ internal sealed partial class Binder
             ExpressionSyntax indexSyntax = syntax[position];
             BoundExpression index = indices[position];
             RequireNumber(index, indexSyntax.Span, "array index");
-            if (position >= count || index.Type is not SmileType.Integer)
+            if (position >= count || index.Type is not { Kind: SmileTypeKind.Integer })
             {
                 continue;
             }
@@ -1075,7 +1075,7 @@ internal sealed partial class Binder
         }
 
         if (DoubleSemantics.IsIntrinsic(kind.Value) || kind is BoundIntrinsicKind.Abs or BoundIntrinsicKind.Min or BoundIntrinsicKind.Max &&
-            syntax.Arguments.Count > 0 && BindExpression(syntax.Arguments[0], constantsOnly).Type is SmileType.Double)
+            syntax.Arguments.Count > 0 && BindExpression(syntax.Arguments[0], constantsOnly).Type is { Kind: SmileTypeKind.Double })
         {
             expression = BindDoubleIntrinsic(syntax, kind.Value, constantsOnly);
             return true;
@@ -1100,7 +1100,7 @@ internal sealed partial class Binder
             TextSpan argumentSpan = index < syntax.Arguments.Count ? syntax.Arguments[index].Span : syntax.NameSpan;
             if (index == 0 && kind is BoundIntrinsicKind.TextLength or BoundIntrinsicKind.TextCodeAt or BoundIntrinsicKind.TextSlice)
             {
-                if (argument.Type is not (SmileType.String or SmileType.Error))
+                if (argument.Type is not ({ Kind: SmileTypeKind.String } or { Kind: SmileTypeKind.Error }))
                 {
                     Report("SMILE2154", $"{syntax.Name} requires Text as its first argument.", argumentSpan);
                 }
@@ -1141,7 +1141,7 @@ internal sealed partial class Binder
     }
 
     private static VariableSymbol ErrorVariable(string name, TextSpan span, SmileType type) =>
-        new(name, span, type is SmileType.Error ? SmileType.Integer : type);
+        new(name, span, type is { Kind: SmileTypeKind.Error } ? SmileType.Integer : type);
 
     private static bool ItemsDefinitelyExit(IReadOnlyList<BoundSourceItem> items)
     {
@@ -1172,7 +1172,7 @@ internal sealed partial class Binder
 
     private void RequireBoolean(BoundExpression expression, TextSpan span, string context)
     {
-        if (expression.Type is not SmileType.Boolean and not SmileType.Error)
+        if (expression.Type is not { Kind: SmileTypeKind.Boolean } and not { Kind: SmileTypeKind.Error })
         {
             Report("SMILE2115", $"{context} must have type Boolean.", span);
         }
@@ -1180,7 +1180,7 @@ internal sealed partial class Binder
 
     private void RequireNumber(BoundExpression expression, TextSpan span, string context)
     {
-        if (expression.Type is not SmileType.Integer and not SmileType.Error)
+        if (expression.Type is not { Kind: SmileTypeKind.Integer } and not { Kind: SmileTypeKind.Error })
         {
             Report("SMILE2116", $"{context} must have type Number.", span);
         }
@@ -1191,10 +1191,10 @@ internal sealed partial class Binder
 
     private static string DisplayType(SmileType type) => type switch
     {
-        SmileType.Double => "Double",
-        SmileType.Integer => "Number",
-        SmileType.Boolean => "Boolean",
-        SmileType.String => "Text",
+        { Kind: SmileTypeKind.Double } => "Double",
+        { Kind: SmileTypeKind.Integer } => "Number",
+        { Kind: SmileTypeKind.Boolean } => "Boolean",
+        { Kind: SmileTypeKind.String } => "Text",
         _ => "Error"
     };
 }

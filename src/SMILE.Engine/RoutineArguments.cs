@@ -14,9 +14,9 @@ internal static class RoutineArguments
 
     public static BoundExpression Literal(SmileValue value) => value.Type switch
     {
-        SmileType.Double => new BoundDoubleLiteralExpression(value.DoubleValue),
-        SmileType.String => new BoundStringLiteralExpression(value.StringValue),
-        SmileType.Boolean => new BoundBooleanLiteralExpression(value.BooleanValue),
+        { Kind: SmileTypeKind.Double } => new BoundDoubleLiteralExpression(value.DoubleValue),
+        { Kind: SmileTypeKind.String } => new BoundStringLiteralExpression(value.StringValue),
+        { Kind: SmileTypeKind.Boolean } => new BoundBooleanLiteralExpression(value.BooleanValue),
         _ => new BoundIntegerLiteralExpression(value.IntegerValue)
     };
 }

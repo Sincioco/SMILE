@@ -536,7 +536,7 @@ public sealed partial class SmileEvaluator
                     value = unary.Operator.Kind switch
                     {
                         BoundUnaryOperatorKind.Identity => operand,
-                        BoundUnaryOperatorKind.Negation when operand.Type is SmileType.Double => SmileValue.FromDouble(-operand.DoubleValue),
+                        BoundUnaryOperatorKind.Negation when operand.Type is { Kind: SmileTypeKind.Double } => SmileValue.FromDouble(-operand.DoubleValue),
                         BoundUnaryOperatorKind.Negation => SmileValue.FromInteger(checked(-operand.IntegerValue)),
                         BoundUnaryOperatorKind.LogicalNegation => SmileValue.FromBoolean(!operand.BooleanValue),
                         _ => throw new InvalidOperationException("Unknown unary operator.")
@@ -589,7 +589,7 @@ public sealed partial class SmileEvaluator
 
         try
         {
-            value = left.Type is SmileType.Double ? DoubleSemantics.Binary(binary.Operator.Kind, left.DoubleValue, right.DoubleValue) : binary.Operator.Kind switch
+            value = left.Type is { Kind: SmileTypeKind.Double } ? DoubleSemantics.Binary(binary.Operator.Kind, left.DoubleValue, right.DoubleValue) : binary.Operator.Kind switch
             {
                 BoundBinaryOperatorKind.Addition => SmileValue.FromInteger(checked(left.IntegerValue + right.IntegerValue)),
                 BoundBinaryOperatorKind.Subtraction => SmileValue.FromInteger(checked(left.IntegerValue - right.IntegerValue)),
@@ -619,7 +619,7 @@ public sealed partial class SmileEvaluator
             error = new SmileRuntimeError("SMILER1207", "Division by zero.");
             return false;
         }
-        catch (ArithmeticException) when (left.Type is SmileType.Double)
+        catch (ArithmeticException) when (left.Type is { Kind: SmileTypeKind.Double })
         {
             value = default;
             error = new SmileRuntimeError("SMILER3902", $"{DoubleSemantics.FailureMessage} At line {binary.OperatorSpan.Line}, column {binary.OperatorSpan.Column}.");
@@ -858,26 +858,26 @@ public sealed partial class SmileEvaluator
 
     private static SmileValue DefaultValue(SmileType type) => type switch
     {
-        SmileType.Double => SmileValue.FromDouble(0),
-        SmileType.Integer => SmileValue.FromInteger(0),
-        SmileType.Boolean => SmileValue.FromBoolean(false),
+        { Kind: SmileTypeKind.Double } => SmileValue.FromDouble(0),
+        { Kind: SmileTypeKind.Integer } => SmileValue.FromInteger(0),
+        { Kind: SmileTypeKind.Boolean } => SmileValue.FromBoolean(false),
         _ => SmileValue.FromString(string.Empty)
     };
 
     private static bool ValuesEqual(SmileValue left, SmileValue right) => left.Type switch
     {
-        SmileType.Double => left.DoubleValue == right.DoubleValue,
-        SmileType.Integer => left.IntegerValue == right.IntegerValue,
-        SmileType.Boolean => left.BooleanValue == right.BooleanValue,
-        SmileType.String => string.Equals(left.StringValue, right.StringValue, StringComparison.Ordinal),
+        { Kind: SmileTypeKind.Double } => left.DoubleValue == right.DoubleValue,
+        { Kind: SmileTypeKind.Integer } => left.IntegerValue == right.IntegerValue,
+        { Kind: SmileTypeKind.Boolean } => left.BooleanValue == right.BooleanValue,
+        { Kind: SmileTypeKind.String } => string.Equals(left.StringValue, right.StringValue, StringComparison.Ordinal),
         _ => false
     };
 
     private static int Compare(SmileValue left, SmileValue right) => left.Type switch
     {
-        SmileType.Double => left.DoubleValue.CompareTo(right.DoubleValue),
-        SmileType.Integer => left.IntegerValue.CompareTo(right.IntegerValue),
-        SmileType.String => string.CompareOrdinal(left.StringValue, right.StringValue),
+        { Kind: SmileTypeKind.Double } => left.DoubleValue.CompareTo(right.DoubleValue),
+        { Kind: SmileTypeKind.Integer } => left.IntegerValue.CompareTo(right.IntegerValue),
+        { Kind: SmileTypeKind.String } => string.CompareOrdinal(left.StringValue, right.StringValue),
         _ => throw new InvalidOperationException("Only Number and Text values can be ordered.")
     };
 

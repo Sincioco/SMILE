@@ -274,7 +274,7 @@ internal static partial class CoreBasicCodeGenerator
             if (ProgramExpressions().Any(expression => expression is BoundBinaryExpression
                 {
                     Operator.Kind: BoundBinaryOperatorKind.Division,
-                    Type: SmileType.Integer
+                    Type: { Kind: SmileTypeKind.Integer }
                 }) || hasModulo)
             {
                 Line("def _smile_div(left, right):");
@@ -595,8 +595,8 @@ internal static partial class CoreBasicCodeGenerator
                     locals);
                 if (resultName is not null)
                 {
-                    Line($"{RoutineReturnType(routine.Symbol)} {resultName} = {DefaultLiteral(routine.Symbol.ReturnType!.Value)};");
-                    if (routine.Symbol.ReturnType is SmileType.String)
+                    Line($"{RoutineReturnType(routine.Symbol)} {resultName} = {DefaultLiteral(routine.Symbol.ReturnType!)};");
+                    if (routine.Symbol.ReturnType is { Kind: SmileTypeKind.String })
                     {
                         Line($"smile_text_register(&{resultName});");
                     }
@@ -636,14 +636,14 @@ internal static partial class CoreBasicCodeGenerator
                     Line(cleanup.EndLabel + ":");
                 }
 
-                if (cleanup.ResultName is not null && routine.Symbol.ReturnType is SmileType.String)
+                if (cleanup.ResultName is not null && routine.Symbol.ReturnType is { Kind: SmileTypeKind.String })
                 {
                     Line($"smile_text_return_root = {cleanup.ResultName};");
                 }
 
                 WriteManagedTextRoots(cleanup.Locals, register: false);
                 WriteManagedTextRoots(routine.Symbol.Parameters, register: false);
-                if (cleanup.ResultName is not null && routine.Symbol.ReturnType is SmileType.String)
+                if (cleanup.ResultName is not null && routine.Symbol.ReturnType is { Kind: SmileTypeKind.String })
                 {
                     Line($"smile_text_unregister(&{cleanup.ResultName});");
                 }
@@ -678,7 +678,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private void WriteArrayInitializers(IEnumerable<VariableSymbol> variables)
         {
-            foreach (VariableSymbol variable in variables.Where(item => item.IsArray && item.Type is SmileType.String))
+            foreach (VariableSymbol variable in variables.Where(item => item.IsArray && item.Type is { Kind: SmileTypeKind.String }))
             {
                 string name = Name(variable);
                 switch (_language)
@@ -851,12 +851,12 @@ internal static partial class CoreBasicCodeGenerator
             return _language switch
             {
                 TargetLanguage.CSharp => $"const {TypeName(variable.Type)} {name} = {literal};",
-                TargetLanguage.C => variable.Type is SmileType.String
+                TargetLanguage.C => variable.Type is { Kind: SmileTypeKind.String }
                     ? $"const char * const {name} = {literal};"
                     : $"const {TypeName(variable.Type)} {name} = {literal};",
                 TargetLanguage.JavaScript => $"const {name} = {literal};",
                 TargetLanguage.Java => $"final {TypeName(variable.Type)} {name} = {literal};",
-                TargetLanguage.ObjectiveC => variable.Type is SmileType.String
+                TargetLanguage.ObjectiveC => variable.Type is { Kind: SmileTypeKind.String }
                     ? $"const char * const {name} = {literal};"
                     : $"const {TypeName(variable.Type)} {name} = {literal};",
                 TargetLanguage.Swift => $"let {name}: {TypeName(variable.Type)} = {literal}",
@@ -1017,7 +1017,7 @@ internal static partial class CoreBasicCodeGenerator
 
             string operation = register ? "register" : "unregister";
             foreach (VariableSymbol variable in variables.Where(variable =>
-                !variable.IsConstant && !variable.IsByRef && variable.Type is SmileType.String))
+                !variable.IsConstant && !variable.IsByRef && variable.Type is { Kind: SmileTypeKind.String }))
             {
                 string name = Name(variable);
                 if (!variable.IsArray)
@@ -1278,8 +1278,8 @@ internal static partial class CoreBasicCodeGenerator
             {
                 TargetLanguage.CSharp or TargetLanguage.JavaScript or TargetLanguage.Swift or TargetLanguage.Python => true,
                 TargetLanguage.C or TargetLanguage.ObjectiveC or TargetLanguage.Cpp =>
-                    select.Selector.Type is not (SmileType.String or SmileType.Double),
-                TargetLanguage.Java => select.Selector.Type is SmileType.String,
+                    select.Selector.Type is not ({ Kind: SmileTypeKind.String } or { Kind: SmileTypeKind.Double }),
+                TargetLanguage.Java => select.Selector.Type is { Kind: SmileTypeKind.String },
                 _ => false
             };
         }
@@ -1302,7 +1302,7 @@ internal static partial class CoreBasicCodeGenerator
             }
 
             string nativeSelector = _language is TargetLanguage.ObjectiveC &&
-                select.Selector.Type is SmileType.Boolean
+                select.Selector.Type is { Kind: SmileTypeKind.Boolean }
                     ? $"(int){temporary}"
                     : temporary;
             Line(_language is TargetLanguage.Swift
@@ -1344,7 +1344,7 @@ internal static partial class CoreBasicCodeGenerator
                 Line();
             }
 
-            bool exhaustiveBoolean = select.Selector.Type is SmileType.Boolean &&
+            bool exhaustiveBoolean = select.Selector.Type is { Kind: SmileTypeKind.Boolean } &&
                 select.Cases.Any(clause => !clause.IsElse && clause.Value!.Value.BooleanValue) &&
                 select.Cases.Any(clause => !clause.IsElse && !clause.Value!.Value.BooleanValue);
             if (_language is TargetLanguage.Swift &&
@@ -1385,7 +1385,7 @@ internal static partial class CoreBasicCodeGenerator
         private string SelectCondition(string selector, SmileValue value)
         {
             string literal = Literal(value);
-            if (value.Type is SmileType.String)
+            if (value.Type is { Kind: SmileTypeKind.String })
             {
                 return _language switch
                 {
@@ -1478,7 +1478,7 @@ internal static partial class CoreBasicCodeGenerator
             string format = "\"";
             foreach (BoundExpression expression in print.Values)
             {
-                format += expression.Type is SmileType.Integer ? "%\" PRId64 \"" : "%s";
+                format += expression.Type is { Kind: SmileTypeKind.Integer } ? "%\" PRId64 \"" : "%s";
             }
 
             if (!print.SuppressNewLine)
@@ -1996,7 +1996,7 @@ internal static partial class CoreBasicCodeGenerator
                 TargetLanguage.Python => $"{name} = {expression}",
                 _ => $"{TypeName(type)} {name} = {expression};"
             });
-            if (UsesManagedCText && type is SmileType.String)
+            if (UsesManagedCText && type is { Kind: SmileTypeKind.String })
             {
                 Line($"smile_text_register(&{name});");
                 _managedTextTemporaryRoots.Peek().Add(name);
@@ -2016,7 +2016,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private string RenderBinary(BoundBinaryExpression binary, string left, string right)
         {
-            if (binary.Left.Type is SmileType.Double) return DoubleBinary(binary, left, right);
+            if (binary.Left.Type is { Kind: SmileTypeKind.Double }) return DoubleBinary(binary, left, right);
             if (binary.Operator.Kind is BoundBinaryOperatorKind.StringConcatenation)
             {
                 return _language switch
@@ -2027,7 +2027,7 @@ internal static partial class CoreBasicCodeGenerator
                 };
             }
 
-            if (binary.Left.Type is SmileType.String &&
+            if (binary.Left.Type is { Kind: SmileTypeKind.String } &&
                 binary.Operator.Kind is BoundBinaryOperatorKind.Equality or BoundBinaryOperatorKind.Inequality)
             {
                 bool equal = binary.Operator.Kind is BoundBinaryOperatorKind.Equality;
@@ -2210,7 +2210,7 @@ internal static partial class CoreBasicCodeGenerator
         {
             string left = Expression(binary.Left);
             string right = Expression(binary.Right);
-            if (binary.Left.Type is SmileType.Double) return DoubleBinary(binary, left, right);
+            if (binary.Left.Type is { Kind: SmileTypeKind.Double }) return DoubleBinary(binary, left, right);
             if (binary.Operator.Kind is BoundBinaryOperatorKind.StringConcatenation)
             {
                 return _language switch
@@ -2222,7 +2222,7 @@ internal static partial class CoreBasicCodeGenerator
                 };
             }
 
-            if (binary.Left.Type is SmileType.String &&
+            if (binary.Left.Type is { Kind: SmileTypeKind.String } &&
                 binary.Operator.Kind is BoundBinaryOperatorKind.Equality or BoundBinaryOperatorKind.Inequality)
             {
                 bool equal = binary.Operator.Kind is BoundBinaryOperatorKind.Equality;
@@ -2279,8 +2279,8 @@ internal static partial class CoreBasicCodeGenerator
 
         private string DisplayExpression(BoundExpression expression, string value)
         {
-            if (expression.Type is SmileType.Double) return DoubleDisplay(value);
-            if (expression.Type is not SmileType.Boolean)
+            if (expression.Type is { Kind: SmileTypeKind.Double }) return DoubleDisplay(value);
+            if (expression.Type is not { Kind: SmileTypeKind.Boolean })
             {
                 return _language is TargetLanguage.JavaScript ? $"String({value})" : value;
             }
@@ -2296,29 +2296,29 @@ internal static partial class CoreBasicCodeGenerator
 
         private string TypeName(SmileType type) => _language switch
         {
-            TargetLanguage.CSharp => type switch { SmileType.Double => "double", SmileType.Integer => "long", SmileType.Boolean => "bool", _ => "string" },
-            TargetLanguage.C => type switch { SmileType.Double => "double", SmileType.Integer => "int64_t", SmileType.Boolean => "bool", _ => "const char *" },
-            TargetLanguage.Java => type switch { SmileType.Double => "double", SmileType.Integer => "long", SmileType.Boolean => "boolean", _ => "String" },
-            TargetLanguage.ObjectiveC => type switch { SmileType.Double => "double", SmileType.Integer => "int64_t", SmileType.Boolean => "bool", _ => "const char *" },
-            TargetLanguage.Swift => type switch { SmileType.Double => "Double", SmileType.Integer => "Int64", SmileType.Boolean => "Bool", _ => "String" },
-            TargetLanguage.Cpp => type switch { SmileType.Double => "double", SmileType.Integer => "std::int64_t", SmileType.Boolean => "bool", _ => "std::string" },
+            TargetLanguage.CSharp => type switch { { Kind: SmileTypeKind.Double } => "double", { Kind: SmileTypeKind.Integer } => "long", { Kind: SmileTypeKind.Boolean } => "bool", _ => "string" },
+            TargetLanguage.C => type switch { { Kind: SmileTypeKind.Double } => "double", { Kind: SmileTypeKind.Integer } => "int64_t", { Kind: SmileTypeKind.Boolean } => "bool", _ => "const char *" },
+            TargetLanguage.Java => type switch { { Kind: SmileTypeKind.Double } => "double", { Kind: SmileTypeKind.Integer } => "long", { Kind: SmileTypeKind.Boolean } => "boolean", _ => "String" },
+            TargetLanguage.ObjectiveC => type switch { { Kind: SmileTypeKind.Double } => "double", { Kind: SmileTypeKind.Integer } => "int64_t", { Kind: SmileTypeKind.Boolean } => "bool", _ => "const char *" },
+            TargetLanguage.Swift => type switch { { Kind: SmileTypeKind.Double } => "Double", { Kind: SmileTypeKind.Integer } => "Int64", { Kind: SmileTypeKind.Boolean } => "Bool", _ => "String" },
+            TargetLanguage.Cpp => type switch { { Kind: SmileTypeKind.Double } => "double", { Kind: SmileTypeKind.Integer } => "std::int64_t", { Kind: SmileTypeKind.Boolean } => "bool", _ => "std::string" },
             _ => string.Empty
         };
 
         private string DefaultLiteral(SmileType type) => type switch
         {
-            SmileType.Double => "0.0",
-            SmileType.Integer => IntegerLiteral(0),
-            SmileType.Boolean => BooleanLiteral(false),
+            { Kind: SmileTypeKind.Double } => "0.0",
+            { Kind: SmileTypeKind.Integer } => IntegerLiteral(0),
+            { Kind: SmileTypeKind.Boolean } => BooleanLiteral(false),
             _ => StringLiteral(string.Empty)
         };
 
         private string Literal(SmileValue value) => value.Type switch
         {
-            SmileType.Double => DoubleSemantics.Format(value.DoubleValue),
-            SmileType.Integer => IntegerLiteral(value.IntegerValue),
-            SmileType.Boolean => BooleanLiteral(value.BooleanValue),
-            SmileType.String => StringLiteral(value.StringValue),
+            { Kind: SmileTypeKind.Double } => DoubleSemantics.Format(value.DoubleValue),
+            { Kind: SmileTypeKind.Integer } => IntegerLiteral(value.IntegerValue),
+            { Kind: SmileTypeKind.Boolean } => BooleanLiteral(value.BooleanValue),
+            { Kind: SmileTypeKind.String } => StringLiteral(value.StringValue),
             _ => StringLiteral(string.Empty)
         };
 
@@ -2589,7 +2589,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private static bool HasTextComparison(IReadOnlyList<BoundSourceItem> items) =>
             EnumerateExpressions(items).Any(expression => expression is BoundBinaryExpression binary &&
-                binary.Left.Type is SmileType.String &&
+                binary.Left.Type is { Kind: SmileTypeKind.String } &&
                 binary.Operator.Kind is BoundBinaryOperatorKind.Equality or BoundBinaryOperatorKind.Inequality);
 
         private static bool HasDivision(IReadOnlyList<BoundSourceItem> items) =>
@@ -2698,9 +2698,9 @@ internal static partial class CoreBasicCodeGenerator
         }));
 
         private bool ProgramHasTextComparison() => ProgramExpressions().Any(expression => expression is BoundBinaryExpression binary &&
-            binary.Left.Type is SmileType.String &&
+            binary.Left.Type is { Kind: SmileTypeKind.String } &&
             binary.Operator.Kind is BoundBinaryOperatorKind.Equality or BoundBinaryOperatorKind.Inequality) ||
-            ProgramStatements().OfType<BoundSelectStatement>().Any(select => select.Selector.Type is SmileType.String);
+            ProgramStatements().OfType<BoundSelectStatement>().Any(select => select.Selector.Type is { Kind: SmileTypeKind.String });
 
         private static IEnumerable<VariableSymbol> AssignedGlobals(IReadOnlyList<BoundSourceItem> items)
         {

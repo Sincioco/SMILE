@@ -19,20 +19,20 @@ internal sealed class DoubleProgramFeatures
     public DoubleProgramFeatures(BoundProgram program)
     {
         BoundExpression[] expressions = CoreBasicCodeGenerator.EnumerateExpressionsForSupport(program, includeConstants: false).ToArray();
-        HasSelection = ContainsStatement(program.SourceItems, statement => statement is BoundSelectStatement { Selector.Type: SmileType.Double }) ||
-            program.Routines.Any(routine => ContainsStatement(routine.SourceItems, statement => statement is BoundSelectStatement { Selector.Type: SmileType.Double }));
-        HasLiterals = HasSelection || expressions.Any(expression => expression is BoundDoubleLiteralExpression or BoundVariableExpression { Variable.IsConstant: true, Type: SmileType.Double });
-        HasNegation = expressions.OfType<BoundUnaryExpression>().Any(expression => expression.Type is SmileType.Double && expression.Operator.Kind is BoundUnaryOperatorKind.Negation);
-        HasComparisons = expressions.OfType<BoundBinaryExpression>().Any(expression => expression.Left.Type is SmileType.Double && expression.Type is SmileType.Boolean);
+        HasSelection = ContainsStatement(program.SourceItems, statement => statement is BoundSelectStatement { Selector.Type: { Kind: SmileTypeKind.Double } }) ||
+            program.Routines.Any(routine => ContainsStatement(routine.SourceItems, statement => statement is BoundSelectStatement { Selector.Type: { Kind: SmileTypeKind.Double } }));
+        HasLiterals = HasSelection || expressions.Any(expression => expression is BoundDoubleLiteralExpression or BoundVariableExpression { Variable.IsConstant: true, Type: { Kind: SmileTypeKind.Double } });
+        HasNegation = expressions.OfType<BoundUnaryExpression>().Any(expression => expression.Type is { Kind: SmileTypeKind.Double } && expression.Operator.Kind is BoundUnaryOperatorKind.Negation);
+        HasComparisons = expressions.OfType<BoundBinaryExpression>().Any(expression => expression.Left.Type is { Kind: SmileTypeKind.Double } && expression.Type is { Kind: SmileTypeKind.Boolean });
         Intrinsics = expressions.OfType<BoundIntrinsicExpression>().Where(DoubleSemantics.UsesDouble).Select(expression => expression.Kind).ToHashSet();
-        HasArithmetic = expressions.OfType<BoundBinaryExpression>().Any(expression => expression.Type is SmileType.Double);
-        HasDivision = expressions.OfType<BoundBinaryExpression>().Any(expression => expression.Type is SmileType.Double && expression.Operator.Kind is BoundBinaryOperatorKind.Division);
-        IsRequired = expressions.Any(expression => expression.Type is SmileType.Double) || program.AllVariables.Any(variable => variable.Type is SmileType.Double);
+        HasArithmetic = expressions.OfType<BoundBinaryExpression>().Any(expression => expression.Type is { Kind: SmileTypeKind.Double });
+        HasDivision = expressions.OfType<BoundBinaryExpression>().Any(expression => expression.Type is { Kind: SmileTypeKind.Double } && expression.Operator.Kind is BoundBinaryOperatorKind.Division);
+        IsRequired = expressions.Any(expression => expression.Type is { Kind: SmileTypeKind.Double }) || program.AllVariables.Any(variable => variable.Type is { Kind: SmileTypeKind.Double });
         HasFormatting = Has(BoundIntrinsicKind.TextFromDouble) || PrintUsesDouble(program.SourceItems) || program.Routines.Any(routine => PrintUsesDouble(routine.SourceItems));
     }
 
     private static bool PrintUsesDouble(IReadOnlyList<BoundSourceItem> items) => ContainsStatement(items,
-        statement => statement is BoundCorePrintStatement print && print.Values.Any(value => value.Type is SmileType.Double));
+        statement => statement is BoundCorePrintStatement print && print.Values.Any(value => value.Type is { Kind: SmileTypeKind.Double }));
 
     private static bool ContainsStatement(IReadOnlyList<BoundSourceItem> items, Func<BoundStatement, bool> predicate) => items.OfType<BoundStatement>().Any(statement => predicate(statement) || (statement switch
     {
