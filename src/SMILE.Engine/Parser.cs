@@ -75,6 +75,7 @@ internal sealed partial class Parser
         TokenKind.Option => ParseOptionExplicit(),
         TokenKind.Identifier => ParseAssignment(),
         TokenKind.Dim => ParseDim(),
+        TokenKind.Enum => ParseEnum(),
         TokenKind.Const => ParseConst(),
         TokenKind.Sub => ParseRoutine(RoutineKind.Sub),
         TokenKind.Function => ParseRoutine(RoutineKind.Function),
@@ -162,7 +163,7 @@ internal sealed partial class Parser
 
         Match(TokenKind.As, "Declarations require 'As Number', 'As Boolean', or 'As Text'.");
         Token type = ParseType("Expected Number, Double, Boolean, or Text after 'As'.");
-        SmileType declaredType = ToSmileType(type.Kind);
+        var declaredType = new TypeNameSyntax(type.Text, type.Span);
         endSpan = type.Span.Length == 0 ? endSpan : type.Span;
         return new DimStatementSyntax(name.Text, name.Span, declaredType, arraySizes, Combine(start.Span, endSpan));
     }
@@ -233,7 +234,7 @@ internal sealed partial class Parser
                 parameters.Add(new ParameterSyntax(
                     parameterName.Text,
                     parameterName.Span,
-                    ToSmileType(type.Kind),
+                    new TypeNameSyntax(type.Text, type.Span),
                     explicitByVal,
                     Combine(parameterStart.Span, defaultValue?.Span ?? type.Span), optional, defaultValue, byRef));
 
@@ -249,13 +250,13 @@ internal sealed partial class Parser
 
         Token close = Match(TokenKind.CloseParenthesis, "Expected ')' after the parameter list.");
         _delimiterDepth--;
-        SmileType? returnType = null;
+        TypeNameSyntax? returnType = null;
         TextSpan headerEnd = close.Span;
         if (kind is RoutineKind.Function)
         {
             Match(TokenKind.As, "Function declarations require a return type after 'As'.");
             Token type = ParseType("Expected Number, Double, Boolean, or Text for the Function return type.");
-            returnType = ToSmileType(type.Kind);
+            returnType = new TypeNameSyntax(type.Text, type.Span);
             headerEnd = type.Span;
         }
 
@@ -640,7 +641,7 @@ internal sealed partial class Parser
                     return new ErrorExpressionSyntax(token.Span);
                 }
 
-                return new NameExpressionSyntax(token.Text, token.Span);
+                return ParseMemberAccess(new NameExpressionSyntax(token.Text, token.Span));
             case TokenKind.OpenParenthesis:
                 Token open = Next();
                 _delimiterDepth++;
@@ -794,18 +795,10 @@ internal sealed partial class Parser
     {
         if (Current.Kind is TokenKind.Identifier && string.Equals(Current.Text, "Double", StringComparison.OrdinalIgnoreCase))
             return Next() with { Kind = TokenKind.DoubleType };
-        return Current.Kind is TokenKind.NumberType or TokenKind.BooleanType or TokenKind.TextType
+        return Current.Kind is TokenKind.NumberType or TokenKind.BooleanType or TokenKind.TextType or TokenKind.Identifier
             ? Next()
             : Match(TokenKind.NumberType, message);
     }
-
-    private static SmileType ToSmileType(TokenKind kind) => kind switch
-    {
-        TokenKind.DoubleType => SmileType.Double,
-        TokenKind.BooleanType => SmileType.Boolean,
-        TokenKind.TextType => SmileType.String,
-        _ => SmileType.Integer
-    };
 
     private bool AtLineEnd() => Current.Kind is TokenKind.EndOfLine or TokenKind.EndOfFile or TokenKind.Comment;
 
@@ -917,7 +910,7 @@ internal sealed partial class Parser
         Call, Return, Select, Case, ByVal, ByRef, Optional, BuiltInConstant, BuiltInFunction, UnsupportedKeyword,
         Plus, Minus, Star, Slash, Equals, NotEquals, Less, LessOrEquals,
         Greater, GreaterOrEquals, OpenParenthesis, CloseParenthesis,
-        OpenBracket, CloseBracket, Semicolon, Comma, ColonEquals
+        OpenBracket, CloseBracket, Semicolon, Comma, ColonEquals, Dot, Enum
     }
 
     private sealed record Token(TokenKind Kind, string Text, object? Value, TextSpan Span);
@@ -949,6 +942,7 @@ internal sealed partial class Parser
             ["ByVal"] = TokenKind.ByVal, ["ByRef"] = TokenKind.ByRef,
             ["Optional"] = TokenKind.Optional,
             ["Data"] = TokenKind.Data,
+            ["Enum"] = TokenKind.Enum,
             ["Timer"] = TokenKind.BuiltInFunction, ["Abs"] = TokenKind.BuiltInFunction,
             ["Min"] = TokenKind.BuiltInFunction, ["Max"] = TokenKind.BuiltInFunction,
             ["Text_Length"] = TokenKind.BuiltInFunction,
@@ -1214,6 +1208,7 @@ internal sealed partial class Parser
                 ']' => TokenKind.CloseBracket,
                 ';' => TokenKind.Semicolon,
                 ',' => TokenKind.Comma,
+                '.' => TokenKind.Dot,
                 ':' when PeekChar(1) == '=' => TokenKind.ColonEquals,
                 '<' when PeekChar(1) == '=' => TokenKind.LessOrEquals,
                 '<' when PeekChar(1) == '>' => TokenKind.NotEquals,

@@ -160,6 +160,17 @@ For a changed generator:
 4. run `MissionGuardrail` after changes to canonical statements, expressions, loops, output, or generation policy;
 5. use all-target toolchain and pinned parity coverage for broad language milestones.
 
+## Enum generation
+
+For nominal Enum, preserve exact type identity in the bound program and use
+native enum declarations wherever practical: C# `enum : long`, C++ `enum class`,
+Objective-C fixed-underlying enums, Java/Swift/Python enums. JavaScript uses a
+frozen object of BigInt members; MASM uses EQU and COBOL level-78 constants.
+C17 uses ordinary enums for int-sized values and int64 typedef/named macros
+for wider values. Java and Swift emit aliases of canonical members; native enum
+models that cannot represent unnamed zero receive one internal default case.
+No enum runtime helper or generic dispatch machinery is needed.
+
 ## Completion report
 
 Generator work reports:

@@ -499,6 +499,9 @@ public sealed partial class SmileEvaluator
             case BoundIntegerLiteralExpression literal:
                 value = SmileValue.FromInteger(literal.Value);
                 return Success(out error);
+            case BoundEnumExpression literal:
+                value = SmileValue.FromEnum(literal.EnumType, literal.Value);
+                return Success(out error);
             case BoundBooleanLiteralExpression literal:
                 value = SmileValue.FromBoolean(literal.Value);
                 return Success(out error);
@@ -858,6 +861,7 @@ public sealed partial class SmileEvaluator
 
     private static SmileValue DefaultValue(SmileType type) => type switch
     {
+        EnumTypeSymbol enumeration => SmileValue.FromEnum(enumeration, 0),
         { Kind: SmileTypeKind.Double } => SmileValue.FromDouble(0),
         { Kind: SmileTypeKind.Integer } => SmileValue.FromInteger(0),
         { Kind: SmileTypeKind.Boolean } => SmileValue.FromBoolean(false),
@@ -867,7 +871,7 @@ public sealed partial class SmileEvaluator
     private static bool ValuesEqual(SmileValue left, SmileValue right) => left.Type switch
     {
         { Kind: SmileTypeKind.Double } => left.DoubleValue == right.DoubleValue,
-        { Kind: SmileTypeKind.Integer } => left.IntegerValue == right.IntegerValue,
+        { Kind: SmileTypeKind.Integer or SmileTypeKind.Enum } => left.Type == right.Type && left.IntegerValue == right.IntegerValue,
         { Kind: SmileTypeKind.Boolean } => left.BooleanValue == right.BooleanValue,
         { Kind: SmileTypeKind.String } => string.Equals(left.StringValue, right.StringValue, StringComparison.Ordinal),
         _ => false

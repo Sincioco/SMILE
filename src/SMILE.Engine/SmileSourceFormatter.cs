@@ -157,6 +157,7 @@ public static class SmileSourceFormatter
                 CoreArrayAssignmentStatementSyntax assignment => assignment.Indices.Append(assignment.Value),
                 DimStatementSyntax declaration => declaration.ArraySizes,
                 ConstStatementSyntax constant => new[] { constant.Initializer },
+                EnumMemberDeclarationSyntax { Value: not null } member => new[] { member.Value },
                 CallStatementSyntax call => call.Arguments,
                 RoutineDeclarationSyntax routine => routine.Parameters
                     .Where(parameter => parameter.DefaultValue is not null).Select(parameter => parameter.DefaultValue!),
@@ -223,6 +224,9 @@ public static class SmileSourceFormatter
         {
             case RoutineDeclarationSyntax routine:
                 yield return routine.SourceItems;
+                break;
+            case EnumDeclarationSyntax enumeration:
+                yield return enumeration.SourceItems;
                 break;
             case IfStatementSyntax conditional:
                 foreach (ConditionalClauseSyntax clause in conditional.Clauses)
@@ -408,6 +412,9 @@ public static class SmileSourceFormatter
                         MarkStatement(statement, depth);
                         AddSemanticBoundary(items, index, statement, topLevel);
                         break;
+                    case EnumMemberDeclarationSyntax member:
+                        MarkHeader(StartLine(member.Span), EndLine(member.Span), depth);
+                        break;
                 }
             }
 
@@ -439,8 +446,8 @@ public static class SmileSourceFormatter
             }
 
             bool boundary = previous is OptionExplicitStatementSyntax ||
-                current is RoutineDeclarationSyntax ||
-                previous is RoutineDeclarationSyntax ||
+                current is RoutineDeclarationSyntax or EnumDeclarationSyntax ||
+                previous is RoutineDeclarationSyntax or EnumDeclarationSyntax ||
                 DeclarationGroup(previous) != DeclarationGroup(current) &&
                     DeclarationGroup(previous) is not null && DeclarationGroup(current) is not null ||
                 IsDeclaration(previous) && !IsDeclaration(current) ||
@@ -464,6 +471,11 @@ public static class SmileSourceFormatter
             int end = EndLine(statement.Span);
             switch (statement)
             {
+                case EnumDeclarationSyntax enumeration:
+                    MarkLine(start, depth);
+                    MarkItemList(enumeration.SourceItems, depth + 1);
+                    MarkLine(end, depth);
+                    break;
                 case RoutineDeclarationSyntax routine:
                 {
                     int headerEnd = HeaderEndLine(start, end, routine.SourceItems);

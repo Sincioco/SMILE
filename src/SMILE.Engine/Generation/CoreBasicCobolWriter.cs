@@ -34,6 +34,7 @@ internal sealed partial class CobolWriter
         Line("       PROGRAM-ID. Program.");
         Line("       DATA DIVISION.");
         Line("       WORKING-STORAGE SECTION.");
+        WriteEnumConstants();
         WriteStateDefinition(linkage: false);
         WritePlanStorage(main);
         Line("       PROCEDURE DIVISION.");
@@ -60,6 +61,11 @@ internal sealed partial class CobolWriter
         Line("       DATA DIVISION.");
 
         VariableSymbol[] locals = routine.Locals.Where(variable => !variable.IsParameter).ToArray();
+        if (_program.EnumTypes.Count > 0)
+        {
+            Line("       WORKING-STORAGE SECTION.");
+            WriteEnumConstants();
+        }
         if (locals.Length > 0 || plan.Temporaries.Count > 0 || plan.NeedsDisplayNumber)
         {
             Line("       LOCAL-STORAGE SECTION.");
@@ -220,7 +226,7 @@ internal sealed partial class CobolWriter
     private static string Picture(SmileType type) => type switch
     {
         { Kind: SmileTypeKind.Double } => "USAGE FLOAT-LONG",
-        { Kind: SmileTypeKind.Integer } => "PIC S9(18) COMP-5",
+        { Kind: SmileTypeKind.Integer or SmileTypeKind.Enum } => "PIC S9(18) COMP-5",
         { Kind: SmileTypeKind.Boolean } => "PIC 9 COMP-5",
         _ => $"PIC X({TextCapacity})"
     };
@@ -250,6 +256,7 @@ internal sealed partial class CobolWriter
 
     private string Literal(SmileValue value) => value.Type switch
     {
+        EnumTypeSymbol type => EnumOperand(type, value.IntegerValue),
         { Kind: SmileTypeKind.Double } => DoubleSemantics.Format(value.DoubleValue),
         { Kind: SmileTypeKind.Integer } => value.IntegerValue.ToString(CultureInfo.InvariantCulture),
         { Kind: SmileTypeKind.Boolean } => value.BooleanValue ? "1" : "0",
@@ -754,7 +761,7 @@ internal sealed partial class CobolWriter
 
         private static bool CanInlineCondition(BoundExpression expression) => expression switch
         {
-            BoundDoubleLiteralExpression or BoundStringLiteralExpression or BoundIntegerLiteralExpression or BoundBooleanLiteralExpression or BoundVariableExpression => true,
+            BoundEnumExpression or BoundDoubleLiteralExpression or BoundStringLiteralExpression or BoundIntegerLiteralExpression or BoundBooleanLiteralExpression or BoundVariableExpression => true,
             BoundUnaryExpression unary => CanInlineCondition(unary.Operand),
             BoundBinaryExpression binary when binary.Operator.Kind is
                 BoundBinaryOperatorKind.LogicalAnd or BoundBinaryOperatorKind.LogicalOr => false,
@@ -774,6 +781,8 @@ internal sealed partial class CobolWriter
                     return TargetEscapes.CobolString(text.Value);
                 case BoundIntegerLiteralExpression number:
                     return number.Value.ToString(CultureInfo.InvariantCulture);
+                case BoundEnumExpression member:
+                    return _owner.EnumOperand(member.EnumType, member.Value, member.Member);
                 case BoundBooleanLiteralExpression boolean:
                     return boolean.Value ? "1" : "0";
                 case BoundVariableExpression variable:
@@ -1106,6 +1115,7 @@ internal sealed partial class CobolWriter
                     Line(indent, "END-IF");
                     break;
                 case { Kind: SmileTypeKind.Double }:
+                case { Kind: SmileTypeKind.Enum }:
                     Line(indent, $"MOVE {expression} TO {target}");
                     break;
                 case { Kind: SmileTypeKind.Integer }:

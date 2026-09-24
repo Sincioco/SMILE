@@ -1,6 +1,6 @@
 namespace SMILE.Engine;
 
-internal sealed class TargetIdentifierMap
+internal sealed partial class TargetIdentifierMap
 {
     private const string MappedPrefix = "_smile_";
     private readonly IReadOnlyDictionary<VariableSymbol, string> _names;
@@ -50,6 +50,8 @@ internal sealed class TargetIdentifierMap
         var used = new HashSet<string>(StringComparer.Ordinal);
         var names = new Dictionary<VariableSymbol, string>();
         var routineNames = new Dictionary<RoutineSymbol, string>();
+        var result = new TargetIdentifierMap(names, routineNames);
+        result.AddEnumNames(program, language, reserved, used);
 
         foreach (VariableSymbol variable in program.AllVariables.Distinct())
         {
@@ -73,7 +75,7 @@ internal sealed class TargetIdentifierMap
             routineNames.Add(routine, unique);
         }
 
-        return new TargetIdentifierMap(names, routineNames);
+        return result;
     }
 
     public string Get(VariableSymbol variable) => _names[variable];

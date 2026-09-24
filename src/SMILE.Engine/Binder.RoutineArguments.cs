@@ -2,19 +2,19 @@ namespace SMILE.Engine;
 
 internal sealed partial class Binder
 {
-    private SmileValue? BindParameterDefault(ParameterSyntax parameter)
+    private SmileValue? BindParameterDefault(ParameterSyntax parameter, SmileType parameterType)
     {
         if (parameter.DefaultValue is null) return null;
         ExpressionSyntax source = parameter.DefaultValue;
         while (source is ParenthesizedExpressionSyntax parentheses) source = parentheses.Expression;
         bool permitted = source is DoubleLiteralExpressionSyntax or IntegerLiteralExpressionSyntax or StringLiteralExpressionSyntax or
-            BooleanLiteralExpressionSyntax or NameExpressionSyntax or
+            BooleanLiteralExpressionSyntax or NameExpressionSyntax or MemberAccessExpressionSyntax or
             UnaryExpressionSyntax { OperatorToken.Kind: SyntaxKind.MinusToken, Operand: IntegerLiteralExpressionSyntax or DoubleLiteralExpressionSyntax };
         BoundExpression expression = BindExpression(source, constantsOnly: true);
         StaticEvaluationResult result = BoundExpressionEvaluator.Evaluate(expression, _constantValues);
-        if (!permitted || !result.IsKnown || result.Value.Type != parameter.DeclaredType)
+        if (!permitted || !result.IsKnown || result.Value.Type != parameterType)
         {
-            Report("SMILE2161", "An Optional default must be a literal or Const of the exact parameter type.", source.Span);
+            Report("SMILE2161", "An Optional default must be a literal, Const or Enum member of the exact parameter type.", source.Span);
             return null;
         }
         return result.Value;

@@ -442,6 +442,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private void WriteGlobalDeclarations(bool fieldContext = false)
         {
+            WriteEnumDeclarations();
             foreach (VariableSymbol variable in _program.Variables)
             {
                 if (variable.IsConstant)
@@ -678,6 +679,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private void WriteArrayInitializers(IEnumerable<VariableSymbol> variables)
         {
+            WriteJavaEnumArrayInitializers(variables);
             foreach (VariableSymbol variable in variables.Where(item => item.IsArray && item.Type is { Kind: SmileTypeKind.String }))
             {
                 string name = Name(variable);
@@ -1864,6 +1866,7 @@ internal static partial class CoreBasicCodeGenerator
                 BoundStringLiteralExpression text => StringLiteral(text.Value),
                 BoundDoubleLiteralExpression number => DoubleSemantics.Format(number.Value),
                 BoundIntegerLiteralExpression number => IntegerLiteral(number.Value),
+                BoundEnumExpression member => EnumLiteral(member.EnumType, member.Value, member.Member),
                 BoundBooleanLiteralExpression boolean => BooleanLiteral(boolean.Value),
                 BoundVariableExpression variable => Name(variable.Variable),
                 BoundArrayExpression array => ArrayElement(array.Array, array.Indices),
@@ -1887,7 +1890,7 @@ internal static partial class CoreBasicCodeGenerator
         {
             switch (expression)
             {
-                case BoundDoubleLiteralExpression or BoundStringLiteralExpression or BoundIntegerLiteralExpression or BoundBooleanLiteralExpression or BoundVariableExpression:
+                case BoundEnumExpression or BoundDoubleLiteralExpression or BoundStringLiteralExpression or BoundIntegerLiteralExpression or BoundBooleanLiteralExpression or BoundVariableExpression:
                     return Expression(expression);
                 case BoundArrayExpression array:
                 {
@@ -2294,7 +2297,7 @@ internal static partial class CoreBasicCodeGenerator
             };
         }
 
-        private string TypeName(SmileType type) => _language switch
+        private string TypeName(SmileType type) => type is EnumTypeSymbol enumeration ? _identifiers.Get(enumeration) : _language switch
         {
             TargetLanguage.CSharp => type switch { { Kind: SmileTypeKind.Double } => "double", { Kind: SmileTypeKind.Integer } => "long", { Kind: SmileTypeKind.Boolean } => "bool", _ => "string" },
             TargetLanguage.C => type switch { { Kind: SmileTypeKind.Double } => "double", { Kind: SmileTypeKind.Integer } => "int64_t", { Kind: SmileTypeKind.Boolean } => "bool", _ => "const char *" },
@@ -2307,6 +2310,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private string DefaultLiteral(SmileType type) => type switch
         {
+            EnumTypeSymbol enumeration => EnumLiteral(enumeration, 0),
             { Kind: SmileTypeKind.Double } => "0.0",
             { Kind: SmileTypeKind.Integer } => IntegerLiteral(0),
             { Kind: SmileTypeKind.Boolean } => BooleanLiteral(false),
@@ -2315,6 +2319,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private string Literal(SmileValue value) => value.Type switch
         {
+            EnumTypeSymbol enumeration => EnumLiteral(enumeration, value.IntegerValue),
             { Kind: SmileTypeKind.Double } => DoubleSemantics.Format(value.DoubleValue),
             { Kind: SmileTypeKind.Integer } => IntegerLiteral(value.IntegerValue),
             { Kind: SmileTypeKind.Boolean } => BooleanLiteral(value.BooleanValue),
@@ -2335,15 +2340,17 @@ internal static partial class CoreBasicCodeGenerator
                 return value == long.MinValue ? "Long.MIN_VALUE" : text + "L";
             }
 
-            if (_language is TargetLanguage.C && value == long.MinValue)
+            if (_language is TargetLanguage.C or TargetLanguage.ObjectiveC && value == long.MinValue)
             {
                 return "INT64_MIN";
             }
 
-            if (_language is TargetLanguage.C && value is not (>= int.MinValue and <= int.MaxValue))
+            if (_language is TargetLanguage.C or TargetLanguage.ObjectiveC && value is not (>= int.MinValue and <= int.MaxValue))
             {
                 return value < 0 ? $"-INT64_C({-value})" : $"INT64_C({value})";
             }
+
+            if (_language is TargetLanguage.Cpp && value == long.MinValue) return "(-9223372036854775807LL - 1)";
 
             return text;
         }

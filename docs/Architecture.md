@@ -33,11 +33,17 @@ The parser preserves ordered comments and blank lines alongside statements, buil
 `SmileType` is an immutable type symbol. The five existing scalar/error symbols
 are shared singletons; exact assignment, argument and return checks compare
 symbol identity. `SmileTypeKind` describes their storage/operation category.
-This separates nominal identity from representation before the enum/record/class
-back-port, without enabling that syntax yet. Scalar type-pattern matching uses
+Each Enum owns its symbol and checked member values. Scalar type-pattern matching uses
 Kind, while semantic equality stays exact. The bound program, symbols and values
 carry the type directly; no process-wide registry or numeric type-ID allocation
-is involved. Existing generated scalar code remains unchanged.
+is involved. `TypeNameSyntax` keeps unresolved type spelling/location in the
+syntax tree. `Parser.Enums` owns declarations/member-access syntax;
+`Binder.Enums` resolves named types and checked Enum initializers before ordinary
+constants and routine signatures. `Enums.cs` holds the focused syntax/symbol/bound
+model; values retain nominal identity through evaluation, aliases and ByRef.
+The structured enum writer and native enum writers emit declarations/constants;
+`TargetIdentifierMap.Enums` owns safe type/member spellings. Records and classes
+remain pending. No enum runtime helper, type registry or numeric type ID is added.
 
 Binding is case-insensitive with a shared program namespace and per-routine scopes:
 

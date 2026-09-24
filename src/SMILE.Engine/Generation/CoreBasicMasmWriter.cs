@@ -57,6 +57,9 @@ internal sealed partial class CoreBasicMasmWriter
             : null;
 
         Line("option casemap:none");
+        foreach (EnumTypeSymbol type in _program.EnumTypes)
+            foreach (EnumMemberSymbol member in type.Members)
+                Line($"{_identifiers.Get(member)} EQU {member.Value.ToString(CultureInfo.InvariantCulture)}");
         WriteDoublePrototypes();
         if (_features.HasTextFileLoad) Line("smile_load_text_file PROTO :PTR BYTE, :PTR QWORD, :QWORD");
         if (_features.HasDataLoad) Line("smile_load_data PROTO :PTR BYTE, :QWORD, :PTR QWORD, :QWORD, :PTR QWORD, :DWORD");
@@ -227,6 +230,7 @@ internal sealed partial class CoreBasicMasmWriter
         return value.Type switch
         {
             { Kind: SmileTypeKind.Double } => $"QWORD PTR {InternDouble(value.DoubleValue)}",
+            EnumTypeSymbol type => EnumOperand(type, value.IntegerValue),
             { Kind: SmileTypeKind.Integer } => value.IntegerValue.ToString(CultureInfo.InvariantCulture),
             { Kind: SmileTypeKind.Boolean } => value.BooleanValue ? "1" : "0",
             _ => $"OFFSET {InternString(value.StringValue)}"
@@ -1070,6 +1074,9 @@ internal sealed partial class CoreBasicMasmWriter
                     return;
                 case BoundIntegerLiteralExpression number:
                     Emit(indent, $"mov rax, {number.Value.ToString(CultureInfo.InvariantCulture)}");
+                    return;
+                case BoundEnumExpression member:
+                    Emit(indent, $"mov rax, {_owner.EnumOperand(member.EnumType, member.Value, member.Member)}");
                     return;
                 case BoundBooleanLiteralExpression boolean:
                     Emit(indent, $"mov rax, {(boolean.Value ? 1 : 0)}");

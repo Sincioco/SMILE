@@ -5,7 +5,7 @@ Authority inspected read-only: `D:\SMILE 2.0`, commit
 before inspection and after the unchanged fixture compilation/execution.
 
 The overall requested back-port is **not complete**. This file records the
-completed text, routine, console-key, Double, text-file, and scalar/array ByRef milestones and the remaining source-language gaps.
+completed text, routine, console-key, Double, text-file, persistence, Enum, and scalar/array ByRef milestones and the remaining source-language gaps.
 
 ## Implemented in this milestone
 
@@ -24,6 +24,7 @@ completed text, routine, console-key, Double, text-file, and scalar/array ByRef 
 | Load Text File | Expression paths, executable-relative normalization, bounded UTF-8 bytes, BOM removal, zero-fill, safe missing/unreadable results; all ten targets |
 | Integer Load/Save | Literal keys, Number variables/constants, eagerly evaluated defaults, signed-64 decimal files, stable source identity; evaluator and all ten targets |
 | Data Load/Save | Byte arrays, computed UTF-8 keys, 1 MiB bound, SMD4 checksums, checked recovery/Status and strict failures; evaluator and all ten targets |
+| Nominal Enum | Checked signed-64 members, aliases, zero initialization, Const, arrays, ByVal/ByRef, Optional defaults, returns, exact equality and Select; evaluator and all ten targets |
 | Checked Double failures | Invalid domains, zero divisors, conversion overflow and nonfinite results report their source line before destination mutation |
 
 The UTF-8 output fix addresses failures observed during actual generated-program
@@ -36,7 +37,7 @@ execution on Windows. Ordinary ASCII programs retain their minimal output.
 | Writable record arguments | ByRef field locations after records/classes are implemented; scalar/array locations are complete |
 | Console keys | Standalone Control key events: character-stream APIs do not report modifier-only events; a native console-event boundary is still needed |
 | Files and persistence | Project ApplicationId ownership/configuration; current loose programs use the source filename stem |
-| Value types | Nominal Enum declarations/members and Type records, nested fields, fixed-array fields, deep copies, and exact nominal typing |
+| Value types | Type records, nested fields, fixed-array fields, deep copies, and exact nominal typing; Enum is complete |
 | Object members | Type methods/properties, Class references/constructors, Me, New, Nothing, Is/Is Not, With blocks, member visibility and ownership |
 | Program organization | Module/Import, qualified names, visibility, multi-file source/project inputs, deterministic source-owned libraries |
 
@@ -119,6 +120,8 @@ ByRef counts and post-I/O Count/Status location order. Strict load/save failures
 preserve prior output and exit 2 on all ten targets. Native header/API differences
 use the widely available BCrypt create/update/finish API. C/Objective-C now widen
 direct Number literals correctly at the variadic Print boundary.
+
+The Enum fixture also runs unchanged in SMILE 2.0 and across all ten targets, checking aliases, signed limits, unnamed zero, arrays, ByRef/ByVal, Optional defaults, named calls, returns, Select and target-sensitive member names. Objective-C minimum-Int64 enum literals use the signed-safe native constant after an actual compiler failure. Enum lowering adds native declarations/constants only, with no runtime helper.
 
 No repository file-size/complexity checker or reviewed no-growth baseline was
 found in SMILE 1.0. Existing broad writers received focused wiring; new text and

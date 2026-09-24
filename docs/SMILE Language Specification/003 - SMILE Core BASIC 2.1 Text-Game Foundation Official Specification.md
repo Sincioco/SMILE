@@ -12,6 +12,9 @@ Every source-model, typing, expression-order, Print, control-flow, routine, scop
 
 ## Fixed one- and two-dimensional arrays
 
+Enum element types are also supported, with the same bounds, location and
+routine-local lifetime rules below; their default value is nominal zero.
+
 ```smile
 Const Width = 12
 Const Height = 8
@@ -392,6 +395,54 @@ supply `programName`; its default is `Program`. Evaluator callers may inject
 `SmileEvaluationOptions.Storage`. The optional root replaces LocalAppData.
 SMILE 1.0 intentionally has a separate product storage namespace from SMILE 2.0;
 it does not automatically migrate that product's executable-named integer saves.
+
+## Nominal enums
+
+```smile
+Enum Direction
+    None
+    Up = 10
+    Down
+    Left = -1
+    Right = -1
+End Enum
+Const StartingDirection = Direction.Left
+Dim Heading As Direction
+Heading = StartingDirection
+Print Heading = Direction.Right
+```
+
+- Declare a nonempty Enum directly at program level. Type/member names are
+  case-insensitive. The type shares the program declaration namespace; members
+  belong to that type and are accessed with a dot. Contextual member names such
+  as None, Up, Down, Left, Right, Key, Text and Double follow SMILE 2.0.
+- The first implicit member is zero; each subsequent implicit member is the
+  preceding value plus one. Values are checked signed 64-bit integers. Explicit
+  expressions may use Number literals, forward Number Const references,
+  parentheses, unary minus, `+`, `-`, `*`, `/`, Mod, Abs, Min and Max. Overflow,
+  zero division and circular constants are errors. Enum members, unary plus,
+  Double and runtime expressions are not permitted as initializer operands.
+- Duplicate member names are errors; duplicate values are aliases. Every Enum
+  is a distinct nominal type, even if its member names and values match another.
+- Variables and array cells initialize to zero of their declared Enum, including
+  when no named member has value zero. Enum Const values, inferred assignment,
+  fixed rank-one/rank-two arrays, ByVal/ByRef parameters, Optional member/Const
+  defaults and Function returns preserve exact nominal identity.
+- Only `=` and `<>` between the same Enum are permitted. Print, arithmetic,
+  ordering, implicit/explicit numeric conversions, array indexes and loop
+  controls do not accept Enum values.
+- Select Case accepts exact-type compile-time Enum values. Cases that name two
+  aliases of the same value are duplicates and therefore invalid.
+
+Generation uses C# long enums, C++ scoped int64 enums, Objective-C fixed-int64
+enums, Java/Swift/Python native enums, JavaScript frozen BigInt objects, MASM EQU
+constants and COBOL level-78 constants with native scalar storage. C17 uses a
+normal enum for int-sized members, otherwise an int64 typedef plus named integer
+macros because standard C17 enumerators cannot represent all signed-64 values.
+Java/Swift aliases refer to a canonical member; Java documents numeric values in
+comments because the language exposes no underlying integer enum type. Java,
+Swift and Python add a named internal zero case only when the declaration lacks
+one. These are native declarations, with no enum runtime helper.
 
 ## Data persistence
 

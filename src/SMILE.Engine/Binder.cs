@@ -29,6 +29,7 @@ internal sealed partial class Binder
     {
         ValidateOptionExplicit(syntax.SourceItems);
         InventoryProgramDeclarations(syntax.SourceItems);
+        BindEnums();
 
         foreach (string name in _constantSyntax.Keys.ToArray())
         {
@@ -50,7 +51,7 @@ internal sealed partial class Binder
                 topLevel,
                 _globals.Values.OrderBy(symbol => symbol.DeclarationSpan.Start).ToArray(),
                 _boundRoutines,
-                _optionExplicit),
+                _optionExplicit) { EnumTypes = _enums.Values.ToArray() },
             _diagnostics);
     }
 
@@ -80,6 +81,10 @@ internal sealed partial class Binder
         {
             switch (item)
             {
+                case EnumDeclarationSyntax enumeration:
+                    if (ReserveProgramName(enumeration.Name, enumeration.NameSpan))
+                        _enums.Add(enumeration.Name, new EnumTypeSymbol(enumeration));
+                    break;
                 case ConstStatementSyntax constant:
                     if (ReserveProgramName(constant.Name, constant.NameSpan))
                     {
@@ -177,7 +182,7 @@ internal sealed partial class Binder
             _globals[dim.Name] = new VariableSymbol(
                 dim.Name,
                 dim.NameSpan,
-                dim.DeclaredType,
+                ResolveType(dim.DeclaredType),
                 IsConstant: false,
                 RoutineName: null,
                 ArrayLength: dimensions.Count > 0 ? dimensions[0] : 0,
@@ -205,11 +210,12 @@ internal sealed partial class Binder
                     Report("SMILE2160", "Required parameters must precede Optional parameters.", parameter.Span);
                 }
                 sawOptional |= parameter.IsOptional;
-                SmileValue? defaultValue = BindParameterDefault(parameter);
+                SmileType parameterType = ResolveType(parameter.DeclaredType);
+                SmileValue? defaultValue = BindParameterDefault(parameter, parameterType);
                 parameters.Add(new VariableSymbol(
                     parameter.Name,
                     parameter.NameSpan,
-                    parameter.DeclaredType,
+                    parameterType,
                     IsConstant: false,
                     RoutineName: declaration.Name,
                     ArrayLength: 0,
@@ -223,7 +229,7 @@ internal sealed partial class Binder
                 declaration.NameSpan,
                 declaration.Kind,
                 parameters,
-                declaration.ReturnType));
+                declaration.ReturnType is null ? null : ResolveType(declaration.ReturnType)));
         }
     }
 
@@ -384,7 +390,7 @@ internal sealed partial class Binder
                     _locals.Add(dim.Name, new VariableSymbol(
                         dim.Name,
                         dim.NameSpan,
-                        dim.DeclaredType,
+                        ResolveType(dim.DeclaredType),
                         IsConstant: false,
                         RoutineName: routineName,
                         ArrayLength: dimensions.Count > 0 ? dimensions[0] : 0,
@@ -424,6 +430,8 @@ internal sealed partial class Binder
             {
                 BlankLineSyntax => new BoundBlankLine(),
                 FullLineCommentSyntax comment => new BoundFullLineComment(comment.Marker, comment.Payload),
+                EnumDeclarationSyntax when directProgramLevel => null,
+                EnumDeclarationSyntax enumeration => BindNestedEnum(enumeration),
                 RoutineDeclarationSyntax routine when directProgramLevel => null,
                 RoutineDeclarationSyntax routine => BindNestedRoutine(routine),
                 OptionExplicitStatementSyntax option when directProgramLevel => null,
@@ -722,10 +730,14 @@ internal sealed partial class Binder
         return new BoundSelectStatement(selector, clauses);
     }
 
-    private BoundStatement BindPrint(CorePrintStatementSyntax syntax) =>
-        new BoundCorePrintStatement(
-            syntax.Values.Select(value => BindExpression(value)).ToArray(),
-            syntax.SuppressNewLine);
+    private BoundStatement BindPrint(CorePrintStatementSyntax syntax)
+    {
+        BoundExpression[] values = syntax.Values.Select(value => BindExpression(value)).ToArray();
+        for (int index = 0; index < values.Length; index++)
+            if (values[index].Type is EnumTypeSymbol)
+                Report("SMILE3424", "Print does not accept Enum values; compare a member or select a Text label.", syntax.Values[index].Span);
+        return new BoundCorePrintStatement(values, syntax.SuppressNewLine);
+    }
 
     private BoundStatement BindIf(IfStatementSyntax syntax)
     {
@@ -848,6 +860,8 @@ internal sealed partial class Binder
                 return BindExpression(parenthesized.Expression, constantsOnly);
             case NameExpressionSyntax name:
                 return BindName(name, constantsOnly);
+            case MemberAccessExpressionSyntax member:
+                return BindMember(member);
             case ArrayAccessExpressionSyntax array:
                 if (constantsOnly)
                 {
@@ -1195,6 +1209,6 @@ internal sealed partial class Binder
         { Kind: SmileTypeKind.Integer } => "Number",
         { Kind: SmileTypeKind.Boolean } => "Boolean",
         { Kind: SmileTypeKind.String } => "Text",
-        _ => "Error"
+        _ => type.Name
     };
 }

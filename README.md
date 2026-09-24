@@ -88,6 +88,25 @@ returns zero). See the [Data contract](docs/SMILE%20Language%20Specification/003
 including Node.js's two-step atomic backup/primary publication. Project
 ApplicationId configuration remains part of the outstanding project back-port.
 
+Nominal enums now work in the evaluator and all ten targets:
+
+```smile
+Enum Direction
+    None
+    Left = -1
+    Right = 1
+End Enum
+Dim Heading As Direction
+Heading = Direction.Left
+Print Heading = Direction.Left
+```
+
+Members hold checked signed 64-bit values; aliases are allowed and storage
+defaults to zero. Enum arrays, Const, exact-type ByVal/ByRef, Optional defaults,
+returns and Select Case are supported. Enum values cannot be printed, converted
+to Number, ordered or used in arithmetic. Records, classes and modules remain
+pending. See the [enum contract](docs/SMILE%20Language%20Specification/003%20-%20SMILE%20Core%20BASIC%202.1%20Text-Game%20Foundation%20Official%20Specification.md#nominal-enums).
+
 ### Three original games, written entirely in SMILE
 
 The latest implementation expands the terminal games with larger boards, named colors, cursor-based redraws, and state-driven updates. Their rules live in ordinary `.smile` programs: arrays hold the board, routines organize behavior, and loops respond to keys and time.
@@ -226,10 +245,12 @@ For complete interactive programs, follow the three game sources above or the sm
 
 The engine carries immutable type symbols through binding, evaluation and
 generation. Built-in types are shared symbols; storage categories are separate
-from exact type identity, preparing the pending enum/record/class back-port.
+from exact type identity. Each Enum declaration owns a distinct type symbol;
+record/class support remains pending.
 For Engine API callers, `SmileType` is now a symbol class with `Kind` and `Name`;
 the existing `SmileType.Integer`, `Double`, `String`, `Boolean`, and `Error`
-members remain available. Existing scalar source and generated code are unchanged.
+members remain available. Parsed declarations carry `TypeNameSyntax`; the binder
+resolves those names to symbols. Existing scalar source remains valid.
 
 ![SMILE compiler pipeline: source to lexer and parser, binder, typed bound program, then evaluator or ten target writers, with optional local build and run.](docs/assets/readme/compiler-pipeline.svg)
 

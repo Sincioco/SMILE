@@ -1,6 +1,12 @@
 ' SMILE Core BASIC 2.1 cumulative language reference.
 ' Apostrophe comments may use their own line or follow a statement.
 
+Enum Direction
+    None
+    Left = -1
+    Right = 1
+End Enum
+
 Const ProductName = "SMILE"
 Const Quotation = "She said ""Hello""."
 Const BoardWidth = 4
@@ -42,6 +48,7 @@ Dim FileBytes[16] As Number
 Dim FileByteCount As Number
 Dim BestScore As Number
 Dim DataStatus As Number
+Dim Heading As Direction
 
 FirstName = "Sin"
 LastName = "Cioco"
@@ -167,6 +174,17 @@ FileBytes[1] = 105
 Save Data FileBytes Count 2 To "reference-bytes" Status DataStatus
 Load Data "reference-bytes" Into FileBytes Count FileByteCount Status DataStatus
 Print "Saved bytes="; FileByteCount; ", status="; DataStatus
+
+Heading = Direction.Left
+Print "Enum comparison="; Heading = Direction.Left
+
+Select Case Heading
+    Case Direction.Left
+        Print "The enum selected Left."
+
+    Case Else
+        Print "The enum selected another direction."
+End Select
 
 Call ShowGreeting()
 Call ShowGreeting(Caption:="Welcome", Learner:="Sin")

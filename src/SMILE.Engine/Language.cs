@@ -207,6 +207,8 @@ public readonly record struct SmileValue
     public static SmileValue FromInteger(long value) =>
         new(SmileType.Integer, null, value, false);
 
+    public static SmileValue FromEnum(EnumTypeSymbol type, long value) => new(type, null, value, false);
+
     public static SmileValue FromBoolean(bool value) =>
         new(SmileType.Boolean, null, 0, value);
 
@@ -300,6 +302,8 @@ public sealed record BoundProgram
     public bool OptionExplicit { get; }
 
     public string ProgramName { get; init; } = "Program";
+
+    public IReadOnlyList<EnumTypeSymbol> EnumTypes { get; init; } = [];
 
     public IEnumerable<VariableSymbol> AllVariables =>
         Variables.Concat(Routines.SelectMany(routine => routine.Locals));
@@ -701,7 +705,9 @@ public sealed class BoundBinaryOperator
         SyntaxKind syntaxKind,
         SmileType leftType,
         SmileType rightType) =>
-        Operators.SingleOrDefault(op =>
+        leftType is EnumTypeSymbol && leftType == rightType && syntaxKind is SyntaxKind.EqualsToken or SyntaxKind.NotEqualsToken
+        ? new BoundBinaryOperator(syntaxKind, syntaxKind is SyntaxKind.EqualsToken ? BoundBinaryOperatorKind.Equality : BoundBinaryOperatorKind.Inequality, leftType, SmileType.Boolean)
+        : Operators.SingleOrDefault(op =>
             op.SyntaxKind == syntaxKind &&
             op.LeftType == leftType &&
             op.RightType == rightType);
@@ -786,6 +792,7 @@ public static class BoundExpressionEvaluator
                 StaticEvaluationResult.Known(SmileValue.FromString(literal.Value)),
             BoundIntegerLiteralExpression literal =>
                 StaticEvaluationResult.Known(SmileValue.FromInteger(literal.Value)),
+            BoundEnumExpression literal => StaticEvaluationResult.Known(SmileValue.FromEnum(literal.EnumType, literal.Value)),
             BoundBooleanLiteralExpression literal =>
                 StaticEvaluationResult.Known(SmileValue.FromBoolean(literal.Value)),
             BoundVariableExpression variable when values.TryGetValue(variable.Variable, out SmileValue value) =>
@@ -1142,7 +1149,7 @@ public static class BoundExpressionEvaluator
         {
             { Kind: SmileTypeKind.String } => string.Equals(left.StringValue, right.StringValue, StringComparison.Ordinal),
             { Kind: SmileTypeKind.Double } => left.DoubleValue == right.DoubleValue,
-            { Kind: SmileTypeKind.Integer } => left.IntegerValue == right.IntegerValue,
+            { Kind: SmileTypeKind.Integer or SmileTypeKind.Enum } => left.Type == right.Type && left.IntegerValue == right.IntegerValue,
             { Kind: SmileTypeKind.Boolean } => left.BooleanValue == right.BooleanValue,
             _ => false
         };

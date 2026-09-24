@@ -13,7 +13,7 @@ public sealed record CoreAssignmentStatementSyntax(
 public sealed record DimStatementSyntax(
     string Name,
     TextSpan NameSpan,
-    SmileType DeclaredType,
+    TypeNameSyntax DeclaredType,
     IReadOnlyList<ExpressionSyntax> ArraySizes,
     TextSpan Span)
     : StatementSyntax(Span)
@@ -37,7 +37,7 @@ public enum RoutineKind
 public sealed record ParameterSyntax(
     string Name,
     TextSpan NameSpan,
-    SmileType DeclaredType,
+    TypeNameSyntax DeclaredType,
     bool HasExplicitByVal,
     TextSpan Span,
     bool IsOptional = false,
@@ -64,7 +64,7 @@ public sealed record RoutineDeclarationSyntax(
     string Name,
     TextSpan NameSpan,
     IReadOnlyList<ParameterSyntax> Parameters,
-    SmileType? ReturnType,
+    TypeNameSyntax? ReturnType,
     IReadOnlyList<SourceItemSyntax> SourceItems,
     TextSpan Span)
     : StatementSyntax(Span)
