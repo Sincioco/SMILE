@@ -36,6 +36,7 @@ internal sealed partial class Binder
             ResolveConstant(name);
         }
 
+        BindRecords();
         DeclareGlobalDimensions(arrays: false);
         DeclareGlobalDimensions(arrays: true);
         BuildRoutineSignatures();
@@ -51,7 +52,7 @@ internal sealed partial class Binder
                 topLevel,
                 _globals.Values.OrderBy(symbol => symbol.DeclarationSpan.Start).ToArray(),
                 _boundRoutines,
-                _optionExplicit) { EnumTypes = _enums.Values.ToArray() },
+                _optionExplicit) { EnumTypes = _enums.Values.ToArray(), RecordTypes = _orderedRecords },
             _diagnostics);
     }
 
@@ -81,6 +82,10 @@ internal sealed partial class Binder
         {
             switch (item)
             {
+                case RecordDeclarationSyntax record:
+                    if (ReserveProgramName(record.Name, record.NameSpan))
+                        _records.Add(record.Name, new RecordTypeSymbol(record));
+                    break;
                 case EnumDeclarationSyntax enumeration:
                     if (ReserveProgramName(enumeration.Name, enumeration.NameSpan))
                         _enums.Add(enumeration.Name, new EnumTypeSymbol(enumeration));
@@ -182,7 +187,7 @@ internal sealed partial class Binder
             _globals[dim.Name] = new VariableSymbol(
                 dim.Name,
                 dim.NameSpan,
-                ResolveType(dim.DeclaredType),
+                ResolveVariableType(dim, dimensions),
                 IsConstant: false,
                 RoutineName: null,
                 ArrayLength: dimensions.Count > 0 ? dimensions[0] : 0,
@@ -390,7 +395,7 @@ internal sealed partial class Binder
                     _locals.Add(dim.Name, new VariableSymbol(
                         dim.Name,
                         dim.NameSpan,
-                        ResolveType(dim.DeclaredType),
+                        ResolveVariableType(dim, dimensions),
                         IsConstant: false,
                         RoutineName: routineName,
                         ArrayLength: dimensions.Count > 0 ? dimensions[0] : 0,
@@ -432,6 +437,8 @@ internal sealed partial class Binder
                 FullLineCommentSyntax comment => new BoundFullLineComment(comment.Marker, comment.Payload),
                 EnumDeclarationSyntax when directProgramLevel => null,
                 EnumDeclarationSyntax enumeration => BindNestedEnum(enumeration),
+                RecordDeclarationSyntax when directProgramLevel => null,
+                RecordDeclarationSyntax record => BindNestedRecord(record),
                 RoutineDeclarationSyntax routine when directProgramLevel => null,
                 RoutineDeclarationSyntax routine => BindNestedRoutine(routine),
                 OptionExplicitStatementSyntax option when directProgramLevel => null,
@@ -463,6 +470,7 @@ internal sealed partial class Binder
     private BoundStatement? BindStatement(StatementSyntax statement, bool directProgramLevel) => statement switch
     {
         CoreAssignmentStatementSyntax assignment => BindAssignment(assignment),
+        MemberAssignmentStatementSyntax assignment => BindMemberAssignment(assignment),
         DataLoadStatementSyntax load => BindDataLoad(load),
         DataSaveStatementSyntax save => BindDataSave(save),
         CoreArrayAssignmentStatementSyntax assignment => BindArrayAssignment(assignment),
@@ -670,6 +678,7 @@ internal sealed partial class Binder
     private BoundStatement BindSelect(SelectStatementSyntax syntax)
     {
         BoundExpression selector = BindExpression(syntax.Selector);
+        if (selector.Type is RecordTypeSymbol) Report("SMILE3409", "Select Case cannot compare whole records.", syntax.Selector.Span);
         var clauses = new List<BoundSelectCaseClause>();
         var seen = new HashSet<SmileValue>();
         bool sawElse = false;
@@ -734,8 +743,8 @@ internal sealed partial class Binder
     {
         BoundExpression[] values = syntax.Values.Select(value => BindExpression(value)).ToArray();
         for (int index = 0; index < values.Length; index++)
-            if (values[index].Type is EnumTypeSymbol)
-                Report("SMILE3424", "Print does not accept Enum values; compare a member or select a Text label.", syntax.Values[index].Span);
+            if (values[index].Type is EnumTypeSymbol or RecordTypeSymbol)
+                Report("SMILE3424", "Print accepts scalar Text, Number, Double or Boolean values.", syntax.Values[index].Span);
         return new BoundCorePrintStatement(values, syntax.SuppressNewLine);
     }
 
@@ -861,7 +870,9 @@ internal sealed partial class Binder
             case NameExpressionSyntax name:
                 return BindName(name, constantsOnly);
             case MemberAccessExpressionSyntax member:
-                return BindMember(member);
+                return BindMember(member, constantsOnly);
+            case IndexedMemberExpressionSyntax indexed:
+                return BindRecordField(indexed.Member, indexed.Indices, constantsOnly);
             case ArrayAccessExpressionSyntax array:
                 if (constantsOnly)
                 {
@@ -1008,15 +1019,18 @@ internal sealed partial class Binder
     private IReadOnlyList<BoundExpression> BindArrayIndices(
         VariableSymbol array,
         IReadOnlyList<ExpressionSyntax> syntax,
-        TextSpan span)
+        TextSpan span) => BindArrayIndices(array.Name, array.ArrayDimensions, syntax, span);
+
+    private IReadOnlyList<BoundExpression> BindArrayIndices(string name, IReadOnlyList<int> dimensions,
+        IReadOnlyList<ExpressionSyntax> syntax, TextSpan span)
     {
         BoundExpression[] indices = syntax.Select(index => BindExpression(index)).ToArray();
-        if (indices.Length != array.ArrayRank)
+        if (indices.Length != dimensions.Count)
         {
-            Report("SMILE2152", $"Array '{array.Name}' requires {array.ArrayRank} index value(s).", span);
+            Report("SMILE2152", $"Array '{name}' requires {dimensions.Count} index value(s).", span);
         }
 
-        int count = Math.Min(indices.Length, array.ArrayRank);
+        int count = Math.Min(indices.Length, dimensions.Count);
         for (int position = 0; position < indices.Length; position++)
         {
             ExpressionSyntax indexSyntax = syntax[position];
@@ -1028,7 +1042,7 @@ internal sealed partial class Binder
             }
 
             StaticEvaluationResult evaluation = BoundExpressionEvaluator.Evaluate(index, _constantValues);
-            int length = position == 0 ? array.ArrayLength : array.ArraySecondLength;
+            int length = dimensions[position];
             if (evaluation.IsKnown && !evaluation.MayFailAtRuntime)
             {
                 long value = evaluation.Value.IntegerValue;
@@ -1036,7 +1050,7 @@ internal sealed partial class Binder
                 {
                     Report(
                         "SMILE2146",
-                        $"Array index {value} for dimension {position + 1} is outside the valid range 0 through {length - 1} for '{array.Name}'.",
+                        $"Array index {value} for dimension {position + 1} is outside the valid range 0 through {length - 1} for '{name}'.",
                         indexSyntax.Span);
                 }
             }

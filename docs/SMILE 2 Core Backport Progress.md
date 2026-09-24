@@ -5,7 +5,7 @@ Authority inspected read-only: `D:\SMILE 2.0`, commit
 before inspection and after the unchanged fixture compilation/execution.
 
 The overall requested back-port is **not complete**. This file records the
-completed text, routine, console-key, Double, text-file, persistence, Enum, and scalar/array ByRef milestones and the remaining source-language gaps.
+completed text, routine, console-key, Double, text-file, persistence, Enum, Type value-record, and ByRef milestones and the remaining source-language gaps.
 
 ## Implemented in this milestone
 
@@ -25,6 +25,7 @@ completed text, routine, console-key, Double, text-file, persistence, Enum, and 
 | Integer Load/Save | Literal keys, Number variables/constants, eagerly evaluated defaults, signed-64 decimal files, stable source identity; evaluator and all ten targets |
 | Data Load/Save | Byte arrays, computed UTF-8 keys, 1 MiB bound, SMD4 checksums, checked recovery/Status and strict failures; evaluator and all ten targets |
 | Nominal Enum | Checked signed-64 members, aliases, zero initialization, Const, arrays, ByVal/ByRef, Optional defaults, returns, exact equality and Select; evaluator and all ten targets |
+| Type value records | Exact nominal identity, nested fields, fixed-array fields, independent copies/defaults, arrays of records, ByVal/ByRef/returns, writable field references and Data Count/Status fields; evaluator and all ten targets |
 | Checked Double failures | Invalid domains, zero divisors, conversion overflow and nonfinite results report their source line before destination mutation |
 
 The UTF-8 output fix addresses failures observed during actual generated-program
@@ -34,16 +35,13 @@ execution on Windows. Ordinary ASCII programs retain their minimal output.
 
 | Area | Implemented SMILE 2.0 features still absent from SMILE 1.0 |
 |---|---|
-| Writable record arguments | ByRef field locations after records/classes are implemented; scalar/array locations are complete |
 | Console keys | Standalone Control key events: character-stream APIs do not report modifier-only events; a native console-event boundary is still needed |
 | Files and persistence | Project ApplicationId ownership/configuration; current loose programs use the source filename stem |
-| Value types | Type records, nested fields, fixed-array fields, deep copies, and exact nominal typing; Enum is complete |
 | Object members | Type methods/properties, Class references/constructors, Me, New, Nothing, Is/Is Not, With blocks, member visibility and ownership |
 | Program organization | Module/Import, qualified names, visibility, multi-file source/project inputs, deterministic source-owned libraries |
 
-Records, classes, and modules require broader storage, binding, generation, and
-project-system work than the completed scalar/routine milestone. They remain
-outstanding core-language work, not implemented facilities.
+Type methods/properties, classes, and modules require additional binding,
+generation and project-system work. They remain outstanding core-language work.
 
 ## Outside the console/core back-port
 
@@ -123,9 +121,17 @@ direct Number literals correctly at the variadic Print boundary.
 
 The Enum fixture also runs unchanged in SMILE 2.0 and across all ten targets, checking aliases, signed limits, unnamed zero, arrays, ByRef/ByVal, Optional defaults, named calls, returns, Select and target-sensitive member names. Objective-C minimum-Int64 enum literals use the signed-safe native constant after an actual compiler failure. Enum lowering adds native declarations/constants only, with no runtime helper.
 
+Record fixtures run unchanged in SMILE 2.0 and on all ten targets. They cover
+nested record/array copies, source-order ByVal snapshots, stable field references
+through whole-record replacement, scalar and aggregate returns, allocated Text,
+forwarded Text/Double/Boolean/Enum references and Data Count/Status fields. The
+record formatter retains structural indentation. Reproduced COBOL field-name
+ambiguity and left-operand timing errors have regression coverage. MASM retains
+native small-value returns and uses hidden caller buffers for larger aggregates.
+
 No repository file-size/complexity checker or reviewed no-growth baseline was
 found in SMILE 1.0. Existing broad writers received focused wiring; new text and
 argument algorithms have their own owners. No guardrail limit or exclusion was
 changed. Ordinary target-native Number overflow and existing native Text storage
-limitations remain; record-location/object/module and project-identity parity is pending. Double exponent
+limitations remain; object/module and project-identity parity is pending. Double exponent
 spelling and transcendental rounding follow the target's standard library.

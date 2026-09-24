@@ -42,8 +42,24 @@ syntax tree. `Parser.Enums` owns declarations/member-access syntax;
 constants and routine signatures. `Enums.cs` holds the focused syntax/symbol/bound
 model; values retain nominal identity through evaluation, aliases and ByRef.
 The structured enum writer and native enum writers emit declarations/constants;
-`TargetIdentifierMap.Enums` owns safe type/member spellings. Records and classes
-remain pending. No enum runtime helper, type registry or numeric type ID is added.
+`TargetIdentifierMap.Enums` owns safe type/member spellings. No enum runtime
+helper, type registry or numeric type ID is added.
+
+`Parser.Records`, `Binder.Records` and `Records.cs` own Type declarations, nominal
+field symbols, layout-cycle/storage validation and bound field locations.
+`RecordValues` owns evaluator storage and copies into existing field cells;
+`Evaluation.Records` captures checked field locations. ByVal arguments copy before
+later arguments run. `TargetIdentifierMap.Records` owns safe field/type spellings.
+Focused record declaration/location/storage writers use native structs and
+aggregate copies in C#, C, Objective-C, C++ and Swift, MASM structures and native
+ABI aggregate passing, and COBOL groups/OCCURS/MOVE. C# array-bearing records,
+Java/JavaScript classes and Python dataclasses need explicit copies; assignment
+copies into existing storage so previously captured field aliases remain valid.
+Java adapts only field-addressed ByRef parameters and their forwarding paths with
+read/write closures. C/Objective-C register owned Text fields through the existing
+collector, retaining record result roots through final callee collection. MASM
+caller-owned aggregate buffers are rooted before calls. No new type registry,
+record interpreter or dependency is added. Type methods and classes remain pending.
 
 Binding is case-insensitive with a shared program namespace and per-routine scopes:
 

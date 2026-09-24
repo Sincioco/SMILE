@@ -38,9 +38,6 @@ internal sealed partial class Parser
     private ExpressionSyntax ParseDataTarget()
     {
         Token name = Match(TokenKind.Identifier, "Expected writable Number storage.");
-        if (Current.Kind != TokenKind.OpenBracket) return new NameExpressionSyntax(name.Text, name.Span);
-        IReadOnlyList<ExpressionSyntax> indices = ParseBracketExpressionList("array index");
-        Token close = Match(TokenKind.CloseBracket, "Expected ']' after the array index.");
-        return new ArrayAccessExpressionSyntax(name.Text, name.Span, indices, Combine(name.Span, close.Span));
+        return ParsePostfix(new NameExpressionSyntax(name.Text, name.Span));
     }
 }

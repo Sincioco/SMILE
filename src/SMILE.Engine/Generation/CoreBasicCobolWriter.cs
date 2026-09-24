@@ -81,6 +81,7 @@ internal sealed partial class CobolWriter
         WriteStateDefinition(linkage: true);
         foreach (VariableSymbol parameter in symbol.Parameters)
         {
+            if (parameter.Type is RecordTypeSymbol) { WriteRecordVariable(parameter, 1, linkage: true); continue; }
             Line($"       01 {Name(parameter)} {Picture(parameter.Type)}.");
             if (parameter.Type is { Kind: SmileTypeKind.String })
             {
@@ -90,7 +91,8 @@ internal sealed partial class CobolWriter
 
         if (symbol.IsFunction)
         {
-            Line($"       01 SMILE-RETURN-VALUE {Picture(symbol.ReturnType ?? SmileType.Integer)}.");
+            if (symbol.ReturnType is RecordTypeSymbol record) WriteRecordShape("SMILE-RETURN-VALUE", record, [], 1, linkage: true);
+            else Line($"       01 SMILE-RETURN-VALUE {Picture(symbol.ReturnType ?? SmileType.Integer)}.");
             if (symbol.ReturnType is { Kind: SmileTypeKind.String })
             {
                 Line("       01 SMILE-RETURN-LENGTH PIC S9(18) COMP-5.");
@@ -130,6 +132,7 @@ internal sealed partial class CobolWriter
     {
         foreach (Temporary temporary in plan.Temporaries)
         {
+            if (temporary.Type is RecordTypeSymbol record) { WriteRecordShape(temporary.Name, record, [], 1, linkage: false); continue; }
             Line($"       01 {temporary.Name} {Picture(temporary.Type)} {DefaultClause(temporary.Type)}.");
             if (temporary.Type is { Kind: SmileTypeKind.String })
             {
@@ -155,6 +158,7 @@ internal sealed partial class CobolWriter
         Line("       01 SMILE-STATE.");
         foreach (VariableSymbol variable in globals)
         {
+            if (variable.Type is RecordTypeSymbol) { WriteRecordVariable(variable, 5, linkage); continue; }
             string valueClause = linkage ? string.Empty : " " + DefaultClause(variable.Type);
             if (variable.IsArray)
             {
@@ -190,6 +194,7 @@ internal sealed partial class CobolWriter
 
     private void WriteDataDeclaration(VariableSymbol variable)
     {
+        if (variable.Type is RecordTypeSymbol) { WriteRecordVariable(variable, 1, linkage: false); return; }
         string name = Name(variable);
         if (variable.IsArray)
         {
@@ -381,6 +386,13 @@ internal sealed partial class CobolWriter
                         PreparedArrayElement target = PrepareArrayElement(set.Array, set.Indices, indent);
                         string value = PrepareExpression(set.Value, indent);
                         Assign(target.Value, set.Array.Type, set.Value, value, indent, target.Length);
+                        break;
+                    }
+                    case BoundMemberSetStatement set:
+                    {
+                        PreparedArrayElement target = PrepareRecordField(set.Target, indent);
+                        string value = PrepareExpression(set.Value, indent);
+                        Assign(target.Value, set.Target.Type, set.Value, value, indent, target.Length);
                         break;
                     }
                     case BoundTextFileLoadStatement load:
@@ -787,6 +799,12 @@ internal sealed partial class CobolWriter
                     return boolean.Value ? "1" : "0";
                 case BoundVariableExpression variable:
                     return _owner.ExpressionName(variable.Variable);
+                case BoundFieldExpression field:
+                {
+                    PreparedArrayElement prepared = PrepareRecordField(field, indent);
+                    if (prepared.Length is not null) _preparedTextLengths[field] = prepared.Length;
+                    return prepared.Value;
+                }
                 case BoundArrayExpression array:
                 {
                     PreparedArrayElement prepared = PrepareArrayElement(array.Array, array.Indices, indent);
@@ -837,6 +855,14 @@ internal sealed partial class CobolWriter
                         return result.Name;
                     }
 
+                    if (CoreBasicCodeGenerator.ContainsRoutineCall(binary.Right))
+                    {
+                        Temporary captured = NewTemporary(binary.Left.Type);
+                        string? length = binary.Left.Type == SmileType.String ? LengthName(captured) : null;
+                        Assign(captured.Name, binary.Left.Type, binary.Left, left, indent, length);
+                        left = captured.Name;
+                        if (length is not null) _preparedTextLengths[binary.Left] = length;
+                    }
                     string right = PrepareExpression(binary.Right, indent);
                     if (binary.Operator.Kind is BoundBinaryOperatorKind.StringConcatenation)
                     {
@@ -1053,6 +1079,7 @@ internal sealed partial class CobolWriter
                 BoundExpression argument = arguments[index];
                 if (RoutineArguments.ParameterAtSourceIndex(routine, parameterOrder, index).IsByRef)
                 {
+                    if (argument is BoundFieldExpression field) { captured.Add(PrepareRecordField(field, indent)); continue; }
                     captured.Add(argument is BoundArrayExpression array
                         ? PrepareArrayElement(array.Array, array.Indices, indent, checkEachDimension: true)
                         : new PreparedArrayElement(_owner.Name(((BoundVariableExpression)argument).Variable),
@@ -1116,6 +1143,7 @@ internal sealed partial class CobolWriter
                     break;
                 case { Kind: SmileTypeKind.Double }:
                 case { Kind: SmileTypeKind.Enum }:
+                case RecordTypeSymbol:
                     Line(indent, $"MOVE {expression} TO {target}");
                     break;
                 case { Kind: SmileTypeKind.Integer }:

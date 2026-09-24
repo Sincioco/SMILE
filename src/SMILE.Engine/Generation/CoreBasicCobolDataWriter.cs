@@ -40,7 +40,7 @@ internal sealed partial class CobolWriter
 
         private void WriteDataTarget(BoundExpression expression, string value, int indent)
         {
-            string target = expression is BoundVariableExpression variable ? _owner.Name(variable.Variable) :
+            string target = expression is BoundFieldExpression field ? PrepareRecordField(field, indent).Value : expression is BoundVariableExpression variable ? _owner.Name(variable.Variable) :
                 PrepareArrayElement(((BoundArrayExpression)expression).Array, ((BoundArrayExpression)expression).Indices, indent).Value;
             Line(indent, $"MOVE {value} TO {target}");
         }

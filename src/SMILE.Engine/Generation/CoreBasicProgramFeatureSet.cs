@@ -34,8 +34,8 @@ internal sealed record CoreBasicProgramFeatureSet(
         BoundStatement[] statements = EnumerateStatements(program).ToArray();
         BoundExpression[] expressions = EnumerateExpressions(statements).ToArray();
         return new CoreBasicProgramFeatureSet(
-            program.AllVariables.Any(variable => variable.IsArray),
-            program.AllVariables.Any(variable => variable.ArrayRank == 2),
+            program.AllVariables.Any(variable => variable.IsArray) || program.RecordTypes.Any(type => type.Fields.Any(field => field.IsArray)),
+            program.AllVariables.Any(variable => variable.ArrayRank == 2) || program.RecordTypes.Any(type => type.Fields.Any(field => field.Dimensions.Count == 2)),
             statements.Any(statement => statement is BoundGetKeyStatement),
             statements.Any(statement => statement is BoundClearScreenStatement),
             statements.Any(statement => statement is BoundMoveCursorStatement),
@@ -103,6 +103,7 @@ internal sealed record CoreBasicProgramFeatureSet(
             IEnumerable<BoundExpression> roots = statement switch
             {
                 BoundSetStatement set => new[] { set.Value },
+                BoundMemberSetStatement set => new BoundExpression[] { set.Target, set.Value },
                 BoundArraySetStatement set => set.Indices.Append(set.Value),
                 BoundConstStatement constant => new[] { constant.Initializer },
                 BoundCallStatement call => call.Arguments,
@@ -137,6 +138,7 @@ internal sealed record CoreBasicProgramFeatureSet(
         IEnumerable<BoundExpression> children = expression switch
         {
             BoundArrayExpression array => array.Indices,
+            BoundFieldExpression field => new[] { field.Receiver }.Concat(field.Indices),
             BoundCallExpression call => call.Arguments,
             BoundIntrinsicExpression intrinsic => intrinsic.Arguments,
             BoundUnaryExpression unary => new[] { unary.Operand },

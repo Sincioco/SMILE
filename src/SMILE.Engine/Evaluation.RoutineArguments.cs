@@ -23,7 +23,7 @@ public sealed partial class SmileEvaluator
             else
             {
                 if (!TryEvaluateExpression(expression, caller, out SmileValue argument, out error)) return false;
-                arguments.Add(new CallArgument(argument));
+                arguments.Add(new CallArgument(SmileRecordValue.Copy(argument)));
             }
         }
         return TryInvoke(routine, RoutineArguments.InParameterOrder(arguments, order), out value, out error);
@@ -33,6 +33,7 @@ public sealed partial class SmileEvaluator
         out WritableLocation? location, out SmileRuntimeError? error)
     {
         location = null;
+        if (expression is BoundFieldExpression field) return TryCaptureField(field, frame, out location, out error);
         if (expression is BoundVariableExpression scalar)
         {
             VariableSymbol variable = scalar.Variable;
@@ -56,7 +57,7 @@ public sealed partial class SmileEvaluator
             indices[dimension] = index.IntegerValue;
         }
         if (!TryGetArrayElement(element.Array, indices, frame, out SmileValue[]? array, out int offset, out error)) return false;
-        location = new WritableLocation(() => array![offset], value => array![offset] = value);
+        location = new WritableLocation(() => array![offset], value => array![offset] = SmileRecordValue.Store(array[offset], value));
         return true;
     }
 }

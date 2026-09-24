@@ -77,6 +77,7 @@ internal static partial class CoreBasicCodeGenerator
         private void WriteDataTarget(BoundExpression expression, string value)
         {
             if (expression is BoundVariableExpression scalar) { WriteSimpleAssignment(Name(scalar.Variable), value); return; }
+            if (expression is BoundFieldExpression field) { WriteSimpleAssignment(FieldLocation(field), value); return; }
             var array = (BoundArrayExpression)expression;
             var indices = new List<string>();
             for (int dimension = 0; dimension < array.Indices.Count; dimension++)

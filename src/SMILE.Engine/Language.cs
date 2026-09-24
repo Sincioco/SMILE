@@ -176,14 +176,16 @@ public readonly record struct SmileValue
 {
     private readonly SmileType? _type;
     private readonly string? _stringValue;
+    private readonly SmileRecordValue? _recordValue;
 
-    private SmileValue(SmileType type, string? stringValue, long integerValue, bool booleanValue, double doubleValue = 0)
+    private SmileValue(SmileType type, string? stringValue, long integerValue, bool booleanValue, double doubleValue = 0, SmileRecordValue? recordValue = null)
     {
         _type = type;
         _stringValue = stringValue;
         IntegerValue = integerValue;
         BooleanValue = booleanValue;
         DoubleValue = doubleValue;
+        _recordValue = recordValue;
     }
 
     public SmileType Type => _type ?? SmileType.String;
@@ -208,6 +210,9 @@ public readonly record struct SmileValue
         new(SmileType.Integer, null, value, false);
 
     public static SmileValue FromEnum(EnumTypeSymbol type, long value) => new(type, null, value, false);
+
+    public SmileRecordValue RecordValue => _recordValue ?? throw new InvalidOperationException("SMILE value is not a record.");
+    internal static SmileValue FromRecord(SmileRecordValue value) => new(value.Type, null, 0, false, recordValue: value);
 
     public static SmileValue FromBoolean(bool value) =>
         new(SmileType.Boolean, null, 0, value);
@@ -304,6 +309,7 @@ public sealed record BoundProgram
     public string ProgramName { get; init; } = "Program";
 
     public IReadOnlyList<EnumTypeSymbol> EnumTypes { get; init; } = [];
+    public IReadOnlyList<RecordTypeSymbol> RecordTypes { get; init; } = [];
 
     public IEnumerable<VariableSymbol> AllVariables =>
         Variables.Concat(Routines.SelectMany(routine => routine.Locals));

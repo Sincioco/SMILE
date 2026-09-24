@@ -205,3 +205,21 @@ and recoverable I/O only. Node.js must await native asynchronous file operations
 propagate await through callers without blocking its event loop. Python remains
 a direct script, and Swift passes its array with ordinary inout. MASM and COBOL
 may use their normal C interoperability for these operating-system services.
+
+## Type record generation
+
+Use nominal native structs in C#, C, Objective-C, C++ and Swift; MASM STRUCT
+layouts and Windows x64 aggregate calling conventions; COBOL groups, OCCURS and
+group MOVE. Preserve source-order ByVal snapshots and value returns. C++ strings
+and Swift arrays keep their ordinary value semantics. C initializers remain
+ordinary aggregate literals unless Text-bearing arrays require bounded loops.
+
+Java and JavaScript use small classes; Python uses standard-library dataclasses
+and deepcopy. These reference-based destinations need copies for SMILE value
+records. C# needs explicit copies only when a record contains an array. Whole
+assignment copies into existing fields/arrays so previously captured ByRef
+locations remain valid. Emit only the corresponding per-type copy methods.
+Java field-addressed ByRef parameters use focused getter/setter adapters, with
+forwarding analyzed through the call graph; ordinary scalar ByRef retains its
+existing array/index form. Record fields use the existing Text ownership support
+in C/Objective-C/MASM; no new record runtime or type registry is permitted.

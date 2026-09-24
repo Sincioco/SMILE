@@ -52,6 +52,7 @@ internal sealed partial class TargetIdentifierMap
         var routineNames = new Dictionary<RoutineSymbol, string>();
         var result = new TargetIdentifierMap(names, routineNames);
         result.AddEnumNames(program, language, reserved, used);
+        result.AddRecordNames(program, language, reserved, used);
 
         foreach (VariableSymbol variable in program.AllVariables.Distinct())
         {

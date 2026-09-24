@@ -22,7 +22,9 @@ internal static partial class CoreBasicCodeGenerator
                 string value = captureOrder
                     ? LowerOrderedCExpression(argument)
                     : PreparedExpression(argument);
-                if (argument is BoundVariableExpression && (parameterOrder is not null ||
+                if (argument.Type is RecordTypeSymbol)
+                    value = NewOrderedValue(argument.Type, RecordCopy(argument.Type, value));
+                else if (argument is BoundVariableExpression && (parameterOrder is not null ||
                     captureOrder && arguments.Skip(index + 1).Any(ContainsRoutineCall)))
                 {
                     value = NewOrderedValue(argument.Type, value);
@@ -32,14 +34,16 @@ internal static partial class CoreBasicCodeGenerator
             return RoutineArguments.InParameterOrder(captured, parameterOrder);
         }
 
-        private static bool ContainsRoutineCall(BoundExpression expression) => expression switch
-        {
-            BoundCallExpression => true,
-            BoundIntrinsicExpression intrinsic => intrinsic.Arguments.Any(ContainsRoutineCall),
-            BoundArrayExpression array => array.Indices.Any(ContainsRoutineCall),
-            BoundUnaryExpression unary => ContainsRoutineCall(unary.Operand),
-            BoundBinaryExpression binary => ContainsRoutineCall(binary.Left) || ContainsRoutineCall(binary.Right),
-            _ => false
-        };
     }
+
+    internal static bool ContainsRoutineCall(BoundExpression expression) => expression switch
+    {
+        BoundCallExpression => true,
+        BoundIntrinsicExpression intrinsic => intrinsic.Arguments.Any(ContainsRoutineCall),
+        BoundArrayExpression array => array.Indices.Any(ContainsRoutineCall),
+        BoundFieldExpression field => ContainsRoutineCall(field.Receiver) || field.Indices.Any(ContainsRoutineCall),
+        BoundUnaryExpression unary => ContainsRoutineCall(unary.Operand),
+        BoundBinaryExpression binary => ContainsRoutineCall(binary.Left) || ContainsRoutineCall(binary.Right),
+        _ => false
+    };
 }

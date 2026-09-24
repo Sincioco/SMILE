@@ -42,14 +42,4 @@ internal sealed partial class Parser
         "Unload", "Clip", "Data", "Status", "Opacity", "Anchor", "Flip", "Horizontal", "Vertical", "Both", "Filter", "Smooth", "Pixel", "On", "Channel"
     };
 
-    private ExpressionSyntax ParseMemberAccess(ExpressionSyntax receiver)
-    {
-        while (Current.Kind is TokenKind.Dot)
-        {
-            Next();
-            Token member = MatchMemberName();
-            receiver = new MemberAccessExpressionSyntax(receiver, member.Text, member.Span, Combine(receiver.Span, member.Span));
-        }
-        return receiver;
-    }
 }

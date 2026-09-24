@@ -21,6 +21,7 @@ internal static partial class CoreBasicCodeGenerator
                     if (RoutineArguments.ParameterAtSourceIndex(call.Routine, call.Order, index).IsByRef)
                         _addressedVariables.Add(LocationOwner(call.Arguments[index]));
             }
+            FindJavaFieldReferences(calls);
             if (_language is not TargetLanguage.Swift) return;
 
             // Swift inout requires exclusive access to the entire stored variable,
@@ -75,6 +76,7 @@ internal static partial class CoreBasicCodeGenerator
         {
             BoundVariableExpression variable => variable.Variable,
             BoundArrayExpression array => array.Array,
+            BoundFieldExpression field => LocationOwner(field.Receiver),
             _ => throw new InvalidOperationException("A bound ByRef argument must be writable.")
         };
 

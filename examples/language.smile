@@ -7,6 +7,11 @@ Enum Direction
     Right = 1
 End Enum
 
+Type ScoreEntry
+    Player As Text
+    Points As Number
+End Type
+
 Const ProductName = "SMILE"
 Const Quotation = "She said ""Hello""."
 Const BoardWidth = 4
@@ -49,6 +54,8 @@ Dim FileByteCount As Number
 Dim BestScore As Number
 Dim DataStatus As Number
 Dim Heading As Direction
+Dim CurrentEntry As ScoreEntry
+Dim SavedEntry As ScoreEntry
 
 FirstName = "Sin"
 LastName = "Cioco"
@@ -185,6 +192,12 @@ Select Case Heading
     Case Else
         Print "The enum selected another direction."
 End Select
+
+CurrentEntry.Player = "Sin"
+CurrentEntry.Points = 10
+SavedEntry = CurrentEntry
+Call AddPoint(CurrentEntry.Points)
+Print "Record copies="; SavedEntry.Points; ", "; CurrentEntry.Points
 
 Call ShowGreeting()
 Call ShowGreeting(Caption:="Welcome", Learner:="Sin")

@@ -71,7 +71,7 @@ internal static partial class CoreBasicCodeGenerator
         private void WriteSimpleAssignment(string target, string expression) =>
             Line(_language is TargetLanguage.Swift or TargetLanguage.Python
                 ? $"{target} = {expression}"
-                : $"{target} = {expression};");
+                : ValueAssignment(target, expression) + ";");
 
         private string RuntimeCall(string operation, params string[] arguments)
         {

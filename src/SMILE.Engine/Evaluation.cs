@@ -142,6 +142,12 @@ public sealed partial class SmileEvaluator
                 case BoundDimStatement or BoundConstStatement:
                     break;
 
+                case BoundMemberSetStatement assignment:
+                    if (!TryCaptureField(assignment.Target, frame, out WritableLocation? destination, out SmileRuntimeError? fieldError)) return fieldError;
+                    if (!TryEvaluateExpression(assignment.Value, frame, out SmileValue fieldValue, out fieldError)) return fieldError;
+                    destination!.Write(fieldValue);
+                    break;
+
                 case BoundSetStatement assignment:
                     if (!TryEvaluateExpression(assignment.Value, frame, out SmileValue assignedValue, out SmileRuntimeError? assignmentError))
                     {
@@ -167,7 +173,7 @@ public sealed partial class SmileEvaluator
                         return valueError;
                     }
 
-                    array![index] = arrayValue;
+                    array![index] = SmileRecordValue.Store(array[index], arrayValue);
                     break;
 
                 case BoundNumberLoadStatement load:
@@ -502,6 +508,10 @@ public sealed partial class SmileEvaluator
             case BoundEnumExpression literal:
                 value = SmileValue.FromEnum(literal.EnumType, literal.Value);
                 return Success(out error);
+            case BoundFieldExpression field:
+                if (!TryCaptureField(field, frame, out WritableLocation? location, out error)) { value = default; return false; }
+                value = location!.Read();
+                return true;
             case BoundBooleanLiteralExpression literal:
                 value = SmileValue.FromBoolean(literal.Value);
                 return Success(out error);
@@ -771,7 +781,7 @@ public sealed partial class SmileEvaluator
         }
         catch (RoutineReturnSignal signal)
         {
-            value = signal.Value ?? DefaultValue(symbol.ReturnType ?? SmileType.Integer);
+            value = SmileRecordValue.Copy(signal.Value ?? DefaultValue(symbol.ReturnType ?? SmileType.Integer));
             error = null;
             return true;
         }
@@ -794,6 +804,7 @@ public sealed partial class SmileEvaluator
 
     private void SetValue(VariableSymbol variable, CallFrame? frame, SmileValue value)
     {
+        if (variable.Type is RecordTypeSymbol) value = SmileRecordValue.Store(GetValue(variable, frame), value);
         if (variable.IsByRef)
         {
             frame!.References[variable].Write(value);
@@ -855,18 +866,13 @@ public sealed partial class SmileEvaluator
     private static SmileValue[] CreateArray(VariableSymbol variable)
     {
         SmileValue[] values = new SmileValue[variable.TotalElementCount];
-        Array.Fill(values, DefaultValue(variable.Type));
+        if (variable.Type is RecordTypeSymbol)
+            for (int index = 0; index < values.Length; index++) values[index] = DefaultValue(variable.Type);
+        else Array.Fill(values, DefaultValue(variable.Type));
         return values;
     }
 
-    private static SmileValue DefaultValue(SmileType type) => type switch
-    {
-        EnumTypeSymbol enumeration => SmileValue.FromEnum(enumeration, 0),
-        { Kind: SmileTypeKind.Double } => SmileValue.FromDouble(0),
-        { Kind: SmileTypeKind.Integer } => SmileValue.FromInteger(0),
-        { Kind: SmileTypeKind.Boolean } => SmileValue.FromBoolean(false),
-        _ => SmileValue.FromString(string.Empty)
-    };
+    private static SmileValue DefaultValue(SmileType type) => SmileRecordValue.Default(type);
 
     private static bool ValuesEqual(SmileValue left, SmileValue right) => left.Type switch
     {

@@ -23,6 +23,10 @@ Detection, compilation, linking, and execution are asynchronous and cancellation
 
 Toolchain messages expose the detected version/location or a concise installation requirement. Detection failure is recoverable.
 
+Type records use the same installed toolchains and standard libraries. C-family
+and Swift aggregates, MASM native frames, COBOL groups, Java/JavaScript classes
+and Python dataclasses require no additional package or runtime download.
+
 The Text-Game Foundation milestone was validated locally with .NET SDK 10.0.400, Visual Studio 2026 22.9.2 (MSVC 19.51.36256 and MASM 14.51.36256), Node.js 24.14.0, JDK 21.0.12.1, GnuCOBOL 3.2.0, Clang 21.1.6, Swift 6.3.3 for Windows, and Python 3.13.12. These are the versions tested by this repository, not a promise about older releases.
 
 ## C#

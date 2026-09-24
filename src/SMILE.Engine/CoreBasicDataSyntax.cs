@@ -28,6 +28,11 @@ internal static class DataStatementFacts
         _ => false
     };
 
-    private static bool Targets(BoundExpression? target, VariableSymbol variable) =>
-        target is BoundVariableExpression scalar && scalar.Variable == variable;
+    private static bool Targets(BoundExpression? target, VariableSymbol variable) => target switch
+    {
+        BoundVariableExpression scalar => scalar.Variable == variable,
+        BoundArrayExpression array => array.Array == variable,
+        BoundFieldExpression field => Targets(field.Receiver, variable),
+        _ => false
+    };
 }

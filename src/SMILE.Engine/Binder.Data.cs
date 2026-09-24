@@ -35,6 +35,8 @@ internal sealed partial class Binder
             return new BoundVariableExpression(variable);
         }
         BoundExpression target = BindDataValue(syntax, SmileType.Integer, "output");
+        if (target is not BoundErrorExpression && !BoundLocations.IsWritable(target))
+            Report("SMILE3506", "Data output requires writable Number storage.", syntax.Span);
         return target;
     }
 }

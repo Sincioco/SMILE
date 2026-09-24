@@ -23,6 +23,7 @@
       <Word>END</Word>
       <Word>DIM</Word>
       <Word>ENUM</Word>
+      <Word>TYPE</Word>
       <Word>AS</Word>
       <Word>NUMBER</Word>
       <Word>DOUBLE</Word>

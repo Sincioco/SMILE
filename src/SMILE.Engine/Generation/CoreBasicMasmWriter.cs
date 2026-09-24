@@ -124,9 +124,16 @@ internal sealed partial class CoreBasicMasmWriter
 
         Line();
         Line(".data");
+        WriteRecordDeclarations();
         foreach (VariableSymbol variable in _program.Variables.Where(item => !item.IsConstant))
         {
             string name = Name(variable);
+            if (variable.Type is RecordTypeSymbol record)
+            {
+                Line($"{name} LABEL {_identifiers.Get(record)}");
+                Line($"    BYTE {record.NativeSize * (variable.IsArray ? variable.TotalElementCount : 1)} DUP(0)");
+                continue;
+            }
             if (variable.Type is { Kind: SmileTypeKind.Double })
             {
                 Line(variable.IsArray ? $"{name} REAL8 {variable.TotalElementCount} DUP(0.0)" : $"{name} REAL8 0.0");
@@ -592,7 +599,7 @@ internal sealed partial class CoreBasicMasmWriter
             ReturnLabel = $"{owner.RoutineName(routine.Symbol)}_return";
             foreach (VariableSymbol variable in routine.Locals.Distinct())
             {
-                _storage[variable] = Allocate(variable.IsArray ? variable.TotalElementCount * 8 : 8, variable.TotalElementCount);
+                _storage[variable] = Allocate(IndirectVariable(variable) ? 8 : NativeValueSize(variable.Type) * (variable.IsArray ? variable.TotalElementCount : 1), variable.TotalElementCount);
             }
             if (routine.Symbol.IsFunction)
             {
@@ -640,6 +647,7 @@ internal sealed partial class CoreBasicMasmWriter
             }
 
             WriteItems(_items, 1);
+            BuildRecordStorage();
             if (_owner._usesManagedText)
             {
                 BuildManagedTextLifetime();
@@ -694,6 +702,7 @@ internal sealed partial class CoreBasicMasmWriter
                 Append(_cleanup, 1, $"mov edx, {count}");
                 Append(_cleanup, 1, "call smile_text_unregister_range");
             }
+            BuildRecordRoots();
             Append(_cleanup, 1, "call smile_text_collect");
         }
 
@@ -702,24 +711,28 @@ internal sealed partial class CoreBasicMasmWriter
             RoutineSymbol symbol = Routine!.Symbol;
             // Capture ABI parameters before any array initialization uses a
             // volatile argument register as a loop counter.
+            int shift = IndirectRecord(symbol.ReturnType) ? 1 : 0;
+            if (shift != 0) Append(_initialization, 1, $"mov QWORD PTR {Address(_returnStorage!.Offset)}, rcx");
             for (int index = 0; index < symbol.Parameters.Count; index++)
             {
                 Storage storage = _storage[symbol.Parameters[index]];
-                if (index < 4)
+                int position = index + shift;
+                if (position < 4)
                 {
                     Append(_initialization, 1, symbol.Parameters[index] is { Type: { Kind: SmileTypeKind.Double }, IsByRef: false }
-                        ? $"movsd QWORD PTR {Address(storage.Offset)}, xmm{index}"
-                        : $"mov QWORD PTR {Address(storage.Offset)}, {ParameterRegisters[index]}");
+                        ? $"movsd QWORD PTR {Address(storage.Offset)}, xmm{position}"
+                        : $"mov QWORD PTR {Address(storage.Offset)}, {ParameterRegisters[position]}");
                 }
                 else
                 {
-                    Append(_initialization, 1, $"mov rax, QWORD PTR [rbp+{48 + (index - 4) * 8}]");
+                    Append(_initialization, 1, $"mov rax, QWORD PTR [rbp+{48 + (position - 4) * 8}]");
                     Append(_initialization, 1, $"mov QWORD PTR {Address(storage.Offset)}, rax");
                 }
             }
 
             foreach (VariableSymbol variable in Routine.Locals.Where(item => !item.IsParameter))
             {
+                if (variable.Type is RecordTypeSymbol) continue;
                 Storage storage = _storage[variable];
                 if (variable.IsArray)
                 {
@@ -763,11 +776,19 @@ internal sealed partial class CoreBasicMasmWriter
                     case BoundDimStatement or BoundConstStatement:
                         break;
                     case BoundSetStatement set:
+                        if (set.Variable.Type is RecordTypeSymbol)
+                        {
+                            WriteRecordSet(new BoundVariableExpression(set.Variable), set.Value, indent);
+                            break;
+                        }
                         EmitExpression(set.Value, indent);
                         StoreVariable(set.Variable, "rax", indent);
                         break;
                     case BoundArraySetStatement set:
                         WriteArraySet(set, indent);
+                        break;
+                    case BoundMemberSetStatement set:
+                        WriteRecordSet(set.Target, set.Value, indent);
                         break;
                     case BoundTextFileLoadStatement load:
                         WriteTextFileLoad(load, indent);
@@ -840,6 +861,12 @@ internal sealed partial class CoreBasicMasmWriter
                     case BoundReturnStatement returnStatement:
                         if (returnStatement.Value is not null)
                         {
+                            if (returnStatement.Value.Type is RecordTypeSymbol)
+                            {
+                                EmitRecordReturn(returnStatement.Value, indent);
+                                Emit(indent, $"jmp {ReturnLabel}");
+                                return true;
+                            }
                             EmitExpression(returnStatement.Value, indent);
                             Emit(indent, $"mov QWORD PTR {Address(_returnStorage!.Offset)}, rax");
                             if (_owner._usesManagedText && returnStatement.Value.Type is { Kind: SmileTypeKind.String })
@@ -904,6 +931,11 @@ internal sealed partial class CoreBasicMasmWriter
 
         private void WriteArraySet(BoundArraySetStatement set, int indent)
         {
+            if (set.Array.Type is RecordTypeSymbol)
+            {
+                WriteRecordSet(new BoundArrayExpression(set.Array, set.Indices), set.Value, indent);
+                return;
+            }
             Storage index = EmitArrayOffset(set.Array, set.Indices, indent);
             EmitExpression(set.Value, indent);
             Emit(indent, $"mov r10, QWORD PTR {Address(index.Offset)}");
@@ -1085,9 +1117,15 @@ internal sealed partial class CoreBasicMasmWriter
                     Emit(indent, $"lea rax, {_owner.InternString(text.Value)}");
                     return;
                 case BoundVariableExpression variable:
+                    if (variable.Type is RecordTypeSymbol) { EmitReferenceLocation(variable, indent); return; }
                     LoadVariable(variable.Variable, indent);
                     return;
+                case BoundFieldExpression field:
+                    EmitFieldLocation(field, indent);
+                    if (field.Type is not RecordTypeSymbol) Emit(indent, "mov rax, QWORD PTR [rax]");
+                    return;
                 case BoundArrayExpression array:
+                    if (array.Type is RecordTypeSymbol) { EmitReferenceLocation(array, indent); return; }
                     Storage index = EmitArrayOffset(array.Array, array.Indices, indent);
                     Emit(indent, $"mov r10, QWORD PTR {Address(index.Offset)}");
                     EmitArrayBase(array.Array, "r11", indent);
@@ -1251,9 +1289,20 @@ internal sealed partial class CoreBasicMasmWriter
                 bool byRef = RoutineArguments.ParameterAtSourceIndex(routine, parameterOrder, sourceIndex).IsByRef;
                 if (byRef) EmitReferenceLocation(argument, indent);
                 else EmitExpression(argument, indent);
+                if (!byRef && argument.Type is RecordTypeSymbol record)
+                {
+                    if (IndirectRecord(record))
+                    {
+                        Storage copy = NewRecordTemporary(record);
+                        Emit(indent, $"lea rcx, {Address(copy.Offset)}");
+                        EmitRecordCopy(record, indent);
+                        Emit(indent, $"lea rax, {Address(copy.Offset)}");
+                    }
+                    else Emit(indent, "mov rax, QWORD PTR [rax]");
+                }
                 Storage temporary = NewTemporary();
                 Emit(indent, $"mov QWORD PTR {Address(temporary.Offset)}, rax");
-                if (!byRef && _owner._usesManagedText && argument.Type is { Kind: SmileTypeKind.String })
+                if (!byRef && _owner._usesManagedText && (argument.Type == SmileType.String || argument.Type is RecordTypeSymbol { NativeSize: 8, ContainsText: true }))
                 {
                     _textTemporaryRoots.Add(temporary);
                 }
@@ -1261,27 +1310,39 @@ internal sealed partial class CoreBasicMasmWriter
             }
 
             captured = RoutineArguments.InParameterOrder(captured, parameterOrder).ToList();
+            Storage? recordResult = routine.ReturnType is RecordTypeSymbol resultType ? NewRecordTemporary(resultType) : null;
+            int shift = IndirectRecord(routine.ReturnType) ? 1 : 0;
+            if (shift != 0) Emit(indent, $"lea rcx, {Address(recordResult!.Offset)}");
             for (int index = 0; index < captured.Count; index++)
             {
-                if (index < 4)
+                int position = index + shift;
+                if (position < 4)
                 {
                     Emit(indent, routine.Parameters[index] is { Type: { Kind: SmileTypeKind.Double }, IsByRef: false }
-                        ? $"movsd xmm{index}, QWORD PTR {Address(captured[index].Offset)}"
-                        : $"mov {ParameterRegisters[index]}, QWORD PTR {Address(captured[index].Offset)}");
+                        ? $"movsd xmm{position}, QWORD PTR {Address(captured[index].Offset)}"
+                        : $"mov {ParameterRegisters[position]}, QWORD PTR {Address(captured[index].Offset)}");
                 }
                 else
                 {
                     Emit(indent, $"mov rax, QWORD PTR {Address(captured[index].Offset)}");
-                    Emit(indent, $"mov QWORD PTR [rsp+{32 + (index - 4) * 8}], rax");
+                    Emit(indent, $"mov QWORD PTR [rsp+{32 + (position - 4) * 8}], rax");
                 }
             }
 
-            NoteCall(arguments.Count);
+            NoteCall(arguments.Count + shift);
             Emit(indent, $"call {_owner.RoutineName(routine)}");
             if (routine.ReturnType is { Kind: SmileTypeKind.Double }) Emit(indent, "movq rax, xmm0");
+            if (recordResult is not null)
+            {
+                if (shift == 0) Emit(indent, $"mov QWORD PTR {Address(recordResult.Offset)}, rax");
+                Emit(indent, $"lea rax, {Address(recordResult.Offset)}");
+            }
         }
 
         private void EmitBoundsCheck(VariableSymbol array, int dimension, int indent)
+            => EmitBoundsCheck(array.ArrayDimensions[dimension], indent);
+
+        private void EmitBoundsCheck(int length, int indent)
         {
             _owner._usesBounds = true;
             _owner._usesPrintf = true;
@@ -1289,7 +1350,7 @@ internal sealed partial class CoreBasicMasmWriter
             string okay = NewLabel("bounds_ok");
             Emit(indent, "test rax, rax");
             Emit(indent, $"js {failed}");
-            Emit(indent, $"cmp rax, {(dimension == 0 ? array.ArrayLength : array.ArraySecondLength)}");
+            Emit(indent, $"cmp rax, {length}");
             Emit(indent, $"jl {okay}");
             Label(failed);
             NoteCall(0);

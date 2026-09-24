@@ -8,6 +8,7 @@ internal sealed partial class Binder
 
     private SmileType ResolveType(TypeNameSyntax syntax)
     {
+        if (_records.TryGetValue(syntax.Name, out RecordTypeSymbol? record)) return record;
         if (_enums.TryGetValue(syntax.Name, out EnumTypeSymbol? nominal)) return nominal;
         SmileType? builtin = syntax.Name.ToUpperInvariant() switch
         {
@@ -89,15 +90,19 @@ internal sealed partial class Binder
         return false;
     }
 
-    private BoundExpression BindMember(MemberAccessExpressionSyntax syntax)
+    private BoundExpression BindMember(MemberAccessExpressionSyntax syntax, bool constantsOnly)
     {
         if (syntax.Receiver is NameExpressionSyntax name && _enums.TryGetValue(name.Name, out EnumTypeSymbol? type))
         {
             EnumMemberSymbol? member = type.Members.FirstOrDefault(item => item.Name.Equals(syntax.Name, StringComparison.OrdinalIgnoreCase));
             if (member is not null) return new BoundEnumExpression(type, member.Value, member);
         }
-        Report("SMILE3423", $"Enum member '{syntax.Name}' is not declared.", syntax.NameSpan);
-        return new BoundErrorExpression();
+        if (syntax.Receiver is NameExpressionSyntax enumName && _enums.ContainsKey(enumName.Name))
+        {
+            Report("SMILE3423", $"Enum member '{syntax.Name}' is not declared.", syntax.NameSpan);
+            return new BoundErrorExpression();
+        }
+        return BindRecordField(syntax, null, constantsOnly);
     }
 
     private BoundSourceItem? BindNestedEnum(EnumDeclarationSyntax syntax)

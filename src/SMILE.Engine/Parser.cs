@@ -73,9 +73,10 @@ internal sealed partial class Parser
     private StatementSyntax? ParseStatement() => Current.Kind switch
     {
         TokenKind.Option => ParseOptionExplicit(),
-        TokenKind.Identifier => ParseAssignment(),
+        TokenKind.Identifier => ParseLocationAssignment(),
         TokenKind.Dim => ParseDim(),
         TokenKind.Enum => ParseEnum(),
+        TokenKind.Type => ParseRecord(),
         TokenKind.Const => ParseConst(),
         TokenKind.Sub => ParseRoutine(RoutineKind.Sub),
         TokenKind.Function => ParseRoutine(RoutineKind.Function),
@@ -120,32 +121,6 @@ internal sealed partial class Parser
         Token start = Next();
         Token explicitToken = Match(TokenKind.Explicit, "Expected 'Explicit' after 'Option'.");
         return new OptionExplicitStatementSyntax(Combine(start.Span, explicitToken.Span));
-    }
-
-    private StatementSyntax ParseAssignment()
-    {
-        Token name = Next();
-        if (Current.Kind is TokenKind.OpenBracket)
-        {
-            IReadOnlyList<ExpressionSyntax> indices = ParseBracketExpressionList("array index");
-            Token close = Match(TokenKind.CloseBracket, "Expected ']' after the array index.");
-            Match(TokenKind.Equals, "Expected '=' after the array element target.");
-            ExpressionSyntax value = ParseExpression();
-            return new CoreArrayAssignmentStatementSyntax(
-                name.Text,
-                name.Span,
-                indices,
-                value,
-                Combine(name.Span, value.Span.Length == 0 ? close.Span : value.Span));
-        }
-
-        Match(TokenKind.Equals, "Expected '=' after the assignment target.");
-        ExpressionSyntax scalarValue = ParseExpression();
-        return new CoreAssignmentStatementSyntax(
-            name.Text,
-            name.Span,
-            scalarValue,
-            Combine(name.Span, scalarValue.Span));
     }
 
     private StatementSyntax ParseDim()
@@ -595,7 +570,9 @@ internal sealed partial class Parser
         return left;
     }
 
-    private ExpressionSyntax ParsePrimaryExpression()
+    private ExpressionSyntax ParsePrimaryExpression() => ParsePostfix(ParsePrimaryCore());
+
+    private ExpressionSyntax ParsePrimaryCore()
     {
         SkipExpressionContinuations();
         Token token = Current;
@@ -641,7 +618,7 @@ internal sealed partial class Parser
                     return new ErrorExpressionSyntax(token.Span);
                 }
 
-                return ParseMemberAccess(new NameExpressionSyntax(token.Text, token.Span));
+                return new NameExpressionSyntax(token.Text, token.Span);
             case TokenKind.OpenParenthesis:
                 Token open = Next();
                 _delimiterDepth++;
@@ -910,7 +887,7 @@ internal sealed partial class Parser
         Call, Return, Select, Case, ByVal, ByRef, Optional, BuiltInConstant, BuiltInFunction, UnsupportedKeyword,
         Plus, Minus, Star, Slash, Equals, NotEquals, Less, LessOrEquals,
         Greater, GreaterOrEquals, OpenParenthesis, CloseParenthesis,
-        OpenBracket, CloseBracket, Semicolon, Comma, ColonEquals, Dot, Enum
+        OpenBracket, CloseBracket, Semicolon, Comma, ColonEquals, Dot, Enum, Type
     }
 
     private sealed record Token(TokenKind Kind, string Text, object? Value, TextSpan Span);
@@ -943,6 +920,7 @@ internal sealed partial class Parser
             ["Optional"] = TokenKind.Optional,
             ["Data"] = TokenKind.Data,
             ["Enum"] = TokenKind.Enum,
+            ["Type"] = TokenKind.Type,
             ["Timer"] = TokenKind.BuiltInFunction, ["Abs"] = TokenKind.BuiltInFunction,
             ["Min"] = TokenKind.BuiltInFunction, ["Max"] = TokenKind.BuiltInFunction,
             ["Text_Length"] = TokenKind.BuiltInFunction,

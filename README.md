@@ -104,8 +104,31 @@ Print Heading = Direction.Left
 Members hold checked signed 64-bit values; aliases are allowed and storage
 defaults to zero. Enum arrays, Const, exact-type ByVal/ByRef, Optional defaults,
 returns and Select Case are supported. Enum values cannot be printed, converted
-to Number, ordered or used in arithmetic. Records, classes and modules remain
-pending. See the [enum contract](docs/SMILE%20Language%20Specification/003%20-%20SMILE%20Core%20BASIC%202.1%20Text-Game%20Foundation%20Official%20Specification.md#nominal-enums).
+to Number, ordered or used in arithmetic. See the [enum contract](docs/SMILE%20Language%20Specification/003%20-%20SMILE%20Core%20BASIC%202.1%20Text-Game%20Foundation%20Official%20Specification.md#nominal-enums).
+
+`Type` records group values and copy them independently, including nested records
+and fixed array fields. They work in the evaluator and all ten targets:
+
+```smile
+Type ScoreEntry
+    Player As Text
+    Points As Number
+End Type
+Dim Current As ScoreEntry
+Dim Saved As ScoreEntry
+Current.Player = "Sin"
+Current.Points = 10
+Saved = Current
+Current.Points = 20
+Print Saved.Player; ":"; Saved.Points
+```
+
+Records support variables, array cells, ByVal/ByRef parameters and returns.
+Writable fields can be passed ByRef, including fixed-array field cells, and can
+receive Data Count/Status outputs. Copying a whole record preserves existing
+references into its fields. Whole records cannot be printed, compared, used in
+arithmetic or stored in Const. Type methods/properties, classes and modules remain
+pending in the [back-port inventory](docs/SMILE%202%20Core%20Backport%20Progress.md).
 
 ### Three original games, written entirely in SMILE
 
@@ -245,8 +268,8 @@ For complete interactive programs, follow the three game sources above or the sm
 
 The engine carries immutable type symbols through binding, evaluation and
 generation. Built-in types are shared symbols; storage categories are separate
-from exact type identity. Each Enum declaration owns a distinct type symbol;
-record/class support remains pending.
+from exact type identity. Each Enum and Type declaration owns a distinct type
+symbol; class support remains pending.
 For Engine API callers, `SmileType` is now a symbol class with `Kind` and `Name`;
 the existing `SmileType.Integer`, `Double`, `String`, `Boolean`, and `Error`
 members remain available. Parsed declarations carry `TypeNameSyntax`; the binder

@@ -154,8 +154,10 @@ public static class SmileSourceFormatter
             IEnumerable<ExpressionSyntax> roots = item switch
             {
                 CoreAssignmentStatementSyntax assignment => new[] { assignment.Value },
+                MemberAssignmentStatementSyntax assignment => new[] { assignment.Target, assignment.Value },
                 CoreArrayAssignmentStatementSyntax assignment => assignment.Indices.Append(assignment.Value),
                 DimStatementSyntax declaration => declaration.ArraySizes,
+                RecordFieldDeclarationSyntax field => field.Dimensions,
                 ConstStatementSyntax constant => new[] { constant.Initializer },
                 EnumMemberDeclarationSyntax { Value: not null } member => new[] { member.Value },
                 CallStatementSyntax call => call.Arguments,
@@ -207,6 +209,8 @@ public static class SmileSourceFormatter
             CallExpressionSyntax call => call.Arguments,
             NamedArgumentExpressionSyntax named => new[] { named.Value },
             ArrayAccessExpressionSyntax array => array.Indices,
+            MemberAccessExpressionSyntax member => new[] { member.Receiver },
+            IndexedMemberExpressionSyntax member => new ExpressionSyntax[] { member.Member }.Concat(member.Indices),
             _ => Array.Empty<ExpressionSyntax>()
         };
         foreach (ExpressionSyntax child in children)
@@ -227,6 +231,9 @@ public static class SmileSourceFormatter
                 break;
             case EnumDeclarationSyntax enumeration:
                 yield return enumeration.SourceItems;
+                break;
+            case RecordDeclarationSyntax record:
+                yield return record.SourceItems;
                 break;
             case IfStatementSyntax conditional:
                 foreach (ConditionalClauseSyntax clause in conditional.Clauses)
@@ -415,6 +422,9 @@ public static class SmileSourceFormatter
                     case EnumMemberDeclarationSyntax member:
                         MarkHeader(StartLine(member.Span), EndLine(member.Span), depth);
                         break;
+                    case RecordFieldDeclarationSyntax field:
+                        MarkHeader(StartLine(field.Span), EndLine(field.Span), depth);
+                        break;
                 }
             }
 
@@ -446,8 +456,8 @@ public static class SmileSourceFormatter
             }
 
             bool boundary = previous is OptionExplicitStatementSyntax ||
-                current is RoutineDeclarationSyntax or EnumDeclarationSyntax ||
-                previous is RoutineDeclarationSyntax or EnumDeclarationSyntax ||
+                current is RoutineDeclarationSyntax or EnumDeclarationSyntax or RecordDeclarationSyntax ||
+                previous is RoutineDeclarationSyntax or EnumDeclarationSyntax or RecordDeclarationSyntax ||
                 DeclarationGroup(previous) != DeclarationGroup(current) &&
                     DeclarationGroup(previous) is not null && DeclarationGroup(current) is not null ||
                 IsDeclaration(previous) && !IsDeclaration(current) ||
@@ -471,6 +481,11 @@ public static class SmileSourceFormatter
             int end = EndLine(statement.Span);
             switch (statement)
             {
+                case RecordDeclarationSyntax record:
+                    MarkLine(start, depth);
+                    MarkItemList(record.SourceItems, depth + 1);
+                    MarkLine(end, depth);
+                    break;
                 case EnumDeclarationSyntax enumeration:
                     MarkLine(start, depth);
                     MarkItemList(enumeration.SourceItems, depth + 1);

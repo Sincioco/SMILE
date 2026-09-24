@@ -120,7 +120,7 @@ internal static partial class CoreBasicCodeGenerator
         private int _forTempId;
         private int _selectTempId;
         private int _orderedTempId;
-        private readonly Stack<List<string>> _managedTextTemporaryRoots = new();
+        private readonly Stack<List<(SmileType Type, string Name)>> _managedTextTemporaryRoots = new();
         private RoutineCleanupContext? _routineCleanup;
 
         private sealed record RoutineCleanupContext(
@@ -443,6 +443,7 @@ internal static partial class CoreBasicCodeGenerator
         private void WriteGlobalDeclarations(bool fieldContext = false)
         {
             WriteEnumDeclarations();
+            WriteRecordDeclarations();
             foreach (VariableSymbol variable in _program.Variables)
             {
                 if (variable.IsConstant)
@@ -597,10 +598,7 @@ internal static partial class CoreBasicCodeGenerator
                 if (resultName is not null)
                 {
                     Line($"{RoutineReturnType(routine.Symbol)} {resultName} = {DefaultLiteral(routine.Symbol.ReturnType!)};");
-                    if (routine.Symbol.ReturnType is { Kind: SmileTypeKind.String })
-                    {
-                        Line($"smile_text_register(&{resultName});");
-                    }
+                    WriteCValueRoots(routine.Symbol.ReturnType!, resultName, register: true);
                 }
 
                 WriteManagedTextRoots(routine.Symbol.Parameters, register: true);
@@ -652,6 +650,10 @@ internal static partial class CoreBasicCodeGenerator
                 Line("smile_text_collect();");
                 if (cleanup.ResultName is not null)
                 {
+                    // The caller immediately roots the returned native struct before any collection.
+                    // Keep its Text fields rooted through the callee's final collection.
+                    if (routine.Symbol.ReturnType is RecordTypeSymbol)
+                        WriteCValueRoots(routine.Symbol.ReturnType, cleanup.ResultName, register: false);
                     Line($"return {cleanup.ResultName};");
                 }
 
@@ -680,6 +682,8 @@ internal static partial class CoreBasicCodeGenerator
         private void WriteArrayInitializers(IEnumerable<VariableSymbol> variables)
         {
             WriteJavaEnumArrayInitializers(variables);
+            WriteRecordArrayInitializers(variables);
+            WriteCRecordInitializers(variables);
             foreach (VariableSymbol variable in variables.Where(item => item.IsArray && item.Type is { Kind: SmileTypeKind.String }))
             {
                 string name = Name(variable);
@@ -873,6 +877,8 @@ internal static partial class CoreBasicCodeGenerator
             if (NeedsReferenceBox(variable)) return ReferenceBoxDeclaration(variable, DefaultLiteral(variable.Type));
             string name = Name(variable);
             string value = DefaultLiteral(variable.Type);
+            if (_language is TargetLanguage.C or TargetLanguage.ObjectiveC && variable.IsGlobal && variable.Type is RecordTypeSymbol record)
+                value = CRecordNeedsConstructor(record) ? "{0}" : CRecordInitializer(record);
             if (variable.IsArray)
             {
                 string dimensions = variable.ArrayRank == 2
@@ -883,6 +889,8 @@ internal static partial class CoreBasicCodeGenerator
                     TargetLanguage.CSharp when variable.ArrayRank == 2 => $"{TypeName(variable.Type)}[,] {name} = new {TypeName(variable.Type)}[{variable.ArrayLength}, {variable.ArraySecondLength}];",
                     TargetLanguage.CSharp => $"{TypeName(variable.Type)}[] {name} = new {TypeName(variable.Type)}[{variable.ArrayLength}];",
                     TargetLanguage.C => $"{TypeName(variable.Type)} {name}[{dimensions}] = {{0}};",
+                    TargetLanguage.JavaScript when variable.Type is RecordTypeSymbol && variable.ArrayRank == 2 => $"let {name} = Array.from({{ length: {variable.ArrayLength} }}, () => Array.from({{ length: {variable.ArraySecondLength} }}, () => {value}));",
+                    TargetLanguage.JavaScript when variable.Type is RecordTypeSymbol => $"let {name} = Array.from({{ length: {variable.ArrayLength} }}, () => {value});",
                     TargetLanguage.JavaScript when variable.ArrayRank == 2 => $"let {name} = Array.from({{ length: {variable.ArrayLength} }}, () => Array({variable.ArraySecondLength}).fill({value}));",
                     TargetLanguage.JavaScript => $"let {name} = Array({variable.ArrayLength}).fill({value});",
                     TargetLanguage.Java when variable.ArrayRank == 2 => $"{TypeName(variable.Type)}[][] {name} = new {TypeName(variable.Type)}[{variable.ArrayLength}][{variable.ArraySecondLength}];",
@@ -891,6 +899,7 @@ internal static partial class CoreBasicCodeGenerator
                     TargetLanguage.Swift when variable.ArrayRank == 2 => $"var {name}: [[{TypeName(variable.Type)}]] = Array(repeating: Array(repeating: {value}, count: {variable.ArraySecondLength}), count: {variable.ArrayLength})",
                     TargetLanguage.Swift => $"var {name}: [{TypeName(variable.Type)}] = Array(repeating: {value}, count: {variable.ArrayLength})",
                     TargetLanguage.Python when variable.ArrayRank == 2 => $"{name} = [[{value} for _ in range({variable.ArraySecondLength})] for _ in range({variable.ArrayLength})]",
+                    TargetLanguage.Python when variable.Type is RecordTypeSymbol => $"{name} = [{value} for _ in range({variable.ArrayLength})]",
                     TargetLanguage.Python => $"{name} = [{value}] * {variable.ArrayLength}",
                     TargetLanguage.Cpp when variable.ArrayRank == 2 => $"std::array<std::array<{TypeName(variable.Type)}, {variable.ArraySecondLength}>, {variable.ArrayLength}> {name}{{}};",
                     TargetLanguage.Cpp => $"std::array<{TypeName(variable.Type)}, {variable.ArrayLength}> {name}{{}};",
@@ -991,7 +1000,7 @@ internal static partial class CoreBasicCodeGenerator
         {
             if (UsesManagedCText)
             {
-                _managedTextTemporaryRoots.Push(new List<string>());
+                _managedTextTemporaryRoots.Push(new List<(SmileType, string)>());
             }
         }
 
@@ -1002,9 +1011,9 @@ internal static partial class CoreBasicCodeGenerator
                 return;
             }
 
-            foreach (string root in _managedTextTemporaryRoots.Pop().AsEnumerable().Reverse())
+            foreach (var root in _managedTextTemporaryRoots.Pop().AsEnumerable().Reverse())
             {
-                Line($"smile_text_unregister(&{root});");
+                WriteCValueRoots(root.Type, root.Name, register: false);
             }
 
             Line("smile_text_collect();");
@@ -1018,6 +1027,7 @@ internal static partial class CoreBasicCodeGenerator
             }
 
             string operation = register ? "register" : "unregister";
+            WriteCRecordRoots(variables, register);
             foreach (VariableSymbol variable in variables.Where(variable =>
                 !variable.IsConstant && !variable.IsByRef && variable.Type is { Kind: SmileTypeKind.String }))
             {
@@ -1076,6 +1086,10 @@ internal static partial class CoreBasicCodeGenerator
                 case BoundSetStatement assignment:
                     WriteAssignment(assignment);
                     return;
+                case BoundMemberSetStatement assignment:
+                    string fieldTarget = FieldLocation(assignment.Target);
+                    WriteValueAssignment(assignment.Target.Type, fieldTarget, PreparedExpression(assignment.Value));
+                    return;
                 case BoundArraySetStatement assignment:
                     WriteArrayAssignment(assignment);
                     return;
@@ -1128,9 +1142,7 @@ internal static partial class CoreBasicCodeGenerator
         {
             string name = Name(assignment.Variable);
             string expression = PreparedExpression(assignment.Value);
-            Line(_language is TargetLanguage.Swift or TargetLanguage.Python
-                ? $"{name} = {expression}"
-                : $"{name} = {expression};");
+            WriteValueAssignment(assignment.Variable.Type, name, expression);
         }
 
         private void WriteArrayAssignment(BoundArraySetStatement assignment)
@@ -1154,9 +1166,7 @@ internal static partial class CoreBasicCodeGenerator
 
             string value = PreparedExpression(assignment.Value);
             string target = ArrayTarget(assignment.Array, checkedIndices);
-            Line(_language is TargetLanguage.Swift or TargetLanguage.Python
-                ? $"{target} = {value}"
-                : $"{target} = {value};");
+            WriteValueAssignment(assignment.Array.Type, target, value);
         }
 
         private void WriteCall(BoundCallStatement call)
@@ -1182,7 +1192,7 @@ internal static partial class CoreBasicCodeGenerator
                 return;
             }
 
-            string suffix = returnStatement.Value is null ? string.Empty : " " + PreparedExpression(returnStatement.Value);
+            string suffix = returnStatement.Value is null ? string.Empty : " " + RecordCopy(returnStatement.Value.Type, PreparedExpression(returnStatement.Value));
             Line(_language is TargetLanguage.Swift or TargetLanguage.Python
                 ? "return" + suffix
                 : "return" + suffix + ";");
@@ -1610,7 +1620,8 @@ internal static partial class CoreBasicCodeGenerator
                 {
                     string end = $"_smileForEnd{temp}";
                     Line($"long {end} = {upper};");
-                    Line($"{(hasCrossKindExit ? label + ": " : string.Empty)}for ({counter} = {lower}; {counter} {comparison} {end}; {counter}{step}) {{");
+                    string advance = _javaFieldReferenceParameters.Contains(loop.Counter) ? ValueAssignment(counter, counter + (loop.IsDescending ? " - 1" : " + 1")) : counter + step;
+                    Line($"{(hasCrossKindExit ? label + ": " : string.Empty)}for ({ValueAssignment(counter, lower)}; {counter} {comparison} {end}; {advance}) {{");
                     _indent++;
                     WriteItems(loop.SourceItems);
                     _indent--;
@@ -1870,6 +1881,7 @@ internal static partial class CoreBasicCodeGenerator
                 BoundBooleanLiteralExpression boolean => BooleanLiteral(boolean.Value),
                 BoundVariableExpression variable => Name(variable.Variable),
                 BoundArrayExpression array => ArrayElement(array.Array, array.Indices),
+                BoundFieldExpression field => FieldLocation(field),
                 BoundCallExpression call => $"{(_language is TargetLanguage.JavaScript && _asyncJavaScriptRoutines.Contains(call.Routine) ? "await " : string.Empty)}{RoutineName(call.Routine)}({string.Join(", ", call.Arguments.Select(Expression))})",
                 BoundIntrinsicExpression intrinsic => Intrinsic(intrinsic),
                 BoundUnaryExpression unary => Unary(unary),
@@ -1890,6 +1902,8 @@ internal static partial class CoreBasicCodeGenerator
         {
             switch (expression)
             {
+                case BoundFieldExpression field:
+                    return NewOrderedValue(field.Type, FieldLocation(field));
                 case BoundEnumExpression or BoundDoubleLiteralExpression or BoundStringLiteralExpression or BoundIntegerLiteralExpression or BoundBooleanLiteralExpression or BoundVariableExpression:
                     return Expression(expression);
                 case BoundArrayExpression array:
@@ -1999,16 +2013,17 @@ internal static partial class CoreBasicCodeGenerator
                 TargetLanguage.Python => $"{name} = {expression}",
                 _ => $"{TypeName(type)} {name} = {expression};"
             });
-            if (UsesManagedCText && type is { Kind: SmileTypeKind.String })
+            if (UsesManagedCText && (type == SmileType.String || type is RecordTypeSymbol { ContainsText: true }))
             {
-                Line($"smile_text_register(&{name});");
-                _managedTextTemporaryRoots.Peek().Add(name);
+                WriteCValueRoots(type, name, register: true);
+                _managedTextTemporaryRoots.Peek().Add((type, name));
             }
             return name;
         }
 
         private static bool ContainsArrayAccess(BoundExpression expression) => expression switch
         {
+            BoundFieldExpression => true,
             BoundArrayExpression => true,
             BoundCallExpression call => call.ParameterOrder is not null || call.Routine.Parameters.Any(parameter => parameter.IsByRef) || call.Arguments.Any(ContainsArrayAccess),
             BoundIntrinsicExpression intrinsic => DoubleSemantics.UsesDouble(intrinsic) || intrinsic.Arguments.Any(ContainsArrayAccess),
@@ -2053,22 +2068,24 @@ internal static partial class CoreBasicCodeGenerator
             return $"({left} {Operator(binary.Operator.Kind)} {right})";
         }
 
-        private string CheckedArrayIndex(VariableSymbol array, string index, int dimension) => _language switch
+        private string CheckedArrayIndex(VariableSymbol array, string index, int dimension) => CheckedArrayIndex(array.Name, ArrayDimension(array, dimension), index);
+
+        private string CheckedArrayIndex(string name, int length, string index) => _language switch
         {
             TargetLanguage.C or TargetLanguage.ObjectiveC =>
-                $"smile_index({index}, {ArrayDimension(array, dimension)}, {TargetEscapes.CString(array.Name)})",
+                $"smile_index({index}, {length}, {TargetEscapes.CString(name)})",
             TargetLanguage.Cpp =>
-                $"smile_index({index}, {ArrayDimension(array, dimension)}, {TargetEscapes.CString(array.Name)})",
+                $"smile_index({index}, {length}, {TargetEscapes.CString(name)})",
             TargetLanguage.CSharp =>
-                $"SmileIndex({index}, {ArrayDimension(array, dimension)}, {TargetEscapes.CSharpString(array.Name)})",
+                $"SmileIndex({index}, {length}, {TargetEscapes.CSharpString(name)})",
             TargetLanguage.JavaScript =>
-                $"smileIndex({index}, {ArrayDimension(array, dimension)}, {TargetEscapes.JavaScriptString(array.Name)})",
+                $"smileIndex({index}, {length}, {TargetEscapes.JavaScriptString(name)})",
             TargetLanguage.Java =>
-                $"smileIndex({index}, {ArrayDimension(array, dimension)}, {TargetEscapes.JavaString(array.Name)})",
+                $"smileIndex({index}, {length}, {TargetEscapes.JavaString(name)})",
             TargetLanguage.Swift =>
-                $"smileIndex({index}, {ArrayDimension(array, dimension)}, {TargetEscapes.SwiftString(array.Name)})",
+                $"smileIndex({index}, {length}, {TargetEscapes.SwiftString(name)})",
             TargetLanguage.Python =>
-                $"smile_index({index}, {ArrayDimension(array, dimension)}, {TargetEscapes.PythonString(array.Name)})",
+                $"smile_index({index}, {length}, {TargetEscapes.PythonString(name)})",
             _ => index
         };
 
@@ -2297,7 +2314,8 @@ internal static partial class CoreBasicCodeGenerator
             };
         }
 
-        private string TypeName(SmileType type) => type is EnumTypeSymbol enumeration ? _identifiers.Get(enumeration) : _language switch
+        private string TypeName(SmileType type) => type is EnumTypeSymbol enumeration ? _identifiers.Get(enumeration)
+            : type is RecordTypeSymbol record ? _identifiers.Get(record) : _language switch
         {
             TargetLanguage.CSharp => type switch { { Kind: SmileTypeKind.Double } => "double", { Kind: SmileTypeKind.Integer } => "long", { Kind: SmileTypeKind.Boolean } => "bool", _ => "string" },
             TargetLanguage.C => type switch { { Kind: SmileTypeKind.Double } => "double", { Kind: SmileTypeKind.Integer } => "int64_t", { Kind: SmileTypeKind.Boolean } => "bool", _ => "const char *" },
@@ -2310,6 +2328,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private string DefaultLiteral(SmileType type) => type switch
         {
+            RecordTypeSymbol record => RecordDefault(record),
             EnumTypeSymbol enumeration => EnumLiteral(enumeration, 0),
             { Kind: SmileTypeKind.Double } => "0.0",
             { Kind: SmileTypeKind.Integer } => IntegerLiteral(0),
@@ -2614,6 +2633,7 @@ internal static partial class CoreBasicCodeGenerator
                 IEnumerable<BoundExpression> roots = statement switch
                 {
                     BoundSetStatement set => new[] { set.Value },
+                    BoundMemberSetStatement set => new BoundExpression[] { set.Target, set.Value },
                     BoundArraySetStatement set => set.Indices.Append(set.Value),
                     BoundConstStatement constant => new[] { constant.Initializer },
                     BoundCallStatement call => call.Arguments,
@@ -2660,6 +2680,11 @@ internal static partial class CoreBasicCodeGenerator
                         foreach (BoundExpression child in WalkExpression(index)) yield return child;
                     }
                     break;
+                case BoundFieldExpression field:
+                    foreach (BoundExpression child in WalkExpression(field.Receiver)) yield return child;
+                    foreach (BoundExpression index in field.Indices)
+                        foreach (BoundExpression child in WalkExpression(index)) yield return child;
+                    break;
                 case BoundIntrinsicExpression intrinsic:
                     foreach (BoundExpression argument in intrinsic.Arguments)
                     {
@@ -2693,7 +2718,7 @@ internal static partial class CoreBasicCodeGenerator
         private IEnumerable<BoundExpression> ProgramExpressions() =>
             AllExecutableItemSets().SelectMany(EnumerateExpressions);
 
-        private bool ProgramHasArrays() => _program.AllVariables.Any(variable => variable.IsArray);
+        private bool ProgramHasArrays() => _features.HasArrays;
 
         private bool ProgramHasUnicodeText() => ProgramExpressions().Any(expression =>
             expression is BoundStringLiteralExpression text && text.Value.Any(character => character > 127));
@@ -2745,6 +2770,7 @@ internal static partial class CoreBasicCodeGenerator
             EnumerateStatements(items).Any(statement => statement switch
             {
                 BoundSetStatement set => ReferenceEquals(set.Variable, variable),
+                BoundMemberSetStatement set => ReferenceEquals(LocationOwner(set.Target), variable),
                 BoundForStatement loop => ReferenceEquals(loop.Counter, variable),
                 BoundGetKeyStatement getKey => ReferenceEquals(getKey.Target, variable),
                 BoundTextFileLoadStatement load => ReferenceEquals(load.Count, variable) || ReferenceEquals(load.Destination, variable),

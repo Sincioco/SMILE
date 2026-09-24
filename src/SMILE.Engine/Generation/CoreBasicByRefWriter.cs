@@ -6,7 +6,7 @@ internal static partial class CoreBasicCodeGenerator
     {
         private bool UsesArrayReferences => _language is TargetLanguage.Java or TargetLanguage.JavaScript or TargetLanguage.Python;
         private bool NeedsReferenceBox(VariableSymbol variable) => UsesArrayReferences && !variable.IsArray &&
-            !variable.IsByRef && _addressedVariables.Contains(variable);
+            !variable.IsByRef && variable.Type is not RecordTypeSymbol && _addressedVariables.Contains(variable);
         private string StorageName(VariableSymbol variable) => _identifiers.Get(variable);
         private static string ReferenceIndexName(VariableSymbol variable) => $"_smileRefIndex{variable.DeclarationSpan.Start}";
 
@@ -15,6 +15,8 @@ internal static partial class CoreBasicCodeGenerator
             string name = StorageName(variable);
             if (NeedsReferenceBox(variable)) return $"{name}[0]";
             if (!variable.IsByRef) return name;
+            if (UsesArrayReferences && variable.Type is RecordTypeSymbol) return name;
+            if (_language is TargetLanguage.Java && _javaFieldReferenceParameters.Contains(variable)) return name + ".get()";
             if (UsesArrayReferences) return $"{name}[{ReferenceIndexName(variable)}]";
             if (_language is TargetLanguage.C or TargetLanguage.ObjectiveC) return $"(*{name})";
             return _swiftReferenceParameters.Contains(variable) ? name + ".value" : name;
@@ -38,6 +40,8 @@ internal static partial class CoreBasicCodeGenerator
         {
             string name = StorageName(parameter);
             string type = TypeName(parameter.Type);
+            if (UsesArrayReferences && parameter.Type is RecordTypeSymbol) return _language is TargetLanguage.Java ? type + " " + name : name;
+            if (_language is TargetLanguage.Java && _javaFieldReferenceParameters.Contains(parameter)) return $"SmileReference<{JavaReferenceType(parameter.Type)}> {name}";
             return _language switch
             {
                 TargetLanguage.CSharp => $"ref {type} {name}",
@@ -52,6 +56,24 @@ internal static partial class CoreBasicCodeGenerator
 
         private string PrepareReferenceArgument(BoundExpression argument, VariableSymbol parameter)
         {
+            if (UsesArrayReferences && argument.Type is RecordTypeSymbol)
+                return NewOrderedValue(argument.Type, PrepareRecordLocation(argument));
+            if (_language is TargetLanguage.Java && _javaFieldReferenceParameters.Contains(parameter))
+                return PrepareJavaFieldReference(argument);
+            if (argument is BoundFieldExpression dynamicField && UsesArrayReferences)
+                return PrepareDynamicFieldReference(dynamicField);
+            if (argument is BoundFieldExpression field && _language is TargetLanguage.CSharp or TargetLanguage.C or TargetLanguage.ObjectiveC or TargetLanguage.Cpp)
+            {
+                string fieldTarget = FieldLocation(field);
+                string capturedField = $"_smileReference{++_orderedTempId}";
+                if (_language is TargetLanguage.CSharp)
+                {
+                    Line($"ref {TypeName(argument.Type)} {capturedField} = ref {fieldTarget};");
+                    return "ref " + capturedField;
+                }
+                Line($"{TypeName(argument.Type)}* {capturedField} = &{fieldTarget};");
+                return _language is TargetLanguage.Cpp ? "*" + capturedField : capturedField;
+            }
             VariableSymbol owner = LocationOwner(argument);
             var indices = new List<string>();
             if (argument is BoundArrayExpression array)
@@ -65,7 +87,8 @@ internal static partial class CoreBasicCodeGenerator
                     indices.Add(index);
                 }
             }
-            string target = indices.Count == 0 ? Name(owner) : ArrayTarget(owner, indices);
+            string target = argument is BoundFieldExpression swiftField ? FieldLocation(swiftField)
+                : indices.Count == 0 ? Name(owner) : ArrayTarget(owner, indices);
             if (UsesArrayReferences)
             {
                 string storage = indices.Count > 1 ? $"{StorageName(owner)}[{indices[0]}]" : StorageName(owner);
@@ -75,7 +98,7 @@ internal static partial class CoreBasicCodeGenerator
             if (_language is TargetLanguage.Swift)
             {
                 if (!_swiftReferenceParameters.Contains(parameter)) return "&" + target;
-                if (owner.IsByRef && _swiftReferenceParameters.Contains(owner)) return StorageName(owner);
+                if (argument is BoundVariableExpression && owner.IsByRef && _swiftReferenceParameters.Contains(owner)) return StorageName(owner);
                 string reference = $"_smileReference{++_orderedTempId}";
                 Line($"let {reference} = SmileReference<{TypeName(argument.Type)}>(read: {{ {target} }}, write: {{ {target} = $0 }})");
                 return reference;
@@ -98,6 +121,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private void WriteReferenceHelpers()
         {
+            if (_language is TargetLanguage.Java) WriteJavaFieldReferenceHelper();
             if (_language is not TargetLanguage.Swift || _swiftReferenceParameters.Count == 0) return;
             Lines(
                 "// Shared aliases need a captured location; Swift inout requires exclusive access.",

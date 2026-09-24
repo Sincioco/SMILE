@@ -184,7 +184,7 @@ builtin-call    := "Timer" "(" ")"
 
 ## Deliberate exclusions
 
-This milestone does not add blocking `Input`, `Key_Held`, pointer/mouse input, cursor visibility/shape control, arbitrary terminal escape strings, graphics or `Game Window`, sound, file writing/persistence, dynamic arrays, more than two dimensions, array parameters or returns, variadic parameters, records, enums, classes, modules, imports, threads in SMILE source, or an eleventh target. Historical LET/SET/INPUT/WHILE/interpolation/block-string syntax remains rejected. Blocking Input is also absent from current SMILE 2.0.
+This milestone does not add blocking `Input`, `Key_Held`, pointer/mouse input, cursor visibility/shape control, arbitrary terminal escape strings, graphics or `Game Window`, sound, unrestricted file writing, dynamic arrays, more than two dimensions, whole-array parameters or returns, variadic parameters, Type methods/properties, classes, modules, imports, threads in SMILE source, or an eleventh target. Historical LET/SET/INPUT/WHILE/interpolation/block-string syntax remains rejected. Blocking Input is also absent from current SMILE 2.0. The later back-port sections below add bounded file reads, integer/Data persistence, Enum and Type value records.
 
 ## Unicode text inspection
 
@@ -206,7 +206,7 @@ The output is `3`, `128512`, and `😀`, on separate lines. Indexes and counts u
 
 Required parameters accept `[ByVal | ByRef] Name As Type`, where Type is Number,
 Double, Boolean, or Text. Omitted mode means ByVal. A ByRef argument must be an
-exact-type writable scalar, array element, or writable parameter; constants,
+exact-type writable variable, array element, record field, or parameter; constants,
 literal values, computations, routine results, and whole arrays are invalid.
 Writing a ByRef parameter immediately changes its caller location. Two
 parameters may share that location, and forwarding preserves the alias. ByVal
@@ -216,8 +216,8 @@ Each explicit argument is captured once in source order before declaration-order
 placement. ByRef captures a location rather than its current value. For an array
 cell, evaluate and check each index before the next dimension or later argument;
 a failed bounds check stops the call without later effects and retains earlier
-output. Scalars and fixed array cells are currently supported; record locations
-depend on the pending record back-port. `SMILE2165` diagnoses non-writable ByRef
+output. Scalars, fixed array cells, whole records and writable record fields are
+supported. `SMILE2165` diagnoses non-writable ByRef
 arguments; normal exact-type diagnostics also apply. `Optional ByRef` is invalid.
 
 ```smile
@@ -519,3 +519,46 @@ them may leave the backup equal to the unchanged valid primary. Other targets us
 Windows atomic replacement directly. None of these operations provides a
 multi-process transaction lock. Standard crypto/file APIs and focused helpers
 implement this contract without a persistence framework or third-party package.
+
+## Type value records
+
+```smile
+Type ScoreEntry
+    Player As Text
+    Points As Number
+End Type
+Dim Current As ScoreEntry
+Dim Saved As ScoreEntry
+Current.Player = "Sin"
+Current.Points = 10
+Saved = Current
+Current.Points = 20
+Print Saved.Player; ":"; Saved.Points
+```
+
+- Declare a nonempty Type at program level. Names are case-insensitive and each
+  declaration introduces a distinct nominal type. Fields use `Name As Type` or
+  `Name[constant-size, constant-size] As Type`; one or two fixed dimensions are
+  supported. Field types may be Number, Double, Boolean, Text, Enum or another Type.
+- Nested records and arrays initialize each leaf independently to its normal
+  default. Forward type references are supported; recursive value layouts and
+  layouts/record arrays exceeding signed-32-bit storage size are errors.
+- Dot selects a field; brackets index fixed-array fields or arrays of records.
+  Each index is evaluated and checked before later indexes and call arguments.
+  Out-of-bounds access reports SMILER1210 and does not continue the operation.
+- Assignment and ByVal/return copy the complete record value, including all
+  nested arrays and Text values. Exact types must match. An earlier ByVal
+  argument is copied before later arguments run.
+- ByRef accepts records and writable scalar, nested-record or fixed-array field
+  cells. The location remains valid when another alias assigns the containing
+  record. A field of a temporary function result is readable but not writable.
+  Data Count/Status also accept writable Number field locations after I/O.
+- Whole-record Print, comparisons, arithmetic, conversions, Const, Optional
+  defaults and Select Case are not supported. Use the corresponding fields.
+- This value-record milestone does not yet implement Type methods/properties,
+  explicit member visibility, Me, With or Class reference objects.
+
+Generation uses native structs/aggregates and copy semantics wherever available.
+Java/JavaScript/Python and array-bearing C# records need copy support to preserve
+value semantics and stable aliases. Text storage limits of individual targets
+remain unchanged, including COBOL's fixed 4096-byte Text capacity.
