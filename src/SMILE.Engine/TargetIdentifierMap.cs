@@ -35,6 +35,8 @@ internal sealed class TargetIdentifierMap
             if (language is TargetLanguage.C or TargetLanguage.ObjectiveC or TargetLanguage.Cpp)
                 reserved.UnionWith(new[] { "fabs", "sqrt", "sin", "cos", "atan2", "floor", "ceil", "trunc", "nearbyint", "strtod", "isfinite", "memchr", "snprintf", "strchr", "strcat" });
         }
+        if (CoreBasicProgramFeatureSet.Create(program).HasTextFileLoad)
+            reserved.UnionWith(new[] { "SmileLoadTextFile", "smileLoadTextFile", "smile_load_text_file", "smile_text_file_path", "pathlib", "__file__", "ValueError", "smileFileSystem", "smilePath", "__dirname", "Buffer", "AppContext", "java", "URL", "CommandLine", "GetPath", "GetModuleFileNameW", "MultiByteToWideChar", "CreateFileW", "ReadFile", "CloseHandle", "memcpy", "memset" });
         var used = new HashSet<string>(StringComparer.Ordinal);
         var names = new Dictionary<VariableSymbol, string>();
         var routineNames = new Dictionary<RoutineSymbol, string>();

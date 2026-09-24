@@ -88,6 +88,7 @@ internal sealed class Parser
         TokenKind.TextType => ParseTextColor(),
         TokenKind.Wait => ParseWait(),
         TokenKind.Random => ParseRandom(),
+        TokenKind.Load => ParseTextFileLoad(),
         TokenKind.If => ParseIf(),
         TokenKind.For => ParseFor(),
         TokenKind.Do => ParseDo(),
@@ -96,6 +97,19 @@ internal sealed class Parser
         TokenKind.UnsupportedKeyword or TokenKind.ByRef or TokenKind.Optional => ParseUnsupported(),
         _ => ParseUnexpectedStatement()
     };
+
+    private StatementSyntax ParseTextFileLoad()
+    {
+        Token start = Next();
+        Match(TokenKind.TextType, "Expected Text after Load.");
+        Match(TokenKind.File, "Expected File after Load Text.");
+        ExpressionSyntax path = ParseExpression();
+        Match(TokenKind.Into, "Expected Into after the file path.");
+        Token destination = Match(TokenKind.Identifier, "Expected a Number array after Into.");
+        Match(TokenKind.Count, "Expected Count after the destination array.");
+        Token count = Match(TokenKind.Identifier, "Expected a Number count variable.");
+        return new TextFileLoadStatementSyntax(path, destination.Text, destination.Span, count.Text, count.Span, Combine(start.Span, count.Span));
+    }
 
     private StatementSyntax ParseOptionExplicit()
     {
@@ -892,7 +906,7 @@ internal sealed class Parser
     {
         Bad, EndOfFile, EndOfLine, Comment, Identifier, Number, DoubleLiteral, String,
         Dim, If, Then, Else, End, For, To, Down, Do, Loop, Until, Print,
-        Get, Key, Clear, Screen, Move, Cursor, Color, Default, TextColor, Wait, Milliseconds, Random, From,
+        Get, Key, Clear, Screen, Move, Cursor, Color, Default, TextColor, Wait, Milliseconds, Random, From, Load, File, Into, Count,
         True, False, And, Or, Not, Const, Mod, Exit, Program, As,
         NumberType, DoubleType, BooleanType, TextType, Option, Explicit, Sub, Function,
         Call, Return, Select, Case, ByVal, ByRef, Optional, BuiltInConstant, BuiltInFunction, UnsupportedKeyword,
@@ -926,6 +940,7 @@ internal sealed class Parser
             ["Sub"] = TokenKind.Sub, ["Function"] = TokenKind.Function,
             ["Call"] = TokenKind.Call, ["Return"] = TokenKind.Return,
             ["Select"] = TokenKind.Select, ["Case"] = TokenKind.Case,
+            ["Load"] = TokenKind.Load, ["File"] = TokenKind.File, ["Into"] = TokenKind.Into, ["Count"] = TokenKind.Count,
             ["ByVal"] = TokenKind.ByVal, ["ByRef"] = TokenKind.ByRef,
             ["Optional"] = TokenKind.Optional,
             ["Timer"] = TokenKind.BuiltInFunction, ["Abs"] = TokenKind.BuiltInFunction,

@@ -5,7 +5,7 @@ Authority inspected read-only: `D:\SMILE 2.0`, commit
 before inspection and after the unchanged fixture compilation/execution.
 
 The overall requested back-port is **not complete**. This file records the
-completed text, routine, console-key, and Double milestones and the remaining source-language gaps.
+completed text, routine, console-key, Double, and text-file milestones and the remaining source-language gaps.
 
 ## Implemented in this milestone
 
@@ -20,6 +20,7 @@ completed text, routine, console-key, and Double milestones and the remaining so
 | Expanded console keys | O/F/G/R/P/B/X/Y/Z/E/C, Backtick, Plus and Minus events on all ten targets; Control constant available |
 | Double arithmetic | Distinct binary64 literals, scalar/array storage, routines, Optional defaults, same-type operators and exact comparisons |
 | Double math and conversions | ToDouble/ToNumber; polymorphic Abs/Min/Max; Clamp, Sqrt, Sin, Cos, Atan2, Floor, Ceiling, Truncate, Round; Text_From_Double/Text_To_Double |
+| Load Text File | Expression paths, executable-relative normalization, bounded UTF-8 bytes, BOM removal, zero-fill, safe missing/unreadable results; all ten targets |
 | Checked Double failures | Invalid domains, zero divisors, conversion overflow and nonfinite results report their source line before destination mutation |
 
 The UTF-8 output fix addresses failures observed during actual generated-program
@@ -31,7 +32,7 @@ execution on Windows. Ordinary ASCII programs retain their minimal output.
 |---|---|
 | Writable arguments | Exact-type `ByRef`, including scalar variables, checked array cells, and subsequently record locations |
 | Console keys | Standalone Control key events: character-stream APIs do not report modifier-only events; a native console-event boundary is still needed |
-| Files and persistence | `Load`/`Save` integer values; UTF-8 `Load Text File`; byte Data save/load and recoverable Status; associated constants and application storage identity |
+| Files and persistence | `Load`/`Save` integer values; byte Data save/load and recoverable Status; associated constants and application storage identity |
 | Value types | Nominal Enum declarations/members and Type records, nested fields, fixed-array fields, deep copies, and exact nominal typing |
 | Object members | Type methods/properties, Class references/constructors, Me, New, Nothing, Is/Is Not, With blocks, member visibility and ownership |
 | Program organization | Module/Import, qualified names, visibility, multi-file source/project inputs, deterministic source-owned libraries |
@@ -60,6 +61,9 @@ explicitly typed SMILE 1.0 subset.
   slots. The bound tree retains source-order expressions and the parameter map.
 - `RoutineArguments.cs` applies the map after evaluation/capture; it is a compiler
   utility, not emitted runtime machinery.
+- `TextFileLoading.cs` owns evaluator file semantics and the injectable stream host.
+  `CoreBasicTextFileWriter.cs` owns lowering; managed/native file-support modules
+  use normal file APIs. Node.js uses asynchronous file handles.
 - `TextIntrinsics.cs` owns evaluator/static-analysis scalar traversal.
 - `DoubleSemantics.cs` owns evaluator/static-analysis binary64 rules. `Binder.Double.cs`
   binds exact numeric intrinsic signatures. `DoubleProgramFeatures.cs` inventories
@@ -74,7 +78,7 @@ explicitly typed SMILE 1.0 subset.
   4096-byte storage and explicit logical lengths. No third-party dependency or
   source-language graphics feature was added.
 
-Actual validation includes the new evaluator/diagnostic tests, text/routine/Double fixtures
+Actual validation includes the new evaluator/diagnostic tests, text/routine/Double/text-file fixtures
 built and run across all ten targets, MissionGuardrail, existing core conformance
 and terminal coverage, and unchanged fixtures built/run with the authoritative
 SMILE 2.0 compiler. Generated binaries and parity scratch files belong in ignored
@@ -83,7 +87,11 @@ includes adjacent binary64 values, subnormals, signed zero, rounding ties,
 19-digit Number conversion, named/Optional calls, mixed calls exceeding four
 arguments, exact Select Case, print/argument evaluation order, and six runtime
 failure programs per target. The COBOL comparison/literal/transfer path was
-checked against actual generated GnuCOBOL C output before selecting interop.
+checked against actual generated GnuCOBOL C output before selecting interop. The text-file fixture runs on all ten targets and
+unchanged in SMILE 2.0; it covers BOM/Unicode/NUL bytes, multi-chunk reads, short
+files, truncation, zero-fill, path expressions and normalization, invalid/missing
+paths, global/local arrays, and asynchronous routine propagation. It also keeps
+regressions for a Windows GetPath name collision and C++ literal concatenation.
 
 No repository file-size/complexity checker or reviewed no-growth baseline was
 found in SMILE 1.0. Existing broad writers received focused wiring; new text and

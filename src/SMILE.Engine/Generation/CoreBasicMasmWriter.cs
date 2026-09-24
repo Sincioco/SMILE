@@ -58,6 +58,7 @@ internal sealed partial class CoreBasicMasmWriter
 
         Line("option casemap:none");
         WriteDoublePrototypes();
+        if (_features.HasTextFileLoad) Line("smile_load_text_file PROTO :PTR BYTE, :PTR QWORD, :QWORD");
         Line("ExitProcess PROTO :DWORD");
         if (_usesPrintf) Line("printf PROTO :PTR BYTE, :VARARG");
         if (_usesStrcmp) Line("strcmp PROTO :PTR BYTE, :PTR BYTE");
@@ -758,6 +759,9 @@ internal sealed partial class CoreBasicMasmWriter
                         break;
                     case BoundArraySetStatement set:
                         WriteArraySet(set, indent);
+                        break;
+                    case BoundTextFileLoadStatement load:
+                        WriteTextFileLoad(load, indent);
                         break;
                     case BoundGetKeyStatement getKey:
                         NoteCall(0);

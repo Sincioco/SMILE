@@ -44,6 +44,10 @@ public sealed record ParameterSyntax(
     ExpressionSyntax? DefaultValue = null)
     : SyntaxNode(Span);
 
+public sealed record TextFileLoadStatementSyntax(
+    ExpressionSyntax Path, string Destination, TextSpan DestinationSpan,
+    string Count, TextSpan CountSpan, TextSpan Span) : StatementSyntax(Span);
+
 public sealed record DoubleLiteralExpressionSyntax(string Text, TextSpan Span) : ExpressionSyntax(Span);
 
 public sealed record NamedArgumentExpressionSyntax(string Name, ExpressionSyntax Value, TextSpan Span)

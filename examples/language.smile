@@ -37,6 +37,10 @@ Dim Speed As Double
 
 Dim Measurements[2] As Double
 
+Dim FileBytes[16] As Number
+
+Dim FileByteCount As Number
+
 FirstName = "Sin"
 LastName = "Cioco"
 Age = 49
@@ -143,6 +147,11 @@ Print "Double values="; Measurements[0]; ", "; Measurements[1]
 Print "Double math="; Sqrt(9.0); ", "; Round(2.5); ", "; Clamp(Speed, 0.0, 1.0)
 Print "Explicit truncation="; ToNumber(-3.9)
 Print "Signed zero="; Text_From_Double(-0.0)
+
+' Put lesson.txt beside the generated executable to read its UTF-8 bytes.
+' A missing file safely returns zero bytes.
+Load Text File "lesson.txt" Into FileBytes Count FileByteCount
+Print "Text-file bytes="; FileByteCount
 
 Call ShowGreeting()
 Call ShowGreeting(Caption:="Welcome", Learner:="Sin")

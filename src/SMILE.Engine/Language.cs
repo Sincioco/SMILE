@@ -350,6 +350,9 @@ public sealed record BoundArraySetStatement(
     BoundExpression Value)
     : BoundStatement;
 
+public sealed record BoundTextFileLoadStatement(BoundExpression Path, VariableSymbol Destination, VariableSymbol Count)
+    : BoundStatement;
+
 public sealed record BoundGetKeyStatement(VariableSymbol Target)
     : BoundStatement;
 

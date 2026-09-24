@@ -170,6 +170,7 @@ public static class SmileSourceFormatter
                 WaitStatementSyntax wait => new[] { wait.Duration },
                 MoveCursorStatementSyntax moveCursor => new[] { moveCursor.Column, moveCursor.Row },
                 RandomStatementSyntax random => new[] { random.LowerBound, random.UpperBound },
+                TextFileLoadStatementSyntax load => new[] { load.Path },
                 _ => Array.Empty<ExpressionSyntax>()
             };
 

@@ -10,7 +10,7 @@ Write a small, readable program. See how it becomes C#, Java, C++, and seven oth
 
 ## Latest progress
 
-### Text, routines, and Double math back-ported from SMILE 2.0
+### Text, routines, Double math, and file reads back-ported from SMILE 2.0
 
 `Text_Length`, `Text_Code_At`, and `Text_Slice` now inspect Unicode scalars, including emoji. Routines support typed Optional defaults, named arguments, and multiline parameter lists; Number expressions also accept unary `+`. The evaluator and all ten targets preserve argument evaluation order. Windows C#, Java, and Python output explicitly uses UTF-8 when the program contains Unicode text.
 
@@ -27,6 +27,14 @@ Print Text_From_Double(-0.0)
 This prints `1.5`, `3.0:2.0`, and `-0.0`. Double math also includes `Abs`, `Min`, `Max`, `Clamp`, `Sin`, `Cos`, `Atan2`, `Floor`, `Ceiling`, and `Truncate`. Use `ToNumber` for checked truncation and `Text_To_Double` to parse invariant decimal text. No implicit Number/Double conversion occurs.
 
 The broader back-port remains in progress. ByRef, persistence, and structured types/modules remain listed in the [back-port inventory](docs/SMILE%202%20Core%20Backport%20Progress.md). Double output uses native binary64 arithmetic and standard math APIs, with small checks where the target permits infinities or has different conversion rules. COBOL needs C interoperability for exact binary64 operations because its ordinary decimal arithmetic and numeric transfers lose distinctions required by SMILE. Exponent spelling and transcendental rounding can differ between targets.
+
+`Load Text File Path Into Bytes Count ByteCount` now reads bounded UTF-8 bytes
+into a one-dimensional Number array on all ten targets. It removes an initial
+UTF-8 BOM, clears unused cells, and returns zero for missing/unreadable files.
+Paths are normalized relative to the executable (or script/class directory),
+with escaping paths rejected. Place data files there when running generated
+programs; automatic project-asset publication remains pending. Node.js reads
+asynchronously. See the [official file-read contract](docs/SMILE%20Language%20Specification/003%20-%20SMILE%20Core%20BASIC%202.1%20Text-Game%20Foundation%20Official%20Specification.md#load-text-file).
 
 Console controls also recognize O/F/G/R/P/B/X/Y/Z/E/C, Backtick, Plus and Minus
 with SMILE 2.0 key codes on every target. `KEY_CONTROL` is available as a constant;

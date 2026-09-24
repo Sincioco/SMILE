@@ -157,3 +157,12 @@ MASM uses REAL8/SSE with Windows x64 floating calls. COBOL uses FLOAT-LONG stora
 and a focused C interoperability boundary where its decimal-based arithmetic,
 literal conversion, or comparison would lose binary64 distinctions. These
 adapters contain individual native operations, not a numeric opcode interpreter.
+
+## Text-file generation
+
+Use native file streams/handles and typed array storage. The feature-selected
+helper owns relative-path normalization, BOM removal, bounded copying, zero-fill,
+and recoverable I/O only. Node.js must await native asynchronous file operations;
+propagate await through callers without blocking its event loop. Python remains
+a direct script, and Swift passes its array with ordinary inout. MASM and COBOL
+may use their normal C interoperability for these operating-system services.

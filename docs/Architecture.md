@@ -46,6 +46,14 @@ The evaluator keeps globals outside a stack of reentrant call frames. Each frame
 
 `ISmileEvaluationHost` isolates terminal and nondeterministic effects: one-event key polling, clear/top-left frame boundaries, cursor moves, named color changes, virtual Wait, monotonic time, and inclusive Random. The default host is safe for ordinary callers; scripted tests use a deterministic host. Wait clamps once to the unsigned 32-bit millisecond maximum, and a reversed Random range returns its evaluated lower bound without consuming randomness. A configurable statement budget stops runaway game loops with `SMILER1222` without changing normal source semantics.
 
+`TextFileLoading` owns executable-relative path normalization and bounded byte
+loading in the evaluator. `ISmileFileHost` supplies a disposable stream and
+`SmileDirectoryFileHost` is the default directory-backed implementation; tests
+inject memory streams. `SmileEvaluationOptions.Files` selects the host. The
+source is evaluated before the destination is cleared and Count is assigned only
+after the read. Binding remains in `Binder.TextFile`, while the parser and
+formatter own syntax and expression traversal.
+
 ## Generation registry
 
 `Binder.RoutineArguments` owns Optional-default validation and named-argument binding. Bound calls retain source-order expressions and a parameter-order index list; the evaluator and each writer apply that list only after capturing arguments. `RoutineArguments` provides this small compiler-side ordering operation, without introducing a generated calling framework. The parser continues to own all syntax, including multiline parameter lists and named labels.
@@ -72,6 +80,14 @@ The active policy is centralized in `TargetLanguageInfo.All` and `ActiveTargetLa
 10. C++
 
 CLI, Desktop panes, generation tests, and toolchain registration consume the same set.
+
+`CoreBasicTextFileWriter` lowers the file-read statement. `ManagedTextFileSupport`
+and `NativeTextFileSupport` provide feature-selected standard file/stream APIs,
+path normalization, BOM removal, and zero-fill. Node.js uses asynchronous reads;
+the existing await propagation now includes routines containing a text-file read.
+MASM delegates file mechanics to `SmileFileRuntime.c`, and COBOL reuses its
+ordinary C-interoperability companion. No game logic or generic file framework
+is emitted.
 
 ## Native target lowering
 

@@ -376,6 +376,9 @@ internal sealed partial class CobolWriter
                         Assign(target.Value, set.Array.Type, set.Value, value, indent, target.Length);
                         break;
                     }
+                    case BoundTextFileLoadStatement load:
+                        WriteTextFileLoad(load, indent);
+                        break;
                     case BoundGetKeyStatement getKey:
                         Line(indent, "CALL \"smile_get_key_cobol\" RETURNING " + _owner.Name(getKey.Target));
                         break;

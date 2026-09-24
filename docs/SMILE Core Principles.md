@@ -74,7 +74,7 @@ Tests may require a helper only when the specification makes it necessary. An ol
 
 ## 10. Parity is reproducible
 
-Incremental text/routine/Double additions also record a current authority commit and execute unchanged source fixtures in both implementations. A completed subset must not be presented as full SMILE 2.0 parity; the current back-port inventory distinguishes implemented work, outstanding core features, and graphical features outside the request.
+Incremental text/routine/Double/file additions also record a current authority commit and execute unchanged source fixtures in both implementations. A completed subset must not be presented as full SMILE 2.0 parity; the current back-port inventory distinguishes implemented work, outstanding core features, and graphical features outside the request.
 
 The frozen profiles record their authoritative SMILE 2.0 commit. Unchanged Profile 1 and Profile 2 fixtures compile in both repositories and produce recorded output. Verification checks that SMILE 2.0 is clean and still pinned before and after; the authority repository is read-only.
 

@@ -60,6 +60,10 @@
       <Word>CASE</Word>
       <Word>BYVAL</Word>
       <Word>OPTIONAL</Word>
+      <Word>LOAD</Word>
+      <Word>FILE</Word>
+      <Word>INTO</Word>
+      <Word>COUNT</Word>
       <Word>GET</Word>
       <Word>KEY</Word>
       <Word>CLEAR</Word>

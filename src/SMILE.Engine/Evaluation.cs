@@ -28,6 +28,7 @@ public sealed class SmileEvaluator
     private readonly Dictionary<RoutineSymbol, BoundRoutineDeclaration> _routines = new();
     private readonly StringBuilder _output = new();
     private ISmileEvaluationHost _host = new ScriptedSmileEvaluationHost();
+    private ISmileFileHost _files = new SmileDirectoryFileHost(AppContext.BaseDirectory);
     private long _remainingStatements;
     private CancellationToken _cancellationToken;
 
@@ -69,6 +70,7 @@ public sealed class SmileEvaluator
         _routines.Clear();
         _output.Clear();
         _host = options.Host ?? new ScriptedSmileEvaluationHost();
+        _files = options.Files ?? new SmileDirectoryFileHost(AppContext.BaseDirectory);
         _remainingStatements = options.StatementBudget;
         _cancellationToken = cancellationToken;
         InitializeProgram(bindResult.Program);
@@ -164,6 +166,11 @@ public sealed class SmileEvaluator
                     }
 
                     array![index] = arrayValue;
+                    break;
+
+                case BoundTextFileLoadStatement load:
+                    if (!TryEvaluateExpression(load.Path, frame, out SmileValue filePath, out SmileRuntimeError? filePathError)) return filePathError;
+                    SetValue(load.Count, frame, SmileValue.FromInteger(TextFileLoading.Load(filePath.StringValue, GetArray(load.Destination, frame), _files)));
                     break;
 
                 case BoundGetKeyStatement getKey:

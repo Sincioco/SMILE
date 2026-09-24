@@ -2,9 +2,9 @@
 
 ## Status and authority
 
-This is the current complete SMILE 1.0 language specification. It additively extends the preserved [Core BASIC 2.0 subset](002%20-%20SMILE%20Core%20BASIC%202%20Official%20Specification.md) with console operations, rank-two arrays, and the text/routine/Double additions below.
+This is the current complete SMILE 1.0 language specification. It additively extends the preserved [Core BASIC 2.0 subset](002%20-%20SMILE%20Core%20BASIC%202%20Official%20Specification.md) with console operations, rank-two arrays, and the text/routine/Double/file additions below.
 
-The text/routine/Double back-port was verified against SMILE 2.0 commit `e97afe296f6866d97ad035c9a9b0c9596b919fe0`. This is an incremental back-port, not a claim of complete non-graphical SMILE 2.0 parity. The [back-port inventory](../SMILE%202%20Core%20Backport%20Progress.md) records the remaining features.
+The text/routine/Double/file back-port was verified against SMILE 2.0 commit `e97afe296f6866d97ad035c9a9b0c9596b919fe0`. This is an incremental back-port, not a claim of complete non-graphical SMILE 2.0 parity. The [back-port inventory](../SMILE%202%20Core%20Backport%20Progress.md) records the remaining features.
 
 The shared Core BASIC source spelling and meaning were verified against the read-only SMILE 2.0 repository at commit `b34f4c5284f9f636e17a62ce5b6e2721d53be464`. The SMILE 1.0-only `Move Cursor To` and `Text Color` terminal statements were subsequently authorized directly for this profile; they do not claim SMILE 2.0 parity. SMILE 1.0 has one parser, binder, evaluator, and language—2.1 is a milestone label, not a dialect selector.
 
@@ -163,7 +163,8 @@ For C#, C, MASM x64, Java, COBOL, Objective-C, and C++, the main or primary prog
 
 ```text
 statement       := existing-statement | get-key | clear-screen | move-cursor
-                 | text-color | wait | random
+                 | text-color | wait | random | load-text-file
+load-text-file  := "Load" "Text" "File" expression "Into" identifier "Count" identifier
 get-key         := "Get" "Key" identifier
 clear-screen    := "Clear" "Screen"
 move-cursor     := "Move" "Cursor" "To" expression "," expression
@@ -180,7 +181,7 @@ builtin-call    := "Timer" "(" ")"
 
 ## Deliberate exclusions
 
-This milestone does not add blocking `Input`, `Key_Held`, pointer/mouse input, cursor visibility/shape control, arbitrary terminal escape strings, graphics or `Game Window`, sound, files, dynamic arrays, more than two dimensions, array parameters or returns, `ByRef`, variadic parameters, records, enums, classes, modules, imports, threads in SMILE source, or an eleventh target. Historical LET/SET/INPUT/WHILE/interpolation/block-string syntax remains rejected. Blocking Input is also absent from current SMILE 2.0.
+This milestone does not add blocking `Input`, `Key_Held`, pointer/mouse input, cursor visibility/shape control, arbitrary terminal escape strings, graphics or `Game Window`, sound, file writing/persistence, dynamic arrays, more than two dimensions, array parameters or returns, `ByRef`, variadic parameters, records, enums, classes, modules, imports, threads in SMILE source, or an eleventh target. Historical LET/SET/INPUT/WHILE/interpolation/block-string syntax remains rejected. Blocking Input is also absent from current SMILE 2.0.
 
 ## Unicode text inspection
 
@@ -292,3 +293,48 @@ through decimal representations. The generated program therefore uses standard
 C interoperability for exact literals/arithmetic/comparisons and normal
 FLOAT-LONG-to-FLOAT-LONG MOVE for storage copies. No numeric interpreter, new
 dependency, or source-language runtime framework is introduced.
+
+## Load Text File
+
+```smile
+Dim Bytes[64] As Number
+Dim ByteCount As Number
+Load Text File "lesson.txt" Into Bytes Count ByteCount
+Print ByteCount
+```
+
+The path is a Text expression evaluated exactly once before the array changes.
+A known empty/whitespace-only path or wrong path type reports `SMILE3027`.
+The destination is a declared rank-one Number array; Count is a writable Number
+scalar under ordinary scope and Option Explicit rules. A runtime empty/invalid
+path safely returns zero.
+
+The operation clears the entire array, reads raw UTF-8 bytes as Number values
+0–255, skips one initial UTF-8 BOM (EF BB BF), and copies at most the array
+capacity. It does not decode or validate the file's contents. Count receives the
+copied length; remaining cells stay zero. Missing, inaccessible, empty, or
+unreadable files return Count zero with a zeroed destination. No partial data is
+retained after an I/O failure.
+
+Both slash styles are accepted. Repeated separators and `.` collapse, and
+contained `..` segments normalize. Rooted/drive/UNC/URI paths, NUL, and traversal
+above the program directory are rejected at runtime. The normalized relative
+path must be nonempty, below 4096 UTF-8 bytes, and contain at most 512 segments.
+The native C-family/MASM/COBOL path buffer also limits the complete path to 2047
+UTF-16 units, matching the authority. Existing null-terminated Text limitations
+still apply to C, Objective-C, and MASM path expressions.
+
+Files resolve relative to the executable directory, the Node/Python script
+directory, or Java's generated class directory. Loose generated programs require
+manual file placement there, as loose-file SMILE 2.0 builds do. SMILE 1.0 does not
+yet implement multi-file project manifests or automatic asset publication.
+Desktop/CLI Build & Run uses a fresh generated-program directory each run; it
+does not infer or copy arbitrary neighboring source files.
+
+Targets use standard stream/file APIs, with small helpers for normalization,
+BOM handling, bounded copying, and recoverable I/O. Node.js uses asynchronous
+file handles and propagates await through calling routines. MASM adds a small
+`SmileFileRuntime.c` companion; COBOL uses its existing C-interoperability
+companion. The evaluator's `SmileEvaluationOptions.Files` accepts an
+`ISmileFileHost`; its default reads beneath `AppContext.BaseDirectory` through
+`SmileDirectoryFileHost`. The reader owns/disposes the returned stream.

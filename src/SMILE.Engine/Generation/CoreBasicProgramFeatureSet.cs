@@ -15,7 +15,8 @@ internal sealed record CoreBasicProgramFeatureSet(
     bool HasMax,
     bool HasTextLength,
     bool HasTextCodeAt,
-    bool HasTextSlice)
+    bool HasTextSlice,
+    bool HasTextFileLoad)
 {
     public bool HasTextInspection => HasTextLength || HasTextCodeAt || HasTextSlice;
     public bool HasInteractiveConsole => HasGetKey || HasClearScreen || HasMoveCursor || HasTextColor;
@@ -41,7 +42,8 @@ internal sealed record CoreBasicProgramFeatureSet(
             expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.Max, Type: SmileType.Integer }),
             expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.TextLength }),
             expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.TextCodeAt }),
-            expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.TextSlice }));
+            expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.TextSlice }),
+            statements.Any(statement => statement is BoundTextFileLoadStatement));
     }
 
     private static IEnumerable<BoundStatement> EnumerateStatements(BoundProgram program)
@@ -103,6 +105,7 @@ internal sealed record CoreBasicProgramFeatureSet(
                 BoundWaitStatement wait => new[] { wait.Duration },
                 BoundMoveCursorStatement moveCursor => new[] { moveCursor.Column, moveCursor.Row },
                 BoundRandomStatement random => new[] { random.LowerBound, random.UpperBound },
+                BoundTextFileLoadStatement load => new[] { load.Path },
                 _ => Array.Empty<BoundExpression>()
             };
             foreach (BoundExpression root in roots)

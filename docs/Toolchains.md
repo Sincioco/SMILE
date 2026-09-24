@@ -12,7 +12,7 @@ Detection, compilation, linking, and execution are asynchronous and cancellation
 |---|---|---|
 | C# | .NET SDK builds the generated minimal project | generated console executable |
 | C | Visual Studio x64 C compiler | generated executable |
-| MASM x64 | Visual Studio `ml64` plus `link` and UCRT/Kernel32 libraries; MSVC compiles the feature-gated Text/numeric companions when needed | generated executable |
+| MASM x64 | Visual Studio `ml64` plus `link` and UCRT/Kernel32 libraries; MSVC compiles the feature-gated Text/numeric/file companions when needed | generated executable |
 | JavaScript (Node.js) | Node.js | `node Program.js` |
 | Java | JDK `javac` and `java` | generated `Program` class |
 | COBOL | GnuCOBOL | generated executable |
@@ -43,18 +43,18 @@ link.exe /nologo /ignore:4210 Program.obj kernel32.lib legacy_stdio_definitions.
 
 Generated assembly follows the Windows x64 ABI, including required shadow space and stack alignment. It uses recognizable CRT output and `ExitProcess`. The known `LNK4210` warning associated with direct UCRT use and a custom assembly entry point is suppressed by the focused link command.
 
-Programs without Text/numeric support requirements remain a single `Program.asm`. Text `+`, `Text_Slice`, `Text_Length`, `Text_Code_At`, or `Text_From_Double` can require dependency-free `SmileTextRuntime.c`; the assemble script compiles it with MSVC and the link step adds its object. That companion owns only the used UTF-8 scalar operations and, when Text is allocated, allocation/root collection and optional lifetime counters. Generated assembly retains learner expressions, assignments, arrays, calls, returns, branches, and loops. Checked Double operations and conversions can also require `SmileNumericRuntime.c`, compiled with `/fp:strict`. Double arguments and results use the Windows x64 floating-register convention. The assemble script stops immediately after a failed assembler or companion compilation.
+Programs without Text/numeric/file support requirements remain a single `Program.asm`. Text `+`, `Text_Slice`, `Text_Length`, `Text_Code_At`, or `Text_From_Double` can require dependency-free `SmileTextRuntime.c`; the assemble script compiles it with MSVC and the link step adds its object. That companion owns only the used UTF-8 scalar operations and, when Text is allocated, allocation/root collection and optional lifetime counters. Generated assembly retains learner expressions, assignments, arrays, calls, returns, branches, and loops. Checked Double operations and conversions can also require `SmileNumericRuntime.c`, compiled with `/fp:strict`. Double arguments and results use the Windows x64 floating-register convention. `Load Text File` adds `SmileFileRuntime.c` for Win32 file reads and path conversion, compiled by the same installed MSVC. The assemble script stops immediately after a failed assembler or companion compilation.
 
 ## JavaScript (Node.js) and Python
 
-These are direct-run targets. `javascript` remains the stable CLI ID, the display name is JavaScript (Node.js), and generation produces dependency-free `Program.js` with no npm package or module requirement. Node syntax is checked before execution. Programs using `Get Key` or `Wait` receive a feature-driven async main; Wait uses a Promise, key input uses a raw-mode queue, and `finally` restores stdin. Python remains a top-level executable script and is syntax-compiled before execution; it uses Windows `msvcrt` only when key polling is present.
+These are direct-run targets. `javascript` remains the stable CLI ID, the display name is JavaScript (Node.js), and generation produces dependency-free `Program.js` with no npm package or module requirement. Node syntax is checked before execution. Programs using `Get Key`, `Wait`, or `Load Text File` receive a feature-driven async main; Wait uses a Promise, key input uses a raw-mode queue, and `finally` restores stdin. Python remains a top-level executable script and is syntax-compiled before execution; it uses Windows `msvcrt` only when key polling is present.
 
 ## Text-game console integration
 
 - C#, C, Objective-C, MASM, Swift, and C++ use their normal Windows console/CRT facilities.
 - Java requires JDK 21 and uses the standard Foreign Function & Memory API with `--enable-preview` to call `_kbhit`/`_getwch`; no JNA or external JAR is used.
 - Swift uses Windows CRT symbols for key polling and WinSDK only for screen operations.
-- GnuCOBOL links a generated `SmileRuntime.c` only when a used primitive needs C/Win32 interop. The companion contains terminal/text mechanics and, when used, exact Double C adapters; learner statements and game logic stay in COBOL.
+- GnuCOBOL links a generated `SmileRuntime.c` only when a used primitive needs C/Win32 interop. The companion contains terminal/text/file mechanics and, when used, exact Double C adapters; learner statements and game logic stay in COBOL.
 - `Clear Screen` erases the visible attached console and homes the cursor. `Move Cursor To Column, Row` uses 1-based coordinates, and `Text Color Foreground, Background` maps eight named colors to the closest normal terminal palette; `Text Color Default` restores the terminal default. These screen operations are safe no-ops when output is redirected. `Get Key` returns `KEY_NONE` when no attached interactive input event exists. Wait clamps to `4,294,967,295` milliseconds; reversed Random returns its lower bound without consuming randomness.
 - Interactive conformance uses Windows ConPTY to prove W/A/S/D, real arrow sequences, Enter, Escape, Space, no-input polling, redraw, exit, and restored launcher input on every target.
 
@@ -98,3 +98,14 @@ Velocity Mode avoids duplicated Debug/Release matrices by default. It never auth
 ## Failure containment
 
 Build and run operations have bounded timeouts, honor cancellation, and terminate their child process tree when cancelled or timed out. Temporary cleanup is restricted to verified SMILE-owned roots. Never write generated target files into SMILE 2.0 during parity verification.
+
+## Text-file placement
+
+`Load Text File` resolves normalized relative paths beside the generated native
+executable, Node/Python script, or Java class directory. The evaluator defaults
+to its application's base directory and supports an injected file host. C# build
+output is under `bin/Debug/net10.0`; its input files belong there. Other current
+toolchains place executable/script/class output in the generated workspace.
+CLI/Desktop create a fresh workspace per build and do not yet publish project
+assets. Put input files beside a separately built generated program for manual
+file-read testing; automatic project publication remains in the back-port backlog.
