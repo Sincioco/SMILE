@@ -556,9 +556,24 @@ Print Saved.Player; ":"; Saved.Points
 - Whole-record Print, comparisons, arithmetic, conversions, Const, Optional
   defaults and Select Case are not supported. Use the corresponding fields.
 - This value-record milestone does not yet implement Type methods/properties,
-  explicit member visibility, Me, With or Class reference objects.
+  explicit member visibility, Me or Class reference objects.
 
 Generation uses native structs/aggregates and copy semantics wherever available.
 Java/JavaScript/Python and array-bearing C# records need copy support to preserve
 value semantics and stable aliases. Text storage limits of individual targets
 remain unchanged, including COBOL's fixed 4096-byte Text capacity.
+
+## With record locations
+
+`With location` ... `End With` captures a writable record variable, array cell or
+nested field. Every index is evaluated and checked once on block entry. A leading
+dot, such as `.Points` or `.Position.X`, uses the nearest enclosing With receiver.
+Nested With blocks can themselves use leading-dot targets. Whole-record replacement
+preserves the selected storage location, including when a later argument or the
+right side of an assignment replaces that record.
+
+Return, End Program and typed loop exits retain their ordinary behavior inside
+With. A temporary returned record is not writable and cannot be a With target.
+Scalar targets and leading-dot access outside a valid With block are errors.
+An invalid nested target does not fall back to the outer receiver. Class-reference
+With and member method/property calls remain part of the pending object back-port.

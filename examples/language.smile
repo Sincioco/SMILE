@@ -199,6 +199,11 @@ SavedEntry = CurrentEntry
 Call AddPoint(CurrentEntry.Points)
 Print "Record copies="; SavedEntry.Points; ", "; CurrentEntry.Points
 
+With CurrentEntry
+    .Points = .Points + 1
+    Print "With record="; .Player; ":"; .Points
+End With
+
 Call ShowGreeting()
 Call ShowGreeting(Caption:="Welcome", Learner:="Sin")
 

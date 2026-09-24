@@ -27,6 +27,17 @@ internal sealed partial class CoreBasicMasmWriter
 
     private sealed partial class ProcedureEmitter
     {
+        private readonly Dictionary<WithLocationSymbol, Storage> _withLocations = new();
+
+        private bool WriteWith(BoundWithStatement block, int indent)
+        {
+            EmitReferenceLocation(block.Location.Target, indent);
+            Storage location = NewTemporary();
+            _withLocations[block.Location] = location;
+            Emit(indent, $"mov QWORD PTR {Address(location.Offset)}, rax");
+            return WriteItems(block.SourceItems, indent);
+        }
+
         private readonly List<(Storage Storage, RecordTypeSymbol Type)> _recordTemporaries = new();
 
         private Storage NewRecordTemporary(RecordTypeSymbol type)

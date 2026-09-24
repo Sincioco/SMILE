@@ -4,6 +4,30 @@ internal sealed partial class Binder
 {
     private readonly Dictionary<string, RecordTypeSymbol> _records = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<RecordTypeSymbol> _orderedRecords = new();
+    private readonly Stack<WithLocationSymbol?> _withLocations = new();
+
+    private BoundStatement BindWith(WithStatementSyntax syntax)
+    {
+        BoundExpression target = BindExpression(syntax.Target);
+        var location = new WithLocationSymbol(target);
+        bool valid = target.Type is RecordTypeSymbol && BoundLocations.IsWritable(target);
+        if (target.Type != SmileType.Error && !valid)
+            Report(target.Type is RecordTypeSymbol ? "SMILE3412" : "SMILE3415",
+                "With requires a stable writable record location.", syntax.Target.Span);
+        // Invalid inner blocks must hide, rather than reuse, an outer receiver.
+        _withLocations.Push(valid ? location : null);
+        IReadOnlyList<BoundSourceItem> body = BindItems(syntax.SourceItems, directProgramLevel: false);
+        _withLocations.Pop();
+        return new BoundWithStatement(location, body);
+    }
+
+    private BoundExpression BindWithReceiver(WithReceiverExpressionSyntax syntax)
+    {
+        if (_withLocations.TryPeek(out WithLocationSymbol? location) && location is not null)
+            return new BoundWithReceiverExpression(location);
+        Report("SMILE3413", "A leading-dot member requires a valid enclosing With block.", syntax.Span);
+        return new BoundErrorExpression();
+    }
 
     private SmileType ResolveVariableType(DimStatementSyntax syntax, IReadOnlyList<int> dimensions)
     {

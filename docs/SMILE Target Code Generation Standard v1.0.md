@@ -223,3 +223,9 @@ Java field-addressed ByRef parameters use focused getter/setter adapters, with
 forwarding analyzed through the call graph; ordinary scalar ByRef retains its
 existing array/index form. Record fields use the existing Text ownership support
 in C/Objective-C/MASM; no new record runtime or type registry is permitted.
+
+With captures a location once: C# uses a ref local, C/Objective-C a pointer, C++ a
+reference, Java/JavaScript/Python an object alias, MASM a saved address, and COBOL
+the original group with captured subscripts. Swift uses the original value
+location with captured indexes. Leading-dot expressions then select ordinary
+native fields; no With runtime or record snapshot is generated.

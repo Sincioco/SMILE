@@ -562,6 +562,9 @@ internal sealed partial class CoreBasicMasmWriter
                 case BoundDoStatement loop:
                     foreach (BoundStatement nested in EnumerateStatements(loop.SourceItems)) yield return nested;
                     break;
+                case BoundWithStatement block:
+                    foreach (BoundStatement nested in EnumerateStatements(block.SourceItems)) yield return nested;
+                    break;
             }
         }
     }
@@ -895,6 +898,9 @@ internal sealed partial class CoreBasicMasmWriter
                     case BoundDoStatement loop:
                         WriteDo(loop, indent);
                         break;
+                    case BoundWithStatement block:
+                        if (WriteWith(block, indent)) return true;
+                        break;
                     case BoundExitStatement exit:
                     {
                         LoopFrame? target = _loops.LastOrDefault(loop => loop.Kind == exit.Kind);
@@ -1119,6 +1125,9 @@ internal sealed partial class CoreBasicMasmWriter
                 case BoundVariableExpression variable:
                     if (variable.Type is RecordTypeSymbol) { EmitReferenceLocation(variable, indent); return; }
                     LoadVariable(variable.Variable, indent);
+                    return;
+                case BoundWithReceiverExpression receiver:
+                    EmitReferenceLocation(receiver, indent);
                     return;
                 case BoundFieldExpression field:
                     EmitFieldLocation(field, indent);

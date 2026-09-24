@@ -33,6 +33,7 @@ internal static class DataStatementFacts
         BoundVariableExpression scalar => scalar.Variable == variable,
         BoundArrayExpression array => array.Array == variable,
         BoundFieldExpression field => Targets(field.Receiver, variable),
+        BoundWithReceiverExpression receiver => Targets(receiver.Location.Target, variable),
         _ => false
     };
 }

@@ -77,6 +77,7 @@ internal static partial class CoreBasicCodeGenerator
             BoundVariableExpression variable => variable.Variable,
             BoundArrayExpression array => array.Array,
             BoundFieldExpression field => LocationOwner(field.Receiver),
+            BoundWithReceiverExpression receiver => LocationOwner(receiver.Location.Target),
             _ => throw new InvalidOperationException("A bound ByRef argument must be writable.")
         };
 

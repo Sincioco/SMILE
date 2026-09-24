@@ -84,6 +84,7 @@ internal sealed record CoreBasicProgramFeatureSet(
                 BoundSelectStatement select => select.Cases.Select(clause => clause.SourceItems),
                 BoundForStatement loop => new[] { loop.SourceItems },
                 BoundDoStatement loop => new[] { loop.SourceItems },
+                BoundWithStatement block => new[] { block.SourceItems },
                 _ => Array.Empty<IReadOnlyList<BoundSourceItem>>()
             };
             foreach (IReadOnlyList<BoundSourceItem> child in children)
@@ -112,6 +113,7 @@ internal sealed record CoreBasicProgramFeatureSet(
                 BoundIfStatement conditional => conditional.Clauses.Select(clause => clause.Condition),
                 BoundSelectStatement select => new[] { select.Selector },
                 BoundForStatement loop => new[] { loop.LowerBound, loop.UpperBound },
+                BoundWithStatement block => new[] { block.Location.Target },
                 BoundDoStatement { UntilCondition: not null } loop => new[] { loop.UntilCondition },
                 BoundWaitStatement wait => new[] { wait.Duration },
                 BoundMoveCursorStatement moveCursor => new[] { moveCursor.Column, moveCursor.Row },

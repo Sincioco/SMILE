@@ -73,7 +73,8 @@ internal sealed partial class Parser
     private StatementSyntax? ParseStatement() => Current.Kind switch
     {
         TokenKind.Option => ParseOptionExplicit(),
-        TokenKind.Identifier => ParseLocationAssignment(),
+        TokenKind.Identifier or TokenKind.Dot => ParseLocationAssignment(),
+        TokenKind.With => ParseWith(),
         TokenKind.Dim => ParseDim(),
         TokenKind.Enum => ParseEnum(),
         TokenKind.Type => ParseRecord(),
@@ -578,6 +579,8 @@ internal sealed partial class Parser
         Token token = Current;
         switch (token.Kind)
         {
+            case TokenKind.Dot:
+                return new WithReceiverExpressionSyntax(token.Span);
             case TokenKind.DoubleLiteral:
                 return new DoubleLiteralExpressionSyntax(Next().Text, token.Span);
             case TokenKind.Number:
@@ -887,7 +890,7 @@ internal sealed partial class Parser
         Call, Return, Select, Case, ByVal, ByRef, Optional, BuiltInConstant, BuiltInFunction, UnsupportedKeyword,
         Plus, Minus, Star, Slash, Equals, NotEquals, Less, LessOrEquals,
         Greater, GreaterOrEquals, OpenParenthesis, CloseParenthesis,
-        OpenBracket, CloseBracket, Semicolon, Comma, ColonEquals, Dot, Enum, Type
+        OpenBracket, CloseBracket, Semicolon, Comma, ColonEquals, Dot, Enum, Type, With
     }
 
     private sealed record Token(TokenKind Kind, string Text, object? Value, TextSpan Span);
@@ -921,6 +924,7 @@ internal sealed partial class Parser
             ["Data"] = TokenKind.Data,
             ["Enum"] = TokenKind.Enum,
             ["Type"] = TokenKind.Type,
+            ["With"] = TokenKind.With,
             ["Timer"] = TokenKind.BuiltInFunction, ["Abs"] = TokenKind.BuiltInFunction,
             ["Min"] = TokenKind.BuiltInFunction, ["Max"] = TokenKind.BuiltInFunction,
             ["Text_Length"] = TokenKind.BuiltInFunction,

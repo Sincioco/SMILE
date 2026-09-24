@@ -6,6 +6,7 @@ internal sealed partial class CoreBasicMasmWriter
     {
         private void EmitReferenceLocation(BoundExpression expression, int indent)
         {
+            if (expression is BoundWithReceiverExpression receiver) { Emit(indent, $"mov rax, QWORD PTR {Address(_withLocations[receiver.Location].Offset)}"); return; }
             if (expression is BoundFieldExpression field) { EmitFieldLocation(field, indent); return; }
             if (expression is BoundVariableExpression scalar)
             {

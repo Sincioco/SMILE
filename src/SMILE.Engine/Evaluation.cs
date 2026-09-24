@@ -336,6 +336,11 @@ public sealed partial class SmileEvaluator
 
                     break;
 
+                case BoundWithStatement block:
+                    SmileRuntimeError? withError = ExecuteWith(block, frame);
+                    if (withError is not null) return withError;
+                    break;
+
                 case BoundExitStatement exit:
                     throw new LoopExitSignal(exit.Kind);
 
@@ -507,6 +512,9 @@ public sealed partial class SmileEvaluator
                 return Success(out error);
             case BoundEnumExpression literal:
                 value = SmileValue.FromEnum(literal.EnumType, literal.Value);
+                return Success(out error);
+            case BoundWithReceiverExpression receiver:
+                value = _withLocations[receiver.Location].Read();
                 return Success(out error);
             case BoundFieldExpression field:
                 if (!TryCaptureField(field, frame, out WritableLocation? location, out error)) { value = default; return false; }

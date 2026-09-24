@@ -5,7 +5,7 @@ Authority inspected read-only: `D:\SMILE 2.0`, commit
 before inspection and after the unchanged fixture compilation/execution.
 
 The overall requested back-port is **not complete**. This file records the
-completed text, routine, console-key, Double, text-file, persistence, Enum, Type value-record, and ByRef milestones and the remaining source-language gaps.
+completed text, routine, console-key, Double, text-file, persistence, Enum, Type value-record, With, and ByRef milestones and the remaining source-language gaps.
 
 ## Implemented in this milestone
 
@@ -26,6 +26,7 @@ completed text, routine, console-key, Double, text-file, persistence, Enum, Type
 | Data Load/Save | Byte arrays, computed UTF-8 keys, 1 MiB bound, SMD4 checksums, checked recovery/Status and strict failures; evaluator and all ten targets |
 | Nominal Enum | Checked signed-64 members, aliases, zero initialization, Const, arrays, ByVal/ByRef, Optional defaults, returns, exact equality and Select; evaluator and all ten targets |
 | Type value records | Exact nominal identity, nested fields, fixed-array fields, independent copies/defaults, arrays of records, ByVal/ByRef/returns, writable field references and Data Count/Status fields; evaluator and all ten targets |
+| With blocks | Capture writable record locations and checked indexes once; nested leading-dot access, stable aliases, recursion and ordinary return/loop-exit behavior; evaluator and all ten targets |
 | Checked Double failures | Invalid domains, zero divisors, conversion overflow and nonfinite results report their source line before destination mutation |
 
 The UTF-8 output fix addresses failures observed during actual generated-program
@@ -37,7 +38,7 @@ execution on Windows. Ordinary ASCII programs retain their minimal output.
 |---|---|
 | Console keys | Standalone Control key events: character-stream APIs do not report modifier-only events; a native console-event boundary is still needed |
 | Files and persistence | Project ApplicationId ownership/configuration; current loose programs use the source filename stem |
-| Object members | Type methods/properties, Class references/constructors, Me, New, Nothing, Is/Is Not, With blocks, member visibility and ownership |
+| Object members | Type methods/properties, Class references/constructors, Me, New, Nothing, Is/Is Not, With on class references, member visibility and ownership |
 | Program organization | Module/Import, qualified names, visibility, multi-file source/project inputs, deterministic source-owned libraries |
 
 Type methods/properties, classes, and modules require additional binding,
@@ -128,6 +129,15 @@ forwarded Text/Double/Boolean/Enum references and Data Count/Status fields. The
 record formatter retains structural indentation. Reproduced COBOL field-name
 ambiguity and left-operand timing errors have regression coverage. MASM retains
 native small-value returns and uses hidden caller buffers for larger aggregates.
+
+The With fixture also runs unchanged in SMILE 2.0 and on all ten targets. It checks
+one-time index capture, nested receivers, replacement of the containing record,
+ByRef fields, recursive re-entry, ByVal isolation, Return and Exit For through an
+intervening Do. Native aliases/addresses or captured COBOL subscripts retain the
+location; Swift reuses a location with captured indexes. No runtime helper is added.
+The C/Objective-C/MASM allocating-index/early-return fixture reports 41 allocations,
+41 frees, zero live allocations and a peak of two. With index temporaries release
+their Text roots before entering the body.
 
 No repository file-size/complexity checker or reviewed no-growth baseline was
 found in SMILE 1.0. Existing broad writers received focused wiring; new text and

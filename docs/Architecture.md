@@ -209,4 +209,10 @@ Profile 1 fixtures remain in `tests/CoreBasicParity`; Profile 2 source/stdout pa
 
 ## Architectural decision rule
 
+With binding owns a lexical stack of receiver symbols, while evaluation captures
+and restores writable locations across recursive calls. Existing record-location
+writers own target aliases and index capture. Shared control-flow scans traverse
+With bodies so return analysis, loop exits, feature gating and mutation analysis
+see the same statements; the block introduces no new runtime service.
+
 Keep one canonical semantic path. Add complexity only at the target boundary where a destination genuinely requires it, and keep that complexity absent from programs that do not use the feature.

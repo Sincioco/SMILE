@@ -43,6 +43,7 @@ internal static class BoundLocations
     {
         BoundVariableExpression variable => !variable.Variable.IsConstant,
         BoundArrayExpression => true,
+        BoundWithReceiverExpression => true,
         BoundFieldExpression field => IsWritable(field.Receiver),
         _ => false
     };

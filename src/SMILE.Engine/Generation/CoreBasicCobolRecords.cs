@@ -42,6 +42,19 @@ internal sealed partial class CobolWriter
 
     private sealed partial class ProcedureEmitter
     {
+        private readonly Dictionary<WithLocationSymbol, string> _withLocations = new();
+
+        private bool WriteWith(BoundWithStatement block, int indent)
+        {
+            _withLocations[block.Location] = block.Location.Target switch
+            {
+                BoundArrayExpression array => PrepareArrayElement(array.Array, array.Indices, indent, checkEachDimension: true).Value,
+                BoundFieldExpression field => PrepareRecordField(field, indent).Value,
+                _ => PrepareExpression(block.Location.Target, indent)
+            };
+            return WriteItems(block.SourceItems, indent);
+        }
+
         private PreparedArrayElement PrepareRecordField(BoundFieldExpression field, int indent)
         {
             string receiver = field.Receiver switch

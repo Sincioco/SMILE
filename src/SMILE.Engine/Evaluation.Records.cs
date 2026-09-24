@@ -2,6 +2,22 @@ namespace SMILE.Engine;
 
 public sealed partial class SmileEvaluator
 {
+    private readonly Dictionary<WithLocationSymbol, WritableLocation> _withLocations = new();
+
+    private SmileRuntimeError? ExecuteWith(BoundWithStatement block, CallFrame? frame)
+    {
+        if (!TryCaptureLocation(block.Location.Target, frame, out WritableLocation? location, out SmileRuntimeError? error)) return error;
+        // Recursion may enter the same source block while its caller is suspended.
+        _withLocations.TryGetValue(block.Location, out WritableLocation? previous);
+        _withLocations[block.Location] = location!;
+        try { return ExecuteStatements(block.SourceItems.OfType<BoundStatement>().ToArray(), frame); }
+        finally
+        {
+            if (previous is null) _withLocations.Remove(block.Location);
+            else _withLocations[block.Location] = previous;
+        }
+    }
+
     private bool TryCaptureField(BoundFieldExpression expression, CallFrame? frame,
         out WritableLocation? location, out SmileRuntimeError? error)
     {

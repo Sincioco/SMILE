@@ -40,6 +40,7 @@ internal sealed class DoubleProgramFeatures
         BoundSelectStatement select => select.Cases.Any(clause => ContainsStatement(clause.SourceItems, predicate)),
         BoundForStatement loop => ContainsStatement(loop.SourceItems, predicate),
         BoundDoStatement loop => ContainsStatement(loop.SourceItems, predicate),
+        BoundWithStatement block => ContainsStatement(block.SourceItems, predicate),
         _ => false
     }));
 }

@@ -304,6 +304,9 @@ internal sealed partial class CobolWriter
                 case BoundDoStatement loop:
                     foreach (BoundStatement nested in StructuredStatements(loop.SourceItems)) yield return nested;
                     break;
+                case BoundWithStatement block:
+                    foreach (BoundStatement nested in StructuredStatements(block.SourceItems)) yield return nested;
+                    break;
                 case BoundSelectStatement select:
                     foreach (BoundSelectCaseClause clause in select.Cases)
                     {
@@ -490,6 +493,9 @@ internal sealed partial class CobolWriter
                         break;
                     case BoundDoStatement loop:
                         WriteDo(loop, indent);
+                        break;
+                    case BoundWithStatement block:
+                        if (WriteWith(block, indent)) return true;
                         break;
                     case BoundExitStatement exit:
                         WriteExit(exit, indent);
@@ -799,6 +805,8 @@ internal sealed partial class CobolWriter
                     return boolean.Value ? "1" : "0";
                 case BoundVariableExpression variable:
                     return _owner.ExpressionName(variable.Variable);
+                case BoundWithReceiverExpression receiver:
+                    return _withLocations[receiver.Location];
                 case BoundFieldExpression field:
                 {
                     PreparedArrayElement prepared = PrepareRecordField(field, indent);

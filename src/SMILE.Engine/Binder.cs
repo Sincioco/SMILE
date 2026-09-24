@@ -129,6 +129,9 @@ internal sealed partial class Binder
             case ForStatementSyntax loop:
                 InventoryGlobalDimsInItems(loop.SourceItems);
                 break;
+            case WithStatementSyntax block:
+                InventoryGlobalDimsInItems(block.SourceItems);
+                break;
             case DoStatementSyntax loop:
                 InventoryGlobalDimsInItems(loop.SourceItems);
                 break;
@@ -412,6 +415,9 @@ internal sealed partial class Binder
                 case ForStatementSyntax loop:
                     InventoryLocalDimensions(loop.SourceItems, routineName);
                     break;
+                case WithStatementSyntax block:
+                    InventoryLocalDimensions(block.SourceItems, routineName);
+                    break;
                 case DoStatementSyntax loop:
                     InventoryLocalDimensions(loop.SourceItems, routineName);
                     break;
@@ -495,6 +501,7 @@ internal sealed partial class Binder
         IfStatementSyntax conditional => BindIf(conditional),
         ForStatementSyntax loop => BindFor(loop),
         DoStatementSyntax loop => BindDo(loop),
+        WithStatementSyntax block => BindWith(block),
         ExitStatementSyntax exit => BindExit(exit),
         EndProgramStatementSyntax => new BoundEndProgramStatement(),
         _ => null
@@ -869,6 +876,8 @@ internal sealed partial class Binder
                 return BindExpression(parenthesized.Expression, constantsOnly);
             case NameExpressionSyntax name:
                 return BindName(name, constantsOnly);
+            case WithReceiverExpressionSyntax receiver:
+                return BindWithReceiver(receiver);
             case MemberAccessExpressionSyntax member:
                 return BindMember(member, constantsOnly);
             case IndexedMemberExpressionSyntax indexed:
@@ -1188,6 +1197,7 @@ internal sealed partial class Binder
     {
         BoundReturnStatement => true,
         BoundEndProgramStatement => true,
+        BoundWithStatement block => ItemsDefinitelyExit(block.SourceItems),
         BoundIfStatement conditional =>
             conditional.HasElseClause &&
             conditional.Clauses.All(clause => ItemsDefinitelyExit(clause.SourceItems)) &&

@@ -170,6 +170,7 @@ public static class SmileSourceFormatter
                 IfStatementSyntax conditional => conditional.Clauses.Select(clause => clause.Condition),
                 ForStatementSyntax loop => new[] { loop.LowerBound, loop.UpperBound },
                 DoStatementSyntax { UntilCondition: not null } loop => new[] { loop.UntilCondition },
+                WithStatementSyntax block => new[] { block.Target },
                 WaitStatementSyntax wait => new[] { wait.Duration },
                 MoveCursorStatementSyntax moveCursor => new[] { moveCursor.Column, moveCursor.Row },
                 RandomStatementSyntax random => new[] { random.LowerBound, random.UpperBound },
@@ -255,6 +256,9 @@ public static class SmileSourceFormatter
                 break;
             case DoStatementSyntax loop:
                 yield return loop.SourceItems;
+                break;
+            case WithStatementSyntax block:
+                yield return block.SourceItems;
                 break;
         }
     }
@@ -533,6 +537,13 @@ public static class SmileSourceFormatter
                     MarkLine(end, depth);
                     _ordinaryClosingLines.Add(end);
                     break;
+                case WithStatementSyntax block:
+                    MarkHeader(start, HeaderEndLine(start, end, block.SourceItems), depth);
+                    MarkItemList(block.SourceItems, depth + 1);
+                    SuppressBlankBeforeFirstContent(block.SourceItems);
+                    MarkLine(end, depth);
+                    _ordinaryClosingLines.Add(end);
+                    break;
                 default:
                     MarkHeader(start, end, depth);
                     break;
@@ -726,6 +737,6 @@ public static class SmileSourceFormatter
         };
 
         private static bool IsMajorControl(StatementSyntax statement) =>
-            statement is IfStatementSyntax or SelectStatementSyntax or ForStatementSyntax or DoStatementSyntax;
+            statement is IfStatementSyntax or SelectStatementSyntax or ForStatementSyntax or DoStatementSyntax or WithStatementSyntax;
     }
 }

@@ -2,6 +2,17 @@ namespace SMILE.Engine;
 
 internal sealed partial class Parser
 {
+    private StatementSyntax ParseWith()
+    {
+        Token start = Next();
+        ExpressionSyntax target = ParseExpression();
+        ConsumeStatementEnd();
+        IReadOnlyList<SourceItemSyntax> body = ParseItems(() => Current.Kind is TokenKind.End && Peek(1).Kind is TokenKind.With);
+        Match(TokenKind.End, "Expected End With.");
+        Token end = Match(TokenKind.With, "Expected With after End.");
+        return new WithStatementSyntax(target, body, Combine(start.Span, end.Span));
+    }
+
     private StatementSyntax ParseRecord()
     {
         Token start = Next();
@@ -39,8 +50,8 @@ internal sealed partial class Parser
 
     private StatementSyntax ParseLocationAssignment()
     {
-        Token name = Next();
-        ExpressionSyntax target = ParsePostfix(new NameExpressionSyntax(name.Text, name.Span));
+        Token name = Current;
+        ExpressionSyntax target = ParsePrimaryExpression();
         Match(TokenKind.Equals, "Expected '=' after the assignment target.");
         ExpressionSyntax value = ParseExpression();
         TextSpan span = Combine(name.Span, value.Span);

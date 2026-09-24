@@ -4,6 +4,33 @@ internal static partial class CoreBasicCodeGenerator
 {
     private sealed partial class StructuredWriter
     {
+        private readonly Dictionary<WithLocationSymbol, string> _withLocations = new();
+
+        private void WriteWith(BoundWithStatement block)
+        {
+            string target = PrepareRecordLocation(block.Location.Target);
+            string name = $"_smileWith{++_orderedTempId}";
+            string type = TypeName(block.Location.Target.Type);
+            switch (_language)
+            {
+                case TargetLanguage.CSharp: Line($"ref {type} {name} = ref {target};"); break;
+                case TargetLanguage.C or TargetLanguage.ObjectiveC: Line($"{type}* {name} = &{target};"); break;
+                case TargetLanguage.Cpp: Line($"{type}& {name} = {target};"); break;
+                case TargetLanguage.Java: Line($"{type} {name} = {target};"); break;
+                case TargetLanguage.JavaScript: Line($"const {name} = {target};"); break;
+                case TargetLanguage.Python: Line($"{name} = {target}"); break;
+                // Swift value storage has no local reference alias. The existing
+                // location captures indexes once and retains the original owner.
+                case TargetLanguage.Swift: name = target; break;
+            }
+            _withLocations[block.Location] = _language is TargetLanguage.C or TargetLanguage.ObjectiveC ? $"(*{name})" : name;
+            // Index expressions may allocate Text. Their temporary roots are no
+            // longer needed after capture, including if the body returns early.
+            EndManagedTextStatement();
+            BeginManagedTextStatement();
+            WriteItems(block.SourceItems);
+        }
+
         private string RecordDefault(RecordTypeSymbol type)
         {
             string name = _identifiers.Get(type);
@@ -28,6 +55,7 @@ internal static partial class CoreBasicCodeGenerator
             BoundVariableExpression variable => Name(variable.Variable),
             BoundArrayExpression array => ArrayTarget(array.Array, PrepareFieldIndices(array.Array.Name, array.Array.ArrayDimensions, array.Indices)),
             BoundFieldExpression field => FieldLocation(field),
+            BoundWithReceiverExpression receiver => _withLocations[receiver.Location],
             _ => LowerOrderedCExpression(expression)
         };
 

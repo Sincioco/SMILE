@@ -275,6 +275,16 @@ Current.Points = 10
 Saved = Current
 Current.Points = 20
 Print Saved.Player; ":"; Saved.Points</code></pre></div><pre><code data-smile-output="record-values">Sin:10</code></pre>
+<h3>Use one record in a With block</h3><p>With captures a writable record location once. Leading-dot fields use the nearest enclosing block. Array indexes run once on entry, and replacing the containing record keeps its field references valid.</p>
+<div class="code-wrap"><button class="copy" type="button">Copy</button><pre><code data-smile-valid="true" data-example-id="with-record">Type ScoreEntry
+    Points As Number
+End Type
+Dim Entry As ScoreEntry
+With Entry
+    .Points = 10
+    .Points = .Points + 1
+    Print .Points
+End With</code></pre></div><pre><code data-smile-output="with-record">11</code></pre>
 <h3>Named Enum values</h3><p>An Enum gives a set of named values its own exact type. Members use checked signed 64-bit values; the first implicit value is zero and later ones increment. Equal values are aliases. Variables and array cells default to zero, even when no member names it. Enums support Const, exact-type ByVal/ByRef, Optional defaults, returns and Select Case. Use equality to compare members; Enum values cannot be printed, ordered, converted to Number or used in arithmetic.</p>
 <div class="code-wrap"><button class="copy" type="button">Copy</button><pre><code data-smile-valid="true" data-example-id="enum-values">Enum Direction
     None
@@ -438,7 +448,7 @@ Print Text_Slice("A😀B", 1, 1)</code></pre>
 😀</code></pre><pre><code>item       := Option Explicit | Dim | Const | Sub | Function | statement
 parameter  := [ByVal | ByRef] name As scalar-type
             | Optional [ByVal] name As scalar-type = literal-or-Const-or-Enum-member
-statement  := assignment | Call | Return | Print | If | Select | For | Do | Exit
+statement  := assignment | Call | Return | Print | If | Select | For | Do | With | Exit
             | Get Key name | Clear Screen | Move Cursor To expression, expression
             | Text Color color, color | Text Color Default | Wait expression Milliseconds
             | Random name From expression To expression | load-text-file | End Program
@@ -453,7 +463,7 @@ load-data := Load Data expression Into array-name Count writable-location [Statu
 save-data := Save Data array-name Count expression To expression [Status writable-location]
 select     := Select Case expression · Case constant · [Case Else] · End Select</code></pre><p>Parentheses are required for routine declarations and calls, including zero arguments. Square brackets contain exactly one index for rank one or two indexes for rank two.</p><a class="back" href="#top">Back to top</a></section>
 
-<section id="keywords" class="reference-section"><h2>35. Keyword table</h2><table><thead><tr><th>Group</th><th>Current words</th></tr></thead><tbody><tr><td>Types/declarations</td><td>Option, Explicit, Dim, As, Const, Enum, Type, Number, Double, Boolean, Text</td></tr><tr><td>Routines</td><td>Sub, Function, ByVal, ByRef, Optional, Call, Return, End</td></tr><tr><td>Decisions</td><td>If, Then, Else, Select, Case</td></tr><tr><td>Loops/control</td><td>For, Down, To, Do, Loop, Until, Exit, Program</td></tr><tr><td>Expressions/output</td><td>True, False, Not, And, Or, Mod, Print, Timer, Abs, Min, Max, Clamp, Sqrt, Sin, Cos, Atan2, Floor, Ceiling, Truncate, Round, ToDouble, ToNumber, Text_From_Double, Text_To_Double, Text_Length, Text_Code_At, Text_Slice</td></tr><tr><td>Text-game terminal</td><td>Get, Key, Clear, Screen, Move, Cursor, Color, Default, Wait, Milliseconds, Random, From, Load, Save, Data, File, Into, Count</td></tr></tbody></table><p>Text colors are Black, Red, Green, Yellow, Blue, Magenta, Cyan, and White. The <code>KEY_*</code> names are built-in Number constants. Double is a contextual type name and numeric intrinsic names can still name user routines. Other SMILE 2.0 words for deferred features remain reserved; a reserved word cannot be reused as a variable or routine name.</p><a class="back" href="#top">Back to top</a></section>
+<section id="keywords" class="reference-section"><h2>35. Keyword table</h2><table><thead><tr><th>Group</th><th>Current words</th></tr></thead><tbody><tr><td>Types/declarations</td><td>Option, Explicit, Dim, As, Const, Enum, Type, Number, Double, Boolean, Text</td></tr><tr><td>Routines</td><td>Sub, Function, ByVal, ByRef, Optional, Call, Return, End</td></tr><tr><td>Decisions</td><td>If, Then, Else, Select, Case</td></tr><tr><td>Loops/control</td><td>For, Down, To, Do, Loop, Until, With, Exit, Program</td></tr><tr><td>Expressions/output</td><td>True, False, Not, And, Or, Mod, Print, Timer, Abs, Min, Max, Clamp, Sqrt, Sin, Cos, Atan2, Floor, Ceiling, Truncate, Round, ToDouble, ToNumber, Text_From_Double, Text_To_Double, Text_Length, Text_Code_At, Text_Slice</td></tr><tr><td>Text-game terminal</td><td>Get, Key, Clear, Screen, Move, Cursor, Color, Default, Wait, Milliseconds, Random, From, Load, Save, Data, File, Into, Count</td></tr></tbody></table><p>Text colors are Black, Red, Green, Yellow, Blue, Magenta, Cyan, and White. The <code>KEY_*</code> names are built-in Number constants. Double is a contextual type name and numeric intrinsic names can still name user routines. Other SMILE 2.0 words for deferred features remain reserved; a reserved word cannot be reused as a variable or routine name.</p><a class="back" href="#top">Back to top</a></section>
 
 <section id="excluded" class="reference-section"><h2>36. Intentionally excluded and deferred</h2><p>Small is a feature. This milestone does <strong>not</strong> implement console Input, held-key or pointer queries, cursor visibility/shape control, arbitrary terminal escape strings, ParamArray, dynamic or rank-three arrays, whole-array parameters/returns, Type methods/properties, Module, Import, classes, OOP, unrestricted file writing, graphics, media, or audio.</p><p>There is no TypeScript or npm layer, no hidden legacy mode, and no eleventh target. Console Input requires a separate authority-first design.</p><div class="callout">Documentation for a future idea is not implementation. If it is in this list, the compiler correctly rejects it today.</div><a class="back" href="#top">Back to top</a></section>
 

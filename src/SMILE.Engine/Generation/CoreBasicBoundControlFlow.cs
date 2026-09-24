@@ -7,6 +7,13 @@ namespace SMILE.Engine;
 /// </summary>
 internal static class CoreBasicBoundControlFlow
 {
+    public static bool EndsSequence(BoundStatement statement) => statement switch
+    {
+        BoundReturnStatement or BoundExitStatement or BoundEndProgramStatement => true,
+        BoundWithStatement block => block.SourceItems.OfType<BoundStatement>().Any(EndsSequence),
+        _ => false
+    };
+
     public static bool ContainsExitTargetingLoop(
         IReadOnlyList<BoundSourceItem> items,
         BoundExitKind targetKind,
@@ -32,6 +39,9 @@ internal static class CoreBasicBoundControlFlow
 
             switch (statement)
             {
+                case BoundWithStatement block:
+                    foreach (var nested in EnumerateLoops(block.SourceItems)) yield return nested;
+                    break;
                 case BoundForStatement loop:
                     yield return (loop, BoundExitKind.For);
                     foreach (var nested in EnumerateLoops(loop.SourceItems))
@@ -96,6 +106,9 @@ internal static class CoreBasicBoundControlFlow
 
             switch (statement)
             {
+                case BoundWithStatement block:
+                    if (VisitForExit(block.SourceItems, targetKind, requireInterveningOtherLoop, nestedSameKindLoops, nestedOtherKindLoops)) return true;
+                    break;
                 case BoundIfStatement conditional:
                     if (conditional.Clauses.Any(clause => VisitForExit(
                             clause.SourceItems,

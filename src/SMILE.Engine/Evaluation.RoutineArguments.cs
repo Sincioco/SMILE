@@ -33,6 +33,7 @@ public sealed partial class SmileEvaluator
         out WritableLocation? location, out SmileRuntimeError? error)
     {
         location = null;
+        if (expression is BoundWithReceiverExpression receiver) { location = _withLocations[receiver.Location]; return Success(out error); }
         if (expression is BoundFieldExpression field) return TryCaptureField(field, frame, out location, out error);
         if (expression is BoundVariableExpression scalar)
         {

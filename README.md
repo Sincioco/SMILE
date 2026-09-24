@@ -127,7 +127,10 @@ Records support variables, array cells, ByVal/ByRef parameters and returns.
 Writable fields can be passed ByRef, including fixed-array field cells, and can
 receive Data Count/Status outputs. Copying a whole record preserves existing
 references into its fields. Whole records cannot be printed, compared, used in
-arithmetic or stored in Const. Type methods/properties, classes and modules remain
+arithmetic or stored in Const. `With CurrentEntry` ... `End With` captures a writable
+record location once; leading-dot expressions such as `.Points` use that record.
+Nested blocks use the nearest receiver, and array indexes run once on entry.
+Type methods/properties, classes and modules remain
 pending in the [back-port inventory](docs/SMILE%202%20Core%20Backport%20Progress.md).
 
 ### Three original games, written entirely in SMILE

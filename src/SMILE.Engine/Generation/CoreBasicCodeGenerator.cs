@@ -983,7 +983,7 @@ internal static partial class CoreBasicCodeGenerator
                             Line($"goto {_routineCleanup.EndLabel};");
                         }
 
-                        if (statement is BoundReturnStatement or BoundExitStatement or BoundEndProgramStatement)
+                        if (CoreBasicBoundControlFlow.EndsSequence(statement))
                         {
                             return;
                         }
@@ -1053,7 +1053,7 @@ internal static partial class CoreBasicCodeGenerator
             current is BoundReturnStatement && previous is not BoundSetStatement;
 
         private static bool IsMajorControl(BoundStatement statement) =>
-            statement is BoundIfStatement or BoundSelectStatement or BoundForStatement or BoundDoStatement;
+            statement is BoundIfStatement or BoundSelectStatement or BoundForStatement or BoundDoStatement or BoundWithStatement;
 
         private static BoundStatement? NextStatementAfterAttachedComments(
             IReadOnlyList<BoundSourceItem> items,
@@ -1128,6 +1128,9 @@ internal static partial class CoreBasicCodeGenerator
                     return;
                 case BoundDoStatement loop:
                     WriteDo(loop);
+                    return;
+                case BoundWithStatement block:
+                    WriteWith(block);
                     return;
                 case BoundExitStatement exit:
                     WriteExit(exit);
@@ -1376,7 +1379,7 @@ internal static partial class CoreBasicCodeGenerator
         private static bool CaseNeedsBreak(IReadOnlyList<BoundSourceItem> items)
         {
             BoundStatement? last = items.OfType<BoundStatement>().LastOrDefault();
-            return last is not (BoundReturnStatement or BoundExitStatement or BoundEndProgramStatement);
+            return last is null || !CoreBasicBoundControlFlow.EndsSequence(last);
         }
 
         private void WriteUnconditionalSelectBody(IReadOnlyList<BoundSourceItem> items)
@@ -1882,6 +1885,7 @@ internal static partial class CoreBasicCodeGenerator
                 BoundVariableExpression variable => Name(variable.Variable),
                 BoundArrayExpression array => ArrayElement(array.Array, array.Indices),
                 BoundFieldExpression field => FieldLocation(field),
+                BoundWithReceiverExpression receiver => _withLocations[receiver.Location],
                 BoundCallExpression call => $"{(_language is TargetLanguage.JavaScript && _asyncJavaScriptRoutines.Contains(call.Routine) ? "await " : string.Empty)}{RoutineName(call.Routine)}({string.Join(", ", call.Arguments.Select(Expression))})",
                 BoundIntrinsicExpression intrinsic => Intrinsic(intrinsic),
                 BoundUnaryExpression unary => Unary(unary),
@@ -1904,7 +1908,7 @@ internal static partial class CoreBasicCodeGenerator
             {
                 case BoundFieldExpression field:
                     return NewOrderedValue(field.Type, FieldLocation(field));
-                case BoundEnumExpression or BoundDoubleLiteralExpression or BoundStringLiteralExpression or BoundIntegerLiteralExpression or BoundBooleanLiteralExpression or BoundVariableExpression:
+                case BoundWithReceiverExpression or BoundEnumExpression or BoundDoubleLiteralExpression or BoundStringLiteralExpression or BoundIntegerLiteralExpression or BoundBooleanLiteralExpression or BoundVariableExpression:
                     return Expression(expression);
                 case BoundArrayExpression array:
                 {
@@ -2578,6 +2582,9 @@ internal static partial class CoreBasicCodeGenerator
                         }
 
                         break;
+                    case BoundWithStatement block:
+                        foreach (BoundStatement nested in EnumerateStatements(block.SourceItems)) yield return nested;
+                        break;
                     case BoundDoStatement loop:
                         foreach (BoundStatement nested in EnumerateStatements(loop.SourceItems))
                         {
@@ -2642,6 +2649,7 @@ internal static partial class CoreBasicCodeGenerator
                     BoundIfStatement conditional => conditional.Clauses.Select(clause => clause.Condition),
                     BoundSelectStatement select => new[] { select.Selector },
                     BoundForStatement loop => new[] { loop.LowerBound, loop.UpperBound },
+                    BoundWithStatement block => new[] { block.Location.Target },
                     BoundDoStatement { UntilCondition: not null } loop => new[] { loop.UntilCondition },
                     BoundWaitStatement wait => new[] { wait.Duration },
                     BoundMoveCursorStatement moveCursor => new[] { moveCursor.Column, moveCursor.Row },
