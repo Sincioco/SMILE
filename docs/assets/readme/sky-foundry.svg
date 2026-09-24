@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="610" viewBox="0 0 820 610" role="img" aria-labelledby="title desc">
+  <title id="title">Sky Foundry — captured evaluator board</title>
+  <desc id="desc">Seven shape families · rotation · row clearing. Board characters come from an evaluated SMILE example, including cursor overlays. Colors are illustrative. This is a rendered diagram, not a terminal screenshot.</desc>
+  <rect width="820" height="610" rx="18" fill="#0c1728"/>
+  <text x="38" y="48" fill="#f2f6ff" font-family="Segoe UI,Arial,sans-serif" font-size="30" font-weight="600">Sky Foundry</text>
+  <text x="38" y="78" fill="#b7c8dd" font-family="Segoe UI,Arial,sans-serif" font-size="16">Seven shape families · rotation · row clearing</text>
+  <g font-family="Consolas,monospace" font-size="18">
+<text x="38" y="112" font-size="14" fill="#ffd878">SKY FOUNDRY    Score: 119    Rows: 1    Next family: 3</text>
+<text x="186" y="148" fill="#cfafff" xml:space="preserve" textLength="448" lengthAdjust="spacingAndGlyphs">+------------------------------+</text>
+<text x="186" y="167" fill="#cfafff" xml:space="preserve" textLength="448" lengthAdjust="spacingAndGlyphs">|                              |</text>
+<text x="186" y="186" fill="#cfafff" xml:space="preserve" textLength="182" lengthAdjust="spacingAndGlyphs">|            </text>
+<text x="368" y="186" fill="#ffd878" xml:space="preserve" textLength="14" lengthAdjust="spacingAndGlyphs">@</text>
+<text x="382" y="186" fill="#ffd878" xml:space="preserve" textLength="14" lengthAdjust="spacingAndGlyphs">@</text>
+<text x="396" y="186" fill="#ffd878" xml:space="preserve" textLength="14" lengthAdjust="spacingAndGlyphs">@</text>
+<text x="410" y="186" fill="#ffd878" xml:space="preserve" textLength="14" lengthAdjust="spacingAndGlyphs">@</text>
+<text x="424" y="186" fill="#ffd878" xml:space="preserve" textLength="14" lengthAdjust="spacingAndGlyphs">@</text>
+<text x="438" y="186" fill="#ffd878" xml:space="preserve" textLength="14" lengthAdjust="spacingAndGlyphs">@</text>
+<text x="452" y="186" fill="#cfafff" xml:space="preserve" textLength="182" lengthAdjust="spacingAndGlyphs">            |</text>
+<text x="186" y="205" fill="#cfafff" xml:space="preserve" textLength="182" lengthAdjust="spacingAndGlyphs">|            </text>
+<text x="368" y="205" fill="#ffd878" xml:space="preserve" textLength="14" lengthAdjust="spacingAndGlyphs">@</text>
+<text x="382" y="205" fill="#ffd878" xml:space="preserve" textLength="14" lengthAdjust="spacingAndGlyphs">@</text>
+<text x="396" y="205" fill="#ffd878" xml:space="preserve" textLength="14" lengthAdjust="spacingAndGlyphs">@</text>
+<text x="410" y="205" fill="#ffd878" xml:space="preserve" textLength="14" lengthAdjust="spacingAndGlyphs">@</text>
+<text x="424" y="205" fill="#ffd878" xml:space="preserve" textLength="14" lengthAdjust="spacingAndGlyphs">@</text>
+<text x="438" y="205" fill="#ffd878" xml:space="preserve" textLength="14" lengthAdjust="spacingAndGlyphs">@</text>
+<text x="452" y="205" fill="#cfafff" xml:space="preserve" textLength="182" lengthAdjust="spacingAndGlyphs">            |</text>
+<text x="186" y="224" fill="#cfafff" xml:space="preserve" textLength="448" lengthAdjust="spacingAndGlyphs">|                              |</text>
+<text x="186" y="243" fill="#cfafff" xml:space="preserve" textLength="448" lengthAdjust="spacingAndGlyphs">|                              |</text>
+<text x="186" y="262" fill="#cfafff" xml:space="preserve" textLength="448" lengthAdjust="spacingAndGlyphs">|                              |</text>
+<text x="186" y="281" fill="#cfafff" xml:space="preserve" textLength="448" lengthAdjust="spacingAndGlyphs">|                              |</text>
+<text x="186" y="300" fill="#cfafff" xml:space="preserve" textLength="448" lengthAdjust="spacingAndGlyphs">|                              |</text>
+<text x="186" y="319" fill="#cfafff" xml:space="preserve" textLength="448" lengthAdjust="spacingAndGlyphs">|                              |</text>
+<text x="186" y="338" fill="#cfafff" xml:space="preserve" textLength="448" lengthAdjust="spacingAndGlyphs">|                              |</text>
+<text x="186" y="357" fill="#cfafff" xml:space="preserve" textLength="448" lengthAdjust="spacingAndGlyphs">|                              |</text>
+<text x="186" y="376" fill="#cfafff" xml:space="preserve" textLength="448" lengthAdjust="spacingAndGlyphs">|                              |</text>
+<text x="186" y="395" fill="#cfafff" xml:space="preserve" textLength="448" lengthAdjust="spacingAndGlyphs">|                              |</text>
+<text x="186" y="414" fill="#cfafff" xml:space="preserve" textLength="448" lengthAdjust="spacingAndGlyphs">|                              |</text>
+<text x="186" y="433" fill="#cfafff" xml:space="preserve" textLength="448" lengthAdjust="spacingAndGlyphs">|                              |</text>
+<text x="186" y="452" fill="#cfafff" xml:space="preserve" textLength="448" lengthAdjust="spacingAndGlyphs">|                              |</text>
+<text x="186" y="471" fill="#cfafff" xml:space="preserve" textLength="448" lengthAdjust="spacingAndGlyphs">|                              |</text>
+<text x="186" y="490" fill="#cfafff" xml:space="preserve" textLength="448" lengthAdjust="spacingAndGlyphs">|                              |</text>
+<text x="186" y="509" fill="#cfafff" xml:space="preserve" textLength="448" lengthAdjust="spacingAndGlyphs">|                              |</text>
+<text x="186" y="528" fill="#cfafff" xml:space="preserve" textLength="448" lengthAdjust="spacingAndGlyphs">|                              |</text>
+<text x="186" y="547" fill="#cfafff" xml:space="preserve" textLength="448" lengthAdjust="spacingAndGlyphs">+------------------------------+</text>
+  </g>
+  <text x="38" y="584" fill="#a8bdd3" font-family="Segoe UI,Arial,sans-serif" font-size="13" letter-spacing="1">SMILE 1.0 · RENDERED EVALUATOR OUTPUT</text>
+</svg>

@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="620" viewBox="0 0 1120 620" role="img" aria-labelledby="title desc">
+  <title id="title">Lantern Maze — captured evaluator board</title>
+  <desc id="desc">71 × 21 maze · four targeting shadows · wrap tunnels. Board characters come from an evaluated SMILE example, including cursor overlays. Colors are illustrative. This is a rendered diagram, not a terminal screenshot.</desc>
+  <rect width="1120" height="620" rx="18" fill="#0c1728"/>
+  <text x="38" y="48" fill="#f2f6ff" font-family="Segoe UI,Arial,sans-serif" font-size="30" font-weight="600">Lantern Maze</text>
+  <text x="38" y="78" fill="#b7c8dd" font-family="Segoe UI,Arial,sans-serif" font-size="16">71 × 21 maze · four targeting shadows · wrap tunnels</text>
+  <g font-family="Consolas,monospace" font-size="18">
+<text x="38" y="112" font-size="14" fill="#ffd878">LANTERN MAZE  Score: 5  Lives: 3  Dots: 837</text>
+<text x="98" y="152" fill="#79b4ff" xml:space="preserve" textLength="923" lengthAdjust="spacingAndGlyphs">#######################################################################</text>
+<text x="98" y="172" fill="#79b4ff" xml:space="preserve" textLength="923" lengthAdjust="spacingAndGlyphs">#................................#####................................#</text>
+<text x="98" y="192" fill="#79b4ff" xml:space="preserve" textLength="923" lengthAdjust="spacingAndGlyphs">#..#########...#############.....#####.....#############...#########..#</text>
+<text x="98" y="212" fill="#79b4ff" xml:space="preserve" textLength="923" lengthAdjust="spacingAndGlyphs">#..#########...#############.....#####.....#############...#########..#</text>
+<text x="98" y="232" fill="#79b4ff" xml:space="preserve" textLength="923" lengthAdjust="spacingAndGlyphs">#................................#####................................#</text>
+<text x="98" y="252" fill="#79b4ff" xml:space="preserve" textLength="923" lengthAdjust="spacingAndGlyphs">#.....................................................................#</text>
+<text x="98" y="272" fill="#79b4ff" xml:space="preserve" textLength="923" lengthAdjust="spacingAndGlyphs">#..#####...###########...######.........######...###########...#####..#</text>
+<text x="98" y="292" fill="#79b4ff" xml:space="preserve" textLength="923" lengthAdjust="spacingAndGlyphs">#..#####...###########...######.........######...###########...#####..#</text>
+<text x="98" y="312" fill="#79b4ff" xml:space="preserve" textLength="455" lengthAdjust="spacingAndGlyphs">#..#####.....................#####=</text>
+<text x="553" y="312" fill="#7ce5ed" xml:space="preserve" textLength="13" lengthAdjust="spacingAndGlyphs">C</text>
+<text x="566" y="312" fill="#79b4ff" xml:space="preserve" textLength="455" lengthAdjust="spacingAndGlyphs">=#####.....................#####..#</text>
+<text x="98" y="332" fill="#79b4ff" xml:space="preserve" textLength="455" lengthAdjust="spacingAndGlyphs">#............................#     </text>
+<text x="553" y="332" fill="#ec9ce6" xml:space="preserve" textLength="13" lengthAdjust="spacingAndGlyphs">B</text>
+<text x="566" y="332" fill="#79b4ff" xml:space="preserve" textLength="455" lengthAdjust="spacingAndGlyphs">     #............................#</text>
+<text x="98" y="352" fill="#79b4ff" xml:space="preserve" textLength="494" lengthAdjust="spacingAndGlyphs"> ............................#        </text>
+<text x="592" y="352" fill="#79dfb4" xml:space="preserve" textLength="13" lengthAdjust="spacingAndGlyphs">D</text>
+<text x="605" y="352" fill="#79b4ff" xml:space="preserve" textLength="403" lengthAdjust="spacingAndGlyphs">  #............................</text>
+<text x="98" y="372" fill="#79b4ff" xml:space="preserve" textLength="923" lengthAdjust="spacingAndGlyphs">#............................#           #............................#</text>
+<text x="98" y="392" fill="#79b4ff" xml:space="preserve" textLength="923" lengthAdjust="spacingAndGlyphs">#..#####.....................#############.....................#####..#</text>
+<text x="98" y="412" fill="#79b4ff" xml:space="preserve" textLength="923" lengthAdjust="spacingAndGlyphs">#..#####...###########...######.........######...###########...#####..#</text>
+<text x="98" y="432" fill="#79b4ff" xml:space="preserve" textLength="923" lengthAdjust="spacingAndGlyphs">#..#####...###########...######.........######...###########...#####..#</text>
+<text x="98" y="452" fill="#79b4ff" xml:space="preserve" textLength="468" lengthAdjust="spacingAndGlyphs">#.................................. </text>
+<text x="566" y="452" fill="#ffd878" xml:space="preserve" textLength="13" lengthAdjust="spacingAndGlyphs">@</text>
+<text x="579" y="452" fill="#79b4ff" xml:space="preserve" textLength="442" lengthAdjust="spacingAndGlyphs">.................................#</text>
+<text x="98" y="472" fill="#79b4ff" xml:space="preserve" textLength="923" lengthAdjust="spacingAndGlyphs">#.....................................................................#</text>
+<text x="98" y="492" fill="#79b4ff" xml:space="preserve" textLength="923" lengthAdjust="spacingAndGlyphs">#..#########...#############.....#####.....#############...#########..#</text>
+<text x="98" y="512" fill="#79b4ff" xml:space="preserve" textLength="923" lengthAdjust="spacingAndGlyphs">#..#########...#############.....#####.....#############...#########..#</text>
+<text x="98" y="532" fill="#79b4ff" xml:space="preserve" textLength="923" lengthAdjust="spacingAndGlyphs">#................................#####................................#</text>
+<text x="98" y="552" fill="#79b4ff" xml:space="preserve" textLength="923" lengthAdjust="spacingAndGlyphs">#######################################################################</text>
+  </g>
+  <text x="38" y="594" fill="#a8bdd3" font-family="Segoe UI,Arial,sans-serif" font-size="13" letter-spacing="1">SMILE 1.0 · RENDERED EVALUATOR OUTPUT</text>
+</svg>

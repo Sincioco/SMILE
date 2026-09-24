@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="730" viewBox="0 0 1200 730" role="img" aria-labelledby="title desc">
+  <title id="title">How SMILE turns one program into ten languages</title>
+  <desc id="desc">SMILE source passes through the parser and binder into a typed bound program. The evaluator and ten target writers share that meaning. Writers produce readable source, and optional local toolchains build and run it.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#71dbc5"/></marker>
+    <style>text{font-family:Segoe UI,Arial,sans-serif}.label{fill:#eaf3ff;font-size:24px;font-weight:600}.body{fill:#b7c8dd;font-size:18px}.small{fill:#9cb4ce;font-size:16px}.box{fill:#15263c;stroke:#35506c;stroke-width:1.5}.flow{fill:none;stroke:#71dbc5;stroke-width:2;marker-end:url(#arrow)}</style>
+  </defs>
+  <rect width="1200" height="730" rx="20" fill="#0c1728"/>
+  <text x="48" y="54" fill="#71dbc5" font-family="Segoe UI,Arial,sans-serif" font-size="16" letter-spacing="3">INSIDE THE COMPILER</text>
+  <text x="48" y="100" fill="#fff" font-family="Segoe UI,Arial,sans-serif" font-size="36" font-weight="600">One source. One meaning. Ten destinations.</text>
+  <text x="48" y="134" class="body">Each target starts from the same checked program.</text>
+  <g transform="translate(48 182)">
+    <rect width="238" height="114" rx="12" class="box"/>
+    <text x="20" y="36" class="label">01  SMILE source</text>
+    <text x="20" y="70" class="body">The learner's program</text>
+    <text x="20" y="96" class="small">Desktop editor or CLI file</text>
+  </g>
+  <path d="M286 239H330" class="flow"/>
+  <g transform="translate(334 182)">
+    <rect width="238" height="114" rx="12" class="box"/>
+    <text x="20" y="36" class="label">02  Lexer + parser</text>
+    <text x="20" y="70" class="body">Words become structure</text>
+    <text x="20" y="96" class="small">Syntax tree + diagnostics</text>
+  </g>
+  <path d="M572 239H616" class="flow"/>
+  <g transform="translate(620 182)">
+    <rect width="238" height="114" rx="12" class="box"/>
+    <text x="20" y="36" class="label">03  Binder</text>
+    <text x="20" y="70" class="body">Check names and types</text>
+    <text x="20" y="96" class="small">Scopes, calls, arrays, exits</text>
+  </g>
+  <path d="M858 239H902" class="flow"/>
+  <g transform="translate(906 182)">
+    <rect width="246" height="114" rx="12" fill="#163d40" stroke="#71dbc5"/>
+    <text x="20" y="36" class="label">04  Bound program</text>
+    <text x="20" y="70" class="body">Typed shared meaning</text>
+    <text x="20" y="96" class="small">+ used-feature inventory</text>
+  </g>
+  <path d="M1029 296V336H293V374" class="flow"/>
+  <path d="M1029 336V374" class="flow"/>
+  <g transform="translate(48 380)">
+    <rect width="490" height="145" rx="12" class="box"/>
+    <text x="24" y="38" class="label">Evaluator</text>
+    <text x="24" y="75" class="body">Run the shared meaning directly</text>
+    <text x="24" y="105" class="small">Scripted keys, virtual time, seeded randomness</text>
+    <text x="24" y="130" class="small">Reproducible checks + bounded execution</text>
+  </g>
+  <g transform="translate(590 380)">
+    <rect width="562" height="145" rx="12" class="box"/>
+    <text x="24" y="38" class="label">Ten target writers</text>
+    <text x="24" y="75" class="body">Generate readable, idiomatic destination source</text>
+    <text x="24" y="105" class="small">Native loops, routines, arrays and console operations</text>
+    <text x="24" y="130" class="small">Only the support required by the program</text>
+  </g>
+  <path d="M871 525V568" class="flow"/>
+  <g transform="translate(590 574)">
+    <rect width="562" height="108" rx="12" fill="#163d40" stroke="#71dbc5"/>
+    <text x="24" y="38" class="label">Inspect the source. Build and run locally.</text>
+    <text x="24" y="75" class="body">Optional toolchains · asynchronous process work</text>
+  </g>
+  <text x="48" y="603" class="label">C# · Java · C++ · C · MASM x64</text>
+  <text x="48" y="635" class="body">JavaScript · COBOL · Objective-C</text>
+  <text x="48" y="665" class="body">Swift · Python</text>
+</svg>
