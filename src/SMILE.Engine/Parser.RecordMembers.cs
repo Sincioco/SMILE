@@ -3,10 +3,10 @@ namespace SMILE.Engine;
 internal sealed partial class Parser
 {
     private bool IsRecordMemberBoundary() => Current.Kind is TokenKind.Public or TokenKind.Private or TokenKind.Property ||
-        Current.Kind is TokenKind.End && Peek(1).Kind is TokenKind.Type ||
+        Current.Kind is TokenKind.End && Peek(1).Kind is TokenKind.Type or TokenKind.Class ||
         Current.Kind is TokenKind.Identifier && Peek(1).Kind is TokenKind.As;
 
-    private RecordPropertyDeclarationSyntax ParseRecordProperty(bool isPrivate)
+    private InstancePropertyDeclarationSyntax ParseRecordProperty(bool isPrivate)
     {
         Token start = Next();
         Token name = MatchMemberName();
@@ -56,6 +56,6 @@ internal sealed partial class Parser
         Match(TokenKind.End, "Expected End Property.");
         Token close = Match(TokenKind.Property, "Expected Property after End.");
         if (getter is null && setter is null) Report("SMILE3441", "A Property requires a Get or Set accessor.", name.Span);
-        return new RecordPropertyDeclarationSyntax(name.Text, name.Span, declaredType, getter, setter, isPrivate, items, Combine(start.Span, close.Span));
+        return new InstancePropertyDeclarationSyntax(name.Text, name.Span, declaredType, getter, setter, isPrivate, items, Combine(start.Span, close.Span));
     }
 }

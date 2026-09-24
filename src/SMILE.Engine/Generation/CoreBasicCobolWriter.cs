@@ -37,8 +37,11 @@ internal sealed partial class CobolWriter
         WriteEnumConstants();
         WriteStateDefinition(linkage: false);
         WritePlanStorage(main);
+        WriteClassViews(main, section: true);
         Line("       PROCEDURE DIVISION.");
+        WriteClassRoots(main, null, register: true);
         AppendBody(main.Body);
+        WriteClassRoots(main, null, register: false);
         Line("           MOVE 0 TO RETURN-CODE.");
         Line("           STOP RUN.");
         Line("       END PROGRAM Program.");
@@ -99,6 +102,8 @@ internal sealed partial class CobolWriter
             }
         }
 
+        WriteClassViews(plan, section: false);
+
         var usingItems = new List<string> { "BY REFERENCE SMILE-STATE" };
         foreach (VariableSymbol parameter in symbol.ExecutionParameters)
         {
@@ -123,7 +128,10 @@ internal sealed partial class CobolWriter
             string terminator = index + 1 == usingItems.Count ? "." : string.Empty;
             Line($"           {usingItems[index]}{terminator}");
         }
+        WriteClassRoots(plan, routine, register: true);
         AppendBody(plan.Body);
+        if (_program.ClassTypes.Count > 0) { Line("           ."); Line("       SMILE-CLASS-RETURN."); }
+        WriteClassRoots(plan, routine, register: false);
         Line("           GOBACK.");
         Line($"       END PROGRAM {RoutineName(symbol)}.");
     }
@@ -132,6 +140,7 @@ internal sealed partial class CobolWriter
     {
         foreach (Temporary temporary in plan.Temporaries)
         {
+            if (temporary.IsClassView) continue;
             if (temporary.Type is RecordTypeSymbol record) { WriteRecordShape(temporary.Name, record, [], 1, linkage: false); continue; }
             Line($"       01 {temporary.Name} {Picture(temporary.Type)} {DefaultClause(temporary.Type)}.");
             if (temporary.Type is { Kind: SmileTypeKind.String })
@@ -230,13 +239,14 @@ internal sealed partial class CobolWriter
 
     private static string Picture(SmileType type) => type switch
     {
+        ClassTypeSymbol => "USAGE POINTER",
         { Kind: SmileTypeKind.Double } => "USAGE FLOAT-LONG",
         { Kind: SmileTypeKind.Integer or SmileTypeKind.Enum } => "PIC S9(18) COMP-5",
         { Kind: SmileTypeKind.Boolean } => "PIC 9 COMP-5",
         _ => $"PIC X({TextCapacity})"
     };
 
-    private static string DefaultClause(SmileType type) => type is { Kind: SmileTypeKind.String }
+    private static string DefaultClause(SmileType type) => type is ClassTypeSymbol ? "VALUE NULL" : type is { Kind: SmileTypeKind.String }
         ? "VALUE SPACES"
         : "VALUE 0";
 
@@ -318,7 +328,7 @@ internal sealed partial class CobolWriter
         }
     }
 
-    private sealed record Temporary(string Name, SmileType Type);
+    private sealed record Temporary(string Name, SmileType Type, bool IsClassView = false);
 
     private sealed record PreparedArrayElement(string Value, string? Length);
 
@@ -362,6 +372,7 @@ internal sealed partial class CobolWriter
         {
             foreach (BoundSourceItem item in items)
             {
+                int firstClassTemporary = _temporaries.Count;
                 switch (item)
                 {
                     case BoundBlankLine:
@@ -477,7 +488,7 @@ internal sealed partial class CobolWriter
                                 returnStatement.Value.Type is { Kind: SmileTypeKind.String } ? "SMILE-RETURN-LENGTH" : null);
                         }
 
-                        Line(indent, "GOBACK");
+                        Line(indent, _owner._program.ClassTypes.Count > 0 ? "GO TO SMILE-CLASS-RETURN" : "GOBACK");
                         return true;
                     case BoundCorePrintStatement print:
                         WritePrint(print, indent);
@@ -501,10 +512,12 @@ internal sealed partial class CobolWriter
                         WriteExit(exit, indent);
                         return true;
                     case BoundEndProgramStatement:
+                        if (_owner._program.ClassTypes.Count > 0) Line(indent, "CALL \"smile_object_shutdown\"");
                         Line(indent, "MOVE 0 TO RETURN-CODE");
                         Line(indent, "STOP RUN");
                         return true;
                 }
+                if (item is BoundStatement) EndClassStatement(firstClassTemporary, indent);
             }
 
             return false;
@@ -791,6 +804,12 @@ internal sealed partial class CobolWriter
         {
             switch (expression)
             {
+                case BoundNewExpression creation:
+                    return PrepareNew(creation, indent);
+                case BoundNothingExpression:
+                    return "NULL";
+                case BoundIdentityExpression identity:
+                    return PrepareIdentity(identity, indent);
                 case BoundDoubleLiteralExpression literal:
                     return PrepareDoubleLiteral(literal.Value, indent);
                 case BoundVariableExpression { Variable.IsConstant: true, Type: { Kind: SmileTypeKind.Double } } constant:
@@ -1079,13 +1098,14 @@ internal sealed partial class CobolWriter
             IReadOnlyList<BoundExpression> arguments,
             int indent,
             string? resultTarget,
-            IReadOnlyList<int>? parameterOrder)
+            IReadOnlyList<int>? parameterOrder, string? capturedReceiver = null)
         {
             var captured = new List<PreparedArrayElement>();
             for (int index = 0; index < arguments.Count; index++)
             {
                 BoundExpression argument = arguments[index];
-                if (RoutineArguments.ParameterAtSourceIndex(routine, parameterOrder, index).IsByRef)
+                VariableSymbol parameter = RoutineArguments.ParameterAtSourceIndex(routine, parameterOrder, index, includeReceiver: capturedReceiver is null);
+                if (parameter.IsByRef)
                 {
                     if (argument is BoundFieldExpression field) { captured.Add(PrepareRecordField(field, indent)); continue; }
                     if (argument is BoundWithReceiverExpression receiver) { captured.Add(new PreparedArrayElement(_withLocations[receiver.Location], null)); continue; }
@@ -1105,8 +1125,10 @@ internal sealed partial class CobolWriter
                     indent,
                     argument.Type is { Kind: SmileTypeKind.String } ? LengthName(temporary) : null);
                 captured.Add(new PreparedArrayElement(temporary.Name, argument.Type is { Kind: SmileTypeKind.String } ? LengthName(temporary) : null));
+                if (parameter.IsReceiver && parameter.Type is ClassTypeSymbol) RequireClass(temporary.Name, indent);
             }
             captured = RoutineArguments.InParameterOrder(captured, parameterOrder).ToList();
+            if (capturedReceiver is not null) captured.Insert(0, new PreparedArrayElement(capturedReceiver, null));
 
             var usingItems = new List<string> { "BY REFERENCE SMILE-STATE" };
             foreach (PreparedArrayElement value in captured)
@@ -1143,6 +1165,9 @@ internal sealed partial class CobolWriter
         {
             switch (type)
             {
+                case ClassTypeSymbol:
+                    Line(indent, $"SET {target} TO {expression}");
+                    break;
                 case { Kind: SmileTypeKind.Boolean }:
                     Line(indent, $"IF {Condition(sourceExpression, expression)}");
                     Line(indent + 1, $"MOVE 1 TO {target}");

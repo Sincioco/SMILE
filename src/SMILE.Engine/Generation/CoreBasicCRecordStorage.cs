@@ -18,7 +18,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private void WriteRecordTextFields(RecordTypeSymbol type, string receiver, Action<string> write)
         {
-            foreach (RecordFieldSymbol field in type.Fields.Where(field => field.Type == SmileType.String || field.Type is RecordTypeSymbol { ContainsText: true }))
+            foreach (InstanceFieldSymbol field in type.Fields.Where(field => field.Type == SmileType.String || field.Type is RecordTypeSymbol { ContainsText: true }))
                 WriteFieldElements(field, $"({receiver}).{_identifiers.Get(field)}", target =>
                 {
                     if (field.Type is RecordTypeSymbol nested) WriteRecordTextFields(nested, target, write);
@@ -44,7 +44,7 @@ internal static partial class CoreBasicCodeGenerator
             if (_language is not (TargetLanguage.C or TargetLanguage.ObjectiveC)) return;
             foreach (VariableSymbol variable in variables.Where(variable => variable.Type is RecordTypeSymbol record && (variable.IsArray || variable.IsGlobal && CRecordNeedsConstructor(record))))
             {
-                var shape = new RecordFieldSymbol((RecordTypeSymbol)variable.Type, variable.Name, variable.Type, variable.ArrayDimensions, 0, variable.DeclarationSpan);
+                var shape = new InstanceFieldSymbol((RecordTypeSymbol)variable.Type, variable.Name, variable.Type, variable.ArrayDimensions, 0, variable.DeclarationSpan);
                 WriteFieldElements(shape, Name(variable), target => Line($"{target} = {DefaultLiteral(variable.Type)};"));
             }
         }
@@ -52,6 +52,8 @@ internal static partial class CoreBasicCodeGenerator
         private void WriteCValueRoots(SmileType type, string target, bool register)
         {
             string operation = register ? "register" : "unregister";
+            if (type is ClassTypeSymbol) { Line($"smile_object_{operation}(&{target});"); return; }
+            if (!UsesManagedCText) return;
             if (type is RecordTypeSymbol record) WriteRecordTextFields(record, target, field => Line($"smile_text_{operation}(&{field});"));
             else if (type == SmileType.String) Line($"smile_text_{operation}(&{target});");
         }
@@ -60,7 +62,7 @@ internal static partial class CoreBasicCodeGenerator
         {
             foreach (VariableSymbol variable in variables.Where(variable => !variable.IsByRef && variable.Type is RecordTypeSymbol { ContainsText: true }))
             {
-                var shape = new RecordFieldSymbol((RecordTypeSymbol)variable.Type, variable.Name, variable.Type, variable.ArrayDimensions, 0, variable.DeclarationSpan);
+                var shape = new InstanceFieldSymbol((RecordTypeSymbol)variable.Type, variable.Name, variable.Type, variable.ArrayDimensions, 0, variable.DeclarationSpan);
                 WriteFieldElements(shape, Name(variable), target => WriteCValueRoots(variable.Type, target, register));
             }
         }

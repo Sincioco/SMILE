@@ -6,7 +6,15 @@ public sealed partial class SmileEvaluator
 
     private SmileRuntimeError? ExecuteWith(BoundWithStatement block, CallFrame? frame)
     {
-        if (!TryCaptureLocation(block.Location.Target, frame, out WritableLocation? location, out SmileRuntimeError? error)) return error;
+        WritableLocation? location;
+        SmileRuntimeError? error;
+        if (block.Location.Target.Type is ClassTypeSymbol)
+        {
+            if (!TryEvaluateExpression(block.Location.Target, frame, out SmileValue reference, out error)) return error;
+            if (reference.ClassValue is null) return NothingReferenceError();
+            location = new WritableLocation(() => reference, _ => throw new InvalidOperationException("With borrows its captured class reference."));
+        }
+        else if (!TryCaptureLocation(block.Location.Target, frame, out location, out error)) return error;
         // Recursion may enter the same source block while its caller is suspended.
         _withLocations.TryGetValue(block.Location, out WritableLocation? previous);
         _withLocations[block.Location] = location!;
@@ -23,7 +31,8 @@ public sealed partial class SmileEvaluator
     {
         location = null;
         if (!TryEvaluateExpression(expression.Receiver, frame, out SmileValue receiver, out error)) return false;
-        SmileValue[] cells = receiver.RecordValue.Fields[expression.Field.Ordinal];
+        if (receiver.Type is ClassTypeSymbol && receiver.ClassValue is null) { error = NothingReferenceError(); return false; }
+        SmileValue[] cells = (receiver.Type is ClassTypeSymbol ? receiver.ClassValue!.Fields : receiver.RecordValue.Fields)[expression.Field.Ordinal];
         int offset = 0;
         for (int dimension = 0; dimension < expression.Indices.Count; dimension++)
         {

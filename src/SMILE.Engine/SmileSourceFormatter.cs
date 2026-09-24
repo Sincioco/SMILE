@@ -156,8 +156,8 @@ public static class SmileSourceFormatter
                 CoreAssignmentStatementSyntax assignment => new[] { assignment.Value },
                 MemberAssignmentStatementSyntax assignment => new[] { assignment.Target, assignment.Value },
                 CoreArrayAssignmentStatementSyntax assignment => assignment.Indices.Append(assignment.Value),
-                DimStatementSyntax declaration => declaration.ArraySizes,
-                RecordFieldDeclarationSyntax field => field.Dimensions,
+                DimStatementSyntax declaration => declaration.Initializer is null ? declaration.ArraySizes : declaration.ArraySizes.Append(declaration.Initializer),
+                InstanceFieldDeclarationSyntax field => field.Dimensions,
                 ConstStatementSyntax constant => new[] { constant.Initializer },
                 EnumMemberDeclarationSyntax { Value: not null } member => new[] { member.Value },
                 CallStatementSyntax call => call.Arguments,
@@ -207,6 +207,8 @@ public static class SmileSourceFormatter
         {
             UnaryExpressionSyntax unary => new[] { unary.Operand },
             BinaryExpressionSyntax binary => new[] { binary.Left, binary.Right },
+            IdentityExpressionSyntax identity => new[] { identity.Left, identity.Right },
+            NewExpressionSyntax creation => creation.Arguments,
             ParenthesizedExpressionSyntax parenthesized => new[] { parenthesized.Expression },
             CallExpressionSyntax call => call.Arguments,
             MemberInvocationExpressionSyntax call => new[] { call.Receiver }.Concat(call.Arguments),
@@ -232,16 +234,16 @@ public static class SmileSourceFormatter
             case RoutineDeclarationSyntax routine:
                 yield return routine.SourceItems;
                 break;
-            case RecordMethodDeclarationSyntax method:
+            case InstanceMethodDeclarationSyntax method:
                 yield return new SourceItemSyntax[] { method.Routine };
                 break;
-            case RecordPropertyDeclarationSyntax property:
+            case InstancePropertyDeclarationSyntax property:
                 yield return property.SourceItems;
                 break;
             case EnumDeclarationSyntax enumeration:
                 yield return enumeration.SourceItems;
                 break;
-            case RecordDeclarationSyntax record:
+            case InstanceDeclarationSyntax record:
                 yield return record.SourceItems;
                 break;
             case IfStatementSyntax conditional:
@@ -434,7 +436,7 @@ public static class SmileSourceFormatter
                     case EnumMemberDeclarationSyntax member:
                         MarkHeader(StartLine(member.Span), EndLine(member.Span), depth);
                         break;
-                    case RecordFieldDeclarationSyntax field:
+                    case InstanceFieldDeclarationSyntax field:
                         MarkHeader(StartLine(field.Span), EndLine(field.Span), depth);
                         break;
                 }
@@ -468,8 +470,8 @@ public static class SmileSourceFormatter
             }
 
             bool boundary = previous is OptionExplicitStatementSyntax ||
-                current is RoutineDeclarationSyntax or EnumDeclarationSyntax or RecordDeclarationSyntax or RecordMethodDeclarationSyntax or RecordPropertyDeclarationSyntax ||
-                previous is RoutineDeclarationSyntax or EnumDeclarationSyntax or RecordDeclarationSyntax or RecordMethodDeclarationSyntax or RecordPropertyDeclarationSyntax ||
+                current is RoutineDeclarationSyntax or EnumDeclarationSyntax or InstanceDeclarationSyntax or InstanceMethodDeclarationSyntax or InstancePropertyDeclarationSyntax ||
+                previous is RoutineDeclarationSyntax or EnumDeclarationSyntax or InstanceDeclarationSyntax or InstanceMethodDeclarationSyntax or InstancePropertyDeclarationSyntax ||
                 DeclarationGroup(previous) != DeclarationGroup(current) &&
                     DeclarationGroup(previous) is not null && DeclarationGroup(current) is not null ||
                 IsDeclaration(previous) && !IsDeclaration(current) ||
@@ -493,15 +495,15 @@ public static class SmileSourceFormatter
             int end = EndLine(statement.Span);
             switch (statement)
             {
-                case RecordMethodDeclarationSyntax method:
+                case InstanceMethodDeclarationSyntax method:
                     MarkStatement(method.Routine, depth);
                     break;
-                case RecordPropertyDeclarationSyntax property:
+                case InstancePropertyDeclarationSyntax property:
                     MarkLine(start, depth);
                     MarkItemList(property.SourceItems, depth + 1);
                     MarkLine(end, depth);
                     break;
-                case RecordDeclarationSyntax record:
+                case InstanceDeclarationSyntax record:
                     MarkLine(start, depth);
                     MarkItemList(record.SourceItems, depth + 1);
                     MarkLine(end, depth);

@@ -857,6 +857,7 @@ public sealed class MasmX64Toolchain : ToolchainBase
         bool hasFileRuntime = generatedProgram.Files.Any(file => file.RelativePath.Equals("SmileFileRuntime.c", StringComparison.OrdinalIgnoreCase));
         bool hasNumericRuntime = generatedProgram.Files.Any(file =>
             file.RelativePath.Equals("SmileNumericRuntime.c", StringComparison.OrdinalIgnoreCase));
+        bool hasClassRuntime = generatedProgram.Files.Any(file => file.RelativePath.Equals("SmileClassRuntime.c", StringComparison.OrdinalIgnoreCase));
 
         await WriteCommandScriptAsync(
             workspace,
@@ -878,7 +879,11 @@ public sealed class MasmX64Toolchain : ToolchainBase
                 "if errorlevel 1 exit /b %errorlevel%",
                 hasFileRuntime
                     ? "cl.exe /nologo /c /TC /GS- /utf-8 SmileFileRuntime.c /Fo:SmileFileRuntime.obj"
-                    : "rem No companion file runtime is required."
+                    : "rem No companion file runtime is required.",
+                "if errorlevel 1 exit /b %errorlevel%",
+                hasClassRuntime
+                    ? "cl.exe /nologo /c /TC /GS- /utf-8 SmileClassRuntime.c /Fo:SmileClassRuntime.obj"
+                    : "rem No companion Class runtime is required."
             },
             cancellationToken).ConfigureAwait(false);
 
@@ -901,7 +906,7 @@ public sealed class MasmX64Toolchain : ToolchainBase
                 "@echo off",
                 $"call {QuoteForCmd(status.Location)} >nul",
                 "if errorlevel 1 exit /b %errorlevel%",
-                $"link.exe /nologo /ignore:4210 Program.obj{(hasTextRuntime ? " SmileTextRuntime.obj" : string.Empty)}{(hasNumericRuntime ? " SmileNumericRuntime.obj" : string.Empty)}{(hasFileRuntime ? " SmileFileRuntime.obj" : string.Empty)}{(hasTextRuntime || hasNumericRuntime || hasFileRuntime ? " vcruntime.lib" : string.Empty)} kernel32.lib legacy_stdio_definitions.lib ucrt.lib /subsystem:console /entry:main /out:Program.exe"
+                $"link.exe /nologo /ignore:4210 Program.obj{(hasTextRuntime ? " SmileTextRuntime.obj" : string.Empty)}{(hasNumericRuntime ? " SmileNumericRuntime.obj" : string.Empty)}{(hasFileRuntime ? " SmileFileRuntime.obj" : string.Empty)}{(hasClassRuntime ? " SmileClassRuntime.obj" : string.Empty)}{(hasTextRuntime || hasNumericRuntime || hasFileRuntime || hasClassRuntime ? " vcruntime.lib" : string.Empty)} kernel32.lib legacy_stdio_definitions.lib ucrt.lib /subsystem:console /entry:main /out:Program.exe"
             },
             cancellationToken).ConfigureAwait(false);
 

@@ -19,6 +19,7 @@ public sealed record DimStatementSyntax(
     : StatementSyntax(Span)
 {
     public bool IsArray => ArraySizes.Count > 0;
+    public NewExpressionSyntax? Initializer { get; init; }
 }
 
 public sealed record ConstStatementSyntax(

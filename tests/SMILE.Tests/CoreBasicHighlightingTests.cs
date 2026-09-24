@@ -48,7 +48,7 @@ Print Total
     [TestMethod]
     public void Type_member_keywords_are_highlighted_but_legacy_Set_assignment_is_rejected()
     {
-        var document = new TextDocument("Public\nPrivate\nProperty\nSet\nMe\nWith");
+        var document = new TextDocument("Public\nPrivate\nProperty\nSet\nMe\nWith\nClass\nNew\nNothing\nIs");
         var highlighter = new DocumentHighlighter(document, SyntaxHighlightingCatalog.GetDefinition("smile")!);
         for (int line = 1; line <= document.LineCount; line++)
             Assert.IsTrue(highlighter.HighlightLine(line).Sections.Any(section => section.Color.Name == "Keyword"));

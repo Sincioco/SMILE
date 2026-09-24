@@ -246,3 +246,20 @@ requires overlapping receiver access, emit a static member with the existing
 SmileReference adapter; retain ordinary mutating methods for exclusive receivers.
 Apply native privacy where available and enforce all visibility during binding.
 No member registry, dynamic dispatch framework or new runtime helper is needed.
+
+Class declarations use native classes and nullable references in C#, Java,
+JavaScript, Python and Swift. C++ uses classes and std::shared_ptr. Constructors
+use native constructors where possible. A C++ constructor that exposes Me uses a
+small factory so shared ownership exists before authored initialization; an async
+JavaScript constructor uses an async factory because native constructors cannot
+await. Identity uses native reference/pointer comparison.
+
+C/Objective-C use heap structs and receiver-pointer routines; MASM uses heap
+payload addresses; COBOL uses POINTER values and LINKAGE field views. These
+destinations require generated allocation/root support because their native
+pointer storage does not keep borrowed fields alive. NativeClassSupport owns that
+support, with ordinary native pointers and explicit roots, no object IDs or
+interpreter. It collects unreferenced allocations at statement/frame boundaries,
+finalizes owned Text roots, and frees remaining objects on program shutdown.
+Class fields cannot contain references, so recursive graph tracing is unnecessary.
+No class allocation support is emitted for programs without classes.

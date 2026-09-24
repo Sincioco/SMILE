@@ -14,7 +14,7 @@ internal sealed partial class CoreBasicMasmWriter
         {
             string name = _identifiers.Get(type);
             Line(name + " STRUCT");
-            foreach (RecordFieldSymbol field in type.Fields)
+            foreach (InstanceFieldSymbol field in type.Fields)
             {
                 string fieldType = field.Type is RecordTypeSymbol nested ? _identifiers.Get(nested) : "QWORD";
                 string value = field.Type is RecordTypeSymbol ? "<>" : "0";
@@ -31,8 +31,10 @@ internal sealed partial class CoreBasicMasmWriter
 
         private bool WriteWith(BoundWithStatement block, int indent)
         {
-            EmitReferenceLocation(block.Location.Target, indent);
+            if (block.Location.Target.Type is ClassTypeSymbol) { EmitExpression(block.Location.Target, indent); EmitRequireClass(indent); }
+            else EmitReferenceLocation(block.Location.Target, indent);
             Storage location = NewTemporary();
+            if (block.Location.Target.Type is ClassTypeSymbol) _objectTemporaries.Add(location);
             _withLocations[block.Location] = location;
             Emit(indent, $"mov QWORD PTR {Address(location.Offset)}, rax");
             return WriteItems(block.SourceItems, indent);
@@ -77,6 +79,7 @@ internal sealed partial class CoreBasicMasmWriter
         private void EmitFieldLocation(BoundFieldExpression field, int indent)
         {
             EmitExpression(field.Receiver, indent);
+            if (field.Receiver.Type is ClassTypeSymbol) { EmitRequireClass(indent); CaptureClassValue(indent); }
             Emit(indent, $"add rax, {field.Field.NativeOffset}");
             if (field.Indices.Count == 0) return;
             Storage location = NewTemporary();
@@ -164,7 +167,7 @@ internal sealed partial class CoreBasicMasmWriter
             Append(builder, 1, $"mov QWORD PTR {Address(remaining.Offset)}, {count}");
             string loop = NewLabel("record_text");
             builder.AppendLine(loop + ":");
-            foreach (RecordFieldSymbol field in type.Fields)
+            foreach (InstanceFieldSymbol field in type.Fields)
             {
                 if (field.Type != SmileType.String && field.Type is not RecordTypeSymbol { ContainsText: true }) continue;
                 Append(builder, 1, $"mov r10, QWORD PTR {Address(pointer.Offset)}");

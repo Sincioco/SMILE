@@ -10,7 +10,7 @@ internal sealed partial class Binder
     {
         BoundExpression target = BindExpression(syntax.Target);
         var location = new WithLocationSymbol(target);
-        bool valid = target.Type is RecordTypeSymbol && IsWritableReceiver(target);
+        bool valid = target.Type is ClassTypeSymbol || target.Type is RecordTypeSymbol && IsWritableReceiver(target);
         if (target.Type != SmileType.Error && !valid)
             Report(target.Type is RecordTypeSymbol ? "SMILE3412" : "SMILE3415",
                 "With requires a stable writable record location.", syntax.Target.Span);
@@ -32,6 +32,8 @@ internal sealed partial class Binder
     private SmileType ResolveVariableType(DimStatementSyntax syntax, IReadOnlyList<int> dimensions)
     {
         SmileType type = ResolveType(syntax.DeclaredType);
+        if (type is ClassTypeSymbol && dimensions.Count > 0)
+            Report("SMILE3452", "Arrays of Class references are not supported.", syntax.Span);
         if (type is RecordTypeSymbol record && dimensions.Count > 0 &&
             dimensions.Aggregate(1L, (count, size) => count * size) > int.MaxValue / record.NativeSize)
             Report("SMILE3411", $"Record array '{syntax.Name}' exceeds the supported storage size.", syntax.Span);
@@ -40,23 +42,26 @@ internal sealed partial class Binder
 
     private void BindRecords()
     {
-        foreach (RecordTypeSymbol type in _records.Values)
+        foreach (InstanceTypeSymbol type in _records.Values.Concat<InstanceTypeSymbol>(_classes.Values))
         {
             var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var fields = new List<RecordFieldSymbol>();
-            foreach (RecordFieldDeclarationSyntax syntax in type.Declaration.SourceItems.OfType<RecordFieldDeclarationSyntax>())
+            var fields = new List<InstanceFieldSymbol>();
+            foreach (InstanceFieldDeclarationSyntax syntax in type.Declaration.SourceItems.OfType<InstanceFieldDeclarationSyntax>())
             {
                 if (!names.Add(syntax.Name)) { Report("SMILE3402", $"Field '{syntax.Name}' is already declared in Type '{type.Name}'.", syntax.Span); continue; }
                 var dimensionSyntax = new DimStatementSyntax(syntax.Name, syntax.Span, syntax.DeclaredType, syntax.Dimensions, syntax.Span);
                 IReadOnlyList<int> dimensions = ResolveArrayDimensions(dimensionSyntax);
-                fields.Add(new RecordFieldSymbol(type, syntax.Name, ResolveType(syntax.DeclaredType), dimensions, fields.Count, syntax.Span));
+                SmileType fieldType = ResolveType(syntax.DeclaredType);
+                if (fieldType is ClassTypeSymbol) Report("SMILE3452", "Type and Class fields cannot contain Class references.", syntax.Span);
+                fields.Add(new InstanceFieldSymbol(type, syntax.Name, fieldType, dimensions, fields.Count, syntax.Span) { IsPrivate = syntax.IsPrivate });
             }
             type.Fields = fields;
-            if (fields.Count == 0 && !type.Declaration.SourceItems.Any(item => item is RecordMethodDeclarationSyntax or RecordPropertyDeclarationSyntax))
+            if (type is RecordTypeSymbol && fields.Count == 0 && !type.Declaration.SourceItems.Any(item => item is InstanceMethodDeclarationSyntax or InstancePropertyDeclarationSyntax))
                 Report("SMILE3402", "A Type must declare at least one member.", type.Declaration.Span);
         }
         var states = new Dictionary<RecordTypeSymbol, bool>();
         foreach (RecordTypeSymbol type in _records.Values) LayoutRecord(type, states);
+        foreach (ClassTypeSymbol type in _classes.Values) LayoutClass(type);
     }
 
     private void LayoutRecord(RecordTypeSymbol type, Dictionary<RecordTypeSymbol, bool> states)
@@ -68,7 +73,7 @@ internal sealed partial class Binder
         }
         states[type] = false;
         long offset = 0;
-        foreach (RecordFieldSymbol field in type.Fields)
+        foreach (InstanceFieldSymbol field in type.Fields)
         {
             if (field.Type is RecordTypeSymbol nested) LayoutRecord(nested, states);
             int elementSize = field.Type is RecordTypeSymbol record ? record.NativeSize : 8;
@@ -95,9 +100,9 @@ internal sealed partial class Binder
             return new BoundErrorExpression();
         }
         receiver ??= BindExpression(syntax.Receiver);
-        RecordPropertySymbol? property = (receiver.Type as RecordTypeSymbol)?.Properties.FirstOrDefault(item => item.Name.Equals(syntax.Name, StringComparison.OrdinalIgnoreCase));
+        InstancePropertySymbol? property = (receiver.Type as InstanceTypeSymbol)?.Properties.FirstOrDefault(item => item.Name.Equals(syntax.Name, StringComparison.OrdinalIgnoreCase));
         if (property is not null && indexes is null) return BindPropertyGet(property, receiver, syntax.NameSpan);
-        RecordFieldSymbol? field = (receiver.Type as RecordTypeSymbol)?.Fields.FirstOrDefault(item => item.Name.Equals(syntax.Name, StringComparison.OrdinalIgnoreCase));
+        InstanceFieldSymbol? field = (receiver.Type as InstanceTypeSymbol)?.Fields.FirstOrDefault(item => item.Name.Equals(syntax.Name, StringComparison.OrdinalIgnoreCase));
         if (field is null)
         {
             Report("SMILE3406", $"Field '{syntax.Name}' does not exist on {receiver.Type.Name}.", syntax.NameSpan);
@@ -108,6 +113,8 @@ internal sealed partial class Binder
             Report("SMILE3407", field.IsArray ? "A fixed-array field requires indexes." : "A scalar field cannot be indexed.", syntax.Span);
             return new BoundErrorExpression();
         }
+        if (field.IsPrivate && _currentRoutine?.Owner != field.Owner)
+            Report("SMILE3446", "A Private field is accessible only inside its declaring Class.", syntax.NameSpan);
         return new BoundFieldExpression(receiver, field, indexes is null ? [] : BindArrayIndices(field.Name, field.Dimensions, indexes, syntax.Span));
     }
 
@@ -124,7 +131,7 @@ internal sealed partial class Binder
         if (syntax.Target is MemberAccessExpressionSyntax member)
         {
             BoundExpression receiver = BindExpression(member.Receiver);
-            RecordPropertySymbol? property = (receiver.Type as RecordTypeSymbol)?.Properties.FirstOrDefault(item => item.Name.Equals(member.Name, StringComparison.OrdinalIgnoreCase));
+            InstancePropertySymbol? property = (receiver.Type as InstanceTypeSymbol)?.Properties.FirstOrDefault(item => item.Name.Equals(member.Name, StringComparison.OrdinalIgnoreCase));
             if (property is not null) return BindPropertySet(property, receiver, BindExpression(syntax.Value), member.NameSpan);
             target = BindRecordField(member, null, constantsOnly: false, receiver);
         }
@@ -141,7 +148,7 @@ internal sealed partial class Binder
         return new BoundMemberSetStatement(field, value);
     }
 
-    private BoundSourceItem? BindNestedRecord(RecordDeclarationSyntax syntax)
+    private BoundSourceItem? BindNestedRecord(InstanceDeclarationSyntax syntax)
     {
         Report("SMILE3400", "Type declarations must appear directly at program level.", syntax.Span);
         return null;

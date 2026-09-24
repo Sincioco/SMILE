@@ -555,7 +555,7 @@ Print Saved.Player; ":"; Saved.Points
   Data Count/Status also accept writable Number field locations after I/O.
 - Whole-record Print, comparisons, arithmetic, conversions, Const, Optional
   defaults and Select Case are not supported. Use the corresponding fields.
-- Class reference objects remain part of the pending object back-port.
+- Class reference fields are unsupported; reference objects are specified below.
 
 Generation uses native structs/aggregates and copy semantics wherever available.
 Java/JavaScript/Python and array-bearing C# records need copy support to preserve
@@ -575,7 +575,7 @@ Return, End Program and typed loop exits retain their ordinary behavior inside
 With. A temporary returned record is not writable and cannot be a With target.
 Scalar targets and leading-dot access outside a valid With block are errors.
 An invalid nested target does not fall back to the outer receiver. Member calls and
-properties also accept leading-dot receivers. Class-reference With remains pending.
+properties also accept leading-dot receivers. Class-reference With is specified below.
 
 ## Type methods and properties
 
@@ -608,3 +608,38 @@ locations as ordinary record routines. Native target member constructs are used
 where available; aliasing Swift receivers and asynchronous JavaScript accessors
 require ordinary explicit-receiver or getter/setter methods as documented in the
 generation standard.
+
+## Class reference objects
+
+`Class Name` ... `End Class` declares an exact nominal reference type at program
+level. Empty classes are valid. Fields have the same scalar, Enum, Type and fixed
+array shapes as Type fields, but are Private by default; explicit Public exposes
+them. Methods and properties are Public by default. Private access is confined to
+the declaring class. Class-valued fields and arrays of class references are errors.
+
+`New Name(arguments)` creates a distinct instance. `Dim Item As New Name(arguments)`
+declares and initializes a reference; `Dim Item As Name` defaults to Nothing.
+There is at most one constructor, spelled `Sub New`; it must be Public and follows
+ordinary ByVal/ByRef, Optional and named-argument rules. An absent constructor takes
+no arguments. Each instance initializes its own fields before its constructor runs.
+Allocation is not a constant expression.
+
+Class assignment, ByVal and return copy the reference. ByRef aliases the caller's
+reference slot. Nothing may be assigned/returned/passed where an exact Class type
+is expected; it cannot infer a variable type or serve as an Optional default.
+`Is` and `Is Not` compare references of the same Class type, including Nothing.
+Two Nothing literals have no Class type and cannot be compared on their own.
+Ordinary equality, arithmetic, conversion, Print and Select do not accept classes.
+
+Me refers to the current instance and can escape through a return or assignment;
+Me itself cannot be assigned or passed ByRef. Fields of temporary class expressions
+are writable because their instance owns the storage. Borrowed field locations
+remain valid when the original reference variable is rebound. Record-valued fields
+still copy by value. Class-valued properties and routine parameters/results are
+allowed even though Class-valued fields are not.
+
+With captures a Class reference once, including a newly constructed or returned
+instance. Dereferencing Nothing, including entry to With, fails before member
+arguments or field indexes are evaluated. Property assignment retains value-first
+evaluation before receiver capture and validation. The evaluator reports SMILER3457;
+generated targets use their native failure mechanism and preserve prior output.

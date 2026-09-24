@@ -42,6 +42,7 @@ public sealed class SmileRecordValue
     internal static SmileValue Default(SmileType type) => type switch
     {
         RecordTypeSymbol record => SmileValue.FromRecord(new SmileRecordValue(record)),
+        ClassTypeSymbol reference => SmileValue.FromClass(reference, null),
         EnumTypeSymbol enumeration => SmileValue.FromEnum(enumeration, 0),
         { Kind: SmileTypeKind.Double } => SmileValue.FromDouble(0),
         { Kind: SmileTypeKind.Integer } => SmileValue.FromInteger(0),

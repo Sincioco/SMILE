@@ -501,6 +501,17 @@ public sealed partial class SmileEvaluator
         _cancellationToken.ThrowIfCancellationRequested();
         switch (expression)
         {
+            case BoundNewExpression creation:
+                return TryNew(creation, frame, out value, out error);
+            case BoundNothingExpression nothing:
+                value = SmileValue.FromClass(nothing.Type, null);
+                return Success(out error);
+            case BoundIdentityExpression identity:
+                value = default;
+                if (!TryEvaluateExpression(identity.Left, frame, out SmileValue leftReference, out error) ||
+                    !TryEvaluateExpression(identity.Right, frame, out SmileValue rightReference, out error)) return false;
+                value = SmileValue.FromBoolean(ReferenceEquals(leftReference.ClassValue, rightReference.ClassValue) != identity.Negated);
+                return true;
             case BoundStringLiteralExpression literal:
                 value = SmileValue.FromString(literal.Value);
                 return Success(out error);

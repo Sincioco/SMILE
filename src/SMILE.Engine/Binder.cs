@@ -54,7 +54,7 @@ internal sealed partial class Binder
                 topLevel,
                 _globals.Values.OrderBy(symbol => symbol.DeclarationSpan.Start).ToArray(),
                 _boundRoutines,
-                _optionExplicit) { EnumTypes = _enums.Values.ToArray(), RecordTypes = _orderedRecords },
+                _optionExplicit) { EnumTypes = _enums.Values.ToArray(), RecordTypes = _orderedRecords, ClassTypes = _classes.Values.ToArray() },
             _diagnostics);
     }
 
@@ -84,6 +84,10 @@ internal sealed partial class Binder
         {
             switch (item)
             {
+                case ClassDeclarationSyntax reference:
+                    if (ReserveProgramName(reference.Name, reference.NameSpan))
+                        _classes.Add(reference.Name, new ClassTypeSymbol(reference));
+                    break;
                 case RecordDeclarationSyntax record:
                     if (ReserveProgramName(record.Name, record.NameSpan))
                         _records.Add(record.Name, new RecordTypeSymbol(record));
@@ -206,8 +210,8 @@ internal sealed partial class Binder
             _routineSymbols.Add(declaration.Name, BuildRoutineSignature(declaration));
     }
 
-    private RoutineSymbol BuildRoutineSignature(RoutineDeclarationSyntax declaration, RecordTypeSymbol? owner = null,
-        bool isPrivate = false, RecordMemberRoutineKind memberKind = RecordMemberRoutineKind.Method, SmileType? setterType = null)
+    private RoutineSymbol BuildRoutineSignature(RoutineDeclarationSyntax declaration, InstanceTypeSymbol? owner = null,
+        bool isPrivate = false, InstanceMemberRoutineKind memberKind = InstanceMemberRoutineKind.Method, SmileType? setterType = null)
     {
         string scopeName = owner is null ? declaration.Name : owner.Name + "." + declaration.Name + "." + memberKind;
         var parameters = new List<VariableSymbol>();
@@ -248,7 +252,7 @@ internal sealed partial class Binder
             declaration.ReturnType is null ? null : ResolveType(declaration.ReturnType))
         {
             Owner = owner, IsPrivate = isPrivate, MemberKind = memberKind,
-            Receiver = owner is null ? null : new VariableSymbol("Me", declaration.NameSpan, owner, RoutineName: scopeName, IsParameter: true, IsByRef: true) { IsReceiver = true },
+            Receiver = owner is null ? null : new VariableSymbol("Me", declaration.NameSpan, owner, RoutineName: scopeName, IsParameter: true, IsByRef: owner is RecordTypeSymbol) { IsReceiver = true },
             SetterValue = setterType is null ? null : new VariableSymbol("Value", declaration.NameSpan, setterType, RoutineName: scopeName, IsParameter: true) { IsSetterValue = true }
         };
     }
@@ -457,6 +461,8 @@ internal sealed partial class Binder
                 EnumDeclarationSyntax enumeration => BindNestedEnum(enumeration),
                 RecordDeclarationSyntax when directProgramLevel => null,
                 RecordDeclarationSyntax record => BindNestedRecord(record),
+                ClassDeclarationSyntax when directProgramLevel => null,
+                ClassDeclarationSyntax reference => BindNestedRecord(reference),
                 RoutineDeclarationSyntax routine when directProgramLevel => null,
                 RoutineDeclarationSyntax routine => BindNestedRoutine(routine),
                 OptionExplicitStatementSyntax option when directProgramLevel => null,
@@ -533,6 +539,7 @@ internal sealed partial class Binder
     {
         BoundExpression value = BindExpression(syntax.Value);
         VariableSymbol variable = ResolveAssignmentTarget(syntax.Name, syntax.NameSpan, value.Type);
+        value = CoerceReference(value, variable.Type);
         if (variable.IsArray)
         {
             Report("SMILE2127", $"Array '{variable.Name}' requires an index.", syntax.NameSpan);
@@ -571,6 +578,9 @@ internal sealed partial class Binder
             Report("SMILE2129", $"Variable '{name}' must be declared because Option Explicit is enabled.", span);
             return ErrorVariable(name, span, inferredType);
         }
+
+        if (inferredType == SmileType.Nothing)
+            Report("SMILE3454", "Nothing cannot infer a variable type; declare a scalar As Class variable first.", span);
 
         SmileType type = inferredType is { Kind: SmileTypeKind.Error } ? SmileType.Integer : inferredType;
         var variable = new VariableSymbol(
@@ -645,7 +655,8 @@ internal sealed partial class Binder
     private BoundStatement? BindDim(DimStatementSyntax syntax)
     {
         VariableSymbol? variable = LookupVariable(syntax.Name, syntax.NameSpan, reportUnknown: false, checkFutureLocal: false);
-        return variable is null ? null : new BoundDimStatement(variable);
+        return variable is null ? null : syntax.Initializer is null ? new BoundDimStatement(variable)
+            : new BoundSetStatement(variable, BindNew(syntax.Initializer, constantsOnly: false));
     }
 
     private BoundStatement? BindConst(ConstStatementSyntax syntax) => ResolveConstant(syntax.Name);
@@ -671,6 +682,7 @@ internal sealed partial class Binder
     private BoundStatement BindReturn(ReturnStatementSyntax syntax)
     {
         BoundExpression? value = syntax.Value is null ? null : BindExpression(syntax.Value);
+        if (value is not null && _currentRoutine?.ReturnType is { } returnType) value = CoerceReference(value, returnType);
         if (_currentRoutine is null)
         {
             Report("SMILE2132", "Return is valid only inside a Sub or Function.", syntax.Span);
@@ -698,7 +710,7 @@ internal sealed partial class Binder
     private BoundStatement BindSelect(SelectStatementSyntax syntax)
     {
         BoundExpression selector = BindExpression(syntax.Selector);
-        if (selector.Type is RecordTypeSymbol) Report("SMILE3409", "Select Case cannot compare whole records.", syntax.Selector.Span);
+        if (selector.Type is InstanceTypeSymbol || selector.Type == SmileType.Nothing) Report("SMILE3409", "Select Case cannot compare whole records or class references.", syntax.Selector.Span);
         var clauses = new List<BoundSelectCaseClause>();
         var seen = new HashSet<SmileValue>();
         bool sawElse = false;
@@ -763,7 +775,7 @@ internal sealed partial class Binder
     {
         BoundExpression[] values = syntax.Values.Select(value => BindExpression(value)).ToArray();
         for (int index = 0; index < values.Length; index++)
-            if (values[index].Type is EnumTypeSymbol or RecordTypeSymbol)
+            if (values[index].Type is EnumTypeSymbol or InstanceTypeSymbol || values[index].Type == SmileType.Nothing)
                 Report("SMILE3424", "Print accepts scalar Text, Number, Double or Boolean values.", syntax.Values[index].Span);
         return new BoundCorePrintStatement(values, syntax.SuppressNewLine);
     }
@@ -873,6 +885,12 @@ internal sealed partial class Binder
     {
         switch (syntax)
         {
+            case NewExpressionSyntax creation:
+                return BindNew(creation, constantsOnly);
+            case NothingExpressionSyntax:
+                return new BoundNothingExpression(SmileType.Nothing);
+            case IdentityExpressionSyntax identity:
+                return BindIdentity(identity, constantsOnly);
             case ErrorExpressionSyntax:
                 return new BoundErrorExpression();
             case StringLiteralExpressionSyntax literal:

@@ -11,12 +11,17 @@ internal static class CoreBasicCobolRuntimeSupport
     {
         CoreBasicProgramFeatureSet features = CoreBasicProgramFeatureSet.Create(program);
         var numeric = new DoubleProgramFeatures(program);
-        if (!features.HasConsoleRuntime && !features.HasAbs && !features.HasMin && !features.HasMax && !features.HasTextInspection && !numeric.NeedsCobolRuntime && !features.HasTextFileLoad && !features.HasNumberPersistence && !features.HasDataPersistence)
+        if (program.ClassTypes.Count == 0 && !features.HasConsoleRuntime && !features.HasAbs && !features.HasMin && !features.HasMax && !features.HasTextInspection && !numeric.NeedsCobolRuntime && !features.HasTextFileLoad && !features.HasNumberPersistence && !features.HasDataPersistence)
         {
             return null;
         }
 
         var text = new StringBuilder();
+        if (program.ClassTypes.Count > 0)
+        {
+            text.AppendLine(NativeClassSupport.Definition);
+            text.AppendLine("void *smile_object_allocate_cobol(size_t bytes) { return smile_object_allocate(bytes, NULL); }");
+        }
         if (features.HasGetKey) text.AppendLine("#include <conio.h>");
         text.AppendLine("#include <stdint.h>");
         if (features.HasTextInspection) text.AppendLine("#include <string.h>");

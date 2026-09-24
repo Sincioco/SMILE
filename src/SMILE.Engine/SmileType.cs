@@ -1,6 +1,6 @@
 namespace SMILE.Engine;
 
-public enum SmileTypeKind { String, Double, Integer, Boolean, Error, Enum, Record, Class }
+public enum SmileTypeKind { String, Double, Integer, Boolean, Error, Enum, Record, Class, Nothing }
 
 // A type is a symbol, not just a storage category. Built-ins are shared singletons;
 // each future nominal declaration owns its own symbol even when layouts match.
@@ -18,6 +18,7 @@ public class SmileType
     public static SmileType Integer { get; } = new(SmileTypeKind.Integer, "Number");
     public static SmileType Boolean { get; } = new(SmileTypeKind.Boolean, "Boolean");
     public static SmileType Error { get; } = new(SmileTypeKind.Error, "Error");
+    public static SmileType Nothing { get; } = new(SmileTypeKind.Nothing, "Nothing");
 
     public SmileTypeKind Kind { get; }
     public string Name { get; }

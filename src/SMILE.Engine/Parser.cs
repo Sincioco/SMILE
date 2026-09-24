@@ -78,7 +78,7 @@ internal sealed partial class Parser
         TokenKind.With => ParseWith(),
         TokenKind.Dim => ParseDim(),
         TokenKind.Enum => ParseEnum(),
-        TokenKind.Type => ParseRecord(),
+        TokenKind.Type or TokenKind.Class => ParseRecord(),
         TokenKind.Const => ParseConst(),
         TokenKind.Sub => ParseRoutine(RoutineKind.Sub),
         TokenKind.Function => ParseRoutine(RoutineKind.Function),
@@ -139,6 +139,11 @@ internal sealed partial class Parser
         }
 
         Match(TokenKind.As, "Declarations require 'As Number', 'As Boolean', or 'As Text'.");
+        if (Current.Kind is TokenKind.New)
+        {
+            NewExpressionSyntax initializer = ParseNew();
+            return new DimStatementSyntax(name.Text, name.Span, initializer.DeclaredType, arraySizes, Combine(start.Span, initializer.Span)) { Initializer = initializer };
+        }
         Token type = ParseType("Expected Number, Double, Boolean, or Text after 'As'.");
         var declaredType = new TypeNameSyntax(type.Text, type.Span);
         endSpan = type.Span.Length == 0 ? endSpan : type.Span;
@@ -161,7 +166,7 @@ internal sealed partial class Parser
     private StatementSyntax ParseRoutine(RoutineKind kind)
     {
         Token start = Next();
-        Token name = _recordDepth > 0 ? MatchMemberName() : Match(TokenKind.Identifier, $"Expected a name after '{start.Text}'.");
+        Token name = _recordDepth > 0 ? Current.Kind is TokenKind.New ? Next() : MatchMemberName() : Match(TokenKind.Identifier, $"Expected a name after '{start.Text}'.");
         Match(TokenKind.OpenParenthesis, "Routine declarations require '('.");
         _delimiterDepth++;
         var parameters = new List<ParameterSyntax>();
@@ -566,8 +571,11 @@ internal sealed partial class Parser
             }
 
             Token op = Next();
+            bool identityNegated = op.Kind is TokenKind.Is && Current.Kind is TokenKind.Not;
+            if (identityNegated) Next();
             ExpressionSyntax right = ParseExpression(precedence);
-            left = new BinaryExpressionSyntax(left, ToSyntaxToken(op), right, Combine(left.Span, right.Span));
+            left = op.Kind is TokenKind.Is ? new IdentityExpressionSyntax(left, right, identityNegated, Combine(left.Span, right.Span))
+                : new BinaryExpressionSyntax(left, ToSyntaxToken(op), right, Combine(left.Span, right.Span));
         }
 
         return left;
@@ -581,6 +589,11 @@ internal sealed partial class Parser
         Token token = Current;
         switch (token.Kind)
         {
+            case TokenKind.New:
+                return ParseNew();
+            case TokenKind.Nothing:
+                Next();
+                return new NothingExpressionSyntax(token.Span);
             case TokenKind.Dot:
                 return new WithReceiverExpressionSyntax(token.Span);
             case TokenKind.Me:
@@ -745,7 +758,7 @@ internal sealed partial class Parser
         TokenKind.Star or TokenKind.Slash or TokenKind.Mod => 7,
         TokenKind.Plus or TokenKind.Minus => 6,
         TokenKind.Less or TokenKind.LessOrEquals or TokenKind.Greater or TokenKind.GreaterOrEquals => 5,
-        TokenKind.Equals or TokenKind.NotEquals => 4,
+        TokenKind.Equals or TokenKind.NotEquals or TokenKind.Is => 4,
         TokenKind.And => 3,
         TokenKind.Or => 2,
         _ => 0
@@ -895,7 +908,7 @@ internal sealed partial class Parser
         Call, Return, Select, Case, ByVal, ByRef, Optional, BuiltInConstant, BuiltInFunction, UnsupportedKeyword,
         Plus, Minus, Star, Slash, Equals, NotEquals, Less, LessOrEquals,
         Greater, GreaterOrEquals, OpenParenthesis, CloseParenthesis,
-        OpenBracket, CloseBracket, Semicolon, Comma, ColonEquals, Dot, Enum, Type, With, Me, Public, Private, Property, Set
+        OpenBracket, CloseBracket, Semicolon, Comma, ColonEquals, Dot, Enum, Type, With, Me, Public, Private, Property, Set, Class, New, Nothing, Is
     }
 
     private sealed record Token(TokenKind Kind, string Text, object? Value, TextSpan Span);
@@ -932,6 +945,7 @@ internal sealed partial class Parser
             ["With"] = TokenKind.With,
             ["Me"] = TokenKind.Me, ["Public"] = TokenKind.Public, ["Private"] = TokenKind.Private,
             ["Property"] = TokenKind.Property, ["Set"] = TokenKind.Set,
+            ["Class"] = TokenKind.Class, ["New"] = TokenKind.New, ["Nothing"] = TokenKind.Nothing, ["Is"] = TokenKind.Is,
             ["Timer"] = TokenKind.BuiltInFunction, ["Abs"] = TokenKind.BuiltInFunction,
             ["Min"] = TokenKind.BuiltInFunction, ["Max"] = TokenKind.BuiltInFunction,
             ["Text_Length"] = TokenKind.BuiltInFunction,

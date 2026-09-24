@@ -9,10 +9,10 @@ internal static class RoutineArguments
     public static IReadOnlyList<T> InParameterOrder<T>(IReadOnlyList<T> values, IReadOnlyList<int>? order) =>
         order is null ? values : order.Select(index => values[index]).ToArray();
 
-    public static VariableSymbol ParameterAtSourceIndex(RoutineSymbol routine, IReadOnlyList<int>? order, int index)
+    public static VariableSymbol ParameterAtSourceIndex(RoutineSymbol routine, IReadOnlyList<int>? order, int index, bool includeReceiver = true)
     {
         int slot = order is null ? index : order.ToList().IndexOf(index);
-        if (routine.Receiver is not null)
+        if (includeReceiver && routine.Receiver is not null)
         {
             if (slot-- == 0) return routine.Receiver;
             if (routine.SetterValue is not null && slot-- == 0) return routine.SetterValue;

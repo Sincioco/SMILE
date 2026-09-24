@@ -16,11 +16,13 @@ internal sealed partial class Parser
     private StatementSyntax ParseRecord()
     {
         Token start = Next();
-        Token name = Match(TokenKind.Identifier, "Expected a name after Type.");
+        bool isClass = start.Kind is TokenKind.Class;
+        TokenKind closingKind = isClass ? TokenKind.Class : TokenKind.Type;
+        Token name = Match(TokenKind.Identifier, $"Expected a name after {start.Text}.");
         ConsumeStatementEnd();
         var items = new List<SourceItemSyntax>();
         _recordDepth++;
-        while (Current.Kind is not TokenKind.EndOfFile && !(Current.Kind is TokenKind.End && Peek(1).Kind is TokenKind.Type))
+        while (Current.Kind is not TokenKind.EndOfFile && !(Current.Kind is TokenKind.End && Peek(1).Kind == closingKind))
         {
             if (Current.Kind is TokenKind.EndOfLine) { items.Add(new BlankLineSyntax(Next().Span)); continue; }
             if (Current.Kind is TokenKind.Comment)
@@ -31,11 +33,12 @@ internal sealed partial class Parser
                 continue;
             }
             bool isPrivate = Current.Kind is TokenKind.Private;
+            bool isPublic = Current.Kind is TokenKind.Public;
             if (Current.Kind is TokenKind.Public or TokenKind.Private) Next();
             if (Current.Kind is TokenKind.Sub or TokenKind.Function)
             {
                 var routine = (RoutineDeclarationSyntax)ParseRoutine(Current.Kind is TokenKind.Sub ? RoutineKind.Sub : RoutineKind.Function);
-                items.Add(new RecordMethodDeclarationSyntax(routine, isPrivate, routine.Span));
+                items.Add(new InstanceMethodDeclarationSyntax(routine, isPrivate, routine.Span));
                 if (AtLineEnd()) ConsumeStatementEnd();
                 continue;
             }
@@ -45,7 +48,7 @@ internal sealed partial class Parser
                 if (AtLineEnd()) ConsumeStatementEnd();
                 continue;
             }
-            if (isPrivate) Report("SMILE3440", "Type fields are always Public.", Current.Span);
+            if (isPrivate && !isClass) Report("SMILE3440", "Type fields are always Public.", Current.Span);
             Token field = Current.Text.Equals("None", StringComparison.OrdinalIgnoreCase) ||
                 Current.Text.Equals("Up", StringComparison.OrdinalIgnoreCase) || Current.Text.Equals("Down", StringComparison.OrdinalIgnoreCase)
                 ? Match(TokenKind.Identifier, "Expected a field name.") : MatchMemberName();
@@ -57,13 +60,14 @@ internal sealed partial class Parser
             }
             Match(TokenKind.As, "Record fields require As and a type.");
             Token type = ParseType("Expected a field type.");
-            items.Add(new RecordFieldDeclarationSyntax(field.Text, new TypeNameSyntax(type.Text, type.Span), dimensions, Combine(field.Span, type.Span)));
+            items.Add(new InstanceFieldDeclarationSyntax(field.Text, new TypeNameSyntax(type.Text, type.Span), dimensions, Combine(field.Span, type.Span)) { IsPrivate = isPrivate || isClass && !isPublic });
             ConsumeStatementEnd();
         }
         _recordDepth--;
-        Match(TokenKind.End, "Expected End Type.");
-        Token end = Match(TokenKind.Type, "Expected Type after End.");
-        return new RecordDeclarationSyntax(name.Text, name.Span, items, Combine(start.Span, end.Span));
+        Match(TokenKind.End, $"Expected End {start.Text}.");
+        Token end = Match(closingKind, $"Expected {start.Text} after End.");
+        return isClass ? new ClassDeclarationSyntax(name.Text, name.Span, items, Combine(start.Span, end.Span))
+            : new RecordDeclarationSyntax(name.Text, name.Span, items, Combine(start.Span, end.Span));
     }
 
     private StatementSyntax ParseLocationAssignment()

@@ -8,6 +8,16 @@ internal static partial class CoreBasicCodeGenerator
 
         private void WriteWith(BoundWithStatement block)
         {
+            BeginCWithObjectScope();
+            if (block.Location.Target.Type is ClassTypeSymbol)
+            {
+                _withLocations[block.Location] = NewOrderedValue(block.Location.Target.Type, PreparedExpression(block.Location.Target));
+                WriteRequireClass(_withLocations[block.Location]);
+                CaptureCWithObjectRoots();
+                WriteItems(block.SourceItems);
+                EndCWithObjectScope();
+                return;
+            }
             string target = PrepareRecordLocation(block.Location.Target);
             string name = $"_smileWith{++_orderedTempId}";
             string type = TypeName(block.Location.Target.Type);
@@ -26,9 +36,9 @@ internal static partial class CoreBasicCodeGenerator
             _withLocations[block.Location] = _language is TargetLanguage.C or TargetLanguage.ObjectiveC ? $"(*{name})" : name;
             // Index expressions may allocate Text. Their temporary roots are no
             // longer needed after capture, including if the body returns early.
-            EndManagedTextStatement();
-            BeginManagedTextStatement();
+            CaptureCWithObjectRoots();
             WriteItems(block.SourceItems);
+            EndCWithObjectScope();
         }
 
         private string RecordDefault(RecordTypeSymbol type)
@@ -61,8 +71,11 @@ internal static partial class CoreBasicCodeGenerator
 
         private string FieldLocation(BoundFieldExpression field)
         {
-            string receiver = PrepareRecordLocation(field.Receiver);
-            string target = $"({receiver}).{_identifiers.Get(field.Field)}";
+            string receiver = _language is TargetLanguage.Cpp && field.Receiver is BoundVariableExpression { Variable.IsReceiver: true, Type: ClassTypeSymbol }
+                ? "this" : field.Receiver.Type is ClassTypeSymbol
+                ? NewOrderedValue(field.Receiver.Type, PreparedExpression(field.Receiver)) : PrepareRecordLocation(field.Receiver);
+            if (field.Receiver.Type is ClassTypeSymbol && field.Receiver is not BoundVariableExpression { Variable.IsReceiver: true }) WriteRequireClass(receiver);
+            string target = $"{MemberAccessReceiver(field.Field.Owner, receiver)}{_identifiers.Get(field.Field)}";
             IReadOnlyList<string> indices = PrepareFieldIndices(field.Field.Name, field.Field.Dimensions, field.Indices);
             return _language is TargetLanguage.CSharp && indices.Count == 2
                 ? target + $"[{string.Join(", ", indices)}]" : target + string.Concat(indices.Select(index => $"[{index}]"));
@@ -86,7 +99,7 @@ internal static partial class CoreBasicCodeGenerator
             if (_language is not (TargetLanguage.CSharp or TargetLanguage.Java)) return;
             foreach (VariableSymbol variable in variables.Where(item => item.IsArray && item.Type is RecordTypeSymbol))
             {
-                var field = new RecordFieldSymbol((RecordTypeSymbol)variable.Type, variable.Name, variable.Type, variable.ArrayDimensions, 0, variable.DeclarationSpan);
+                var field = new InstanceFieldSymbol((RecordTypeSymbol)variable.Type, variable.Name, variable.Type, variable.ArrayDimensions, 0, variable.DeclarationSpan);
                 WriteFieldElements(field, Name(variable), target => Line($"{target} = {DefaultLiteral(variable.Type)};"));
             }
         }

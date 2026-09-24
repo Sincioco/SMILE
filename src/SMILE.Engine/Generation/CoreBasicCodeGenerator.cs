@@ -66,6 +66,8 @@ internal static partial class CoreBasicCodeGenerator
             files.Add(new GeneratedFile("SmileNumericRuntime.c", numericRuntime, IsPrimary: false));
         if (language is TargetLanguage.MasmX64)
         {
+            if (program.ClassTypes.Count > 0)
+                files.Add(new GeneratedFile("SmileClassRuntime.c", NativeClassSupport.MasmCompanion(program), IsPrimary: false));
             CoreBasicProgramFeatureSet features = CoreBasicProgramFeatureSet.Create(program);
             if (features.HasTextFileLoad || features.HasNumberPersistence || features.HasDataPersistence)
                 files.Add(new GeneratedFile("SmileFileRuntime.c",
@@ -240,7 +242,7 @@ internal static partial class CoreBasicCodeGenerator
         public string WriteSwift()
         {
             if (!_features.HasConsoleRuntime &&
-                (_features.HasTextFileLoad || (_features.HasNumberPersistence || _features.HasDataPersistence) || DoubleFeatures.IsRequired || ProgramStatements().Any(statement => statement is BoundEndProgramStatement) || ProgramHasArrays()))
+                (_program.ClassTypes.Count > 0 || _features.HasTextFileLoad || (_features.HasNumberPersistence || _features.HasDataPersistence) || DoubleFeatures.IsRequired || ProgramStatements().Any(statement => statement is BoundEndProgramStatement) || ProgramHasArrays()))
             {
                 Line("import Foundation");
                 Line();
@@ -322,11 +324,13 @@ internal static partial class CoreBasicCodeGenerator
             Line("#include <cstdlib>");
             Line("#include <iostream>");
             Line("#include <string>");
+            if (_program.ClassTypes.Count > 0) Line("#include <memory>");
             WriteRuntimePreamble();
             Line();
             WriteGlobalDeclarations();
             WriteRoutinePrototypes();
             WriteHelperPrototypes();
+            WriteCClassFactories();
             Line("int main()");
             Line("{");
             _indent++;
@@ -361,6 +365,7 @@ internal static partial class CoreBasicCodeGenerator
             WriteGlobalDeclarations();
             WriteRoutinePrototypes();
             WriteHelperPrototypes();
+            WriteCClassFactories();
             Line("int main(void)");
             Line("{");
             _indent++;
@@ -368,14 +373,12 @@ internal static partial class CoreBasicCodeGenerator
             {
                 Line("smile_text_initialize();");
             }
+            if (UsesCObjects) Line("smile_object_initialize();");
             WriteArrayInitializers(_program.Variables);
             WriteManagedTextRoots(_program.Variables, register: true);
             WriteItems(_program.SourceItems);
             WriteManagedTextRoots(_program.Variables, register: false);
-            if (UsesManagedCText)
-            {
-                Line("smile_text_collect();");
-            }
+            WriteManagedCCollection();
             Line("return 0;");
             _indent--;
             Line("}");
@@ -410,6 +413,7 @@ internal static partial class CoreBasicCodeGenerator
             WriteGlobalDeclarations();
             WriteRoutinePrototypes();
             WriteHelperPrototypes();
+            WriteCClassFactories();
             Line("int main(void)");
             Line("{");
             _indent++;
@@ -417,14 +421,12 @@ internal static partial class CoreBasicCodeGenerator
             {
                 Line("smile_text_initialize();");
             }
+            if (UsesCObjects) Line("smile_object_initialize();");
             WriteArrayInitializers(_program.Variables);
             WriteManagedTextRoots(_program.Variables, register: true);
             WriteItems(_program.SourceItems);
             WriteManagedTextRoots(_program.Variables, register: false);
-            if (UsesManagedCText)
-            {
-                Line("smile_text_collect();");
-            }
+            WriteManagedCCollection();
             Line("return 0;");
             _indent--;
             Line("}");
@@ -442,8 +444,10 @@ internal static partial class CoreBasicCodeGenerator
 
         private void WriteGlobalDeclarations(bool fieldContext = false)
         {
+            WriteCClassRuntime();
             WriteEnumDeclarations();
             WriteRecordDeclarations();
+            WriteClassDeclarations();
             foreach (VariableSymbol variable in _program.Variables)
             {
                 if (variable.IsConstant)
@@ -544,6 +548,7 @@ internal static partial class CoreBasicCodeGenerator
 
                 WriteBoxedParameters(symbol);
                 WriteLocalDeclarations(routine);
+                WriteClassConstructorFields(symbol);
                 if (!routine.SourceItems.OfType<BoundStatement>().Any() &&
                     !routine.SourceItems.OfType<BoundFullLineComment>().Any())
                 {
@@ -560,9 +565,10 @@ internal static partial class CoreBasicCodeGenerator
 
             _indent++;
             RoutineCleanupContext? priorCleanup = _routineCleanup;
-            if (UsesManagedCText)
+            if (UsesManagedCValues)
             {
                 VariableSymbol[] locals = routine.Locals.Where(variable => !variable.IsParameter).ToArray();
+                if (UsesCObjects) Line("size_t _smileObjectFrame = smile_object_checkpoint();");
                 bool hasReturn = EnumerateStatements(routine.SourceItems)
                     .Any(statement => statement is BoundReturnStatement);
                 string? resultName = routine.Symbol.IsFunction
@@ -591,7 +597,7 @@ internal static partial class CoreBasicCodeGenerator
                 for (int index = 0; index < symbol.ExecutionParameters.Count; index++)
                 {
                     VariableSymbol parameter = symbol.ExecutionParameters[index];
-                    if (parameter.IsByRef) continue;
+                    if (parameter.IsByRef || parameter.IsReceiver && HasImplicitReceiver(symbol)) continue;
                     string binding = IsAssigned(parameter, routine.SourceItems) || _addressedVariables.Contains(parameter) ? "var" : "let";
                     string value = parameter.IsSetterValue && HasNativeProperty(symbol) ? "newValue" : $"_smileParameter{index + 1}";
                     Line($"{binding} {Name(parameter)}: {TypeName(parameter.Type)} = {value}");
@@ -605,8 +611,9 @@ internal static partial class CoreBasicCodeGenerator
 
             WriteBoxedParameters(symbol);
             WriteLocalDeclarations(routine);
+            WriteClassConstructorFields(symbol);
             WriteItems(routine.SourceItems);
-            if (UsesManagedCText)
+            if (UsesManagedCValues)
             {
                 RoutineCleanupContext cleanup = _routineCleanup!;
                 if (EnumerateStatements(routine.SourceItems).Any(statement => statement is BoundReturnStatement))
@@ -614,19 +621,24 @@ internal static partial class CoreBasicCodeGenerator
                     Line(cleanup.EndLabel + ":");
                 }
 
-                if (cleanup.ResultName is not null && routine.Symbol.ReturnType is { Kind: SmileTypeKind.String })
+                if (UsesManagedCText && cleanup.ResultName is not null && routine.Symbol.ReturnType is { Kind: SmileTypeKind.String })
                 {
                     Line($"smile_text_return_root = {cleanup.ResultName};");
                 }
 
                 WriteManagedTextRoots(cleanup.Locals, register: false);
                 WriteManagedTextRoots(routine.Symbol.ExecutionParameters, register: false);
-                if (cleanup.ResultName is not null && routine.Symbol.ReturnType is { Kind: SmileTypeKind.String })
+                if (UsesCObjects)
+                {
+                    if (routine.Symbol.ReturnType is ClassTypeSymbol) Line($"smile_object_return({cleanup.ResultName});");
+                    Line("smile_object_restore(_smileObjectFrame);");
+                }
+                if (UsesManagedCText && cleanup.ResultName is not null && routine.Symbol.ReturnType is { Kind: SmileTypeKind.String })
                 {
                     Line($"smile_text_unregister(&{cleanup.ResultName});");
                 }
 
-                Line("smile_text_collect();");
+                WriteManagedCCollection();
                 if (cleanup.ResultName is not null)
                 {
                     // The caller immediately roots the returned native struct before any collection.
@@ -909,8 +921,8 @@ internal static partial class CoreBasicCodeGenerator
                 _ => string.Empty
             };
 
-        private string ParameterList(RoutineSymbol routine) => string.Join(", ", routine.ExecutionParameters.Select((parameter, index) => (parameter, index))
-            .Where(item => !item.parameter.IsReceiver || !HasImplicitReceiver(routine)).Select(item =>
+        private string ParameterList(RoutineSymbol routine, bool includeReceiver = true) => string.Join(", ", routine.ExecutionParameters.Select((parameter, index) => (parameter, index))
+            .Where(item => !item.parameter.IsReceiver || includeReceiver && !HasImplicitReceiver(routine)).Select(item =>
         {
             VariableSymbol parameter = item.parameter;
             int index = item.index;
@@ -960,7 +972,7 @@ internal static partial class CoreBasicCodeGenerator
                         WriteStatement(statement);
                         EndManagedTextStatement();
                         previousStatement = statement;
-                        if (statement is BoundReturnStatement && UsesManagedCText && _routineCleanup is not null)
+                        if (statement is BoundReturnStatement && UsesManagedCValues && _routineCleanup is not null)
                         {
                             Line($"goto {_routineCleanup.EndLabel};");
                         }
@@ -978,9 +990,11 @@ internal static partial class CoreBasicCodeGenerator
         private bool UsesManagedCText =>
             (_language is TargetLanguage.C or TargetLanguage.ObjectiveC) && ProgramNeedsCTextStorage();
 
+        private bool UsesManagedCValues => UsesManagedCText || UsesCObjects;
+
         private void BeginManagedTextStatement()
         {
-            if (UsesManagedCText)
+            if (UsesManagedCValues)
             {
                 _managedTextTemporaryRoots.Push(new List<(SmileType, string)>());
             }
@@ -988,7 +1002,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private void EndManagedTextStatement()
         {
-            if (!UsesManagedCText)
+            if (!UsesManagedCValues)
             {
                 return;
             }
@@ -998,11 +1012,14 @@ internal static partial class CoreBasicCodeGenerator
                 WriteCValueRoots(root.Type, root.Name, register: false);
             }
 
-            Line("smile_text_collect();");
+            WriteManagedCCollection();
         }
 
         private void WriteManagedTextRoots(IEnumerable<VariableSymbol> variables, bool register)
         {
+            if (UsesCObjects)
+                foreach (VariableSymbol variable in variables.Where(variable => variable.Type is ClassTypeSymbol && !variable.IsByRef))
+                    WriteCValueRoots(variable.Type, Name(variable), register);
             if (!UsesManagedCText)
             {
                 return;
@@ -1164,7 +1181,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private void WriteReturn(BoundReturnStatement returnStatement)
         {
-            if (UsesManagedCText && _routineCleanup is not null)
+            if (UsesManagedCValues && _routineCleanup is not null)
             {
                 if (returnStatement.Value is not null && _routineCleanup.ResultName is not null)
                 {
@@ -1811,6 +1828,7 @@ internal static partial class CoreBasicCodeGenerator
             }
 
             bool targetsInnermostLoop = ReferenceEquals(_loops[^1], target);
+            WriteCWithExitCleanup(_loops.IndexOf(target) + 1);
             if (_language is TargetLanguage.JavaScript or TargetLanguage.Java or TargetLanguage.Swift)
             {
                 if (_language is TargetLanguage.Swift && target.CompletionFlag is not null)
@@ -1834,6 +1852,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private void WriteEndProgram()
         {
+            if (UsesCObjects) Line("smile_object_shutdown();");
             if (UsesManagedCText)
             {
                 Line("smile_text_shutdown();");
@@ -1865,6 +1884,9 @@ internal static partial class CoreBasicCodeGenerator
                 BoundArrayExpression array => ArrayElement(array.Array, array.Indices),
                 BoundFieldExpression field => FieldLocation(field),
                 BoundWithReceiverExpression receiver => _withLocations[receiver.Location],
+                BoundNothingExpression => NothingLiteral(),
+                BoundNewExpression creation => NewClass(creation),
+                BoundIdentityExpression identity => ClassIdentity(identity),
                 BoundCallExpression call => CallText(call.Routine, PrepareCallArguments(call.Arguments, call.ParameterOrder, routine: call.Routine)),
                 BoundIntrinsicExpression intrinsic => Intrinsic(intrinsic),
                 BoundUnaryExpression unary => Unary(unary),
@@ -1887,8 +1909,12 @@ internal static partial class CoreBasicCodeGenerator
             {
                 case BoundFieldExpression field:
                     return NewOrderedValue(field.Type, FieldLocation(field));
-                case BoundWithReceiverExpression or BoundEnumExpression or BoundDoubleLiteralExpression or BoundStringLiteralExpression or BoundIntegerLiteralExpression or BoundBooleanLiteralExpression or BoundVariableExpression:
+                case BoundWithReceiverExpression or BoundEnumExpression or BoundDoubleLiteralExpression or BoundStringLiteralExpression or BoundIntegerLiteralExpression or BoundBooleanLiteralExpression or BoundVariableExpression or BoundNothingExpression:
                     return Expression(expression);
+                case BoundNewExpression creation:
+                    return NewOrderedValue(creation.Type, NewClass(creation));
+                case BoundIdentityExpression identity:
+                    return NewOrderedValue(SmileType.Boolean, ClassIdentity(identity));
                 case BoundArrayExpression array:
                 {
                     var rawIndices = new List<string>(array.Indices.Count);
@@ -1993,7 +2019,7 @@ internal static partial class CoreBasicCodeGenerator
                 TargetLanguage.Python => $"{name} = {expression}",
                 _ => $"{TypeName(type)} {name} = {expression};"
             });
-            if (UsesManagedCText && (type == SmileType.String || type is RecordTypeSymbol { ContainsText: true }))
+            if (UsesCObjects && type is ClassTypeSymbol || UsesManagedCText && (type == SmileType.String || type is RecordTypeSymbol { ContainsText: true }))
             {
                 WriteCValueRoots(type, name, register: true);
                 _managedTextTemporaryRoots.Peek().Add((type, name));
@@ -2295,6 +2321,7 @@ internal static partial class CoreBasicCodeGenerator
         }
 
         private string TypeName(SmileType type) => type is EnumTypeSymbol enumeration ? _identifiers.Get(enumeration)
+            : type is ClassTypeSymbol reference ? ClassTypeName(reference)
             : type is RecordTypeSymbol record ? _identifiers.Get(record) : _language switch
         {
             TargetLanguage.CSharp => type switch { { Kind: SmileTypeKind.Double } => "double", { Kind: SmileTypeKind.Integer } => "long", { Kind: SmileTypeKind.Boolean } => "bool", _ => "string" },
@@ -2309,6 +2336,7 @@ internal static partial class CoreBasicCodeGenerator
         private string DefaultLiteral(SmileType type) => type switch
         {
             RecordTypeSymbol record => RecordDefault(record),
+            ClassTypeSymbol => NothingLiteral(),
             EnumTypeSymbol enumeration => EnumLiteral(enumeration, 0),
             { Kind: SmileTypeKind.Double } => "0.0",
             { Kind: SmileTypeKind.Integer } => IntegerLiteral(0),
@@ -2657,6 +2685,14 @@ internal static partial class CoreBasicCodeGenerator
                 case BoundBinaryExpression binary:
                     foreach (BoundExpression child in WalkExpression(binary.Left)) yield return child;
                     foreach (BoundExpression child in WalkExpression(binary.Right)) yield return child;
+                    break;
+                case BoundIdentityExpression identity:
+                    foreach (BoundExpression child in WalkExpression(identity.Left)) yield return child;
+                    foreach (BoundExpression child in WalkExpression(identity.Right)) yield return child;
+                    break;
+                case BoundNewExpression creation:
+                    foreach (BoundExpression argument in creation.Arguments)
+                        foreach (BoundExpression child in WalkExpression(argument)) yield return child;
                     break;
                 case BoundArrayExpression array:
                     foreach (BoundExpression index in array.Indices)

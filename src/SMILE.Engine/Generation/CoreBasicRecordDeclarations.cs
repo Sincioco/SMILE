@@ -10,6 +10,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private void WriteRecordDeclarations()
         {
+            if (_language is TargetLanguage.Cpp) WriteCppMemberForwardDeclarations();
             if (_program.RecordTypes.Count == 0) return;
             if (_language is TargetLanguage.Python)
             {
@@ -17,7 +18,6 @@ internal static partial class CoreBasicCodeGenerator
                 Line("from copy import deepcopy as _smileDeepcopy");
                 Line();
             }
-            if (_language is TargetLanguage.Cpp) WriteCppMemberForwardDeclarations();
             foreach (RecordTypeSymbol type in _program.RecordTypes)
             {
                 string name = _identifiers.Get(type);
@@ -32,13 +32,13 @@ internal static partial class CoreBasicCodeGenerator
                     _ => $"struct {name} {{"
                 });
                 _indent++;
-                foreach (RecordFieldSymbol field in type.Fields) WriteRecordFieldDeclaration(field);
+                foreach (InstanceFieldSymbol field in type.Fields) WriteRecordFieldDeclaration(field);
                 if (type.Fields.Count == 0 && _language is TargetLanguage.C or TargetLanguage.ObjectiveC) Line("unsigned char _smileEmpty;");
                 if (_language is TargetLanguage.CSharp or TargetLanguage.Java)
                 {
                     Line($"public {name}() {{");
                     _indent++;
-                    foreach (RecordFieldSymbol field in type.Fields.Where(field => field.IsArray && (field.Type is RecordTypeSymbol || field.Type == SmileType.String || _language is TargetLanguage.Java && field.Type is EnumTypeSymbol)))
+                    foreach (InstanceFieldSymbol field in type.Fields.Where(field => field.IsArray && (field.Type is RecordTypeSymbol || field.Type == SmileType.String || _language is TargetLanguage.Java && field.Type is EnumTypeSymbol)))
                         WriteFieldElements(field, _identifiers.Get(field), target => Line($"{target} = {DefaultLiteral(field.Type)};"));
                     _indent--;
                     Line("}");
@@ -53,7 +53,7 @@ internal static partial class CoreBasicCodeGenerator
             }
         }
 
-        private void WriteRecordFieldDeclaration(RecordFieldSymbol field)
+        private void WriteRecordFieldDeclaration(InstanceFieldSymbol field)
         {
             string name = _identifiers.Get(field);
             string type = TypeName(field.Type);
@@ -66,19 +66,21 @@ internal static partial class CoreBasicCodeGenerator
             }
             if (_language is TargetLanguage.Cpp)
             {
+                if (field.Owner is ClassTypeSymbol) Line(field.IsPrivate ? "private:" : "public:");
                 foreach (int dimension in field.Dimensions.Reverse()) type = $"std::array<{type}, {dimension}>";
                 Line($"{type} {name}{{}};");
                 return;
             }
             if (_language is TargetLanguage.CSharp or TargetLanguage.Java)
             {
+                string access = field.IsPrivate ? "private" : "public";
                 if (field.IsArray)
                 {
                     string suffix = field.Dimensions.Count == 2 ? (_language is TargetLanguage.CSharp ? "[,]" : "[][]") : "[]";
                     string dimensions = _language is TargetLanguage.CSharp ? string.Join(", ", field.Dimensions) : size;
-                    Line($"public {type}{suffix} {name} = new {type}[{dimensions}];");
+                    Line($"{access} {type}{suffix} {name} = new {type}[{dimensions}];");
                 }
-                else Line($"public {type} {name} = {value};");
+                else Line($"{access} {type} {name} = {value};");
                 return;
             }
             if (_language is TargetLanguage.JavaScript)
@@ -90,7 +92,7 @@ internal static partial class CoreBasicCodeGenerator
             if (_language is TargetLanguage.Swift)
             {
                 foreach (int dimension in field.Dimensions.Reverse()) { type = $"[{type}]"; value = $"Array(repeating: {value}, count: {dimension})"; }
-                Line($"var {name}: {type} = {value}");
+                Line($"{(field.IsPrivate ? "private " : "")}var {name}: {type} = {value}");
                 return;
             }
             string pythonType = field.Type is RecordTypeSymbol record ? _identifiers.Get(record)
@@ -101,7 +103,7 @@ internal static partial class CoreBasicCodeGenerator
             Line($"{name}: {pythonType} = {value}");
         }
 
-        private void WriteFieldElements(RecordFieldSymbol field, string target, Action<string> write, int dimension = 0)
+        private void WriteFieldElements(InstanceFieldSymbol field, string target, Action<string> write, int dimension = 0)
         {
             if (dimension == field.Dimensions.Count) { write(target); return; }
             string index = $"_smileFieldIndex{++_orderedTempId}";
@@ -122,7 +124,7 @@ internal static partial class CoreBasicCodeGenerator
             Line(_language switch { TargetLanguage.Python => "def copyFrom(self, source):", TargetLanguage.JavaScript => "copyFrom(source) {", _ => $"public void copyFrom({name} source) {{" });
             _indent++;
             if (type.Fields.Count == 0 && _language is TargetLanguage.Python) Line("pass");
-            foreach (RecordFieldSymbol field in type.Fields)
+            foreach (InstanceFieldSymbol field in type.Fields)
             {
                 string fieldName = _identifiers.Get(field);
                 string receiver = _language is TargetLanguage.Python ? "self." : "this.";

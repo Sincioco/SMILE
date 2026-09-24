@@ -1,9 +1,9 @@
 namespace SMILE.Engine;
 
-public sealed record RecordMethodDeclarationSyntax(RoutineDeclarationSyntax Routine, bool IsPrivate,
+public sealed record InstanceMethodDeclarationSyntax(RoutineDeclarationSyntax Routine, bool IsPrivate,
     TextSpan Span) : StatementSyntax(Span);
 
-public sealed record RecordPropertyDeclarationSyntax(string Name, TextSpan NameSpan, TypeNameSyntax DeclaredType,
+public sealed record InstancePropertyDeclarationSyntax(string Name, TextSpan NameSpan, TypeNameSyntax DeclaredType,
     RoutineDeclarationSyntax? Getter, RoutineDeclarationSyntax? Setter, bool IsPrivate,
     IReadOnlyList<SourceItemSyntax> SourceItems, TextSpan Span) : StatementSyntax(Span);
 
@@ -14,7 +14,7 @@ public sealed record MemberCallStatementSyntax(MemberInvocationExpressionSyntax 
 
 public sealed record MeExpressionSyntax(TextSpan Span) : ExpressionSyntax(Span);
 
-public enum RecordMemberRoutineKind { Method, PropertyGet, PropertySet }
+public enum InstanceMemberRoutineKind { Method, PropertyGet, PropertySet }
 
-public sealed record RecordPropertySymbol(RecordTypeSymbol Owner, string Name, TextSpan Span,
+public sealed record InstancePropertySymbol(InstanceTypeSymbol Owner, string Name, TextSpan Span,
     SmileType Type, bool IsPrivate, RoutineSymbol? Getter, RoutineSymbol? Setter);

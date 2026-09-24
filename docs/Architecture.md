@@ -59,7 +59,8 @@ Java adapts only field-addressed ByRef parameters and their forwarding paths wit
 read/write closures. C/Objective-C register owned Text fields through the existing
 collector, retaining record result roots through final callee collection. MASM
 caller-owned aggregate buffers are rooted before calls. No new type registry,
-record interpreter or dependency is added. Type methods and classes remain pending.
+record interpreter or dependency is added. Type methods and Class references use
+the shared instance-member symbols described below.
 
 Binding is case-insensitive with a shared program namespace and per-routine scopes:
 
@@ -223,3 +224,17 @@ With bodies so return analysis, loop exits, feature gating and mutation analysis
 see the same statements; the block introduces no new runtime service.
 
 Keep one canonical semantic path. Add complexity only at the target boundary where a destination genuinely requires it, and keep that complexity absent from programs that do not use the feature.
+
+Class parsing/binding and evaluation have focused partials: Parser.Classes,
+Binder.Classes and Evaluation.Classes. Instances.cs owns shared Type/Class field
+and member symbols; each nominal type owns its fields, methods and properties.
+ClassValues.cs owns evaluator heap instances. A Class reference is separate from a
+copied record value; captured locations keep their owning instance alive.
+
+CoreBasicClasses owns native class declarations, constructors and identity.
+C, MASM and COBOL class writers own their storage/ABI details. NativeClassSupport
+owns the small allocator and root list required for those procedural targets,
+including Text-field finalization. It is emitted only for class programs. C++
+uses standard shared ownership; the other structured targets use their native
+object lifetime rules. Existing record/member writers remain the shared owners
+of field access and member calls for both kinds of instance.

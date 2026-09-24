@@ -24,6 +24,10 @@
       <Word>DIM</Word>
       <Word>ENUM</Word>
       <Word>TYPE</Word>
+      <Word>CLASS</Word>
+      <Word>NEW</Word>
+      <Word>NOTHING</Word>
+      <Word>IS</Word>
       <Word>WITH</Word>
       <Word>ME</Word>
       <Word>PUBLIC</Word>

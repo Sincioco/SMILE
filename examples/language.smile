@@ -32,6 +32,22 @@ Type ScoreEntry
     End Property
 End Type
 
+Class ScoreBoard
+    Public Entry As ScoreEntry
+
+    Sub New(Optional Player As Text = "student")
+
+        Me.Entry.Player = Player
+
+    End Sub
+
+    Function Alias() As ScoreBoard
+
+        Return Me
+
+    End Function
+End Class
+
 Const ProductName = "SMILE"
 Const Quotation = "She said ""Hello""."
 Const BoardWidth = 4
@@ -76,6 +92,8 @@ Dim DataStatus As Number
 Dim Heading As Direction
 Dim CurrentEntry As ScoreEntry
 Dim SavedEntry As ScoreEntry
+Dim LiveBoard As New ScoreBoard("Sin")
+Dim SharedBoard As ScoreBoard
 
 FirstName = "Sin"
 LastName = "Cioco"
@@ -227,6 +245,16 @@ End With
 Call CurrentEntry.Add(Delta:=2)
 CurrentEntry.Score = CurrentEntry.Score + 1
 Print "Record members="; CurrentEntry.Score
+
+SharedBoard = LiveBoard.Alias()
+
+With SharedBoard
+    .Entry.Points = 20
+End With
+
+Print "Class references="; LiveBoard Is SharedBoard; ":"; LiveBoard.Entry.Points
+SharedBoard = Nothing
+Print "Empty reference="; SharedBoard Is Nothing
 
 Call ShowGreeting()
 Call ShowGreeting(Caption:="Welcome", Learner:="Sin")

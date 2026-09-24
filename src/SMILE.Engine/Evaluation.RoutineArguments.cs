@@ -10,12 +10,22 @@ public sealed partial class SmileEvaluator
     private bool TryInvokeCall(RoutineSymbol routine, IReadOnlyList<BoundExpression> expressions,
         IReadOnlyList<int>? order, CallFrame? caller, out SmileValue value, out SmileRuntimeError? error)
     {
-        var arguments = new List<CallArgument>();
         value = default;
+        if (!TryCaptureCallArguments(routine, expressions, order, caller, true, out IReadOnlyList<CallArgument> arguments, out error)) return false;
+        return TryInvoke(routine, arguments, out value, out error);
+    }
+
+    private bool TryCaptureCallArguments(RoutineSymbol routine, IReadOnlyList<BoundExpression> expressions,
+        IReadOnlyList<int>? order, CallFrame? caller, bool includeReceiver,
+        out IReadOnlyList<CallArgument> captured, out SmileRuntimeError? error)
+    {
+        var arguments = new List<CallArgument>();
+        captured = [];
         for (int index = 0; index < expressions.Count; index++)
         {
             BoundExpression expression = expressions[index];
-            if (RoutineArguments.ParameterAtSourceIndex(routine, order, index).IsByRef)
+            VariableSymbol parameter = RoutineArguments.ParameterAtSourceIndex(routine, order, index, includeReceiver);
+            if (parameter.IsByRef)
             {
                 if (!TryCaptureLocation(expression, caller, out WritableLocation? location, out error)) return false;
                 arguments.Add(new CallArgument(default, location));
@@ -23,10 +33,13 @@ public sealed partial class SmileEvaluator
             else
             {
                 if (!TryEvaluateExpression(expression, caller, out SmileValue argument, out error)) return false;
+                if (parameter.IsReceiver && parameter.Type is ClassTypeSymbol && argument.ClassValue is null)
+                { error = NothingReferenceError(); return false; }
                 arguments.Add(new CallArgument(SmileRecordValue.Copy(argument)));
             }
         }
-        return TryInvoke(routine, RoutineArguments.InParameterOrder(arguments, order), out value, out error);
+        captured = RoutineArguments.InParameterOrder(arguments, order);
+        return Success(out error);
     }
 
     private bool TryCaptureLocation(BoundExpression expression, CallFrame? frame,

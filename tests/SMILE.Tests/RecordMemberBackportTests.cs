@@ -266,9 +266,9 @@ End Sub
         ParseResult result = new SmileTranspiler().Parse(source);
         Assert.IsFalse(result.Success);
         RecordDeclarationSyntax type = result.Program!.Statements.OfType<RecordDeclarationSyntax>().Single();
-        Assert.AreEqual("X|Y|Z", string.Join("|", type.SourceItems.OfType<RecordFieldDeclarationSyntax>().Select(field => field.Name)));
-        Assert.IsNotNull(type.SourceItems.OfType<RecordPropertyDeclarationSyntax>().Single().Setter);
-        Assert.AreEqual(1, type.SourceItems.OfType<RecordMethodDeclarationSyntax>().Count());
+        Assert.AreEqual("X|Y|Z", string.Join("|", type.SourceItems.OfType<InstanceFieldDeclarationSyntax>().Select(field => field.Name)));
+        Assert.IsNotNull(type.SourceItems.OfType<InstancePropertyDeclarationSyntax>().Single().Setter);
+        Assert.AreEqual(1, type.SourceItems.OfType<InstanceMethodDeclarationSyntax>().Count());
         Assert.IsTrue(result.Program.Statements.OfType<DimStatementSyntax>().Any(variable => variable.Name == "Current"));
     }
 

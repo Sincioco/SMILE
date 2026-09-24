@@ -134,8 +134,18 @@ Types also contain Sub/Function methods and Property Get/Set accessors. `Me`
 borrows the current record; a setter receives its new value as `Value`. Methods
 and properties are Public by default and may be Private; fields remain Public.
 Member calls support Optional and named arguments. A property assignment evaluates
-its new value before capturing its receiver. Classes and modules remain pending
+its new value before capturing its receiver. Modules remain pending
 in the [back-port inventory](docs/SMILE%202%20Core%20Backport%20Progress.md).
+
+`Class` declares reference objects. `Dim Board As New ScoreBoard()` or
+`Board = New ScoreBoard()` constructs an instance; assignment, ByVal and returns
+copy its reference. An optional `Sub New(...)` initializes fields. Class fields
+are Private by default, while methods and properties are Public by default.
+`Nothing` is the default reference; `Is` and `Is Not` compare identity. `With Board`
+captures the reference once, even if Board is reassigned inside the block. A
+Nothing receiver fails before method arguments or field indexes run. Class fields
+may contain scalar values, enums, records and fixed arrays, but not other class
+references; arrays of class references are also unsupported, matching SMILE 2.0.
 
 ### Three original games, written entirely in SMILE
 
@@ -276,7 +286,7 @@ For complete interactive programs, follow the three game sources above or the sm
 The engine carries immutable type symbols through binding, evaluation and
 generation. Built-in types are shared symbols; storage categories are separate
 from exact type identity. Each Enum and Type declaration owns a distinct type
-symbol; class support remains pending.
+symbol, as does each Class declaration.
 For Engine API callers, `SmileType` is now a symbol class with `Kind` and `Name`;
 the existing `SmileType.Integer`, `Double`, `String`, `Boolean`, and `Error`
 members remain available. Parsed declarations carry `TypeNameSyntax`; the binder
@@ -319,7 +329,7 @@ The complete current language is defined by the [SMILE Core BASIC 2.1 Text-Game 
 
 This release intentionally rejects earlier SMILE 1.0-only syntax. The compiler does not silently reinterpret old source. Core BASIC 1 remains a valid subset, while its former active documentation is preserved under `Requirements/Archive/Core-BASIC-1`.
 
-**Current boundaries:** no blocking `Input`, graphical game window, sound, file I/O, dynamic arrays, classes, or modules in SMILE source. `Number` is a signed 64-bit whole-number type. This is an active research project; deliberate language improvements update living examples and documentation together, without a legacy parser or external backward-compatibility promise.
+**Current boundaries:** no blocking `Input`, graphical game window, sound, arbitrary file I/O, dynamic arrays, or modules in SMILE source. Bounded text-file reads and Number/Data persistence are supported. `Number` is a signed 64-bit whole-number type. This is an active research project; deliberate language improvements update living examples and documentation together, without a legacy parser or external backward-compatibility promise.
 
 ## Ten active targets
 

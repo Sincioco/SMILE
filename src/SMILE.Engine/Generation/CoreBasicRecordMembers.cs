@@ -6,11 +6,11 @@ internal static partial class CoreBasicCodeGenerator
     {
         private void WriteCppMemberForwardDeclarations()
         {
-            var positions = _program.RecordTypes.Select((type, index) => (type, index)).ToDictionary(item => item.type, item => item.index);
-            RecordTypeSymbol[] forward = _program.Routines.Where(routine => routine.Symbol.Owner is not null)
+            var positions = _program.InstanceTypes.Select((type, index) => (type, index)).ToDictionary(item => item.type, item => item.index);
+            InstanceTypeSymbol[] forward = _program.Routines.Where(routine => routine.Symbol.Owner is not null)
                 .SelectMany(routine => routine.Symbol.Parameters.Select(parameter => parameter.Type).Append(routine.Symbol.ReturnType!)
-                    .OfType<RecordTypeSymbol>().Where(type => positions[type] > positions[routine.Symbol.Owner!])).Distinct().ToArray();
-            foreach (RecordTypeSymbol type in forward) Line($"struct {_identifiers.Get(type)};");
+                    .OfType<InstanceTypeSymbol>().Where(type => positions[type] > positions[routine.Symbol.Owner!])).Concat(_program.ClassTypes).Distinct().ToArray();
+            foreach (InstanceTypeSymbol type in forward) Line($"struct {_identifiers.Get(type)};");
             if (forward.Length > 0) Line();
         }
 
@@ -20,12 +20,12 @@ internal static partial class CoreBasicCodeGenerator
         private bool HasImplicitReceiver(RoutineSymbol routine) => routine.Receiver is not null && HasNativeMembers &&
             !(_language is TargetLanguage.Swift && _swiftReferenceParameters.Contains(routine.Receiver));
 
-        private RecordPropertySymbol PropertyFor(RoutineSymbol routine) => routine.Owner!.Properties.Single(property => property.Getter == routine || property.Setter == routine);
+        private InstancePropertySymbol PropertyFor(RoutineSymbol routine) => routine.Owner!.Properties.Single(property => property.Getter == routine || property.Setter == routine);
 
         private bool HasNativeProperty(RoutineSymbol routine)
         {
-            if (routine.Owner is null || routine.MemberKind is RecordMemberRoutineKind.Method) return false;
-            RecordPropertySymbol property = PropertyFor(routine);
+            if (routine.Owner is null || routine.MemberKind is InstanceMemberRoutineKind.Method) return false;
+            InstancePropertySymbol property = PropertyFor(routine);
             return _language switch
             {
                 TargetLanguage.CSharp or TargetLanguage.Python => true,
@@ -35,12 +35,12 @@ internal static partial class CoreBasicCodeGenerator
             };
         }
 
-        private void WriteRecordMembers(RecordTypeSymbol type)
+        private void WriteRecordMembers(InstanceTypeSymbol type)
         {
             if (!HasNativeMembers) return;
-            foreach (BoundRoutineDeclaration routine in _program.Routines.Where(item => item.Symbol.Owner == type && item.Symbol.MemberKind is RecordMemberRoutineKind.Method))
+            foreach (BoundRoutineDeclaration routine in _program.Routines.Where(item => item.Symbol.Owner == type && item.Symbol.MemberKind is InstanceMemberRoutineKind.Method))
                 WriteMember(routine);
-            foreach (RecordPropertySymbol property in type.Properties)
+            foreach (InstancePropertySymbol property in type.Properties)
             {
                 bool native = HasNativeProperty(property.Getter ?? property.Setter!);
                 bool wrapper = native && _language is TargetLanguage.CSharp or TargetLanguage.Swift;
@@ -64,7 +64,9 @@ internal static partial class CoreBasicCodeGenerator
             if (_language is TargetLanguage.Cpp)
             {
                 Line(routine.Symbol.IsPrivate ? "private:" : "public:");
-                Line($"{RoutineReturnType(routine.Symbol)} {RoutineName(routine.Symbol)}({ParameterList(routine.Symbol)});");
+                Line(routine.Symbol.IsConstructor && !CppConstructorNeedsFactory((ClassTypeSymbol)routine.Symbol.Owner!)
+                    ? $"{_identifiers.Get(routine.Symbol.Owner!)}({ParameterList(routine.Symbol)});"
+                    : $"{RoutineReturnType(routine.Symbol)} {RoutineName(routine.Symbol)}({ParameterList(routine.Symbol)});");
             }
             else WriteRoutine(routine);
         }
@@ -75,10 +77,15 @@ internal static partial class CoreBasicCodeGenerator
             bool property = HasNativeProperty(symbol);
             string name = property ? _identifiers.Get(PropertyFor(symbol)) : RoutineName(symbol);
             string access = symbol.IsPrivate || !member ? "private" : "public";
+            if (symbol.IsConstructor && HasNativeMembers)
+            {
+                WriteClassConstructorHeader(symbol, parameters);
+                return;
+            }
             switch (_language)
             {
                 case TargetLanguage.CSharp:
-                    Line(property ? symbol.MemberKind is RecordMemberRoutineKind.PropertyGet ? "get" : "set"
+                    Line(property ? symbol.MemberKind is InstanceMemberRoutineKind.PropertyGet ? "get" : "set"
                         : $"{access}{(member ? "" : " static")} {RoutineReturnType(symbol)} {name}({parameters})");
                     Line("{");
                     break;
@@ -90,15 +97,15 @@ internal static partial class CoreBasicCodeGenerator
                     Line($"{access}{(member ? "" : " static")} {RoutineReturnType(symbol)} {name}({parameters}) {{");
                     break;
                 case TargetLanguage.JavaScript:
-                    string prefix = property ? symbol.MemberKind is RecordMemberRoutineKind.PropertyGet ? "get " : "set " : _asyncJavaScriptRoutines.Contains(symbol) ? "async " : "";
+                    string prefix = property ? symbol.MemberKind is InstanceMemberRoutineKind.PropertyGet ? "get " : "set " : _asyncJavaScriptRoutines.Contains(symbol) ? "async " : "";
                     Line($"{prefix}{(member ? "" : "function ")}{name}({parameters}) {{");
                     break;
                 case TargetLanguage.Swift:
-                    if (property) Line(symbol.MemberKind is RecordMemberRoutineKind.PropertyGet ? "mutating get {" : "set {");
-                    else Line($"{(member ? symbol.IsPrivate ? "private " : "" : "")}{(member ? HasImplicitReceiver(symbol) ? "mutating " : "static " : "")}func {name}({parameters}){(symbol.IsFunction ? " -> " + RoutineReturnType(symbol) : "")} {{");
+                    if (property) Line(symbol.MemberKind is InstanceMemberRoutineKind.PropertyGet ? symbol.Owner is ClassTypeSymbol ? "get {" : "mutating get {" : "set {");
+                    else Line($"{(member ? symbol.IsPrivate ? "private " : "" : "")}{(member ? HasImplicitReceiver(symbol) ? symbol.Owner is ClassTypeSymbol ? "" : "mutating " : "static " : "")}func {name}({parameters}){(symbol.IsFunction ? " -> " + RoutineReturnType(symbol) : "")} {{");
                     break;
                 case TargetLanguage.Python:
-                    if (property && symbol.MemberKind is RecordMemberRoutineKind.PropertyGet) Line("@property");
+                    if (property && symbol.MemberKind is InstanceMemberRoutineKind.PropertyGet) Line("@property");
                     else if (property && PropertyFor(symbol).Getter is not null) Line($"@{name}.setter");
                     else if (property) name = RoutineName(symbol);
                     Line($"def {name}({(member ? "self" + (parameters.Length > 0 ? ", " : "") : "")}{parameters}):");
@@ -123,10 +130,10 @@ internal static partial class CoreBasicCodeGenerator
             if (routine.Owner is null || !HasNativeMembers) return $"{awaitPrefix}{RoutineName(routine)}({string.Join(", ", arguments)})";
             if (HasNativeProperty(routine))
             {
-                string property = $"({arguments[0]}).{_identifiers.Get(PropertyFor(routine))}";
-                return routine.MemberKind is RecordMemberRoutineKind.PropertyGet ? property : $"{property} = {arguments[1]}";
+                string property = $"{MemberAccessReceiver(routine.Owner, arguments[0])}{_identifiers.Get(PropertyFor(routine))}";
+                return routine.MemberKind is InstanceMemberRoutineKind.PropertyGet ? property : $"{property} = {arguments[1]}";
             }
-            return HasImplicitReceiver(routine) ? $"{awaitPrefix}({arguments[0]}).{RoutineName(routine)}({string.Join(", ", arguments.Skip(1))})"
+            return HasImplicitReceiver(routine) ? $"{awaitPrefix}{MemberAccessReceiver(routine.Owner, arguments[0])}{RoutineName(routine)}({string.Join(", ", arguments.Skip(1))})"
                 : $"{_identifiers.Get(routine.Owner)}.{RoutineName(routine)}({string.Join(", ", arguments)})";
         }
     }

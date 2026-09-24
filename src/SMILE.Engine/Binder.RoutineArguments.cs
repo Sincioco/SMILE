@@ -51,6 +51,8 @@ internal sealed partial class Binder
             }
             if (slots[parameterIndex] >= 0) Report("SMILE2164", $"Parameter '{routine.Parameters[parameterIndex].Name}' is supplied twice.", source.Span);
             slots[parameterIndex] = sourceIndex;
+            if (!routine.Parameters[parameterIndex].IsByRef)
+                values[^1] = value = CoerceReference(value, routine.Parameters[parameterIndex].Type);
             if (routine.Parameters[parameterIndex].IsByRef && value is not BoundErrorExpression && !BoundLocations.IsWritable(value))
             {
                 Report(value is BoundVariableExpression { Variable.IsReceiver: true } ? "SMILE3442" : "SMILE2165",

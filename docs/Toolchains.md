@@ -124,3 +124,11 @@ toolchains place executable/script/class output in the generated workspace.
 CLI/Desktop create a fresh workspace per build and do not yet publish project
 assets. Put input files beside a separately built generated program for manual
 file-read testing; automatic project publication remains in the back-port backlog.
+
+Class reference programs use the same installed toolchains. MASM additionally
+compiles the generated SmileClassRuntime.c companion with the existing Visual
+Studio C compiler. C/Objective-C and COBOL include the same allocator/root support
+in their existing native support output. No external runtime is downloaded.
+The optional SMILE_OBJECT_LIFETIME_REPORT environment variable reports allocation,
+free, live and peak counts at shutdown for those four targets. C/Objective-C/MASM
+also honor the existing SMILE_TEXT_LIFETIME_REPORT for owned Text storage.

@@ -13,7 +13,7 @@ internal sealed partial class CobolWriter
         WriteRecordShape(name, (RecordTypeSymbol)variable.Type, variable.ArrayDimensions, level, linkage);
     }
 
-    private void WriteRecordShape(string name, RecordTypeSymbol type, IReadOnlyList<int> dimensions, int level, bool linkage)
+    private void WriteRecordShape(string name, InstanceTypeSymbol type, IReadOnlyList<int> dimensions, int level, bool linkage)
     {
         if (dimensions.Count == 2)
         {
@@ -21,7 +21,7 @@ internal sealed partial class CobolWriter
         }
         RecordLine(level, name + (dimensions.Count > 0 ? $" OCCURS {dimensions[^1]} TIMES" : "") + ".");
         if (type.Fields.Count == 0) RecordLine(level + 1, "FILLER PIC X" + (linkage ? "" : " VALUE SPACE") + ".");
-        foreach (RecordFieldSymbol field in type.Fields)
+        foreach (InstanceFieldSymbol field in type.Fields)
         {
             string fieldName = _identifiers.Get(field);
             int fieldLevel = level + 1;
@@ -46,6 +46,11 @@ internal sealed partial class CobolWriter
 
         private bool WriteWith(BoundWithStatement block, int indent)
         {
+            if (block.Location.Target.Type is ClassTypeSymbol)
+            {
+                _withLocations[block.Location] = CaptureClassReference(block.Location.Target, indent);
+                return WriteItems(block.SourceItems, indent);
+            }
             _withLocations[block.Location] = block.Location.Target switch
             {
                 BoundArrayExpression array => PrepareArrayElement(array.Array, array.Indices, indent, checkEachDimension: true).Value,
@@ -57,7 +62,8 @@ internal sealed partial class CobolWriter
 
         private PreparedArrayElement PrepareRecordField(BoundFieldExpression field, int indent)
         {
-            string receiver = field.Receiver switch
+            string receiver = field.Receiver.Type is ClassTypeSymbol reference
+                ? ClassView(reference, CaptureClassReference(field.Receiver, indent), indent) : field.Receiver switch
             {
                 BoundFieldExpression parent => PrepareRecordField(parent, indent).Value,
                 BoundArrayExpression array => PrepareArrayElement(array.Array, array.Indices, indent, checkEachDimension: true).Value,

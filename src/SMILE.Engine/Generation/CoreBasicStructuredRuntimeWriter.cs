@@ -155,6 +155,8 @@ internal static partial class CoreBasicCodeGenerator
                     bool callsAsync = EnumerateExpressions(routine.SourceItems)
                         .OfType<BoundCallExpression>()
                         .Any(call => asyncRoutines.Contains(call.Routine)) ||
+                        EnumerateExpressions(routine.SourceItems).OfType<BoundNewExpression>()
+                            .Any(creation => asyncRoutines.Contains(creation.Class.Constructor)) ||
                         EnumerateStatements(routine.SourceItems)
                             .OfType<BoundCallStatement>()
                             .Any(call => asyncRoutines.Contains(call.Routine));

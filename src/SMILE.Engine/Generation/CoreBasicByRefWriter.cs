@@ -13,7 +13,7 @@ internal static partial class CoreBasicCodeGenerator
         private string ReferenceValueName(VariableSymbol variable)
         {
             if (variable.IsReceiver && HasNativeMembers && !(_language is TargetLanguage.Swift && _swiftReferenceParameters.Contains(variable)))
-                return _language is TargetLanguage.Python or TargetLanguage.Swift ? "self" : _language is TargetLanguage.Cpp ? "(*this)" : "this";
+                return _language is TargetLanguage.Python or TargetLanguage.Swift ? "self" : _language is TargetLanguage.Cpp ? variable.Type is ClassTypeSymbol ? "shared_from_this()" : "(*this)" : "this";
             if (variable.IsSetterValue && _language is TargetLanguage.CSharp) return "value";
             string name = StorageName(variable);
             if (NeedsReferenceBox(variable)) return $"{name}[0]";
@@ -77,7 +77,15 @@ internal static partial class CoreBasicCodeGenerator
                 Line($"{TypeName(argument.Type)}* {capturedField} = &{fieldTarget};");
                 return _language is TargetLanguage.Cpp ? "*" + capturedField : capturedField;
             }
-            VariableSymbol owner = LocationOwner(argument);
+            if (_language is TargetLanguage.Swift && argument is BoundFieldExpression or BoundWithReceiverExpression)
+            {
+                string fieldTarget = PrepareRecordLocation(argument);
+                if (!_swiftReferenceParameters.Contains(parameter)) return "&" + fieldTarget;
+                string fieldReference = $"_smileReference{++_orderedTempId}";
+                Line($"let {fieldReference} = SmileReference<{TypeName(argument.Type)}>(read: {{ {fieldTarget} }}, write: {{ {fieldTarget} = $0 }})");
+                return fieldReference;
+            }
+            VariableSymbol owner = LocationOwner(argument) ?? throw new InvalidOperationException("A scalar reference requires a variable owner.");
             var indices = new List<string>();
             if (argument is BoundArrayExpression array)
             {

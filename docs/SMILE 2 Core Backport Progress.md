@@ -28,6 +28,7 @@ completed text, routine, console-key, Double, text-file, persistence, Enum, Type
 | Type value records | Exact nominal identity, nested fields, fixed-array fields, independent copies/defaults, arrays of records, ByVal/ByRef/returns, writable field references and Data Count/Status fields; evaluator and all ten targets |
 | With blocks | Capture writable record locations and checked indexes once; nested leading-dot access, stable aliases, recursion and ordinary return/loop-exit behavior; evaluator and all ten targets |
 | Type members | Sub/Function methods, Get/Set properties, borrowed Me, Public/Private access, Optional/named calls and value-first property assignment; evaluator and all ten targets |
+| Class references | New/constructors, Nothing, Is/Is Not, reference copies/ByRef, class With, visibility, native object ownership and borrowed fields; evaluator and all ten targets |
 | Checked Double failures | Invalid domains, zero divisors, conversion overflow and nonfinite results report their source line before destination mutation |
 
 The UTF-8 output fix addresses failures observed during actual generated-program
@@ -39,11 +40,10 @@ execution on Windows. Ordinary ASCII programs retain their minimal output.
 |---|---|
 | Console keys | Standalone Control key events: character-stream APIs do not report modifier-only events; a native console-event boundary is still needed |
 | Files and persistence | Project ApplicationId ownership/configuration; current loose programs use the source filename stem |
-| Reference objects | Class references/constructors, New, Nothing, Is/Is Not, With on class references, class member visibility and ownership |
 | Program organization | Module/Import, qualified names, visibility, multi-file source/project inputs, deterministic source-owned libraries |
 
-Classes and modules require additional binding,
-generation and project-system work. They remain outstanding core-language work.
+Modules require additional binding, generation and project-system work. They
+remain outstanding core-language work.
 
 ## Outside the console/core back-port
 
@@ -166,5 +166,20 @@ No repository file-size/complexity checker or reviewed no-growth baseline was
 found in SMILE 1.0. Existing broad writers received focused wiring; new text and
 argument algorithms have their own owners. No guardrail limit or exclusion was
 changed. Ordinary target-native Number overflow and existing native Text storage
-limitations remain; object/module and project-identity parity is pending. Double exponent
+limitations remain; module and project-identity parity is pending. Double exponent
 spelling and transcendental rounding follow the target's standard library.
+
+Class fixtures run unchanged in SMILE 2.0 and across all ten targets. They cover
+reference identity, constructors (including escaping Me and async file reads),
+ByVal/ByRef, visibility, named/Optional arguments, independent fields, class-valued
+properties, With capture, borrowed temporary fields, reassignment, early returns,
+and loop exits. Nothing receivers fail before argument side effects. The focused
+class/record/member/ByRef/With/mission/highlighting suite passes 141 tests; the
+normal class-plus-mission selection passes 55 tests. The cumulative language
+reference runs on all ten targets and all living sources pass the format check.
+Native lifetime probes allocate and free 61 objects with zero live objects and a
+peak of two on C, Objective-C, MASM and COBOL. C/Objective-C/MASM Text probes free
+all 162 allocations (peaks four/four/six). Class fields default to Private as in
+the authority; methods and properties default to Public. Classes add no external
+dependency. The procedural native targets need a small pointer/root allocator;
+C++ uses shared_ptr and the remaining structured targets use native object lifetime.

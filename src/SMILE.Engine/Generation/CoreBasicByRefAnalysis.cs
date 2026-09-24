@@ -18,8 +18,8 @@ internal static partial class CoreBasicCodeGenerator
             foreach (ReferenceCall call in calls)
             {
                 for (int index = 0; index < call.Arguments.Count; index++)
-                    if (RoutineArguments.ParameterAtSourceIndex(call.Routine, call.Order, index).IsByRef)
-                        _addressedVariables.Add(LocationOwner(call.Arguments[index]));
+                    if (RoutineArguments.ParameterAtSourceIndex(call.Routine, call.Order, index).IsByRef && LocationOwner(call.Arguments[index]) is { } owner)
+                        _addressedVariables.Add(owner);
             }
             FindJavaFieldReferences(calls);
             if (_language is not TargetLanguage.Swift) return;
@@ -46,7 +46,9 @@ internal static partial class CoreBasicCodeGenerator
                 VariableSymbol[] owners = call.Arguments.Select((argument, index) =>
                         RoutineArguments.ParameterAtSourceIndex(call.Routine, call.Order, index).IsByRef ? LocationOwner(argument) : null)
                     .OfType<VariableSymbol>().ToArray();
-                bool overlap = owners.Distinct().Count() != owners.Length || owners.Any(owner =>
+                bool overlap = call.Arguments.Select((argument, index) => (argument, index)).Any(item =>
+                    RoutineArguments.ParameterAtSourceIndex(call.Routine, call.Order, item.index).IsByRef && LocationOwner(item.argument) is null) ||
+                    owners.Distinct().Count() != owners.Length || owners.Any(owner =>
                     owner.IsByRef && owners.Any(other => other != owner && (other.IsByRef || other.IsGlobal)));
                 bool globalAlias = owners.Any(owner => owner.IsGlobal && globals[call.Routine].Contains(owner) ||
                     owner.IsByRef && globals[call.Routine].Count > 0);
@@ -60,7 +62,7 @@ internal static partial class CoreBasicCodeGenerator
                 foreach (ReferenceCall call in calls.Where(call => call.Caller is not null && shared.Contains(call.Routine)))
                     if (call.Arguments.Select((argument, index) => (argument, index)).Any(item =>
                         RoutineArguments.ParameterAtSourceIndex(call.Routine, call.Order, item.index).IsByRef &&
-                        LocationOwner(item.argument).IsByRef)) changed |= shared.Add(call.Caller!);
+                        LocationOwner(item.argument)?.IsByRef == true)) changed |= shared.Add(call.Caller!);
             } while (changed);
             foreach (RoutineSymbol routine in shared)
                 _swiftReferenceParameters.UnionWith(routine.ExecutionParameters.Where(parameter => parameter.IsByRef));
@@ -70,12 +72,16 @@ internal static partial class CoreBasicCodeGenerator
             EnumerateStatements(items).OfType<BoundCallStatement>()
                 .Select(call => new ReferenceCall(caller, call.Routine, call.Arguments, call.ParameterOrder))
                 .Concat(EnumerateExpressions(items).OfType<BoundCallExpression>()
-                    .Select(call => new ReferenceCall(caller, call.Routine, call.Arguments, call.ParameterOrder)));
+                    .Select(call => new ReferenceCall(caller, call.Routine, call.Arguments, call.ParameterOrder)))
+                .Concat(EnumerateExpressions(items).OfType<BoundNewExpression>().Select(creation => new ReferenceCall(caller,
+                    creation.Class.Constructor, new BoundExpression[] { new BoundNothingExpression(creation.Class) }.Concat(creation.Arguments).ToArray(),
+                    creation.ParameterOrder is null ? null : new[] { 0 }.Concat(creation.ParameterOrder.Select(index => index + 1)).ToArray())));
 
-        private static VariableSymbol LocationOwner(BoundExpression expression) => expression switch
+        private static VariableSymbol? LocationOwner(BoundExpression expression) => expression switch
         {
             BoundVariableExpression variable => variable.Variable,
             BoundArrayExpression array => array.Array,
+            BoundFieldExpression { Receiver.Type: ClassTypeSymbol } => null,
             BoundFieldExpression field => LocationOwner(field.Receiver),
             BoundWithReceiverExpression receiver => LocationOwner(receiver.Location.Target),
             _ => throw new InvalidOperationException("A bound ByRef argument must be writable.")

@@ -177,8 +177,9 @@ public readonly record struct SmileValue
     private readonly SmileType? _type;
     private readonly string? _stringValue;
     private readonly SmileRecordValue? _recordValue;
+    private readonly SmileClassValue? _classValue;
 
-    private SmileValue(SmileType type, string? stringValue, long integerValue, bool booleanValue, double doubleValue = 0, SmileRecordValue? recordValue = null)
+    private SmileValue(SmileType type, string? stringValue, long integerValue, bool booleanValue, double doubleValue = 0, SmileRecordValue? recordValue = null, SmileClassValue? classValue = null)
     {
         _type = type;
         _stringValue = stringValue;
@@ -186,6 +187,7 @@ public readonly record struct SmileValue
         BooleanValue = booleanValue;
         DoubleValue = doubleValue;
         _recordValue = recordValue;
+        _classValue = classValue;
     }
 
     public SmileType Type => _type ?? SmileType.String;
@@ -213,6 +215,8 @@ public readonly record struct SmileValue
 
     public SmileRecordValue RecordValue => _recordValue ?? throw new InvalidOperationException("SMILE value is not a record.");
     internal static SmileValue FromRecord(SmileRecordValue value) => new(value.Type, null, 0, false, recordValue: value);
+    public SmileClassValue? ClassValue => _classValue;
+    internal static SmileValue FromClass(SmileType type, SmileClassValue? value) => new(type, null, 0, false, classValue: value);
 
     public static SmileValue FromBoolean(bool value) =>
         new(SmileType.Boolean, null, 0, value);
@@ -277,9 +281,10 @@ public sealed record RoutineSymbol(
     SmileType? ReturnType)
 {
     public bool IsFunction => Kind is RoutineKind.Function;
-    public RecordTypeSymbol? Owner { get; init; }
+    public InstanceTypeSymbol? Owner { get; init; }
     public bool IsPrivate { get; init; }
-    public RecordMemberRoutineKind MemberKind { get; init; }
+    public bool IsConstructor { get; init; }
+    public InstanceMemberRoutineKind MemberKind { get; init; }
     public VariableSymbol? Receiver { get; init; }
     public VariableSymbol? SetterValue { get; init; }
     public string ScopeName => Owner is null ? Name : Owner.Name + "." + Name + "." + MemberKind;
@@ -321,6 +326,8 @@ public sealed record BoundProgram
 
     public IReadOnlyList<EnumTypeSymbol> EnumTypes { get; init; } = [];
     public IReadOnlyList<RecordTypeSymbol> RecordTypes { get; init; } = [];
+    public IReadOnlyList<ClassTypeSymbol> ClassTypes { get; init; } = [];
+    public IEnumerable<InstanceTypeSymbol> InstanceTypes => RecordTypes.Concat<InstanceTypeSymbol>(ClassTypes);
 
     public IEnumerable<VariableSymbol> AllVariables =>
         Variables.Concat(Routines.SelectMany(routine => routine.Locals));

@@ -9,6 +9,7 @@ internal sealed partial class Binder
     private SmileType ResolveType(TypeNameSyntax syntax)
     {
         if (_records.TryGetValue(syntax.Name, out RecordTypeSymbol? record)) return record;
+        if (_classes.TryGetValue(syntax.Name, out ClassTypeSymbol? reference)) return reference;
         if (_enums.TryGetValue(syntax.Name, out EnumTypeSymbol? nominal)) return nominal;
         SmileType? builtin = syntax.Name.ToUpperInvariant() switch
         {
