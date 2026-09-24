@@ -830,6 +830,8 @@ internal sealed partial class Binder
                 return new BoundErrorExpression();
             case StringLiteralExpressionSyntax literal:
                 return new BoundStringLiteralExpression(literal.Value);
+            case DoubleLiteralExpressionSyntax literal:
+                return DoubleSemantics.TryParse(literal.Text, out double floating) ? new BoundDoubleLiteralExpression(floating) : new BoundErrorExpression();
             case IntegerLiteralExpressionSyntax literal:
                 return long.TryParse(literal.Text, NumberStyles.None, CultureInfo.InvariantCulture, out long number)
                     ? new BoundIntegerLiteralExpression(number)
@@ -1028,8 +1030,22 @@ internal sealed partial class Binder
         bool constantsOnly,
         out BoundExpression? expression)
     {
+        if (_routineSymbols.ContainsKey(syntax.Name)) { expression = null; return false; }
         BoundIntrinsicKind? kind = syntax.Name.ToUpperInvariant() switch
         {
+            "TODOUBLE" => BoundIntrinsicKind.ToDouble,
+            "TONUMBER" => BoundIntrinsicKind.ToNumber,
+            "CLAMP" => BoundIntrinsicKind.Clamp,
+            "SQRT" => BoundIntrinsicKind.Sqrt,
+            "SIN" => BoundIntrinsicKind.Sin,
+            "COS" => BoundIntrinsicKind.Cos,
+            "ATAN2" => BoundIntrinsicKind.Atan2,
+            "FLOOR" => BoundIntrinsicKind.Floor,
+            "CEILING" => BoundIntrinsicKind.Ceiling,
+            "TRUNCATE" => BoundIntrinsicKind.Truncate,
+            "ROUND" => BoundIntrinsicKind.Round,
+            "TEXT_FROM_DOUBLE" => BoundIntrinsicKind.TextFromDouble,
+            "TEXT_TO_DOUBLE" => BoundIntrinsicKind.TextToDouble,
             "TIMER" => BoundIntrinsicKind.Timer,
             "ABS" => BoundIntrinsicKind.Abs,
             "MIN" => BoundIntrinsicKind.Min,
@@ -1049,6 +1065,13 @@ internal sealed partial class Binder
         {
             Report("SMILE2165", "Built-in functions accept positional arguments only.", syntax.Span);
             expression = new BoundErrorExpression();
+            return true;
+        }
+
+        if (DoubleSemantics.IsIntrinsic(kind.Value) || kind is BoundIntrinsicKind.Abs or BoundIntrinsicKind.Min or BoundIntrinsicKind.Max &&
+            syntax.Arguments.Count > 0 && BindExpression(syntax.Arguments[0], constantsOnly).Type is SmileType.Double)
+        {
+            expression = BindDoubleIntrinsic(syntax, kind.Value, constantsOnly);
             return true;
         }
 
@@ -1162,6 +1185,7 @@ internal sealed partial class Binder
 
     private static string DisplayType(SmileType type) => type switch
     {
+        SmileType.Double => "Double",
         SmileType.Integer => "Number",
         SmileType.Boolean => "Boolean",
         SmileType.String => "Text",

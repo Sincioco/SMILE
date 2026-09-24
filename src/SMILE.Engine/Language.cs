@@ -175,6 +175,7 @@ public sealed record ParseResult(
 public enum SmileType
 {
     String,
+    Double,
     Integer,
     Boolean,
     Error
@@ -184,12 +185,13 @@ public readonly record struct SmileValue
 {
     private readonly string? _stringValue;
 
-    private SmileValue(SmileType type, string? stringValue, long integerValue, bool booleanValue)
+    private SmileValue(SmileType type, string? stringValue, long integerValue, bool booleanValue, double doubleValue = 0)
     {
         Type = type;
         _stringValue = stringValue;
         IntegerValue = integerValue;
         BooleanValue = booleanValue;
+        DoubleValue = doubleValue;
     }
 
     public SmileType Type { get; }
@@ -200,6 +202,10 @@ public readonly record struct SmileValue
             : throw new InvalidOperationException("SMILE value is not a String.");
 
     public long IntegerValue { get; }
+
+    public double DoubleValue { get; }
+
+    public static SmileValue FromDouble(double value) => new(SmileType.Double, null, 0, false, value);
 
     public bool BooleanValue { get; }
 
@@ -216,6 +222,7 @@ public readonly record struct SmileValue
         Type switch
         {
             SmileType.String => StringValue,
+            SmileType.Double => DoubleSemantics.Format(DoubleValue),
             SmileType.Integer => IntegerValue.ToString(CultureInfo.InvariantCulture),
             SmileType.Boolean => BooleanValue ? "True" : "False",
             _ => string.Empty
@@ -479,6 +486,9 @@ public sealed record BoundStringLiteralExpression(string Value)
 public sealed record BoundIntegerLiteralExpression(long Value)
     : BoundExpression(SmileType.Integer);
 
+public sealed record BoundDoubleLiteralExpression(double Value)
+    : BoundExpression(SmileType.Double);
+
 public sealed record BoundBooleanLiteralExpression(bool Value)
     : BoundExpression(SmileType.Boolean);
 
@@ -498,13 +508,27 @@ public enum BoundIntrinsicKind
     Max,
     TextLength,
     TextCodeAt,
-    TextSlice
+    TextSlice,
+    ToDouble,
+    ToNumber,
+    Clamp,
+    Sqrt,
+    Sin,
+    Cos,
+    Atan2,
+    Floor,
+    Ceiling,
+    Truncate,
+    Round,
+    TextFromDouble,
+    TextToDouble
 }
 
 public sealed record BoundIntrinsicExpression(
     BoundIntrinsicKind Kind,
-    IReadOnlyList<BoundExpression> Arguments)
-    : BoundExpression(Kind is BoundIntrinsicKind.TextSlice ? SmileType.String : SmileType.Integer);
+    IReadOnlyList<BoundExpression> Arguments,
+    TextSpan Span = default)
+    : BoundExpression(DoubleSemantics.ResultType(Kind, Arguments));
 
 public sealed record BoundCallExpression(
     RoutineSymbol Routine,
@@ -538,6 +562,8 @@ public sealed class BoundUnaryOperator
     {
         new(SyntaxKind.PlusToken, BoundUnaryOperatorKind.Identity, SmileType.Integer),
         new(SyntaxKind.MinusToken, BoundUnaryOperatorKind.Negation, SmileType.Integer),
+        new(SyntaxKind.PlusToken, BoundUnaryOperatorKind.Identity, SmileType.Double),
+        new(SyntaxKind.MinusToken, BoundUnaryOperatorKind.Negation, SmileType.Double),
         new(SyntaxKind.NotKeyword, BoundUnaryOperatorKind.LogicalNegation, SmileType.Boolean)
     };
 
@@ -599,6 +625,16 @@ public sealed class BoundBinaryOperator
         new(SyntaxKind.MinusToken, BoundBinaryOperatorKind.Subtraction, SmileType.Integer),
         new(SyntaxKind.StarToken, BoundBinaryOperatorKind.Multiplication, SmileType.Integer),
         new(SyntaxKind.SlashToken, BoundBinaryOperatorKind.Division, SmileType.Integer),
+        new(SyntaxKind.PlusToken, BoundBinaryOperatorKind.Addition, SmileType.Double),
+        new(SyntaxKind.MinusToken, BoundBinaryOperatorKind.Subtraction, SmileType.Double),
+        new(SyntaxKind.StarToken, BoundBinaryOperatorKind.Multiplication, SmileType.Double),
+        new(SyntaxKind.SlashToken, BoundBinaryOperatorKind.Division, SmileType.Double),
+        new(SyntaxKind.EqualsToken, BoundBinaryOperatorKind.Equality, SmileType.Double, SmileType.Boolean),
+        new(SyntaxKind.NotEqualsToken, BoundBinaryOperatorKind.Inequality, SmileType.Double, SmileType.Boolean),
+        new(SyntaxKind.LessToken, BoundBinaryOperatorKind.Less, SmileType.Double, SmileType.Boolean),
+        new(SyntaxKind.LessOrEqualsToken, BoundBinaryOperatorKind.LessOrEquals, SmileType.Double, SmileType.Boolean),
+        new(SyntaxKind.GreaterToken, BoundBinaryOperatorKind.Greater, SmileType.Double, SmileType.Boolean),
+        new(SyntaxKind.GreaterOrEqualsToken, BoundBinaryOperatorKind.GreaterOrEquals, SmileType.Double, SmileType.Boolean),
         new(SyntaxKind.ModKeyword, BoundBinaryOperatorKind.Modulo, SmileType.Integer),
         new(SyntaxKind.PlusToken, BoundBinaryOperatorKind.StringConcatenation, SmileType.String),
 
@@ -688,6 +724,7 @@ public enum StaticEvaluationKind
 public enum SmileArithmeticErrorKind
 {
     IntegerOverflow,
+    DoubleFailure,
     DivisionByZero
 }
 
@@ -696,13 +733,13 @@ public readonly record struct SmileArithmeticError(
     TextSpan Span)
 {
     public string CompileCode =>
-        Kind is SmileArithmeticErrorKind.IntegerOverflow ? "SMILE1206" : "SMILE1207";
+        Kind is SmileArithmeticErrorKind.DoubleFailure ? "SMILE3902" : Kind is SmileArithmeticErrorKind.IntegerOverflow ? "SMILE1206" : "SMILE1207";
 
     public string RuntimeCode =>
-        Kind is SmileArithmeticErrorKind.IntegerOverflow ? "SMILER1206" : "SMILER1207";
+        Kind is SmileArithmeticErrorKind.DoubleFailure ? "SMILER3902" : Kind is SmileArithmeticErrorKind.IntegerOverflow ? "SMILER1206" : "SMILER1207";
 
     public string Message =>
-        Kind is SmileArithmeticErrorKind.IntegerOverflow
+        Kind is SmileArithmeticErrorKind.DoubleFailure ? DoubleSemantics.FailureMessage : Kind is SmileArithmeticErrorKind.IntegerOverflow
             ? "Number arithmetic overflow."
             : "Division by zero.";
 }
@@ -753,6 +790,7 @@ public static class BoundExpressionEvaluator
                 StaticEvaluationResult.Known(value),
             BoundVariableExpression => StaticEvaluationResult.Unknown(),
             BoundIntrinsicExpression intrinsic => EvaluateIntrinsic(intrinsic, values),
+            BoundDoubleLiteralExpression literal => StaticEvaluationResult.Known(SmileValue.FromDouble(literal.Value)),
             BoundUnaryExpression unary => EvaluateUnary(unary, values),
             BoundBinaryExpression binary => EvaluateBinary(binary, values),
             _ => StaticEvaluationResult.Unknown()
@@ -788,6 +826,8 @@ public static class BoundExpressionEvaluator
 
         try
         {
+            if (DoubleSemantics.UsesDouble(intrinsic)) return StaticEvaluationResult.Known(
+                DoubleSemantics.Intrinsic(intrinsic.Kind, arguments.Select(argument => argument.Value).ToArray()), mayFail);
             if (intrinsic.Kind is BoundIntrinsicKind.TextLength or BoundIntrinsicKind.TextCodeAt or BoundIntrinsicKind.TextSlice)
             {
                 return StaticEvaluationResult.Known(
@@ -802,6 +842,10 @@ public static class BoundExpressionEvaluator
                 _ => 0
             };
             return StaticEvaluationResult.Known(SmileValue.FromInteger(value), mayFail);
+        }
+        catch (ArithmeticException) when (DoubleSemantics.UsesDouble(intrinsic))
+        {
+            return mayFail ? StaticEvaluationResult.Unknown(true) : StaticEvaluationResult.Invalid(new SmileArithmeticError(SmileArithmeticErrorKind.DoubleFailure, intrinsic.Span));
         }
         catch (OverflowException)
         {
@@ -859,6 +903,7 @@ public static class BoundExpressionEvaluator
             SmileValue value = unary.Operator.Kind switch
             {
                 BoundUnaryOperatorKind.Identity => operand.Value,
+                BoundUnaryOperatorKind.Negation when operand.Value.Type is SmileType.Double => SmileValue.FromDouble(-operand.Value.DoubleValue),
                 BoundUnaryOperatorKind.Negation =>
                     SmileValue.FromInteger(checked(-operand.Value.IntegerValue)),
                 BoundUnaryOperatorKind.LogicalNegation =>
@@ -903,6 +948,13 @@ public static class BoundExpressionEvaluator
             return left.MayFailAtRuntime
                 ? StaticEvaluationResult.Unknown(mayFailAtRuntime: true)
                 : right;
+        }
+
+        if (binary.Left.Type is SmileType.Double)
+        {
+            if (!left.IsKnown || !right.IsKnown) return StaticEvaluationResult.Unknown(mayFailAtRuntime: true);
+            try { return StaticEvaluationResult.Known(DoubleSemantics.Binary(binary.Operator.Kind, left.Value.DoubleValue, right.Value.DoubleValue), left.MayFailAtRuntime || right.MayFailAtRuntime); }
+            catch (ArithmeticException) { return left.MayFailAtRuntime || right.MayFailAtRuntime ? StaticEvaluationResult.Unknown(true) : StaticEvaluationResult.Invalid(new SmileArithmeticError(SmileArithmeticErrorKind.DoubleFailure, binary.OperatorSpan)); }
         }
 
         if (binary.Operator.Kind is BoundBinaryOperatorKind.Division or BoundBinaryOperatorKind.Modulo &&
@@ -1087,6 +1139,7 @@ public static class BoundExpressionEvaluator
         left.Type switch
         {
             SmileType.String => string.Equals(left.StringValue, right.StringValue, StringComparison.Ordinal),
+            SmileType.Double => left.DoubleValue == right.DoubleValue,
             SmileType.Integer => left.IntegerValue == right.IntegerValue,
             SmileType.Boolean => left.BooleanValue == right.BooleanValue,
             _ => false

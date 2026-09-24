@@ -6,7 +6,7 @@ namespace SMILE.Engine;
 // GnuCOBOL contained programs provide native call frames: LINKAGE carries
 // parameters, LOCAL-STORAGE is recreated for recursion, and parent GLOBAL
 // storage remains visible to every routine.
-internal sealed class CobolWriter
+internal sealed partial class CobolWriter
 {
     private const int TextCapacity = 4096;
     private readonly BoundProgram _program;
@@ -133,7 +133,7 @@ internal sealed class CobolWriter
 
         if (plan.NeedsDisplayNumber)
         {
-            Line("       01 SMILE-DISPLAY-NUMBER PIC -(17)9.");
+            Line("       01 SMILE-DISPLAY-NUMBER PIC -(19)9.");
         }
     }
 
@@ -219,6 +219,7 @@ internal sealed class CobolWriter
 
     private static string Picture(SmileType type) => type switch
     {
+        SmileType.Double => "USAGE FLOAT-LONG",
         SmileType.Integer => "PIC S9(18) COMP-5",
         SmileType.Boolean => "PIC 9 COMP-5",
         _ => $"PIC X({TextCapacity})"
@@ -249,6 +250,7 @@ internal sealed class CobolWriter
 
     private string Literal(SmileValue value) => value.Type switch
     {
+        SmileType.Double => DoubleSemantics.Format(value.DoubleValue),
         SmileType.Integer => value.IntegerValue.ToString(CultureInfo.InvariantCulture),
         SmileType.Boolean => value.BooleanValue ? "1" : "0",
         _ => TargetEscapes.CobolString(value.StringValue)
@@ -312,7 +314,7 @@ internal sealed class CobolWriter
 
     private sealed record LoopFrame(BoundExitKind Kind, Temporary ExitFlag);
 
-    private sealed class ProcedureEmitter
+    private sealed partial class ProcedureEmitter
     {
         private readonly CobolWriter _owner;
         private readonly IReadOnlyList<BoundSourceItem> _items;
@@ -475,6 +477,9 @@ internal sealed class CobolWriter
                 string value = PrepareExpression(expression, indent);
                 switch (expression.Type)
                 {
+                    case SmileType.Double:
+                        PrintDouble(expression, value, indent);
+                        break;
                     case SmileType.Integer:
                         _needsDisplayNumber = true;
                         Temporary displayValue = NewTemporary(SmileType.Integer);
@@ -554,6 +559,11 @@ internal sealed class CobolWriter
                 indent,
                 select.Selector.Type is SmileType.String ? LengthName(captured) : null);
 
+            if (select.Selector.Type is SmileType.Double)
+            {
+                WriteDoubleSelectCases(select.Cases, 0, captured, indent);
+                return;
+            }
             if (select.Selector.Type is SmileType.String)
             {
                 WriteTextSelectCases(select.Cases, 0, captured, indent);
@@ -729,7 +739,7 @@ internal sealed class CobolWriter
 
         private static bool CanInlineCondition(BoundExpression expression) => expression switch
         {
-            BoundStringLiteralExpression or BoundIntegerLiteralExpression or BoundBooleanLiteralExpression or BoundVariableExpression => true,
+            BoundDoubleLiteralExpression or BoundStringLiteralExpression or BoundIntegerLiteralExpression or BoundBooleanLiteralExpression or BoundVariableExpression => true,
             BoundUnaryExpression unary => CanInlineCondition(unary.Operand),
             BoundBinaryExpression binary when binary.Operator.Kind is
                 BoundBinaryOperatorKind.LogicalAnd or BoundBinaryOperatorKind.LogicalOr => false,
@@ -741,6 +751,10 @@ internal sealed class CobolWriter
         {
             switch (expression)
             {
+                case BoundDoubleLiteralExpression literal:
+                    return PrepareDoubleLiteral(literal.Value, indent);
+                case BoundVariableExpression { Variable.IsConstant: true, Type: SmileType.Double } constant:
+                    return PrepareDoubleLiteral(_owner._constants[constant.Variable].DoubleValue, indent);
                 case BoundStringLiteralExpression text:
                     return TargetEscapes.CobolString(text.Value);
                 case BoundIntegerLiteralExpression number:
@@ -772,6 +786,7 @@ internal sealed class CobolWriter
                     return PrepareIntrinsic(intrinsic, indent);
                 case BoundUnaryExpression unary:
                 {
+                    if (unary.Type is SmileType.Double && unary.Operator.Kind is BoundUnaryOperatorKind.Negation) return PrepareDoubleNegation(unary, indent);
                     string operand = PrepareExpression(unary.Operand, indent);
                     return unary.Operator.Kind switch
                     {
@@ -783,6 +798,7 @@ internal sealed class CobolWriter
                 }
                 case BoundBinaryExpression binary:
                 {
+                    if (binary.Left.Type is SmileType.Double) return PrepareDoubleBinary(binary, indent);
                     string left = PrepareExpression(binary.Left, indent);
                     if (binary.Operator.Kind is BoundBinaryOperatorKind.LogicalAnd or BoundBinaryOperatorKind.LogicalOr)
                     {
@@ -951,6 +967,7 @@ internal sealed class CobolWriter
 
         private string PrepareIntrinsic(BoundIntrinsicExpression intrinsic, int indent)
         {
+            if (DoubleSemantics.UsesDouble(intrinsic)) return PrepareDoubleIntrinsic(intrinsic, indent);
             var arguments = new List<Temporary>(intrinsic.Arguments.Count);
             foreach (BoundExpression argument in intrinsic.Arguments)
             {
@@ -1060,6 +1077,9 @@ internal sealed class CobolWriter
                     Line(indent, "ELSE");
                     Line(indent + 1, $"MOVE 0 TO {target}");
                     Line(indent, "END-IF");
+                    break;
+                case SmileType.Double:
+                    Line(indent, $"MOVE {expression} TO {target}");
                     break;
                 case SmileType.Integer:
                     Line(indent, $"COMPUTE {target} = {expression}");

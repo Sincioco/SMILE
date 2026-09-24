@@ -33,6 +33,9 @@ Dim Board[BoardWidth, BoardHeight] As Text
 Dim LastKey As Number
 Dim FixedRoll As Number
 Dim StartedAt As Number
+Dim Speed As Double
+
+Dim Measurements[2] As Double
 
 FirstName = "Sin"
 LastName = "Cioco"
@@ -132,6 +135,14 @@ Print "Unicode scalar count="; Text_Length("A😀B")
 Print "Emoji scalar="; Text_Code_At("A😀B", 1)
 Print "Text slice="; Text_Slice("A😀B", 1, 1)
 Print "Unary plus="; +Age
+
+Speed = ToDouble(3) / 2.0
+Measurements[0] = Speed
+Measurements[1] = Text_To_Double("2.5e0")
+Print "Double values="; Measurements[0]; ", "; Measurements[1]
+Print "Double math="; Sqrt(9.0); ", "; Round(2.5); ", "; Clamp(Speed, 0.0, 1.0)
+Print "Explicit truncation="; ToNumber(-3.9)
+Print "Signed zero="; Text_From_Double(-0.0)
 
 Call ShowGreeting()
 Call ShowGreeting(Caption:="Welcome", Learner:="Sin")

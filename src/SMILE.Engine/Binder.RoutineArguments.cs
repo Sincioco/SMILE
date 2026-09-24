@@ -7,9 +7,9 @@ internal sealed partial class Binder
         if (parameter.DefaultValue is null) return null;
         ExpressionSyntax source = parameter.DefaultValue;
         while (source is ParenthesizedExpressionSyntax parentheses) source = parentheses.Expression;
-        bool permitted = source is IntegerLiteralExpressionSyntax or StringLiteralExpressionSyntax or
+        bool permitted = source is DoubleLiteralExpressionSyntax or IntegerLiteralExpressionSyntax or StringLiteralExpressionSyntax or
             BooleanLiteralExpressionSyntax or NameExpressionSyntax or
-            UnaryExpressionSyntax { OperatorToken.Kind: SyntaxKind.MinusToken, Operand: IntegerLiteralExpressionSyntax };
+            UnaryExpressionSyntax { OperatorToken.Kind: SyntaxKind.MinusToken, Operand: IntegerLiteralExpressionSyntax or DoubleLiteralExpressionSyntax };
         BoundExpression expression = BindExpression(source, constantsOnly: true);
         StaticEvaluationResult result = BoundExpressionEvaluator.Evaluate(expression, _constantValues);
         if (!permitted || !result.IsKnown || result.Value.Type != parameter.DeclaredType)

@@ -172,6 +172,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private void WriteRuntimePreamble()
         {
+            WriteDoubleIncludes();
             switch (_language)
             {
                 case TargetLanguage.C:
@@ -224,7 +225,7 @@ internal static partial class CoreBasicCodeGenerator
                     }
                     break;
                 case TargetLanguage.Swift:
-                    if (_features.HasWait || _features.HasTimer)
+                    if (_features.HasWait || _features.HasTimer || _features.HasConsoleRuntime && DoubleFeatures.IsRequired)
                     {
                         Line("import Foundation");
                     }
@@ -251,6 +252,7 @@ internal static partial class CoreBasicCodeGenerator
         private void WriteRuntimeHelpers()
         {
             WriteTextInspectionHelpers();
+            WriteDoubleHelpers();
             if (!_features.HasConsoleRuntime && !_features.HasAbs && !_features.HasMin && !_features.HasMax)
             {
                 return;
@@ -275,6 +277,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private void WriteHelperPrototypes()
         {
+            WriteDoublePrototypes();
             if (_language is not (TargetLanguage.C or TargetLanguage.ObjectiveC or TargetLanguage.Cpp))
             {
                 return;

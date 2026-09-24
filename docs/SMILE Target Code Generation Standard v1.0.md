@@ -146,3 +146,14 @@ Generator work reports:
 ## Final decision rule
 
 Prefer the target program a competent teacher would write on a whiteboard for the same behavior, provided it faithfully implements the bound Core BASIC program.
+
+## Double generation
+
+Use the target's native binary64 type, operators, and standard math APIs. Emit
+only the used finite/domain/conversion checks needed to preserve the source
+contract; do not add integer helpers to Double-only programs or numeric support
+for folded constants. Formatting preserves signed zero and numeric round trips.
+MASM uses REAL8/SSE with Windows x64 floating calls. COBOL uses FLOAT-LONG storage
+and a focused C interoperability boundary where its decimal-based arithmetic,
+literal conversion, or comparison would lose binary64 distinctions. These
+adapters contain individual native operations, not a numeric opcode interpreter.

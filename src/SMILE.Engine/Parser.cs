@@ -144,7 +144,7 @@ internal sealed class Parser
         }
 
         Match(TokenKind.As, "Declarations require 'As Number', 'As Boolean', or 'As Text'.");
-        Token type = ParseType("Expected Number, Boolean, or Text after 'As'.");
+        Token type = ParseType("Expected Number, Double, Boolean, or Text after 'As'.");
         SmileType declaredType = ToSmileType(type.Kind);
         endSpan = type.Span.Length == 0 ? endSpan : type.Span;
         return new DimStatementSyntax(name.Text, name.Span, declaredType, arraySizes, Combine(start.Span, endSpan));
@@ -198,7 +198,7 @@ internal sealed class Parser
                 SkipExpressionContinuations();
                 Match(TokenKind.As, "Typed parameters require 'As Number', 'As Boolean', or 'As Text'.");
                 SkipExpressionContinuations();
-                Token type = ParseType("Expected Number, Boolean, or Text for the parameter type.");
+                Token type = ParseType("Expected Number, Double, Boolean, or Text for the parameter type.");
                 SkipExpressionContinuations();
                 ExpressionSyntax? defaultValue = null;
                 if (Current.Kind is TokenKind.Equals)
@@ -235,7 +235,7 @@ internal sealed class Parser
         if (kind is RoutineKind.Function)
         {
             Match(TokenKind.As, "Function declarations require a return type after 'As'.");
-            Token type = ParseType("Expected Number, Boolean, or Text for the Function return type.");
+            Token type = ParseType("Expected Number, Double, Boolean, or Text for the Function return type.");
             returnType = ToSmileType(type.Kind);
             headerEnd = type.Span;
         }
@@ -581,6 +581,8 @@ internal sealed class Parser
         Token token = Current;
         switch (token.Kind)
         {
+            case TokenKind.DoubleLiteral:
+                return new DoubleLiteralExpressionSyntax(Next().Text, token.Span);
             case TokenKind.Number:
                 Next();
                 return new IntegerLiteralExpressionSyntax(token.Text, token.Span);
@@ -769,13 +771,18 @@ internal sealed class Parser
         return new SyntaxToken(kind, token.Text, token.Value, token.Span);
     }
 
-    private Token ParseType(string message) =>
-        Current.Kind is TokenKind.NumberType or TokenKind.BooleanType or TokenKind.TextType
+    private Token ParseType(string message)
+    {
+        if (Current.Kind is TokenKind.Identifier && string.Equals(Current.Text, "Double", StringComparison.OrdinalIgnoreCase))
+            return Next() with { Kind = TokenKind.DoubleType };
+        return Current.Kind is TokenKind.NumberType or TokenKind.BooleanType or TokenKind.TextType
             ? Next()
             : Match(TokenKind.NumberType, message);
+    }
 
     private static SmileType ToSmileType(TokenKind kind) => kind switch
     {
+        TokenKind.DoubleType => SmileType.Double,
         TokenKind.BooleanType => SmileType.Boolean,
         TokenKind.TextType => SmileType.String,
         _ => SmileType.Integer
@@ -883,11 +890,11 @@ internal sealed class Parser
 
     private enum TokenKind
     {
-        Bad, EndOfFile, EndOfLine, Comment, Identifier, Number, String,
+        Bad, EndOfFile, EndOfLine, Comment, Identifier, Number, DoubleLiteral, String,
         Dim, If, Then, Else, End, For, To, Down, Do, Loop, Until, Print,
         Get, Key, Clear, Screen, Move, Cursor, Color, Default, TextColor, Wait, Milliseconds, Random, From,
         True, False, And, Or, Not, Const, Mod, Exit, Program, As,
-        NumberType, BooleanType, TextType, Option, Explicit, Sub, Function,
+        NumberType, DoubleType, BooleanType, TextType, Option, Explicit, Sub, Function,
         Call, Return, Select, Case, ByVal, ByRef, Optional, BuiltInConstant, BuiltInFunction, UnsupportedKeyword,
         Plus, Minus, Star, Slash, Equals, NotEquals, Less, LessOrEquals,
         Greater, GreaterOrEquals, OpenParenthesis, CloseParenthesis,
@@ -988,6 +995,9 @@ internal sealed class Parser
         private int _line = 1;
         private int _column = 1;
 
+        private void ReportDoubleLiteral(int start, int line, int column) => _diagnostics.Add(new Diagnostic(
+            "SMILE3900", DiagnosticSeverity.Error, "Double literal must be a finite decimal/exponent value with complete digits.", new TextSpan(start, _position - start, line, column)));
+
         public Lexer(string source) => _source = source;
 
         public IReadOnlyList<Diagnostic> Diagnostics => _diagnostics;
@@ -1078,7 +1088,26 @@ internal sealed class Parser
                     Advance();
                 }
 
+                bool floating = false;
+                if (Current == '.')
+                {
+                    floating = true;
+                    Advance();
+                    while (Current is >= '0' and <= '9') Advance();
+                }
+                if (Current is 'e' or 'E')
+                {
+                    floating = true;
+                    Advance();
+                    if (Current is '+' or '-') Advance();
+                    while (Current is >= '0' and <= '9') Advance();
+                }
                 string text = _source[start.._position];
+                if (floating)
+                {
+                    if (!DoubleSemantics.TryParse(text, out _)) ReportDoubleLiteral(start, line, column);
+                    return Make(TokenKind.DoubleLiteral, start, line, column);
+                }
                 if (!long.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out _))
                 {
                     _diagnostics.Add(new Diagnostic(

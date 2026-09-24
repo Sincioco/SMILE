@@ -62,6 +62,8 @@ internal static partial class CoreBasicCodeGenerator
                 IsPrimary: false));
         }
 
+        if (language is TargetLanguage.MasmX64 && CoreBasicMasmWriter.GenerateDoubleRuntime(program) is string numericRuntime)
+            files.Add(new GeneratedFile("SmileNumericRuntime.c", numericRuntime, IsPrimary: false));
         return new GeneratedProgram(language, files);
     }
 
@@ -71,7 +73,7 @@ internal static partial class CoreBasicCodeGenerator
         Do
     }
 
-    internal static IEnumerable<BoundExpression> EnumerateExpressionsForSupport(BoundProgram program)
+    internal static IEnumerable<BoundExpression> EnumerateExpressionsForSupport(BoundProgram program, bool includeConstants = true)
     {
         foreach (BoundRoutineDeclaration routine in program.Routines)
         {
@@ -81,7 +83,9 @@ internal static partial class CoreBasicCodeGenerator
             }
         }
 
-        foreach (BoundExpression expression in StructuredWriter.EnumerateExpressions(program.SourceItems))
+        IReadOnlyList<BoundSourceItem> mainItems = includeConstants ? program.SourceItems
+            : program.SourceItems.Where(item => item is not BoundConstStatement).ToArray();
+        foreach (BoundExpression expression in StructuredWriter.EnumerateExpressions(mainItems))
         {
             yield return expression;
         }
@@ -122,6 +126,7 @@ internal static partial class CoreBasicCodeGenerator
             _language = language;
             _identifiers = TargetIdentifierMap.Create(program, language);
             _features = CoreBasicProgramFeatureSet.Create(program);
+            _doubleFeatures = new DoubleProgramFeatures(program);
             _asyncJavaScriptRoutines = FindAsyncJavaScriptRoutines(program);
         }
 
@@ -225,7 +230,7 @@ internal static partial class CoreBasicCodeGenerator
         public string WriteSwift()
         {
             if (!_features.HasConsoleRuntime &&
-                (ProgramStatements().Any(statement => statement is BoundEndProgramStatement) || ProgramHasArrays()))
+                (DoubleFeatures.IsRequired || ProgramStatements().Any(statement => statement is BoundEndProgramStatement) || ProgramHasArrays()))
             {
                 Line("import Foundation");
                 Line();
@@ -258,7 +263,8 @@ internal static partial class CoreBasicCodeGenerator
             });
             if (ProgramExpressions().Any(expression => expression is BoundBinaryExpression
                 {
-                    Operator.Kind: BoundBinaryOperatorKind.Division
+                    Operator.Kind: BoundBinaryOperatorKind.Division,
+                    Type: SmileType.Integer
                 }) || hasModulo)
             {
                 Line("def _smile_div(left, right):");
@@ -1240,7 +1246,7 @@ internal static partial class CoreBasicCodeGenerator
             {
                 TargetLanguage.CSharp or TargetLanguage.JavaScript or TargetLanguage.Swift or TargetLanguage.Python => true,
                 TargetLanguage.C or TargetLanguage.ObjectiveC or TargetLanguage.Cpp =>
-                    select.Selector.Type is not SmileType.String,
+                    select.Selector.Type is not (SmileType.String or SmileType.Double),
                 TargetLanguage.Java => select.Selector.Type is SmileType.String,
                 _ => false
             };
@@ -1372,10 +1378,11 @@ internal static partial class CoreBasicCodeGenerator
                 return;
             }
 
+            IReadOnlyList<string> values = PrepareCallArguments(print.Values, parameterOrder: null);
             var displays = new List<string>(print.Values.Count);
-            foreach (BoundExpression value in print.Values)
+            for (int index = 0; index < print.Values.Count; index++)
             {
-                displays.Add(DisplayExpression(value, PreparedExpression(value)));
+                displays.Add(DisplayExpression(print.Values[index], values[index]));
             }
 
             string terminator = print.SuppressNewLine ? string.Empty : "\\n";
@@ -1819,6 +1826,7 @@ internal static partial class CoreBasicCodeGenerator
             return expression switch
             {
                 BoundStringLiteralExpression text => StringLiteral(text.Value),
+                BoundDoubleLiteralExpression number => DoubleSemantics.Format(number.Value),
                 BoundIntegerLiteralExpression number => IntegerLiteral(number.Value),
                 BoundBooleanLiteralExpression boolean => BooleanLiteral(boolean.Value),
                 BoundVariableExpression variable => Name(variable.Variable),
@@ -1843,7 +1851,7 @@ internal static partial class CoreBasicCodeGenerator
         {
             switch (expression)
             {
-                case BoundStringLiteralExpression or BoundIntegerLiteralExpression or BoundBooleanLiteralExpression or BoundVariableExpression:
+                case BoundDoubleLiteralExpression or BoundStringLiteralExpression or BoundIntegerLiteralExpression or BoundBooleanLiteralExpression or BoundVariableExpression:
                     return Expression(expression);
                 case BoundArrayExpression array:
                 {
@@ -1868,8 +1876,13 @@ internal static partial class CoreBasicCodeGenerator
                 }
                 case BoundIntrinsicExpression intrinsic:
                 {
-                    string[] arguments = intrinsic.Arguments.Select(LowerOrderedCExpression).ToArray();
-                    return NewOrderedValue(intrinsic.Type, Intrinsic(intrinsic.Kind, arguments));
+                    string[] arguments = intrinsic.Arguments.Select(argument =>
+                    {
+                        string value = LowerOrderedCExpression(argument);
+                        return DoubleSemantics.UsesDouble(intrinsic) && argument is BoundVariableExpression
+                            ? NewOrderedValue(argument.Type, value) : value;
+                    }).ToArray();
+                    return NewOrderedValue(intrinsic.Type, DoubleSemantics.UsesDouble(intrinsic) ? DoubleIntrinsic(intrinsic, arguments) : Intrinsic(intrinsic.Kind, arguments));
                 }
                 case BoundCallExpression call:
                 {
@@ -1927,6 +1940,8 @@ internal static partial class CoreBasicCodeGenerator
                 case BoundBinaryExpression binary:
                 {
                     string left = LowerOrderedCExpression(binary.Left);
+                    if (binary.Left is BoundVariableExpression && ContainsRoutineCall(binary.Right))
+                        left = NewOrderedValue(binary.Left.Type, left);
                     string right = LowerOrderedCExpression(binary.Right);
                     return NewOrderedValue(binary.Type, RenderBinary(binary, left, right));
                 }
@@ -1957,7 +1972,7 @@ internal static partial class CoreBasicCodeGenerator
         {
             BoundArrayExpression => true,
             BoundCallExpression call => call.ParameterOrder is not null || call.Arguments.Any(ContainsArrayAccess),
-            BoundIntrinsicExpression intrinsic => intrinsic.Arguments.Any(ContainsArrayAccess),
+            BoundIntrinsicExpression intrinsic => DoubleSemantics.UsesDouble(intrinsic) || intrinsic.Arguments.Any(ContainsArrayAccess),
             BoundUnaryExpression unary => ContainsArrayAccess(unary.Operand),
             BoundBinaryExpression binary => ContainsArrayAccess(binary.Left) || ContainsArrayAccess(binary.Right),
             _ => false
@@ -1965,6 +1980,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private string RenderBinary(BoundBinaryExpression binary, string left, string right)
         {
+            if (binary.Left.Type is SmileType.Double) return DoubleBinary(binary, left, right);
             if (binary.Operator.Kind is BoundBinaryOperatorKind.StringConcatenation)
             {
                 return _language switch
@@ -2086,6 +2102,7 @@ internal static partial class CoreBasicCodeGenerator
         }
 
         private string Intrinsic(BoundIntrinsicExpression intrinsic) =>
+            DoubleSemantics.UsesDouble(intrinsic) ? DoubleIntrinsic(intrinsic, intrinsic.Arguments.Select(Expression).ToArray()) :
             Intrinsic(intrinsic.Kind, intrinsic.Arguments.Select(Expression).ToArray());
 
         private string Intrinsic(BoundIntrinsicKind kind, IReadOnlyList<string> arguments) =>
@@ -2156,6 +2173,7 @@ internal static partial class CoreBasicCodeGenerator
         {
             string left = Expression(binary.Left);
             string right = Expression(binary.Right);
+            if (binary.Left.Type is SmileType.Double) return DoubleBinary(binary, left, right);
             if (binary.Operator.Kind is BoundBinaryOperatorKind.StringConcatenation)
             {
                 return _language switch
@@ -2223,6 +2241,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private string DisplayExpression(BoundExpression expression, string value)
         {
+            if (expression.Type is SmileType.Double) return DoubleDisplay(value);
             if (expression.Type is not SmileType.Boolean)
             {
                 return _language is TargetLanguage.JavaScript ? $"String({value})" : value;
@@ -2231,6 +2250,7 @@ internal static partial class CoreBasicCodeGenerator
             return _language switch
             {
                 TargetLanguage.Python => $"(\"True\" if {value} else \"False\")",
+                TargetLanguage.Swift when DoubleFeatures.IsRequired => $"String({value}).capitalized",
                 TargetLanguage.C or TargetLanguage.ObjectiveC or TargetLanguage.Cpp => $"({value} ? \"True\" : \"False\")",
                 _ => $"({value} ? \"True\" : \"False\")"
             };
@@ -2238,17 +2258,18 @@ internal static partial class CoreBasicCodeGenerator
 
         private string TypeName(SmileType type) => _language switch
         {
-            TargetLanguage.CSharp => type switch { SmileType.Integer => "long", SmileType.Boolean => "bool", _ => "string" },
-            TargetLanguage.C => type switch { SmileType.Integer => "int64_t", SmileType.Boolean => "bool", _ => "const char *" },
-            TargetLanguage.Java => type switch { SmileType.Integer => "long", SmileType.Boolean => "boolean", _ => "String" },
-            TargetLanguage.ObjectiveC => type switch { SmileType.Integer => "int64_t", SmileType.Boolean => "bool", _ => "const char *" },
-            TargetLanguage.Swift => type switch { SmileType.Integer => "Int64", SmileType.Boolean => "Bool", _ => "String" },
-            TargetLanguage.Cpp => type switch { SmileType.Integer => "std::int64_t", SmileType.Boolean => "bool", _ => "std::string" },
+            TargetLanguage.CSharp => type switch { SmileType.Double => "double", SmileType.Integer => "long", SmileType.Boolean => "bool", _ => "string" },
+            TargetLanguage.C => type switch { SmileType.Double => "double", SmileType.Integer => "int64_t", SmileType.Boolean => "bool", _ => "const char *" },
+            TargetLanguage.Java => type switch { SmileType.Double => "double", SmileType.Integer => "long", SmileType.Boolean => "boolean", _ => "String" },
+            TargetLanguage.ObjectiveC => type switch { SmileType.Double => "double", SmileType.Integer => "int64_t", SmileType.Boolean => "bool", _ => "const char *" },
+            TargetLanguage.Swift => type switch { SmileType.Double => "Double", SmileType.Integer => "Int64", SmileType.Boolean => "Bool", _ => "String" },
+            TargetLanguage.Cpp => type switch { SmileType.Double => "double", SmileType.Integer => "std::int64_t", SmileType.Boolean => "bool", _ => "std::string" },
             _ => string.Empty
         };
 
         private string DefaultLiteral(SmileType type) => type switch
         {
+            SmileType.Double => "0.0",
             SmileType.Integer => IntegerLiteral(0),
             SmileType.Boolean => BooleanLiteral(false),
             _ => StringLiteral(string.Empty)
@@ -2256,6 +2277,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private string Literal(SmileValue value) => value.Type switch
         {
+            SmileType.Double => DoubleSemantics.Format(value.DoubleValue),
             SmileType.Integer => IntegerLiteral(value.IntegerValue),
             SmileType.Boolean => BooleanLiteral(value.BooleanValue),
             SmileType.String => StringLiteral(value.StringValue),
@@ -2628,7 +2650,7 @@ internal static partial class CoreBasicCodeGenerator
             expression is BoundStringLiteralExpression text && text.Value.Any(character => character > 127));
 
         private bool ProgramNeedsCTextStorage() => (_language is TargetLanguage.C or TargetLanguage.ObjectiveC) &&
-            (_features.HasTextSlice || ProgramExpressions().Any(expression => expression is BoundBinaryExpression
+            (_features.HasTextSlice || DoubleFeatures.Has(BoundIntrinsicKind.TextFromDouble) || ProgramExpressions().Any(expression => expression is BoundBinaryExpression
         {
             Operator.Kind: BoundBinaryOperatorKind.StringConcatenation
         }));

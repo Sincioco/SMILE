@@ -12,7 +12,7 @@ Detection, compilation, linking, and execution are asynchronous and cancellation
 |---|---|---|
 | C# | .NET SDK builds the generated minimal project | generated console executable |
 | C | Visual Studio x64 C compiler | generated executable |
-| MASM x64 | Visual Studio `ml64` plus `link` and UCRT/Kernel32 libraries; MSVC compiles the feature-gated Text companion when needed | generated executable |
+| MASM x64 | Visual Studio `ml64` plus `link` and UCRT/Kernel32 libraries; MSVC compiles the feature-gated Text/numeric companions when needed | generated executable |
 | JavaScript (Node.js) | Node.js | `node Program.js` |
 | Java | JDK `javac` and `java` | generated `Program` class |
 | COBOL | GnuCOBOL | generated executable |
@@ -31,7 +31,7 @@ Generated C# contains `Program.cs` and a minimal `GeneratedProgram.csproj` targe
 
 ## C, C++, and Objective-C
 
-The Windows C and C++ paths use Visual Studio's x64 environment. Objective-C uses the dependency-light Clang path available through MSYS2/MinGW and therefore generates portable C-compatible Objective-C console source without requiring Foundation.
+The Windows C and C++ paths use Visual Studio's x64 environment and `/fp:strict` for binary64 operation boundaries. Objective-C uses the dependency-light Clang path available through MSYS2/MinGW and therefore generates portable C-compatible Objective-C console source without requiring Foundation.
 
 ## MASM x64
 
@@ -43,7 +43,7 @@ link.exe /nologo /ignore:4210 Program.obj kernel32.lib legacy_stdio_definitions.
 
 Generated assembly follows the Windows x64 ABI, including required shadow space and stack alignment. It uses recognizable CRT output and `ExitProcess`. The known `LNK4210` warning associated with direct UCRT use and a custom assembly entry point is suppressed by the focused link command.
 
-Programs without Text concatenation or Unicode inspection remain a single `Program.asm`. Text `+`, `Text_Slice`, `Text_Length`, or `Text_Code_At` can require dependency-free `SmileTextRuntime.c`; the assemble script compiles it with MSVC and the link step adds its object. That companion owns only the used UTF-8 scalar operations and, when Text is allocated, allocation/root collection and optional lifetime counters. Generated assembly retains learner expressions, assignments, arrays, calls, returns, branches, and loops.
+Programs without Text/numeric support requirements remain a single `Program.asm`. Text `+`, `Text_Slice`, `Text_Length`, `Text_Code_At`, or `Text_From_Double` can require dependency-free `SmileTextRuntime.c`; the assemble script compiles it with MSVC and the link step adds its object. That companion owns only the used UTF-8 scalar operations and, when Text is allocated, allocation/root collection and optional lifetime counters. Generated assembly retains learner expressions, assignments, arrays, calls, returns, branches, and loops. Checked Double operations and conversions can also require `SmileNumericRuntime.c`, compiled with `/fp:strict`. Double arguments and results use the Windows x64 floating-register convention. The assemble script stops immediately after a failed assembler or companion compilation.
 
 ## JavaScript (Node.js) and Python
 
@@ -54,7 +54,7 @@ These are direct-run targets. `javascript` remains the stable CLI ID, the displa
 - C#, C, Objective-C, MASM, Swift, and C++ use their normal Windows console/CRT facilities.
 - Java requires JDK 21 and uses the standard Foreign Function & Memory API with `--enable-preview` to call `_kbhit`/`_getwch`; no JNA or external JAR is used.
 - Swift uses Windows CRT symbols for key polling and WinSDK only for screen operations.
-- GnuCOBOL links a generated `SmileRuntime.c` only when a used primitive needs C/Win32 interop. The companion contains terminal mechanics, never learner or game logic.
+- GnuCOBOL links a generated `SmileRuntime.c` only when a used primitive needs C/Win32 interop. The companion contains terminal/text mechanics and, when used, exact Double C adapters; learner statements and game logic stay in COBOL.
 - `Clear Screen` erases the visible attached console and homes the cursor. `Move Cursor To Column, Row` uses 1-based coordinates, and `Text Color Foreground, Background` maps eight named colors to the closest normal terminal palette; `Text Color Default` restores the terminal default. These screen operations are safe no-ops when output is redirected. `Get Key` returns `KEY_NONE` when no attached interactive input event exists. Wait clamps to `4,294,967,295` milliseconds; reversed Random returns its lower bound without consuming randomness.
 - Interactive conformance uses Windows ConPTY to prove W/A/S/D, real arrow sequences, Enter, Escape, Space, no-input polling, redraw, exit, and restored launcher input on every target.
 

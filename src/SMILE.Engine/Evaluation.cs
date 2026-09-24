@@ -468,6 +468,9 @@ public sealed class SmileEvaluator
             case BoundStringLiteralExpression literal:
                 value = SmileValue.FromString(literal.Value);
                 return Success(out error);
+            case BoundDoubleLiteralExpression literal:
+                value = SmileValue.FromDouble(literal.Value);
+                return Success(out error);
             case BoundIntegerLiteralExpression literal:
                 value = SmileValue.FromInteger(literal.Value);
                 return Success(out error);
@@ -514,6 +517,7 @@ public sealed class SmileEvaluator
                     value = unary.Operator.Kind switch
                     {
                         BoundUnaryOperatorKind.Identity => operand,
+                        BoundUnaryOperatorKind.Negation when operand.Type is SmileType.Double => SmileValue.FromDouble(-operand.DoubleValue),
                         BoundUnaryOperatorKind.Negation => SmileValue.FromInteger(checked(-operand.IntegerValue)),
                         BoundUnaryOperatorKind.LogicalNegation => SmileValue.FromBoolean(!operand.BooleanValue),
                         _ => throw new InvalidOperationException("Unknown unary operator.")
@@ -566,7 +570,7 @@ public sealed class SmileEvaluator
 
         try
         {
-            value = binary.Operator.Kind switch
+            value = left.Type is SmileType.Double ? DoubleSemantics.Binary(binary.Operator.Kind, left.DoubleValue, right.DoubleValue) : binary.Operator.Kind switch
             {
                 BoundBinaryOperatorKind.Addition => SmileValue.FromInteger(checked(left.IntegerValue + right.IntegerValue)),
                 BoundBinaryOperatorKind.Subtraction => SmileValue.FromInteger(checked(left.IntegerValue - right.IntegerValue)),
@@ -594,6 +598,12 @@ public sealed class SmileEvaluator
         {
             value = default;
             error = new SmileRuntimeError("SMILER1207", "Division by zero.");
+            return false;
+        }
+        catch (ArithmeticException) when (left.Type is SmileType.Double)
+        {
+            value = default;
+            error = new SmileRuntimeError("SMILER3902", $"{DoubleSemantics.FailureMessage} At line {binary.OperatorSpan.Line}, column {binary.OperatorSpan.Column}.");
             return false;
         }
         catch (OverflowException)
@@ -624,6 +634,11 @@ public sealed class SmileEvaluator
 
         try
         {
+            if (DoubleSemantics.UsesDouble(intrinsic))
+            {
+                value = DoubleSemantics.Intrinsic(intrinsic.Kind, arguments!);
+                return Success(out error);
+            }
             if (intrinsic.Kind is BoundIntrinsicKind.TextLength or BoundIntrinsicKind.TextCodeAt or BoundIntrinsicKind.TextSlice)
             {
                 value = TextIntrinsics.Evaluate(intrinsic.Kind, arguments!);
@@ -639,6 +654,12 @@ public sealed class SmileEvaluator
             };
             value = SmileValue.FromInteger(result);
             return Success(out error);
+        }
+        catch (ArithmeticException) when (DoubleSemantics.UsesDouble(intrinsic))
+        {
+            value = default;
+            error = new SmileRuntimeError("SMILER3902", $"{DoubleSemantics.FailureMessage} At line {intrinsic.Span.Line}, column {intrinsic.Span.Column}.");
+            return false;
         }
         catch (OverflowException)
         {
@@ -811,6 +832,7 @@ public sealed class SmileEvaluator
 
     private static SmileValue DefaultValue(SmileType type) => type switch
     {
+        SmileType.Double => SmileValue.FromDouble(0),
         SmileType.Integer => SmileValue.FromInteger(0),
         SmileType.Boolean => SmileValue.FromBoolean(false),
         _ => SmileValue.FromString(string.Empty)
@@ -818,6 +840,7 @@ public sealed class SmileEvaluator
 
     private static bool ValuesEqual(SmileValue left, SmileValue right) => left.Type switch
     {
+        SmileType.Double => left.DoubleValue == right.DoubleValue,
         SmileType.Integer => left.IntegerValue == right.IntegerValue,
         SmileType.Boolean => left.BooleanValue == right.BooleanValue,
         SmileType.String => string.Equals(left.StringValue, right.StringValue, StringComparison.Ordinal),
@@ -826,6 +849,7 @@ public sealed class SmileEvaluator
 
     private static int Compare(SmileValue left, SmileValue right) => left.Type switch
     {
+        SmileType.Double => left.DoubleValue.CompareTo(right.DoubleValue),
         SmileType.Integer => left.IntegerValue.CompareTo(right.IntegerValue),
         SmileType.String => string.CompareOrdinal(left.StringValue, right.StringValue),
         _ => throw new InvalidOperationException("Only Number and Text values can be ordered.")

@@ -36,9 +36,9 @@ internal sealed record CoreBasicProgramFeatureSet(
             statements.Any(statement => statement is BoundWaitStatement),
             statements.Any(statement => statement is BoundRandomStatement),
             expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.Timer }),
-            expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.Abs }),
-            expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.Min }),
-            expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.Max }),
+            expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.Abs, Type: SmileType.Integer }),
+            expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.Min, Type: SmileType.Integer }),
+            expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.Max, Type: SmileType.Integer }),
             expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.TextLength }),
             expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.TextCodeAt }),
             expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.TextSlice }));

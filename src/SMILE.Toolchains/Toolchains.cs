@@ -682,7 +682,7 @@ public sealed class MsvcCToolchain : ToolchainBase
                 "@echo off",
                 $"call {QuoteForCmd(status.Location)} >nul",
                 "if errorlevel 1 exit /b %errorlevel%",
-                "cl.exe /nologo /TC /utf-8 Program.c /Fe:Program.exe"
+                "cl.exe /nologo /TC /utf-8 /fp:strict Program.c /Fe:Program.exe"
             },
             cancellationToken).ConfigureAwait(false);
 
@@ -771,7 +771,7 @@ public sealed class MsvcCppToolchain : ToolchainBase
                 "@echo off",
                 $"call {QuoteForCmd(status.Location)} >nul",
                 "if errorlevel 1 exit /b %errorlevel%",
-                "cl.exe /nologo /EHsc /std:c++20 /utf-8 Program.cpp /Fe:Program.exe"
+                "cl.exe /nologo /EHsc /std:c++20 /utf-8 /fp:strict Program.cpp /Fe:Program.exe"
             },
             cancellationToken).ConfigureAwait(false);
 
@@ -854,6 +854,8 @@ public sealed class MasmX64Toolchain : ToolchainBase
 
         bool hasTextRuntime = generatedProgram.Files.Any(file =>
             file.RelativePath.Equals("SmileTextRuntime.c", StringComparison.OrdinalIgnoreCase));
+        bool hasNumericRuntime = generatedProgram.Files.Any(file =>
+            file.RelativePath.Equals("SmileNumericRuntime.c", StringComparison.OrdinalIgnoreCase));
 
         await WriteCommandScriptAsync(
             workspace,
@@ -864,9 +866,14 @@ public sealed class MasmX64Toolchain : ToolchainBase
                 $"call {QuoteForCmd(status.Location)} >nul",
                 "if errorlevel 1 exit /b %errorlevel%",
                 "ml64 /nologo /c Program.asm /Fo:Program.obj",
+                "if errorlevel 1 exit /b %errorlevel%",
                 hasTextRuntime
                     ? "cl.exe /nologo /c /TC /GS- /utf-8 SmileTextRuntime.c /Fo:SmileTextRuntime.obj"
-                    : "rem No companion Text runtime is required."
+                    : "rem No companion Text runtime is required.",
+                "if errorlevel 1 exit /b %errorlevel%",
+                hasNumericRuntime
+                    ? "cl.exe /nologo /c /TC /GS- /utf-8 /fp:strict SmileNumericRuntime.c /Fo:SmileNumericRuntime.obj"
+                    : "rem No companion numeric runtime is required."
             },
             cancellationToken).ConfigureAwait(false);
 
@@ -889,7 +896,7 @@ public sealed class MasmX64Toolchain : ToolchainBase
                 "@echo off",
                 $"call {QuoteForCmd(status.Location)} >nul",
                 "if errorlevel 1 exit /b %errorlevel%",
-                $"link.exe /nologo /ignore:4210 Program.obj{(hasTextRuntime ? " SmileTextRuntime.obj vcruntime.lib" : string.Empty)} kernel32.lib legacy_stdio_definitions.lib ucrt.lib /subsystem:console /entry:main /out:Program.exe"
+                $"link.exe /nologo /ignore:4210 Program.obj{(hasTextRuntime ? " SmileTextRuntime.obj" : string.Empty)}{(hasNumericRuntime ? " SmileNumericRuntime.obj" : string.Empty)}{(hasTextRuntime || hasNumericRuntime ? " vcruntime.lib" : string.Empty)} kernel32.lib legacy_stdio_definitions.lib ucrt.lib /subsystem:console /entry:main /out:Program.exe"
             },
             cancellationToken).ConfigureAwait(false);
 

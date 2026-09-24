@@ -23,6 +23,18 @@ internal sealed class TargetIdentifierMap
             "smile_text_slice", "smile_utf8_next", "smile_text_allocate"
         });
         if (language is TargetLanguage.Python) reserved.Add("ord");
+        if (new DoubleProgramFeatures(program).IsRequired)
+        {
+            foreach (string name in new[] { "double_fail", "check_double", "double_divisor", "to_number", "double_clamp", "format_double", "text_from_double", "text_to_double", "double_round", "double_nonnegative" })
+            {
+                string suffix = string.Concat(name.Split('_').Select(word => char.ToUpperInvariant(word[0]) + word[1..]));
+                reserved.UnionWith(new[] { "smile_" + name, "smile" + suffix, "Smile" + suffix });
+            }
+            reserved.UnionWith(new[] { "Double", "BitConverter" });
+            if (language is TargetLanguage.Python) reserved.UnionWith(new[] { "math", "re", "float", "int", "repr", "round" });
+            if (language is TargetLanguage.C or TargetLanguage.ObjectiveC or TargetLanguage.Cpp)
+                reserved.UnionWith(new[] { "fabs", "sqrt", "sin", "cos", "atan2", "floor", "ceil", "trunc", "nearbyint", "strtod", "isfinite", "memchr", "snprintf", "strchr", "strcat" });
+        }
         var used = new HashSet<string>(StringComparer.Ordinal);
         var names = new Dictionary<VariableSymbol, string>();
         var routineNames = new Dictionary<RoutineSymbol, string>();

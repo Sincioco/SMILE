@@ -5,7 +5,7 @@ Authority inspected read-only: `D:\SMILE 2.0`, commit
 before inspection and after the unchanged fixture compilation/execution.
 
 The overall requested back-port is **not complete**. This file records the
-completed text/routine milestone and the remaining source-language gaps.
+completed text, routine, console-key, and Double milestones and the remaining source-language gaps.
 
 ## Implemented in this milestone
 
@@ -18,6 +18,9 @@ completed text/routine milestone and the remaining source-language gaps.
 | Unary Number `+` | Identity operation with unary precedence |
 | Unicode console output | UTF-8 for C#, Java, Python when source contains non-ASCII Text |
 | Expanded console keys | O/F/G/R/P/B/X/Y/Z/E/C, Backtick, Plus and Minus events on all ten targets; Control constant available |
+| Double arithmetic | Distinct binary64 literals, scalar/array storage, routines, Optional defaults, same-type operators and exact comparisons |
+| Double math and conversions | ToDouble/ToNumber; polymorphic Abs/Min/Max; Clamp, Sqrt, Sin, Cos, Atan2, Floor, Ceiling, Truncate, Round; Text_From_Double/Text_To_Double |
+| Checked Double failures | Invalid domains, zero divisors, conversion overflow and nonfinite results report their source line before destination mutation |
 
 The UTF-8 output fix addresses failures observed during actual generated-program
 execution on Windows. Ordinary ASCII programs retain their minimal output.
@@ -26,7 +29,6 @@ execution on Windows. Ordinary ASCII programs retain their minimal output.
 
 | Area | Implemented SMILE 2.0 features still absent from SMILE 1.0 |
 |---|---|
-| Fractional arithmetic | `Double` literals/storage/operators; checked explicit conversions; polymorphic Abs/Min/Max; Clamp, Sqrt, Sin, Cos, Atan2, Floor, Ceiling, Truncate, Round; Text_From_Double/Text_To_Double |
 | Writable arguments | Exact-type `ByRef`, including scalar variables, checked array cells, and subsequently record locations |
 | Console keys | Standalone Control key events: character-stream APIs do not report modifier-only events; a native console-event boundary is still needed |
 | Files and persistence | `Load`/`Save` integer values; UTF-8 `Load Text File`; byte Data save/load and recoverable Status; associated constants and application storage identity |
@@ -59,20 +61,33 @@ explicitly typed SMILE 1.0 subset.
 - `RoutineArguments.cs` applies the map after evaluation/capture; it is a compiler
   utility, not emitted runtime machinery.
 - `TextIntrinsics.cs` owns evaluator/static-analysis scalar traversal.
+- `DoubleSemantics.cs` owns evaluator/static-analysis binary64 rules. `Binder.Double.cs`
+  binds exact numeric intrinsic signatures. `DoubleProgramFeatures.cs` inventories
+  required numeric support without emitting helpers for folded constants.
+- The focused structured, MASM, and COBOL Double writers own target lowering;
+  `NativeDoubleSupport.cs` owns the C numeric boundary. MASM uses REAL8/SSE and
+  native Windows x64 floating argument/return registers. COBOL uses FLOAT-LONG
+  storage and C interop where its decimal transfers/arithmetic fail binary64 tests.
 - `CoreBasicTextInspectionWriter.cs` owns structured-target text lowering;
   `NativeTextInspection.cs` owns the UTF-8 traversal needed by C-family/MASM/COBOL.
 - Slices reuse existing C/Objective-C/MASM root tracking. COBOL keeps its existing
   4096-byte storage and explicit logical lengths. No third-party dependency or
   source-language graphics feature was added.
 
-Actual validation includes the new evaluator/diagnostic tests, both fixtures
+Actual validation includes the new evaluator/diagnostic tests, text/routine/Double fixtures
 built and run across all ten targets, MissionGuardrail, existing core conformance
 and terminal coverage, and unchanged fixtures built/run with the authoritative
 SMILE 2.0 compiler. Generated binaries and parity scratch files belong in ignored
-`out/backport-validation` and `out/backport-parity`.
+`out/backport-validation` and `out/backport-parity`. Double regression coverage
+includes adjacent binary64 values, subnormals, signed zero, rounding ties,
+19-digit Number conversion, named/Optional calls, mixed calls exceeding four
+arguments, exact Select Case, print/argument evaluation order, and six runtime
+failure programs per target. The COBOL comparison/literal/transfer path was
+checked against actual generated GnuCOBOL C output before selecting interop.
 
 No repository file-size/complexity checker or reviewed no-growth baseline was
 found in SMILE 1.0. Existing broad writers received focused wiring; new text and
 argument algorithms have their own owners. No guardrail limit or exclusion was
 changed. Ordinary target-native Number overflow and existing native Text storage
-limitations remain; full Double/object/module parity is pending.
+limitations remain; ByRef/file/object/module parity is pending. Double exponent
+spelling and transcendental rounding follow the target's standard library.

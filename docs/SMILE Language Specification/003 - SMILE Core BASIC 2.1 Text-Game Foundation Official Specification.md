@@ -2,13 +2,13 @@
 
 ## Status and authority
 
-This is the current complete SMILE 1.0 language specification. It additively extends the preserved [Core BASIC 2.0 subset](002%20-%20SMILE%20Core%20BASIC%202%20Official%20Specification.md) with console operations, rank-two arrays, and the text/routine additions below.
+This is the current complete SMILE 1.0 language specification. It additively extends the preserved [Core BASIC 2.0 subset](002%20-%20SMILE%20Core%20BASIC%202%20Official%20Specification.md) with console operations, rank-two arrays, and the text/routine/Double additions below.
 
-The text/routine back-port was verified against SMILE 2.0 commit `e97afe296f6866d97ad035c9a9b0c9596b919fe0`. This is an incremental back-port, not a claim of complete non-graphical SMILE 2.0 parity. The [back-port inventory](../SMILE%202%20Core%20Backport%20Progress.md) records the remaining features.
+The text/routine/Double back-port was verified against SMILE 2.0 commit `e97afe296f6866d97ad035c9a9b0c9596b919fe0`. This is an incremental back-port, not a claim of complete non-graphical SMILE 2.0 parity. The [back-port inventory](../SMILE%202%20Core%20Backport%20Progress.md) records the remaining features.
 
 The shared Core BASIC source spelling and meaning were verified against the read-only SMILE 2.0 repository at commit `b34f4c5284f9f636e17a62ce5b6e2721d53be464`. The SMILE 1.0-only `Move Cursor To` and `Text Color` terminal statements were subsequently authorized directly for this profile; they do not claim SMILE 2.0 parity. SMILE 1.0 has one parser, binder, evaluator, and language—2.1 is a milestone label, not a dialect selector.
 
-Every source-model, typing, expression-order, Print, control-flow, routine, scope, Select Case, one-dimensional-array, and `End Program` rule in the 2.0 subset remains in force except where this document additively permits a second array dimension and the new terminal statements. `Move`, `Cursor`, `Color`, `Default`, and the eight color names are now reserved words; this research project has no external compatibility obligation, so an older experiment that used one as an identifier must rename it.
+Every source-model, typing, expression-order, Print, control-flow, routine, scope, Select Case, one-dimensional-array, and `End Program` rule in the 2.0 subset remains in force except where this document additively permits the features described below. `Move`, `Cursor`, `Color`, `Default`, and the eight color names are now reserved words; this research project has no external compatibility obligation, so an older experiment that used one as an identifier must rename it.
 
 ## Fixed one- and two-dimensional arrays
 
@@ -31,7 +31,7 @@ Print Board[X, Y]
 - Authored index order is preserved. The games conventionally use `[X, Y]`, with the first dimension horizontal and the second vertical.
 - Index expressions evaluate left to right and exactly once. For an assignment, all indexes and their bounds checks occur before the right-hand value is evaluated.
 - A constant out-of-range index is a compile-time diagnostic. A dynamic invalid index fails with `SMILER1210` before storage is touched.
-- Global and routine-local Number, Boolean, and Text arrays are supported. Each routine invocation, including recursive calls, receives fresh local arrays defaulted to `0`, `False`, or empty Text.
+- Global and routine-local Number, Double, Boolean, and Text arrays are supported. Each routine invocation, including recursive calls, receives fresh local arrays defaulted to `0`, `0.0`, `False`, or empty Text.
 - Whole-array values, assignment, comparison, Print, parameters, returns, resizing, dynamic dimensions, and rank greater than two remain invalid.
 
 Grammar:
@@ -180,7 +180,7 @@ builtin-call    := "Timer" "(" ")"
 
 ## Deliberate exclusions
 
-This milestone does not add blocking `Input`, `Key_Held`, pointer/mouse input, cursor visibility/shape control, arbitrary terminal escape strings, graphics or `Game Window`, sound, files, dynamic arrays, more than two dimensions, array parameters or returns, `ByRef`, variadic parameters, Double, records, enums, classes, modules, imports, threads in SMILE source, or an eleventh target. Historical LET/SET/INPUT/WHILE/interpolation/block-string syntax remains rejected. Blocking Input is also absent from current SMILE 2.0.
+This milestone does not add blocking `Input`, `Key_Held`, pointer/mouse input, cursor visibility/shape control, arbitrary terminal escape strings, graphics or `Game Window`, sound, files, dynamic arrays, more than two dimensions, array parameters or returns, `ByRef`, variadic parameters, records, enums, classes, modules, imports, threads in SMILE source, or an eleventh target. Historical LET/SET/INPUT/WHILE/interpolation/block-string syntax remains rejected. Blocking Input is also absent from current SMILE 2.0.
 
 ## Unicode text inspection
 
@@ -218,4 +218,77 @@ Calls use `ParameterName:=Expression`. Names are case-insensitive. Positional ar
 
 Balanced declaration parentheses permit newlines between parameter tokens and commas. The opening parenthesis stays on the Sub/Function declaration line; a Function's `As Type` stays on the same line as the closing parenthesis. Square brackets still do not imply continuation. A routine must still declare explicit types; legacy untyped SMILE 2.0 declarations are outside this profile.
 
-Unary `+` is accepted on Number with the same precedence as unary `-` and leaves its value unchanged.
+Unary `+` is accepted on Number or Double with the same precedence as unary `-` and leaves its value unchanged.
+
+## Double values and math
+
+Double is a distinct eight-byte IEEE binary64 type. Number retains signed 64-bit
+integer semantics on every SMILE 1.0 target. There is no implicit conversion
+between them in assignment, arithmetic, comparison, parameters, or returns.
+
+```smile
+Dim Speed As Double
+Speed = ToDouble(3) / 2.0
+Print Speed
+Print ToNumber(-3.9)
+Print Sqrt(9.0); ":"; Round(2.5)
+Print Text_From_Double(-0.0)
+```
+
+This prints `1.5`, `-3`, `3.0:2.0`, and `-0.0`. Decimal or exponent literals
+such as `0.125`, `1e-3`, and `2.5E2` are Double. Digits are required on both
+sides of a decimal point and after an exponent sign: `.5`, `1.`, `1e+`, and
+nonfinite literals are invalid. Plain integer literals remain Number. Double is
+a contextual type name; existing identifiers such as `Function Double(...)`
+remain valid. User routines take precedence over the new numeric intrinsic names.
+
+Double supports same-type `+`, `-`, `*`, `/`, unary signs, and exact comparisons.
+Equality adds no tolerance. Signed zeros compare equal but retain their signs
+through storage, calls, rounding, and text conversion. The default is positive
+`0.0`; finite subnormals and underflow to signed zero are allowed. Variables,
+constants, fixed arrays, routine parameters/returns, Optional defaults, named
+arguments, Print, and Select Case accept Double. Duplicate zero Case values are
+rejected. Mod, loop controls, array dimensions, and indexes remain Number-only.
+
+| Function | Contract |
+|---|---|
+| `ToDouble(Number)` | Nearest binary64 value; large integers may lose precision |
+| `ToNumber(Double)` | Truncate toward zero, then require `[-2^63, 2^63)` |
+| `Abs(Value)`, `Min(First, Second)`, `Max(First, Second)` | Same-type Number or Double; preserve the result type |
+| `Clamp(Value, Minimum, Maximum)` | Double; reject inverted bounds |
+| `Sqrt(Value)` | Double; reject negative input |
+| `Sin(Value)`, `Cos(Value)`, `Atan2(Y, X)` | Double; angles in radians |
+| `Floor(Value)`, `Ceiling(Value)`, `Truncate(Value)` | Double result; floor, ceiling, or truncation |
+| `Round(Value)` | Double result; nearest value, ties to even |
+| `Text_From_Double(Value)` | Invariant Text with enough precision for a numeric round trip |
+| `Text_To_Double(Text)` | Complete invariant decimal/exponent text to Double |
+
+Min/Max return the first argument on a tie, including signed zero. Clamp keeps
+the original value within inclusive bounds. Atan2 honors signed-zero quadrants;
+rounding preserves the mathematical sign of a zero result. Intrinsics accept
+positional arguments evaluated once in source order. Numeric intrinsic calls
+are permitted in Const expressions; Optional defaults still require a literal
+or a previously declared Const rather than an inline computation.
+
+Text parsing accepts surrounding ASCII space and U+0009–U+000D, an optional
+sign, leading digits, an optional fraction, and an optional exponent. It rejects
+partial input, hexadecimal, separators, NaN, and Infinity. Formatting preserves
+`-0.0`; exponent spelling and transcendental rounding may differ between native
+standard libraries. Binary floating values are approximate, not decimal accounting.
+
+Malformed/nonfinite literals use `SMILE3900`; mixed numeric expression and
+intrinsic argument errors use `SMILE3901`. Existing assignment/parameter typing
+diagnostics retain their own codes. Invalid domains, zero divisors, conversion
+overflow, and nonfinite results use `SMILE3902` during constant checking or
+`SMILER3902` at runtime with the actual source line. Failure happens before the
+destination is changed; earlier source-order effects remain.
+
+Targets use native binary64 storage, operators, and math APIs with focused checks
+where their normal behavior permits infinity or different conversions. MASM uses
+REAL8, SSE, and native floating argument/return registers; a C companion supplies
+required numeric conversion/checking services. GnuCOBOL's FLOAT-LONG storage is
+binary64, but its ordinary numeric literals, COMPUTE, and comparisons pass
+through decimal representations. The generated program therefore uses standard
+C interoperability for exact literals/arithmetic/comparisons and normal
+FLOAT-LONG-to-FLOAT-LONG MOVE for storage copies. No numeric interpreter, new
+dependency, or source-language runtime framework is introduced.

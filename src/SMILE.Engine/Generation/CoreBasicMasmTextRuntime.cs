@@ -7,6 +7,7 @@ internal static class CoreBasicMasmTextRuntime
 
     public static bool NeedsManagedText(BoundProgram program) =>
         CoreBasicProgramFeatureSet.Create(program).HasTextSlice ||
+        new DoubleProgramFeatures(program).Has(BoundIntrinsicKind.TextFromDouble) ||
         CoreBasicCodeGenerator.EnumerateExpressionsForSupport(program)
             .Any(expression => expression is BoundBinaryExpression
             {
@@ -135,7 +136,7 @@ void smile_text_initialize(void)
     smile_text_shutdown_complete = false;
 }
 
-static char *smile_text_allocate(size_t length)
+char *smile_text_allocate(size_t length)
 {
     SmileTextAllocation *allocation = malloc(sizeof(*allocation) + length);
     if (allocation == NULL)

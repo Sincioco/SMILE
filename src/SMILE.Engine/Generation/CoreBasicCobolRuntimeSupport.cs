@@ -10,7 +10,8 @@ internal static class CoreBasicCobolRuntimeSupport
     public static string? Generate(BoundProgram program)
     {
         CoreBasicProgramFeatureSet features = CoreBasicProgramFeatureSet.Create(program);
-        if (!features.HasConsoleRuntime && !features.HasAbs && !features.HasMin && !features.HasMax && !features.HasTextInspection)
+        var numeric = new DoubleProgramFeatures(program);
+        if (!features.HasConsoleRuntime && !features.HasAbs && !features.HasMin && !features.HasMax && !features.HasTextInspection && !numeric.NeedsCobolRuntime)
         {
             return null;
         }
@@ -185,6 +186,7 @@ internal static class CoreBasicCobolRuntimeSupport
         if (features.HasMax) text.AppendLine("int64_t smile_max_cobol(const int64_t *left, const int64_t *right) { return *left > *right ? *left : *right; }");
 
         if (features.HasTextInspection) text.AppendLine(NativeTextInspection.Generate(features, TargetLanguage.Cobol));
+        text.AppendLine(NativeDoubleSupport.GenerateCobol(program));
         return text.ToString().Replace("\r\n", "\n", StringComparison.Ordinal);
     }
 }
