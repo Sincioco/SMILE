@@ -123,6 +123,7 @@ Wait 0 Milliseconds
 Random FixedRoll From 6 To 6
 Print "2D cell="; Board[1, 1]
 Print "No-input key="; LastKey; ", die="; FixedRoll
+Print "Extra key codes="; KEY_O; ", "; KEY_BACKTICK; ", "; KEY_PLUS; ", "; KEY_MINUS
 Print "Math="; Abs(-5); ", "; Min(8, 3); ", "; Max(8, 3)
 Print "Timer monotonic="; Timer() >= StartedAt
 Text Color Default

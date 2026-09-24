@@ -959,7 +959,22 @@ internal sealed class Parser
             ["KEY_OTHER"] = 19,
             ["KEY_3"] = 20,
             ["KEY_TAB"] = 21,
-            ["KEY_4"] = 22
+            ["KEY_4"] = 22,
+            ["KEY_O"] = 27,
+            ["KEY_F"] = 28,
+            ["KEY_G"] = 29,
+            ["KEY_R"] = 30,
+            ["KEY_P"] = 31,
+            ["KEY_B"] = 32,
+            ["KEY_CONTROL"] = 33,
+            ["KEY_BACKTICK"] = 34,
+            ["KEY_X"] = 35,
+            ["KEY_Y"] = 36,
+            ["KEY_Z"] = 37,
+            ["KEY_E"] = 38,
+            ["KEY_PLUS"] = 39,
+            ["KEY_MINUS"] = 40,
+            ["KEY_C"] = 41
         };
 
         private static readonly HashSet<string> ReservedWords = new(StringComparer.OrdinalIgnoreCase)

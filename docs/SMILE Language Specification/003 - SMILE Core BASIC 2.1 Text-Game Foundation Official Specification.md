@@ -59,6 +59,20 @@ The following built-in Number constants use the authoritative stable values:
 | `KEY_1` | 17 | `KEY_2` | 18 |
 | `KEY_OTHER` | 19 | `KEY_3` | 20 |
 | `KEY_TAB` | 21 | `KEY_4` | 22 |
+| `KEY_O` | 27 | `KEY_F` | 28 |
+| `KEY_G` | 29 | `KEY_R` | 30 |
+| `KEY_P` | 31 | `KEY_B` | 32 |
+| `KEY_CONTROL` | 33 | `KEY_BACKTICK` | 34 |
+| `KEY_X` | 35 | `KEY_Y` | 36 |
+| `KEY_Z` | 37 | `KEY_E` | 38 |
+| `KEY_PLUS` | 39 | `KEY_MINUS` | 40 |
+| `KEY_C` | 41 | | |
+
+Letters accept either case. Backtick includes the shifted tilde key; Plus
+includes `+`/`=`, and Minus includes `-`/`_`. These character events work on all
+ten targets. `KEY_CONTROL` reserves the authority's value, but standalone Control
+events are not currently supplied by the target character-stream readers.
+Adding native modifier-only event handling remains a back-port gap.
 
 Pad-only and pointer constants are outside this console profile.
 

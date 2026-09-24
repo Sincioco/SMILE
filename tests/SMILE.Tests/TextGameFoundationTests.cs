@@ -16,10 +16,10 @@ public sealed class TextGameFoundationTests
     public void Key_constants_have_one_stable_cross_target_number_table()
     {
         EvaluationResult result = _evaluator.Evaluate(
-            "Print KEY_NONE; KEY_W; KEY_A; KEY_S; KEY_D; KEY_UP; KEY_DOWN; KEY_LEFT; KEY_RIGHT; KEY_ENTER; KEY_ESCAPE; KEY_SPACE; KEY_1; KEY_2; KEY_OTHER; KEY_3; KEY_TAB; KEY_4");
+            "Print KEY_NONE; KEY_W; KEY_A; KEY_S; KEY_D; KEY_UP; KEY_DOWN; KEY_LEFT; KEY_RIGHT; KEY_ENTER; KEY_ESCAPE; KEY_SPACE; KEY_1; KEY_2; KEY_OTHER; KEY_3; KEY_TAB; KEY_4; KEY_O; KEY_F; KEY_G; KEY_R; KEY_P; KEY_B; KEY_CONTROL; KEY_BACKTICK; KEY_X; KEY_Y; KEY_Z; KEY_E; KEY_PLUS; KEY_MINUS; KEY_C");
 
         Assert.IsTrue(result.Success, Join(result.Diagnostics));
-        Assert.AreEqual("0123410111213141516171819202122\n", result.Output);
+        Assert.AreEqual("0123410111213141516171819202122272829303132333435363738394041\n", result.Output);
     }
 
     [TestMethod]

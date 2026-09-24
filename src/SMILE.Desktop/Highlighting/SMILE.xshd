@@ -89,6 +89,21 @@
       <Word>KEY_2</Word>
       <Word>KEY_3</Word>
       <Word>KEY_4</Word>
+      <Word>KEY_O</Word>
+      <Word>KEY_F</Word>
+      <Word>KEY_G</Word>
+      <Word>KEY_R</Word>
+      <Word>KEY_P</Word>
+      <Word>KEY_B</Word>
+      <Word>KEY_CONTROL</Word>
+      <Word>KEY_BACKTICK</Word>
+      <Word>KEY_X</Word>
+      <Word>KEY_Y</Word>
+      <Word>KEY_Z</Word>
+      <Word>KEY_E</Word>
+      <Word>KEY_PLUS</Word>
+      <Word>KEY_MINUS</Word>
+      <Word>KEY_C</Word>
       <Word>KEY_TAB</Word>
       <Word>KEY_OTHER</Word>
     </Keywords>

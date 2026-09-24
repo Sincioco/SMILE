@@ -17,6 +17,7 @@ completed text/routine milestone and the remaining source-language gaps.
 | Multiline routine declarations | Balanced declaration parentheses; explicit parameter and return types |
 | Unary Number `+` | Identity operation with unary precedence |
 | Unicode console output | UTF-8 for C#, Java, Python when source contains non-ASCII Text |
+| Expanded console keys | O/F/G/R/P/B/X/Y/Z/E/C, Backtick, Plus and Minus events on all ten targets; Control constant available |
 
 The UTF-8 output fix addresses failures observed during actual generated-program
 execution on Windows. Ordinary ASCII programs retain their minimal output.
@@ -27,7 +28,7 @@ execution on Windows. Ordinary ASCII programs retain their minimal output.
 |---|---|
 | Fractional arithmetic | `Double` literals/storage/operators; checked explicit conversions; polymorphic Abs/Min/Max; Clamp, Sqrt, Sin, Cos, Atan2, Floor, Ceiling, Truncate, Round; Text_From_Double/Text_To_Double |
 | Writable arguments | Exact-type `ByRef`, including scalar variables, checked array cells, and subsequently record locations |
-| Console keys | New named keyboard constants, including letters O/F/G/R/P/B/X/Y/Z/E/C, Control, Backtick, Plus, Minus, with target-appropriate event mapping |
+| Console keys | Standalone Control key events: character-stream APIs do not report modifier-only events; a native console-event boundary is still needed |
 | Files and persistence | `Load`/`Save` integer values; UTF-8 `Load Text File`; byte Data save/load and recoverable Status; associated constants and application storage identity |
 | Value types | Nominal Enum declarations/members and Type records, nested fields, fixed-array fields, deep copies, and exact nominal typing |
 | Object members | Type methods/properties, Class references/constructors, Me, New, Nothing, Is/Is Not, With blocks, member visibility and ownership |

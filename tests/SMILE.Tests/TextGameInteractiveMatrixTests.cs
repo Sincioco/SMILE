@@ -39,6 +39,34 @@ Do
                 Print "KEY_S"
             Case KEY_D
                 Print "KEY_D"
+            Case KEY_O
+                Print "KEY_O"
+            Case KEY_F
+                Print "KEY_F"
+            Case KEY_G
+                Print "KEY_G"
+            Case KEY_R
+                Print "KEY_R"
+            Case KEY_P
+                Print "KEY_P"
+            Case KEY_B
+                Print "KEY_B"
+            Case KEY_BACKTICK
+                Print "KEY_BACKTICK"
+            Case KEY_X
+                Print "KEY_X"
+            Case KEY_Y
+                Print "KEY_Y"
+            Case KEY_Z
+                Print "KEY_Z"
+            Case KEY_E
+                Print "KEY_E"
+            Case KEY_PLUS
+                Print "KEY_PLUS"
+            Case KEY_MINUS
+                Print "KEY_MINUS"
+            Case KEY_C
+                Print "KEY_C"
             Case KEY_UP
                 Print "KEY_UP"
             Case KEY_DOWN
@@ -81,6 +109,20 @@ Print "SMILE INTERACTIVE CLEAN"
             PseudoConsoleInput.Text(35, "A"),
             PseudoConsoleInput.Text(35, "S"),
             PseudoConsoleInput.Text(35, "D"),
+            PseudoConsoleInput.Text(35, "o"),
+            PseudoConsoleInput.Text(35, "f"),
+            PseudoConsoleInput.Text(35, "g"),
+            PseudoConsoleInput.Text(35, "r"),
+            PseudoConsoleInput.Text(35, "p"),
+            PseudoConsoleInput.Text(35, "b"),
+            PseudoConsoleInput.Text(35, "x"),
+            PseudoConsoleInput.Text(35, "y"),
+            PseudoConsoleInput.Text(35, "z"),
+            PseudoConsoleInput.Text(35, "e"),
+            PseudoConsoleInput.Text(35, "c"),
+            PseudoConsoleInput.Text(35, "`"),
+            PseudoConsoleInput.Text(35, "+"),
+            PseudoConsoleInput.Text(35, "-"),
             PseudoConsoleInput.BytesAfter(35, 0x1B, 0x5B, 0x41),
             PseudoConsoleInput.BytesAfter(35, 0x1B, 0x5B, 0x42),
             PseudoConsoleInput.BytesAfter(35, 0x1B, 0x5B, 0x44),
@@ -173,6 +215,20 @@ Print "SMILE INTERACTIVE CLEAN"
                 "KEY_A",
                 "KEY_S",
                 "KEY_D",
+                "KEY_O",
+                "KEY_F",
+                "KEY_G",
+                "KEY_R",
+                "KEY_P",
+                "KEY_B",
+                "KEY_BACKTICK",
+                "KEY_X",
+                "KEY_Y",
+                "KEY_Z",
+                "KEY_E",
+                "KEY_PLUS",
+                "KEY_MINUS",
+                "KEY_C",
                 "KEY_UP",
                 "KEY_DOWN",
                 "KEY_LEFT",

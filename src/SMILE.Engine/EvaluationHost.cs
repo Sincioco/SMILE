@@ -20,6 +20,21 @@ public static class SmileKeyCodes
     public const long Digit3 = 20;
     public const long Tab = 21;
     public const long Digit4 = 22;
+    public const long O = 27;
+    public const long F = 28;
+    public const long G = 29;
+    public const long R = 30;
+    public const long P = 31;
+    public const long B = 32;
+    public const long Control = 33;
+    public const long Backtick = 34;
+    public const long X = 35;
+    public const long Y = 36;
+    public const long Z = 37;
+    public const long E = 38;
+    public const long Plus = 39;
+    public const long Minus = 40;
+    public const long C = 41;
 }
 
 public interface ISmileEvaluationHost

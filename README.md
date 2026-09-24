@@ -16,6 +16,10 @@ Write a small, readable program. See how it becomes C#, Java, C++, and seven oth
 
 This is the first completed portion of the broader back-port. Double math, ByRef, persistence, and structured types/modules remain listed in the [back-port inventory](docs/SMILE%202%20Core%20Backport%20Progress.md).
 
+Console controls also recognize O/F/G/R/P/B/X/Y/Z/E/C, Backtick, Plus and Minus
+with SMILE 2.0 key codes on every target. `KEY_CONTROL` is available as a constant;
+standalone Control-event delivery remains pending.
+
 ### Three original games, written entirely in SMILE
 
 The latest implementation expands the terminal games with larger boards, named colors, cursor-based redraws, and state-driven updates. Their rules live in ordinary `.smile` programs: arrays hold the board, routines organize behavior, and loops respond to keys and time.

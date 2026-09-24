@@ -253,6 +253,34 @@ internal sealed class CoreBasicMasmWriter
             {
                 Line($"    cmp eax, {Key}"); Line($"    je smile_get_key_{Name}");
             }
+            Line("    cmp eax, 111"); Line("    je smile_get_key_extra_27");
+            Line("    cmp eax, 79"); Line("    je smile_get_key_extra_27");
+            Line("    cmp eax, 102"); Line("    je smile_get_key_extra_28");
+            Line("    cmp eax, 70"); Line("    je smile_get_key_extra_28");
+            Line("    cmp eax, 103"); Line("    je smile_get_key_extra_29");
+            Line("    cmp eax, 71"); Line("    je smile_get_key_extra_29");
+            Line("    cmp eax, 114"); Line("    je smile_get_key_extra_30");
+            Line("    cmp eax, 82"); Line("    je smile_get_key_extra_30");
+            Line("    cmp eax, 112"); Line("    je smile_get_key_extra_31");
+            Line("    cmp eax, 80"); Line("    je smile_get_key_extra_31");
+            Line("    cmp eax, 98"); Line("    je smile_get_key_extra_32");
+            Line("    cmp eax, 66"); Line("    je smile_get_key_extra_32");
+            Line("    cmp eax, 120"); Line("    je smile_get_key_extra_35");
+            Line("    cmp eax, 88"); Line("    je smile_get_key_extra_35");
+            Line("    cmp eax, 121"); Line("    je smile_get_key_extra_36");
+            Line("    cmp eax, 89"); Line("    je smile_get_key_extra_36");
+            Line("    cmp eax, 122"); Line("    je smile_get_key_extra_37");
+            Line("    cmp eax, 90"); Line("    je smile_get_key_extra_37");
+            Line("    cmp eax, 101"); Line("    je smile_get_key_extra_38");
+            Line("    cmp eax, 69"); Line("    je smile_get_key_extra_38");
+            Line("    cmp eax, 99"); Line("    je smile_get_key_extra_41");
+            Line("    cmp eax, 67"); Line("    je smile_get_key_extra_41");
+            Line("    cmp eax, 96"); Line("    je smile_get_key_extra_34");
+            Line("    cmp eax, 126"); Line("    je smile_get_key_extra_34");
+            Line("    cmp eax, 43"); Line("    je smile_get_key_extra_39");
+            Line("    cmp eax, 61"); Line("    je smile_get_key_extra_39");
+            Line("    cmp eax, 45"); Line("    je smile_get_key_extra_40");
+            Line("    cmp eax, 95"); Line("    je smile_get_key_extra_40");
             Line("    mov eax, 19"); Line("    jmp smile_get_key_done");
             Line("smile_get_key_extended:");
             Line("    call _getch");
@@ -266,6 +294,20 @@ internal sealed class CoreBasicMasmWriter
             {
                 Line($"smile_get_key_{Name}:"); Line($"    mov eax, {Code}"); Line("    jmp smile_get_key_done");
             }
+            Line("smile_get_key_extra_27:"); Line("    mov eax, 27"); Line("    jmp smile_get_key_done");
+            Line("smile_get_key_extra_28:"); Line("    mov eax, 28"); Line("    jmp smile_get_key_done");
+            Line("smile_get_key_extra_29:"); Line("    mov eax, 29"); Line("    jmp smile_get_key_done");
+            Line("smile_get_key_extra_30:"); Line("    mov eax, 30"); Line("    jmp smile_get_key_done");
+            Line("smile_get_key_extra_31:"); Line("    mov eax, 31"); Line("    jmp smile_get_key_done");
+            Line("smile_get_key_extra_32:"); Line("    mov eax, 32"); Line("    jmp smile_get_key_done");
+            Line("smile_get_key_extra_35:"); Line("    mov eax, 35"); Line("    jmp smile_get_key_done");
+            Line("smile_get_key_extra_36:"); Line("    mov eax, 36"); Line("    jmp smile_get_key_done");
+            Line("smile_get_key_extra_37:"); Line("    mov eax, 37"); Line("    jmp smile_get_key_done");
+            Line("smile_get_key_extra_38:"); Line("    mov eax, 38"); Line("    jmp smile_get_key_done");
+            Line("smile_get_key_extra_41:"); Line("    mov eax, 41"); Line("    jmp smile_get_key_done");
+            Line("smile_get_key_extra_34:"); Line("    mov eax, 34"); Line("    jmp smile_get_key_done");
+            Line("smile_get_key_extra_39:"); Line("    mov eax, 39"); Line("    jmp smile_get_key_done");
+            Line("smile_get_key_extra_40:"); Line("    mov eax, 40"); Line("    jmp smile_get_key_done");
             Line("smile_get_key_done:"); Line("    add rsp, 40"); Line("    ret"); Line("smile_get_key ENDP"); Line();
         }
 
