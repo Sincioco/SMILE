@@ -10,7 +10,7 @@ Write a small, readable program. See how it becomes C#, Java, C++, and seven oth
 
 ## Latest progress
 
-### Text, routines, Double math, and file reads back-ported from SMILE 2.0
+### Text, routines, Double math, and persistence back-ported from SMILE 2.0
 
 `Text_Length`, `Text_Code_At`, and `Text_Slice` now inspect Unicode scalars, including emoji. Routines support exact-type `ByRef` variables and array cells, typed Optional defaults, named arguments, and multiline parameter lists; Number expressions also accept unary `+`. The evaluator and all ten targets preserve argument evaluation order. Windows C#, Java, and Python output explicitly uses UTF-8 when the program contains Unicode text.
 
@@ -26,7 +26,7 @@ Print Text_From_Double(-0.0)
 
 This prints `1.5`, `3.0:2.0`, and `-0.0`. Double math also includes `Abs`, `Min`, `Max`, `Clamp`, `Sin`, `Cos`, `Atan2`, `Floor`, `Ceiling`, and `Truncate`. Use `ToNumber` for checked truncation and `Text_To_Double` to parse invariant decimal text. No implicit Number/Double conversion occurs.
 
-The broader back-port remains in progress. Persistence and structured types/modules remain listed in the [back-port inventory](docs/SMILE%202%20Core%20Backport%20Progress.md). Double output uses native binary64 arithmetic and standard math APIs, with small checks where the target permits infinities or has different conversion rules. COBOL needs C interoperability for exact binary64 operations because its ordinary decimal arithmetic and numeric transfers lose distinctions required by SMILE. Exponent spelling and transcendental rounding can differ between targets.
+The broader back-port remains in progress. Byte Data storage and structured types/modules remain listed in the [back-port inventory](docs/SMILE%202%20Core%20Backport%20Progress.md). Double output uses native binary64 arithmetic and standard math APIs, with small checks where the target permits infinities or has different conversion rules. COBOL needs C interoperability for exact binary64 operations because its ordinary decimal arithmetic and numeric transfers lose distinctions required by SMILE. Exponent spelling and transcendental rounding can differ between targets.
 
 `ByRef` changes the caller's storage immediately, including when two parameters
 refer to the same variable. Ordinary parameters remain independent ByVal copies.
@@ -59,6 +59,25 @@ asynchronously. See the [official file-read contract](docs/SMILE%20Language%20Sp
 Console controls also recognize O/F/G/R/P/B/X/Y/Z/E/C, Backtick, Plus and Minus
 with SMILE 2.0 key codes on every target. `KEY_CONTROL` is available as a constant;
 standalone Control-event delivery remains pending.
+
+Integer `Load` and `Save` persist Number values across runs on all ten targets:
+
+```smile
+Dim Best As Number
+Load Best From "best-score" Default 0
+Best = Max(Best, 100)
+Save Best To "best-score"
+```
+
+Keys are nonempty Text literals. Load always evaluates its Number default first;
+missing, invalid, or unreadable values use it. Save accepts a Number variable or
+constant and ignores storage failures. Files contain plain decimal integers under
+`%LOCALAPPDATA%\SMILE\Games\<program>\<key>.txt`. CLI/Desktop use the source
+filename stem for a stable program identity across targets and temporary runs;
+Save As with a new name selects a different storage directory. Names/keys replace
+non-ASCII letters/digits (except `_` and `-`) with underscores. This is a separate
+SMILE 1.0 namespace; it does not import SMILE 2.0 saves automatically. Byte Data
+storage and project application identities remain outstanding.
 
 ### Three original games, written entirely in SMILE
 

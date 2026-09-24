@@ -23,6 +23,8 @@ internal sealed class TargetIdentifierMap
             "smile_text_slice", "smile_utf8_next", "smile_text_allocate"
         });
         if (language is TargetLanguage.Python) reserved.Add("ord");
+        if (CoreBasicProgramFeatureSet.Create(program).HasNumberPersistence)
+            reserved.UnionWith(new[] { "SmileNumberPath", "SmileLoadNumber", "SmileSaveNumber", "smileNumberPath", "smileLoadNumber", "smileSaveNumber", "smile_number_path", "smile_load_number", "smile_save_number", "os", "pathlib", "str", "int", "any", "smileFileSystem", "smilePath", "Buffer", "java", "ProcessInfo", "URL", "FileManager", "FileHandle", "Data", "CharacterSet", "_wgetenv", "swprintf", "wcscat", "wcslen", "_wfopen", "strtoll", "errno", "ERANGE" });
         if (language is TargetLanguage.Swift && program.Routines.Any(routine => routine.Symbol.Parameters.Any(parameter => parameter.IsByRef)))
             reserved.Add("SmileReference");
         if (new DoubleProgramFeatures(program).IsRequired)

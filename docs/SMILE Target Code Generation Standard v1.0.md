@@ -84,6 +84,14 @@ COBOL's native fixed `PIC X(4096)` fields require a parallel logical length for 
 
 Do not generate unused declarations. Preserve case-insensitive SMILE identity while mapping names deterministically away from destination reserved words and collisions.
 
+Integer Load/Save uses normal bounded file reads and decimal writes, with small
+helpers for the shared storage path and recoverable failures. Preserve complete
+signed-64 parsing of the first 63 bytes, the exact ASCII whitespace policy, and
+unconditional evaluation of Load's default. Do not replace source-level storage
+with a compiler-time cache. Node.js uses asynchronous file APIs; MASM/COBOL share
+their existing feature-gated C file companion. Program identity is embedded from
+the source filename, independently of target filenames or temporary run folders.
+
 ## Print
 
 Values print in order with no inserted separator. Number uses invariant decimal text, Boolean uses `True`/`False`, and Text writes its value. A normal Print ends with one newline; a trailing source semicolon suppresses it; blank Print writes only a newline.

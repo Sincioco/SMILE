@@ -49,6 +49,11 @@ public sealed record TextFileLoadStatementSyntax(
     ExpressionSyntax Path, string Destination, TextSpan DestinationSpan,
     string Count, TextSpan CountSpan, TextSpan Span) : StatementSyntax(Span);
 
+public sealed record NumberLoadStatementSyntax(string Name, TextSpan NameSpan, string Key,
+    ExpressionSyntax DefaultValue, TextSpan Span) : StatementSyntax(Span);
+
+public sealed record NumberSaveStatementSyntax(string Name, TextSpan NameSpan, string Key, TextSpan Span) : StatementSyntax(Span);
+
 public sealed record DoubleLiteralExpressionSyntax(string Text, TextSpan Span) : ExpressionSyntax(Span);
 
 public sealed record NamedArgumentExpressionSyntax(string Name, ExpressionSyntax Value, TextSpan Span)

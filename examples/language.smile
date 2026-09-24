@@ -40,6 +40,7 @@ Dim Measurements[2] As Double
 Dim FileBytes[16] As Number
 
 Dim FileByteCount As Number
+Dim BestScore As Number
 
 FirstName = "Sin"
 LastName = "Cioco"
@@ -152,6 +153,12 @@ Print "Signed zero="; Text_From_Double(-0.0)
 ' A missing file safely returns zero bytes.
 Load Text File "lesson.txt" Into FileBytes Count FileByteCount
 Print "Text-file bytes="; FileByteCount
+
+' Integer saves survive later runs of the same source filename.
+Load BestScore From "reference-best" Default 0
+BestScore = Max(BestScore, 100)
+Save BestScore To "reference-best"
+Print "Saved best score="; BestScore
 
 Call ShowGreeting()
 Call ShowGreeting(Caption:="Welcome", Learner:="Sin")

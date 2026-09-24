@@ -22,6 +22,7 @@ completed text, routine, console-key, Double, text-file, and scalar/array ByRef 
 | Double arithmetic | Distinct binary64 literals, scalar/array storage, routines, Optional defaults, same-type operators and exact comparisons |
 | Double math and conversions | ToDouble/ToNumber; polymorphic Abs/Min/Max; Clamp, Sqrt, Sin, Cos, Atan2, Floor, Ceiling, Truncate, Round; Text_From_Double/Text_To_Double |
 | Load Text File | Expression paths, executable-relative normalization, bounded UTF-8 bytes, BOM removal, zero-fill, safe missing/unreadable results; all ten targets |
+| Integer Load/Save | Literal keys, Number variables/constants, eagerly evaluated defaults, signed-64 decimal files, stable source identity; evaluator and all ten targets |
 | Checked Double failures | Invalid domains, zero divisors, conversion overflow and nonfinite results report their source line before destination mutation |
 
 The UTF-8 output fix addresses failures observed during actual generated-program
@@ -33,7 +34,7 @@ execution on Windows. Ordinary ASCII programs retain their minimal output.
 |---|---|
 | Writable record arguments | ByRef field locations after records/classes are implemented; scalar/array locations are complete |
 | Console keys | Standalone Control key events: character-stream APIs do not report modifier-only events; a native console-event boundary is still needed |
-| Files and persistence | `Load`/`Save` integer values; byte Data save/load and recoverable Status; associated constants and application storage identity |
+| Files and persistence | Byte Data save/load and recoverable Status; associated constants and application storage identity |
 | Value types | Nominal Enum declarations/members and Type records, nested fields, fixed-array fields, deep copies, and exact nominal typing |
 | Object members | Type methods/properties, Class references/constructors, Me, New, Nothing, Is/Is Not, With blocks, member visibility and ownership |
 | Program organization | Module/Import, qualified names, visibility, multi-file source/project inputs, deterministic source-owned libraries |
@@ -69,6 +70,10 @@ explicitly typed SMILE 1.0 subset.
   `CoreBasicTextFileWriter.cs` owns lowering; managed/native file-support modules
   use normal file APIs. Node.js uses asynchronous file handles.
 - `TextIntrinsics.cs` owns evaluator/static-analysis scalar traversal.
+- `Persistence.cs` owns evaluator integer storage, with an injectable root.
+  Focused persistence parser/binder/writers use standard file APIs. CLI/Desktop
+  embed the source filename stem for storage stability across target/run folders.
+  SMILE 1.0 stores beneath `SMILE`, separate from the authority's `SMILE 2.0` root.
 - `DoubleSemantics.cs` owns evaluator/static-analysis binary64 rules. `Binder.Double.cs`
   binds exact numeric intrinsic signatures. `DoubleProgramFeatures.cs` inventories
   required numeric support without emitting helpers for folded constants.
@@ -102,6 +107,10 @@ ByVal isolation, global aliases, local arrays, loop counters and file counts.
 An out-of-bounds first dimension stops before the later index or call on all ten
 targets. Swift flushes prior output before its native bounds/numeric-error traps;
 the existing Double failure matrix now checks prior output as well as diagnostics.
+Integer persistence runs unchanged in SMILE 2.0 and on all ten targets, covering
+both signed limits, eager defaults, ByRef/routine access, Unicode-key sanitizing,
+missing/unreadable files, 63-byte parsing, malformed text and overflow. A reproduced
+.NET trailing-NUL parsing difference is fixed and retained as a regression case.
 
 No repository file-size/complexity checker or reviewed no-growth baseline was
 found in SMILE 1.0. Existing broad writers received focused wiring; new text and

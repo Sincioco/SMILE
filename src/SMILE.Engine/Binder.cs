@@ -463,6 +463,8 @@ internal sealed partial class Binder
         SelectStatementSyntax select => BindSelect(select),
         CorePrintStatementSyntax print => BindPrint(print),
         TextFileLoadStatementSyntax load => BindTextFileLoad(load),
+        NumberLoadStatementSyntax load => BindNumberLoad(load),
+        NumberSaveStatementSyntax save => BindNumberSave(save),
         GetKeyStatementSyntax getKey => BindGetKey(getKey),
         ClearScreenStatementSyntax => new BoundClearScreenStatement(),
         MoveCursorStatementSyntax moveCursor => BindMoveCursor(moveCursor),

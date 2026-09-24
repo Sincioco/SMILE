@@ -354,3 +354,41 @@ file handles and propagates await through calling routines. MASM adds a small
 companion. The evaluator's `SmileEvaluationOptions.Files` accepts an
 `ISmileFileHost`; its default reads beneath `AppContext.BaseDirectory` through
 `SmileDirectoryFileHost`. The reader owns/disposes the returned stream.
+
+## Integer persistence
+
+```smile
+Dim Best As Number
+Load Best From "best-score" Default 0
+Best = Max(Best, 100)
+Save Best To "best-score"
+```
+
+Load requires a writable Number scalar (including a ByRef parameter) under the
+ordinary scope/Option Explicit rules. Save accepts a Number variable or constant.
+The key is a nonempty, non-whitespace Text literal; malformed storage keys report
+`SMILE3025`. Default is an exact Number expression, evaluated once before I/O even
+when a saved value exists. Array cells and computed keys are not integer-storage
+operands; byte Data storage has a separate contract and remains pending.
+
+Load reads at most the first 63 file bytes. After trimming ASCII space, tab, CR,
+and LF, the entire bounded result must be an optionally signed ASCII decimal
+integer in the signed-64 range. Empty, malformed, overflowing, missing, or
+unreadable storage returns the evaluated default. Save writes invariant decimal
+ASCII with no BOM/newline, replacing the existing file; I/O failures are ignored.
+This legacy integer operation does not provide backup recovery or atomic writes.
+
+Storage is `%LOCALAPPDATA%\SMILE\Games\<program>\<key>.txt`. Program and key names
+retain ASCII letters/digits, underscore and hyphen; other UTF-16 units become
+underscores. Each name stops at NUL or 255 units, with an empty name becoming `_`.
+Windows case-insensitivity and sanitization can therefore cause name collisions.
+Unavailable LocalAppData produces the same recoverable load/save behavior.
+
+CLI/Desktop embed the source filename stem, keeping saves stable across all ten
+targets and temporary build directories. Save As under a new source name selects
+a new directory. Direct `SmileTranspiler.Transpile`/`TranspileMany` callers may
+supply `programName`; its default is `Program`. Evaluator callers may inject
+`SmilePersistentStorage(programName, storageRoot)` through
+`SmileEvaluationOptions.Storage`. The optional root replaces LocalAppData.
+SMILE 1.0 intentionally has a separate product storage namespace from SMILE 2.0;
+it does not automatically migrate that product's executable-named integer saves.

@@ -171,6 +171,7 @@ public static class SmileSourceFormatter
                 MoveCursorStatementSyntax moveCursor => new[] { moveCursor.Column, moveCursor.Row },
                 RandomStatementSyntax random => new[] { random.LowerBound, random.UpperBound },
                 TextFileLoadStatementSyntax load => new[] { load.Path },
+                NumberLoadStatementSyntax load => new[] { load.DefaultValue },
                 _ => Array.Empty<ExpressionSyntax>()
             };
 

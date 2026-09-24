@@ -64,8 +64,14 @@ internal static partial class CoreBasicCodeGenerator
 
         if (language is TargetLanguage.MasmX64 && CoreBasicMasmWriter.GenerateDoubleRuntime(program) is string numericRuntime)
             files.Add(new GeneratedFile("SmileNumericRuntime.c", numericRuntime, IsPrimary: false));
-        if (language is TargetLanguage.MasmX64 && CoreBasicProgramFeatureSet.Create(program).HasTextFileLoad)
-            files.Add(new GeneratedFile("SmileFileRuntime.c", NativeTextFileSupport.GenerateCompanion(cobol: false), IsPrimary: false));
+        if (language is TargetLanguage.MasmX64)
+        {
+            CoreBasicProgramFeatureSet features = CoreBasicProgramFeatureSet.Create(program);
+            if (features.HasTextFileLoad || features.HasNumberPersistence)
+                files.Add(new GeneratedFile("SmileFileRuntime.c",
+                    (features.HasTextFileLoad ? NativeTextFileSupport.GenerateCompanion(cobol: false) : "") + "\n" +
+                    (features.HasNumberPersistence ? NativeNumberPersistence.Companion(program, cobol: false) : ""), IsPrimary: false));
+        }
         return new GeneratedProgram(language, files);
     }
 
@@ -165,7 +171,7 @@ internal static partial class CoreBasicCodeGenerator
             WriteRuntimePreamble();
             Line();
             WriteGlobalDeclarations();
-            bool wrappedMain = _features.HasGetKey || _features.HasWait || _features.HasTextFileLoad;
+            bool wrappedMain = _features.HasGetKey || _features.HasWait || _features.HasTextFileLoad || _features.HasNumberPersistence;
             if (wrappedMain)
             {
                 Line("async function main() {");
@@ -233,7 +239,7 @@ internal static partial class CoreBasicCodeGenerator
         public string WriteSwift()
         {
             if (!_features.HasConsoleRuntime &&
-                (_features.HasTextFileLoad || DoubleFeatures.IsRequired || ProgramStatements().Any(statement => statement is BoundEndProgramStatement) || ProgramHasArrays()))
+                (_features.HasTextFileLoad || _features.HasNumberPersistence || DoubleFeatures.IsRequired || ProgramStatements().Any(statement => statement is BoundEndProgramStatement) || ProgramHasArrays()))
             {
                 Line("import Foundation");
                 Line();
@@ -1073,6 +1079,12 @@ internal static partial class CoreBasicCodeGenerator
                 case BoundTextFileLoadStatement load:
                     WriteTextFileLoad(load);
                     return;
+                case BoundNumberLoadStatement load:
+                    WriteNumberLoad(load);
+                    return;
+                case BoundNumberSaveStatement save:
+                    WriteNumberSave(save);
+                    return;
                 case BoundCallStatement call:
                     WriteCall(call);
                     return;
@@ -1826,7 +1838,7 @@ internal static partial class CoreBasicCodeGenerator
                 TargetLanguage.CSharp => "Environment.Exit(0);",
                 TargetLanguage.Java => "System.exit(0);",
                 TargetLanguage.C or TargetLanguage.ObjectiveC or TargetLanguage.Cpp => "exit(0);",
-                TargetLanguage.JavaScript when _features.HasGetKey || _features.HasWait || _features.HasTextFileLoad => "throw { smileEnd: true };",
+                TargetLanguage.JavaScript when _features.HasGetKey || _features.HasWait || _features.HasTextFileLoad || _features.HasNumberPersistence => "throw { smileEnd: true };",
                 TargetLanguage.JavaScript => "process.exit(0);",
                 TargetLanguage.Swift => "exit(0)",
                 TargetLanguage.Python => "raise SystemExit(0)",
@@ -2597,6 +2609,8 @@ internal static partial class CoreBasicCodeGenerator
                     BoundMoveCursorStatement moveCursor => new[] { moveCursor.Column, moveCursor.Row },
                     BoundRandomStatement random => new[] { random.LowerBound, random.UpperBound },
                     BoundTextFileLoadStatement load => new[] { load.Path },
+                    BoundNumberLoadStatement load => new[] { load.DefaultValue },
+                    BoundNumberSaveStatement save => new BoundExpression[] { new BoundVariableExpression(save.Source) },
                     _ => Array.Empty<BoundExpression>()
                 };
                 foreach (BoundExpression root in roots)
@@ -2691,6 +2705,9 @@ internal static partial class CoreBasicCodeGenerator
                     case BoundTextFileLoadStatement { Count.IsGlobal: true } load:
                         yield return load.Count;
                         break;
+                    case BoundNumberLoadStatement { Target.IsGlobal: true } load:
+                        yield return load.Target;
+                        break;
                     case BoundGetKeyStatement { Target.IsGlobal: true } getKey:
                         yield return getKey.Target;
                         break;
@@ -2708,6 +2725,7 @@ internal static partial class CoreBasicCodeGenerator
                 BoundForStatement loop => ReferenceEquals(loop.Counter, variable),
                 BoundGetKeyStatement getKey => ReferenceEquals(getKey.Target, variable),
                 BoundTextFileLoadStatement load => ReferenceEquals(load.Count, variable) || ReferenceEquals(load.Destination, variable),
+                BoundNumberLoadStatement load => ReferenceEquals(load.Target, variable),
                 BoundRandomStatement random => ReferenceEquals(random.Target, variable),
                 _ => false
             });

@@ -336,8 +336,14 @@ public sealed class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        SourceText = await File.ReadAllTextAsync(dialog.FileName).ConfigureAwait(true);
+        string openedSource = await File.ReadAllTextAsync(dialog.FileName).ConfigureAwait(true);
         _currentFilePath = dialog.FileName;
+        if (SourceText == openedSource)
+        {
+            _sourceRevision++;
+            ScheduleLiveTranspilation();
+        }
+        else SourceText = openedSource;
         OperationStatus = $"Opened {Path.GetFileName(_currentFilePath)}";
     }
 
@@ -369,6 +375,8 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         _currentFilePath = dialog.FileName;
         await SaveAsync().ConfigureAwait(true);
+        _sourceRevision++;
+        ScheduleLiveTranspilation();
     }
 
     private async Task TranspileAllAsync()
@@ -643,8 +651,9 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
         // The lexer/parser/generator pipeline is fast today, but keeping it
         // off the WPF dispatcher protects the editor as SMILE grows.
+        string programName = Path.GetFileNameWithoutExtension(_currentFilePath ?? "Program");
         return await Task.Run(
-            () => _transpiler.TranspileMany(sourceSnapshot, languages),
+            () => _transpiler.TranspileMany(sourceSnapshot, languages, programName),
             cancellationToken).ConfigureAwait(true);
     }
 
@@ -1607,7 +1616,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ??
             assembly.GetName().Version?.ToString() ??
             "unknown";
-        const string mission = "SMILE is a beginner-first language inspired by BASIC. Students write one clear program, then compare the readable code generated for ten destination languages. SMILE Core BASIC 2.1 adds a small text-game foundation—fixed two-dimensional arrays, nonblocking keys, screen redraw, timing, and randomness—without adding graphics or hiding the lesson behind a framework. Unicode text inspection, bounded text-file reads, Double math and explicit conversions, ByRef parameters, Optional defaults, named arguments, and multiline routine declarations extend that core. The goal is not to memorize one syntax, but to build logical thinking and recognize the shared fundamentals underneath many languages.";
+        const string mission = "SMILE is a beginner-first language inspired by BASIC. Students write one clear program, then compare the readable code generated for ten destination languages. SMILE Core BASIC 2.1 adds a small text-game foundation—fixed two-dimensional arrays, nonblocking keys, screen redraw, timing, and randomness—without adding graphics or hiding the lesson behind a framework. Unicode text inspection, bounded text-file reads, integer persistence, Double math and explicit conversions, ByRef parameters, Optional defaults, named arguments, and multiline routine declarations extend that core. The goal is not to memorize one syntax, but to build logical thinking and recognize the shared fundamentals underneath many languages.";
 
         MessageBox.Show(
             $"SMILE - Simple Modern and Intuitive Language for Everyone{Environment.NewLine}Version {version}{Environment.NewLine}Session {SessionId}{Environment.NewLine}{Environment.NewLine}{mission}",

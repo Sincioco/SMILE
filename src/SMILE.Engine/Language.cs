@@ -307,6 +307,8 @@ public sealed record BoundProgram
 
     public bool OptionExplicit { get; }
 
+    public string ProgramName { get; init; } = "Program";
+
     public IEnumerable<VariableSymbol> AllVariables =>
         Variables.Concat(Routines.SelectMany(routine => routine.Locals));
 
@@ -314,6 +316,10 @@ public sealed record BoundProgram
 
 public abstract record BoundStatement
     : BoundSourceItem;
+
+public sealed record BoundNumberLoadStatement(VariableSymbol Target, string Key, BoundExpression DefaultValue) : BoundStatement;
+
+public sealed record BoundNumberSaveStatement(VariableSymbol Source, string Key) : BoundStatement;
 
 public sealed record BoundFullLineComment(
     FullLineCommentMarker OriginalMarker,

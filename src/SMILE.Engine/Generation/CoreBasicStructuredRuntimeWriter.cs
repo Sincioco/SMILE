@@ -138,7 +138,7 @@ internal static partial class CoreBasicCodeGenerator
         private static HashSet<RoutineSymbol> FindAsyncJavaScriptRoutines(BoundProgram program)
         {
             var asyncRoutines = program.Routines
-                .Where(routine => EnumerateStatements(routine.SourceItems).Any(statement => statement is BoundWaitStatement or BoundTextFileLoadStatement))
+                .Where(routine => EnumerateStatements(routine.SourceItems).Any(statement => statement is BoundWaitStatement or BoundTextFileLoadStatement or BoundNumberLoadStatement or BoundNumberSaveStatement))
                 .Select(routine => routine.Symbol)
                 .ToHashSet();
             bool changed;
@@ -173,6 +173,7 @@ internal static partial class CoreBasicCodeGenerator
         private void WriteRuntimePreamble()
         {
             WriteTextFileIncludes();
+            WriteNumberStorageIncludes();
             WriteDoubleIncludes();
             switch (_language)
             {
@@ -189,7 +190,7 @@ internal static partial class CoreBasicCodeGenerator
                     {
                         Line("#include <conio.h>");
                     }
-                    if (_language is not TargetLanguage.Cpp && (_features.HasConsoleRuntime || _features.HasTextFileLoad) ||
+                    if (_language is not TargetLanguage.Cpp && (_features.HasConsoleRuntime || _features.HasTextFileLoad || _features.HasNumberPersistence) ||
                         cppNeedsWindows)
                     {
                         Line("#include <windows.h>");
@@ -226,7 +227,7 @@ internal static partial class CoreBasicCodeGenerator
                     }
                     break;
                 case TargetLanguage.Swift:
-                    if (_features.HasWait || _features.HasTimer || _features.HasConsoleRuntime && (DoubleFeatures.IsRequired || _features.HasTextFileLoad))
+                    if (_features.HasWait || _features.HasTimer || _features.HasConsoleRuntime && (DoubleFeatures.IsRequired || _features.HasTextFileLoad || _features.HasNumberPersistence))
                     {
                         Line("import Foundation");
                     }
@@ -256,6 +257,7 @@ internal static partial class CoreBasicCodeGenerator
             WriteTextInspectionHelpers();
             WriteDoubleHelpers();
             WriteTextFileHelpers();
+            WriteNumberStorageHelpers();
             if (!_features.HasConsoleRuntime && !_features.HasAbs && !_features.HasMin && !_features.HasMax)
             {
                 return;
@@ -282,6 +284,7 @@ internal static partial class CoreBasicCodeGenerator
         {
             WriteDoublePrototypes();
             WriteTextFilePrototypes();
+            WriteNumberStoragePrototypes();
             if (_language is not (TargetLanguage.C or TargetLanguage.ObjectiveC or TargetLanguage.Cpp))
             {
                 return;

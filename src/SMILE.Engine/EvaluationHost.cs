@@ -67,7 +67,8 @@ public static class SmileRuntimeRules
 public sealed record SmileEvaluationOptions(
     ISmileEvaluationHost? Host = null,
     long StatementBudget = 1_000_000,
-    ISmileFileHost? Files = null);
+    ISmileFileHost? Files = null,
+    SmilePersistentStorage? Storage = null);
 
 public sealed record SmileTimedKeyEvent(long AtMilliseconds, long KeyCode);
 

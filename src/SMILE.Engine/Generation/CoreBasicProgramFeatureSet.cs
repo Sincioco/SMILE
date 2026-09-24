@@ -16,8 +16,11 @@ internal sealed record CoreBasicProgramFeatureSet(
     bool HasTextLength,
     bool HasTextCodeAt,
     bool HasTextSlice,
-    bool HasTextFileLoad)
+    bool HasTextFileLoad,
+    bool HasNumberLoad,
+    bool HasNumberSave)
 {
+    public bool HasNumberPersistence => HasNumberLoad || HasNumberSave;
     public bool HasTextInspection => HasTextLength || HasTextCodeAt || HasTextSlice;
     public bool HasInteractiveConsole => HasGetKey || HasClearScreen || HasMoveCursor || HasTextColor;
 
@@ -43,7 +46,9 @@ internal sealed record CoreBasicProgramFeatureSet(
             expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.TextLength }),
             expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.TextCodeAt }),
             expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.TextSlice }),
-            statements.Any(statement => statement is BoundTextFileLoadStatement));
+            statements.Any(statement => statement is BoundTextFileLoadStatement),
+            statements.Any(statement => statement is BoundNumberLoadStatement),
+            statements.Any(statement => statement is BoundNumberSaveStatement));
     }
 
     private static IEnumerable<BoundStatement> EnumerateStatements(BoundProgram program)
@@ -106,6 +111,8 @@ internal sealed record CoreBasicProgramFeatureSet(
                 BoundMoveCursorStatement moveCursor => new[] { moveCursor.Column, moveCursor.Row },
                 BoundRandomStatement random => new[] { random.LowerBound, random.UpperBound },
                 BoundTextFileLoadStatement load => new[] { load.Path },
+                BoundNumberLoadStatement load => new[] { load.DefaultValue },
+                BoundNumberSaveStatement save => new BoundExpression[] { new BoundVariableExpression(save.Source) },
                 _ => Array.Empty<BoundExpression>()
             };
             foreach (BoundExpression root in roots)

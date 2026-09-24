@@ -58,12 +58,13 @@ public sealed class SmileTranspiler
             diagnostics);
     }
 
-    public TranspileResult Transpile(string source, TargetLanguage targetLanguage) =>
-        TranspileMany(source, new[] { targetLanguage }).Single();
+    public TranspileResult Transpile(string source, TargetLanguage targetLanguage, string programName = "Program") =>
+        TranspileMany(source, new[] { targetLanguage }, programName).Single();
 
     public IReadOnlyList<TranspileResult> TranspileMany(
         string source,
-        IEnumerable<TargetLanguage> targetLanguages)
+        IEnumerable<TargetLanguage> targetLanguages,
+        string programName = "Program")
     {
         ArgumentNullException.ThrowIfNull(targetLanguages);
 
@@ -80,7 +81,7 @@ public sealed class SmileTranspiler
         return languages
             .Select(language =>
             {
-                GeneratedProgram generatedProgram = CodeGeneratorRegistry.Get(language).Generate(bindResult.Program);
+                GeneratedProgram generatedProgram = CodeGeneratorRegistry.Get(language).Generate(bindResult.Program with { ProgramName = programName });
                 return new TranspileResult(language, generatedProgram, bindResult.Diagnostics);
             })
             .ToArray();

@@ -56,6 +56,17 @@ formatter own syntax and expression traversal.
 
 ## Generation registry
 
+`Parser.Persistence` and `Binder.Persistence` own integer Load/Save syntax and
+exact Number/key validation. `SmilePersistentStorage` owns evaluator storage;
+`SmileEvaluationOptions.Storage` permits an isolated program/root. The structured,
+MASM, and COBOL lowering lives in `CoreBasicNumberPersistenceWriter`; managed and
+native support modules use standard file APIs and emit only required operations.
+Node.js propagates asynchronous storage through the existing call analysis.
+CLI/Desktop pass the source filename stem through the transpiler into immutable
+`BoundProgram.ProgramName` (direct API default: `Program`). This keeps storage
+stable across generated filenames and fresh run workspaces. Desktop regenerates
+after Save As changes that identity, even when source text is unchanged.
+
 `Binder.RoutineArguments` owns Optional-default validation and named-argument binding. Bound calls retain source-order expressions and a parameter-order index list; the evaluator and each writer apply that list only after capturing arguments. `RoutineArguments` provides this small compiler-side ordering operation, without introducing a generated calling framework. The parser continues to own all syntax, including multiline parameter lists and named labels.
 
 `Evaluation.RoutineArguments` owns evaluator location capture. ByRef array indices

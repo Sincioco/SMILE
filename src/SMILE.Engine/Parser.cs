@@ -5,7 +5,7 @@ namespace SMILE.Engine;
 
 // SMILE has one source front end. Tokenization lives beside parsing so every
 // public entry point receives the same syntax tree and canonical diagnostics.
-internal sealed class Parser
+internal sealed partial class Parser
 {
     private readonly IReadOnlyList<Token> _tokens;
     private readonly List<Diagnostic> _diagnostics = new();
@@ -88,7 +88,8 @@ internal sealed class Parser
         TokenKind.TextType => ParseTextColor(),
         TokenKind.Wait => ParseWait(),
         TokenKind.Random => ParseRandom(),
-        TokenKind.Load => ParseTextFileLoad(),
+        TokenKind.Load => Peek(1).Kind is TokenKind.TextType ? ParseTextFileLoad() : ParseNumberLoad(),
+        TokenKind.Save => ParseNumberSave(),
         TokenKind.If => ParseIf(),
         TokenKind.For => ParseFor(),
         TokenKind.Do => ParseDo(),
@@ -908,7 +909,7 @@ internal sealed class Parser
     {
         Bad, EndOfFile, EndOfLine, Comment, Identifier, Number, DoubleLiteral, String,
         Dim, If, Then, Else, End, For, To, Down, Do, Loop, Until, Print,
-        Get, Key, Clear, Screen, Move, Cursor, Color, Default, TextColor, Wait, Milliseconds, Random, From, Load, File, Into, Count,
+        Get, Key, Clear, Screen, Move, Cursor, Color, Default, TextColor, Wait, Milliseconds, Random, From, Load, Save, File, Into, Count,
         True, False, And, Or, Not, Const, Mod, Exit, Program, As,
         NumberType, DoubleType, BooleanType, TextType, Option, Explicit, Sub, Function,
         Call, Return, Select, Case, ByVal, ByRef, Optional, BuiltInConstant, BuiltInFunction, UnsupportedKeyword,
@@ -942,7 +943,7 @@ internal sealed class Parser
             ["Sub"] = TokenKind.Sub, ["Function"] = TokenKind.Function,
             ["Call"] = TokenKind.Call, ["Return"] = TokenKind.Return,
             ["Select"] = TokenKind.Select, ["Case"] = TokenKind.Case,
-            ["Load"] = TokenKind.Load, ["File"] = TokenKind.File, ["Into"] = TokenKind.Into, ["Count"] = TokenKind.Count,
+            ["Load"] = TokenKind.Load, ["Save"] = TokenKind.Save, ["File"] = TokenKind.File, ["Into"] = TokenKind.Into, ["Count"] = TokenKind.Count,
             ["ByVal"] = TokenKind.ByVal, ["ByRef"] = TokenKind.ByRef,
             ["Optional"] = TokenKind.Optional,
             ["Timer"] = TokenKind.BuiltInFunction, ["Abs"] = TokenKind.BuiltInFunction,
