@@ -9,13 +9,18 @@ internal static partial class CoreBasicCodeGenerator
         {
             var captured = new List<string>();
             bool captureOrder = ordered || parameterOrder is not null || UsesOrderedCExpressions ||
-                routine?.Parameters.Any(parameter => parameter.IsByRef) == true || arguments.Any(ContainsArrayAccess);
+                routine?.ExecutionParameters.Any(parameter => parameter.IsByRef) == true || arguments.Any(ContainsArrayAccess);
             for (int index = 0; index < arguments.Count; index++)
             {
                 BoundExpression argument = arguments[index];
                 VariableSymbol? parameter = routine is null ? null : RoutineArguments.ParameterAtSourceIndex(routine, parameterOrder, index);
                 if (parameter?.IsByRef == true)
                 {
+                    if (parameter.IsReceiver && routine is not null && HasImplicitReceiver(routine))
+                    {
+                        captured.Add(PrepareMemberReceiver(argument));
+                        continue;
+                    }
                     captured.Add(PrepareReferenceArgument(argument, parameter));
                     continue;
                 }

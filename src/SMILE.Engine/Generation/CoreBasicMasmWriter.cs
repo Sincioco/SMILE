@@ -716,13 +716,13 @@ internal sealed partial class CoreBasicMasmWriter
             // volatile argument register as a loop counter.
             int shift = IndirectRecord(symbol.ReturnType) ? 1 : 0;
             if (shift != 0) Append(_initialization, 1, $"mov QWORD PTR {Address(_returnStorage!.Offset)}, rcx");
-            for (int index = 0; index < symbol.Parameters.Count; index++)
+            for (int index = 0; index < symbol.ExecutionParameters.Count; index++)
             {
-                Storage storage = _storage[symbol.Parameters[index]];
+                Storage storage = _storage[symbol.ExecutionParameters[index]];
                 int position = index + shift;
                 if (position < 4)
                 {
-                    Append(_initialization, 1, symbol.Parameters[index] is { Type: { Kind: SmileTypeKind.Double }, IsByRef: false }
+                    Append(_initialization, 1, symbol.ExecutionParameters[index] is { Type: { Kind: SmileTypeKind.Double }, IsByRef: false }
                         ? $"movsd QWORD PTR {Address(storage.Offset)}, xmm{position}"
                         : $"mov QWORD PTR {Address(storage.Offset)}, {ParameterRegisters[position]}");
                 }
@@ -1327,7 +1327,7 @@ internal sealed partial class CoreBasicMasmWriter
                 int position = index + shift;
                 if (position < 4)
                 {
-                    Emit(indent, routine.Parameters[index] is { Type: { Kind: SmileTypeKind.Double }, IsByRef: false }
+                    Emit(indent, routine.ExecutionParameters[index] is { Type: { Kind: SmileTypeKind.Double }, IsByRef: false }
                         ? $"movsd xmm{position}, QWORD PTR {Address(captured[index].Offset)}"
                         : $"mov {ParameterRegisters[position]}, QWORD PTR {Address(captured[index].Offset)}");
                 }

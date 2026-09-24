@@ -17,6 +17,7 @@ internal static partial class CoreBasicCodeGenerator
                 Line("from copy import deepcopy as _smileDeepcopy");
                 Line();
             }
+            if (_language is TargetLanguage.Cpp) WriteCppMemberForwardDeclarations();
             foreach (RecordTypeSymbol type in _program.RecordTypes)
             {
                 string name = _identifiers.Get(type);
@@ -32,6 +33,7 @@ internal static partial class CoreBasicCodeGenerator
                 });
                 _indent++;
                 foreach (RecordFieldSymbol field in type.Fields) WriteRecordFieldDeclaration(field);
+                if (type.Fields.Count == 0 && _language is TargetLanguage.C or TargetLanguage.ObjectiveC) Line("unsigned char _smileEmpty;");
                 if (_language is TargetLanguage.CSharp or TargetLanguage.Java)
                 {
                     Line($"public {name}() {{");
@@ -42,6 +44,7 @@ internal static partial class CoreBasicCodeGenerator
                     Line("}");
                 }
                 if (RecordNeedsCopy(type)) WriteRecordCopyMethods(type);
+                WriteRecordMembers(type);
                 _indent--;
                 if (_language is not TargetLanguage.Python)
                     Line(_language switch { TargetLanguage.C or TargetLanguage.ObjectiveC => $"}} {name};", TargetLanguage.Cpp => "};", _ => "}" });
@@ -118,6 +121,7 @@ internal static partial class CoreBasicCodeGenerator
             string name = _identifiers.Get(type);
             Line(_language switch { TargetLanguage.Python => "def copyFrom(self, source):", TargetLanguage.JavaScript => "copyFrom(source) {", _ => $"public void copyFrom({name} source) {{" });
             _indent++;
+            if (type.Fields.Count == 0 && _language is TargetLanguage.Python) Line("pass");
             foreach (RecordFieldSymbol field in type.Fields)
             {
                 string fieldName = _identifiers.Get(field);

@@ -209,6 +209,13 @@ Profile 1 fixtures remain in `tests/CoreBasicParity`; Profile 2 source/stdout pa
 
 ## Architectural decision rule
 
+Record member syntax/binding has focused Parser.RecordMembers and Binder.RecordMembers
+owners. Types own method/property symbols; routines own borrowed receivers and
+setter values separately from user parameters. Bound calls retain source evaluation
+order and map hidden state to execution parameters, reusing existing argument,
+ByRef, copy and lifetime logic. CoreBasicRecordMembers owns native declarations and
+call forms; shared routine bodies remain the single statement-generation path.
+
 With binding owns a lexical stack of receiver symbols, while evaluation captures
 and restores writable locations across recursive calls. Existing record-location
 writers own target aliases and index capture. Shared control-flow scans traverse

@@ -253,6 +253,8 @@ public sealed record VariableSymbol(
         : checked(ArrayLength * (ArraySecondLength > 0 ? ArraySecondLength : 1));
 
     public bool IsGlobal => RoutineName is null;
+    public bool IsReceiver { get; init; }
+    public bool IsSetterValue { get; init; }
 }
 
 public enum SmileTextColor
@@ -275,6 +277,15 @@ public sealed record RoutineSymbol(
     SmileType? ReturnType)
 {
     public bool IsFunction => Kind is RoutineKind.Function;
+    public RecordTypeSymbol? Owner { get; init; }
+    public bool IsPrivate { get; init; }
+    public RecordMemberRoutineKind MemberKind { get; init; }
+    public VariableSymbol? Receiver { get; init; }
+    public VariableSymbol? SetterValue { get; init; }
+    public string ScopeName => Owner is null ? Name : Owner.Name + "." + Name + "." + MemberKind;
+    // Hidden receiver/accessor state never appears among authored parameters.
+    public IReadOnlyList<VariableSymbol> ExecutionParameters => Receiver is null ? Parameters
+        : new[] { Receiver }.Concat(SetterValue is null ? [] : new[] { SetterValue }).Concat(Parameters).ToArray();
 }
 
 // Bound nodes describe what the program means after name lookup and type

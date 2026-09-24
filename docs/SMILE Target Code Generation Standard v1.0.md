@@ -229,3 +229,20 @@ reference, Java/JavaScript/Python an object alias, MASM a saved address, and COB
 the original group with captured subscripts. Swift uses the original value
 location with captured indexes. Leading-dot expressions then select ordinary
 native fields; no With runtime or record snapshot is generated.
+
+Type methods are native instance methods in C#, C++, Java, JavaScript, Python and
+Swift. C and Objective-C retain value structs with receiver-pointer functions;
+MASM and COBOL pass the receiver address through their existing procedure ABI.
+Me becomes this/self or that receiver parameter. Hidden receiver and setter state
+do not become authored SMILE parameters. Preserve receiver-first method calls and
+value-first property assignment before placing native arguments.
+
+C# and Python use native properties, JavaScript uses get/set, and Swift uses
+computed properties with mutating getters. C++/Java and procedural targets use
+named getter/setter methods. A write-only Swift property uses a setter method,
+and asynchronous JavaScript accessors use async methods because those languages
+cannot express the corresponding operation as a native property. When Swift
+requires overlapping receiver access, emit a static member with the existing
+SmileReference adapter; retain ordinary mutating methods for exclusive receivers.
+Apply native privacy where available and enforce all visibility during binding.
+No member registry, dynamic dispatch framework or new runtime helper is needed.

@@ -499,6 +499,7 @@ internal static partial class CoreBasicCodeGenerator
 
             foreach (BoundRoutineDeclaration routine in _program.Routines)
             {
+                if (routine.Symbol.Owner is not null && _language is TargetLanguage.Cpp) continue;
                 Line($"static {RoutineReturnType(routine.Symbol)} {RoutineName(routine.Symbol)}({ParameterList(routine.Symbol)});");
             }
 
@@ -512,6 +513,7 @@ internal static partial class CoreBasicCodeGenerator
         {
             foreach (BoundRoutineDeclaration routine in _program.Routines)
             {
+                if (routine.Symbol.Owner is not null && HasNativeMembers && _language is not TargetLanguage.Cpp) continue;
                 if (_language is TargetLanguage.Python)
                 {
                     _layout.EnsureBlankLines(2);
@@ -525,59 +527,35 @@ internal static partial class CoreBasicCodeGenerator
         private void WriteRoutine(BoundRoutineDeclaration routine)
         {
             RoutineSymbol symbol = routine.Symbol;
-            string name = RoutineName(symbol);
             string parameters = ParameterList(symbol);
-            switch (_language)
+            WriteRoutineHeader(symbol, parameters);
+            if (_language is TargetLanguage.Python)
             {
-                case TargetLanguage.CSharp:
-                    Line($"private static {RoutineReturnType(symbol)} {name}({parameters})");
-                    Line("{");
-                    break;
-                case TargetLanguage.C:
-                case TargetLanguage.ObjectiveC:
-                case TargetLanguage.Cpp:
-                    Line($"static {RoutineReturnType(symbol)} {name}({parameters})");
-                    Line("{");
-                    break;
-                case TargetLanguage.JavaScript:
-                    Line($"{(_asyncJavaScriptRoutines.Contains(symbol) ? "async " : string.Empty)}function {name}({parameters}) {{");
-                    break;
-                case TargetLanguage.Java:
-                    Line($"private static {RoutineReturnType(symbol)} {name}({parameters}) {{");
-                    break;
-                case TargetLanguage.Swift:
-                    string arrow = symbol.IsFunction ? $" -> {RoutineReturnType(symbol)}" : string.Empty;
-                    Line($"func {name}({parameters}){arrow} {{");
-                    break;
-                case TargetLanguage.Python:
-                    Line($"def {name}({parameters}):");
-                    _indent++;
-                    string[] globals = AssignedGlobals(routine.SourceItems)
-                        .Where(variable => !NeedsReferenceBox(variable))
-                        .Select(StorageName)
-                        .Distinct(StringComparer.Ordinal)
-                        .ToArray();
-                    if (globals.Length > 0)
-                    {
-                        Line("global " + string.Join(", ", globals));
-                    }
+                _indent++;
+                string[] globals = AssignedGlobals(routine.SourceItems)
+                    .Where(variable => !NeedsReferenceBox(variable))
+                    .Select(StorageName)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
+                if (globals.Length > 0)
+                {
+                    Line("global " + string.Join(", ", globals));
+                }
 
-                    WriteBoxedParameters(symbol);
-                    WriteLocalDeclarations(routine);
-                    if (!routine.SourceItems.OfType<BoundStatement>().Any() &&
-                        !routine.SourceItems.OfType<BoundFullLineComment>().Any())
-                    {
-                        Line("pass");
-                    }
-                    else
-                    {
-                        WriteItems(routine.SourceItems);
-                    }
+                WriteBoxedParameters(symbol);
+                WriteLocalDeclarations(routine);
+                if (!routine.SourceItems.OfType<BoundStatement>().Any() &&
+                    !routine.SourceItems.OfType<BoundFullLineComment>().Any())
+                {
+                    Line("pass");
+                }
+                else
+                {
+                    WriteItems(routine.SourceItems);
+                }
 
-                    _indent--;
-                    return;
-                default:
-                    return;
+                _indent--;
+                return;
             }
 
             _indent++;
@@ -601,7 +579,7 @@ internal static partial class CoreBasicCodeGenerator
                     WriteCValueRoots(routine.Symbol.ReturnType!, resultName, register: true);
                 }
 
-                WriteManagedTextRoots(routine.Symbol.Parameters, register: true);
+                WriteManagedTextRoots(routine.Symbol.ExecutionParameters, register: true);
                 if (hasReturn || resultName is not null)
                 {
                     Line();
@@ -610,15 +588,16 @@ internal static partial class CoreBasicCodeGenerator
 
             if (_language is TargetLanguage.Swift)
             {
-                for (int index = 0; index < symbol.Parameters.Count; index++)
+                for (int index = 0; index < symbol.ExecutionParameters.Count; index++)
                 {
-                    VariableSymbol parameter = symbol.Parameters[index];
+                    VariableSymbol parameter = symbol.ExecutionParameters[index];
                     if (parameter.IsByRef) continue;
                     string binding = IsAssigned(parameter, routine.SourceItems) || _addressedVariables.Contains(parameter) ? "var" : "let";
-                    Line($"{binding} {Name(parameter)}: {TypeName(parameter.Type)} = _smileParameter{index + 1}");
+                    string value = parameter.IsSetterValue && HasNativeProperty(symbol) ? "newValue" : $"_smileParameter{index + 1}";
+                    Line($"{binding} {Name(parameter)}: {TypeName(parameter.Type)} = {value}");
                 }
 
-                if (symbol.Parameters.Count > 0)
+                if (symbol.ExecutionParameters.Count > 0)
                 {
                     Line();
                 }
@@ -641,7 +620,7 @@ internal static partial class CoreBasicCodeGenerator
                 }
 
                 WriteManagedTextRoots(cleanup.Locals, register: false);
-                WriteManagedTextRoots(routine.Symbol.Parameters, register: false);
+                WriteManagedTextRoots(routine.Symbol.ExecutionParameters, register: false);
                 if (cleanup.ResultName is not null && routine.Symbol.ReturnType is { Kind: SmileTypeKind.String })
                 {
                     Line($"smile_text_unregister(&{cleanup.ResultName});");
@@ -930,8 +909,11 @@ internal static partial class CoreBasicCodeGenerator
                 _ => string.Empty
             };
 
-        private string ParameterList(RoutineSymbol routine) => string.Join(", ", routine.Parameters.Select((parameter, index) =>
+        private string ParameterList(RoutineSymbol routine) => string.Join(", ", routine.ExecutionParameters.Select((parameter, index) => (parameter, index))
+            .Where(item => !item.parameter.IsReceiver || !HasImplicitReceiver(routine)).Select(item =>
         {
+            VariableSymbol parameter = item.parameter;
+            int index = item.index;
             if (parameter.IsByRef) return ReferenceParameter(parameter);
             string name = NeedsReferenceBox(parameter) ? $"_smileParameter{index + 1}" : StorageName(parameter);
             return _language switch
@@ -1174,10 +1156,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private void WriteCall(BoundCallStatement call)
         {
-            string awaitPrefix = _language is TargetLanguage.JavaScript && _asyncJavaScriptRoutines.Contains(call.Routine)
-                ? "await "
-                : string.Empty;
-            string invocation = $"{awaitPrefix}{RoutineName(call.Routine)}({string.Join(", ", PrepareCallArguments(call.Arguments, call.ParameterOrder, routine: call.Routine))})";
+            string invocation = CallText(call.Routine, PrepareCallArguments(call.Arguments, call.ParameterOrder, routine: call.Routine));
             Line(_language is TargetLanguage.Swift or TargetLanguage.Python
                 ? invocation
                 : invocation + ";");
@@ -1886,7 +1865,7 @@ internal static partial class CoreBasicCodeGenerator
                 BoundArrayExpression array => ArrayElement(array.Array, array.Indices),
                 BoundFieldExpression field => FieldLocation(field),
                 BoundWithReceiverExpression receiver => _withLocations[receiver.Location],
-                BoundCallExpression call => $"{(_language is TargetLanguage.JavaScript && _asyncJavaScriptRoutines.Contains(call.Routine) ? "await " : string.Empty)}{RoutineName(call.Routine)}({string.Join(", ", call.Arguments.Select(Expression))})",
+                BoundCallExpression call => CallText(call.Routine, PrepareCallArguments(call.Arguments, call.ParameterOrder, routine: call.Routine)),
                 BoundIntrinsicExpression intrinsic => Intrinsic(intrinsic),
                 BoundUnaryExpression unary => Unary(unary),
                 BoundBinaryExpression binary => Binary(binary),
@@ -1944,10 +1923,7 @@ internal static partial class CoreBasicCodeGenerator
                 case BoundCallExpression call:
                 {
                     IReadOnlyList<string> arguments = PrepareCallArguments(call.Arguments, call.ParameterOrder, ordered: true, routine: call.Routine);
-                    string awaitPrefix = _language is TargetLanguage.JavaScript && _asyncJavaScriptRoutines.Contains(call.Routine)
-                        ? "await "
-                        : string.Empty;
-                    return NewOrderedValue(call.Type, $"{awaitPrefix}{RoutineName(call.Routine)}({string.Join(", ", arguments)})");
+                    return NewOrderedValue(call.Type, CallText(call.Routine, arguments));
                 }
                 case BoundUnaryExpression unary:
                 {
@@ -2029,7 +2005,7 @@ internal static partial class CoreBasicCodeGenerator
         {
             BoundFieldExpression => true,
             BoundArrayExpression => true,
-            BoundCallExpression call => call.ParameterOrder is not null || call.Routine.Parameters.Any(parameter => parameter.IsByRef) || call.Arguments.Any(ContainsArrayAccess),
+            BoundCallExpression call => call.ParameterOrder is not null || call.Routine.ExecutionParameters.Any(parameter => parameter.IsByRef) || call.Arguments.Any(ContainsArrayAccess),
             BoundIntrinsicExpression intrinsic => DoubleSemantics.UsesDouble(intrinsic) || intrinsic.Arguments.Any(ContainsArrayAccess),
             BoundUnaryExpression unary => ContainsArrayAccess(unary.Operand),
             BoundBinaryExpression binary => ContainsArrayAccess(binary.Left) || ContainsArrayAccess(binary.Right),

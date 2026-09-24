@@ -12,7 +12,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private void FindReferenceStorage()
         {
-            if (!_program.Routines.Any(routine => routine.Symbol.Parameters.Any(parameter => parameter.IsByRef))) return;
+            if (!_program.Routines.Any(routine => routine.Symbol.ExecutionParameters.Any(parameter => parameter.IsByRef))) return;
             ReferenceCall[] calls = ReferenceCalls(_program.SourceItems, null)
                 .Concat(_program.Routines.SelectMany(routine => ReferenceCalls(routine.SourceItems, routine.Symbol))).ToArray();
             foreach (ReferenceCall call in calls)
@@ -63,7 +63,7 @@ internal static partial class CoreBasicCodeGenerator
                         LocationOwner(item.argument).IsByRef)) changed |= shared.Add(call.Caller!);
             } while (changed);
             foreach (RoutineSymbol routine in shared)
-                _swiftReferenceParameters.UnionWith(routine.Parameters.Where(parameter => parameter.IsByRef));
+                _swiftReferenceParameters.UnionWith(routine.ExecutionParameters.Where(parameter => parameter.IsByRef));
         }
 
         private static IEnumerable<ReferenceCall> ReferenceCalls(IReadOnlyList<BoundSourceItem> items, RoutineSymbol? caller) =>

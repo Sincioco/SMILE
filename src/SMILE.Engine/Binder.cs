@@ -40,12 +40,14 @@ internal sealed partial class Binder
         DeclareGlobalDimensions(arrays: false);
         DeclareGlobalDimensions(arrays: true);
         BuildRoutineSignatures();
+        BuildRecordMemberSignatures();
 
         IReadOnlyList<BoundSourceItem> topLevel = BindItems(syntax.SourceItems, directProgramLevel: true);
         foreach (RoutineDeclarationSyntax declaration in _routineSyntax.Values.OrderBy(item => item.Span.Start))
         {
             BindRoutine(declaration);
         }
+        foreach (var member in _recordRoutineSyntax) BindRoutine(member.Key, member.Value);
 
         return new BindResult(
             new BoundProgram(
@@ -201,44 +203,54 @@ internal sealed partial class Binder
     private void BuildRoutineSignatures()
     {
         foreach (RoutineDeclarationSyntax declaration in _routineSyntax.Values.OrderBy(item => item.Span.Start))
-        {
-            var parameters = new List<VariableSymbol>();
-            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            bool sawOptional = false;
-            foreach (ParameterSyntax parameter in declaration.Parameters)
-            {
-                if (!names.Add(parameter.Name))
-                {
-                    Report("SMILE2119", $"Parameter '{parameter.Name}' is already declared in routine '{declaration.Name}'.", parameter.NameSpan);
-                    continue;
-                }
+            _routineSymbols.Add(declaration.Name, BuildRoutineSignature(declaration));
+    }
 
-                if (sawOptional && !parameter.IsOptional)
-                {
-                    Report("SMILE2160", "Required parameters must precede Optional parameters.", parameter.Span);
-                }
-                sawOptional |= parameter.IsOptional;
-                SmileType parameterType = ResolveType(parameter.DeclaredType);
-                SmileValue? defaultValue = BindParameterDefault(parameter, parameterType);
-                parameters.Add(new VariableSymbol(
-                    parameter.Name,
-                    parameter.NameSpan,
-                    parameterType,
-                    IsConstant: false,
-                    RoutineName: declaration.Name,
-                    ArrayLength: 0,
-                    IsParameter: true,
-                    DefaultValue: defaultValue,
-                    IsByRef: parameter.IsByRef));
+    private RoutineSymbol BuildRoutineSignature(RoutineDeclarationSyntax declaration, RecordTypeSymbol? owner = null,
+        bool isPrivate = false, RecordMemberRoutineKind memberKind = RecordMemberRoutineKind.Method, SmileType? setterType = null)
+    {
+        string scopeName = owner is null ? declaration.Name : owner.Name + "." + declaration.Name + "." + memberKind;
+        var parameters = new List<VariableSymbol>();
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        bool sawOptional = false;
+        foreach (ParameterSyntax parameter in declaration.Parameters)
+        {
+            if (!names.Add(parameter.Name))
+            {
+                Report("SMILE2119", $"Parameter '{parameter.Name}' is already declared in routine '{declaration.Name}'.", parameter.NameSpan);
+                continue;
             }
 
-            _routineSymbols.Add(declaration.Name, new RoutineSymbol(
-                declaration.Name,
-                declaration.NameSpan,
-                declaration.Kind,
-                parameters,
-                declaration.ReturnType is null ? null : ResolveType(declaration.ReturnType)));
+            if (sawOptional && !parameter.IsOptional)
+            {
+                Report("SMILE2160", "Required parameters must precede Optional parameters.", parameter.Span);
+            }
+            sawOptional |= parameter.IsOptional;
+            SmileType parameterType = ResolveType(parameter.DeclaredType);
+            SmileValue? defaultValue = BindParameterDefault(parameter, parameterType);
+            parameters.Add(new VariableSymbol(
+                parameter.Name,
+                parameter.NameSpan,
+                parameterType,
+                IsConstant: false,
+                RoutineName: scopeName,
+                ArrayLength: 0,
+                IsParameter: true,
+                DefaultValue: defaultValue,
+                IsByRef: parameter.IsByRef));
         }
+
+        return new RoutineSymbol(
+            declaration.Name,
+            declaration.NameSpan,
+            declaration.Kind,
+            parameters,
+            declaration.ReturnType is null ? null : ResolveType(declaration.ReturnType))
+        {
+            Owner = owner, IsPrivate = isPrivate, MemberKind = memberKind,
+            Receiver = owner is null ? null : new VariableSymbol("Me", declaration.NameSpan, owner, RoutineName: scopeName, IsParameter: true, IsByRef: true) { IsReceiver = true },
+            SetterValue = setterType is null ? null : new VariableSymbol("Value", declaration.NameSpan, setterType, RoutineName: scopeName, IsParameter: true) { IsSetterValue = true }
+        };
     }
 
     private BoundConstStatement? ResolveConstant(string name)
@@ -347,21 +359,21 @@ internal sealed partial class Binder
         return dimensions;
     }
 
-    private void BindRoutine(RoutineDeclarationSyntax declaration)
+    private void BindRoutine(RoutineDeclarationSyntax declaration, RoutineSymbol? routine = null)
     {
-        if (!_routineSymbols.TryGetValue(declaration.Name, out RoutineSymbol? routine))
+        if (routine is null && !_routineSymbols.TryGetValue(declaration.Name, out routine))
         {
             return;
         }
 
         _currentRoutine = routine;
         _locals = new Dictionary<string, VariableSymbol>(StringComparer.OrdinalIgnoreCase);
-        foreach (VariableSymbol parameter in routine.Parameters)
+        foreach (VariableSymbol parameter in routine.ExecutionParameters)
         {
             _locals[parameter.Name] = parameter;
         }
 
-        InventoryLocalDimensions(declaration.SourceItems, routine.Name);
+        InventoryLocalDimensions(declaration.SourceItems, routine.ScopeName);
         _forDepth = 0;
         _doDepth = 0;
         IReadOnlyList<BoundSourceItem> body = BindItems(declaration.SourceItems, directProgramLevel: false);
@@ -483,6 +495,7 @@ internal sealed partial class Binder
         DimStatementSyntax dim => BindDim(dim),
         ConstStatementSyntax constant => directProgramLevel ? BindConst(constant) : BindLocalConst(constant),
         CallStatementSyntax call => BindCallStatement(call),
+        MemberCallStatementSyntax call => BindMemberCallStatement(call),
         ReturnStatementSyntax returnStatement => BindReturn(returnStatement),
         SelectStatementSyntax select => BindSelect(select),
         CorePrintStatementSyntax print => BindPrint(print),
@@ -878,6 +891,10 @@ internal sealed partial class Binder
                 return BindName(name, constantsOnly);
             case WithReceiverExpressionSyntax receiver:
                 return BindWithReceiver(receiver);
+            case MeExpressionSyntax instance:
+                return BindMe(instance);
+            case MemberInvocationExpressionSyntax invocation:
+                return BindMemberInvocation(invocation);
             case MemberAccessExpressionSyntax member:
                 return BindMember(member, constantsOnly);
             case IndexedMemberExpressionSyntax indexed:

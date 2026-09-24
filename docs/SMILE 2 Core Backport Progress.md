@@ -5,7 +5,7 @@ Authority inspected read-only: `D:\SMILE 2.0`, commit
 before inspection and after the unchanged fixture compilation/execution.
 
 The overall requested back-port is **not complete**. This file records the
-completed text, routine, console-key, Double, text-file, persistence, Enum, Type value-record, With, and ByRef milestones and the remaining source-language gaps.
+completed text, routine, console-key, Double, text-file, persistence, Enum, Type records/members, With, and ByRef milestones and the remaining source-language gaps.
 
 ## Implemented in this milestone
 
@@ -27,6 +27,7 @@ completed text, routine, console-key, Double, text-file, persistence, Enum, Type
 | Nominal Enum | Checked signed-64 members, aliases, zero initialization, Const, arrays, ByVal/ByRef, Optional defaults, returns, exact equality and Select; evaluator and all ten targets |
 | Type value records | Exact nominal identity, nested fields, fixed-array fields, independent copies/defaults, arrays of records, ByVal/ByRef/returns, writable field references and Data Count/Status fields; evaluator and all ten targets |
 | With blocks | Capture writable record locations and checked indexes once; nested leading-dot access, stable aliases, recursion and ordinary return/loop-exit behavior; evaluator and all ten targets |
+| Type members | Sub/Function methods, Get/Set properties, borrowed Me, Public/Private access, Optional/named calls and value-first property assignment; evaluator and all ten targets |
 | Checked Double failures | Invalid domains, zero divisors, conversion overflow and nonfinite results report their source line before destination mutation |
 
 The UTF-8 output fix addresses failures observed during actual generated-program
@@ -38,10 +39,10 @@ execution on Windows. Ordinary ASCII programs retain their minimal output.
 |---|---|
 | Console keys | Standalone Control key events: character-stream APIs do not report modifier-only events; a native console-event boundary is still needed |
 | Files and persistence | Project ApplicationId ownership/configuration; current loose programs use the source filename stem |
-| Object members | Type methods/properties, Class references/constructors, Me, New, Nothing, Is/Is Not, With on class references, member visibility and ownership |
+| Reference objects | Class references/constructors, New, Nothing, Is/Is Not, With on class references, class member visibility and ownership |
 | Program organization | Module/Import, qualified names, visibility, multi-file source/project inputs, deterministic source-owned libraries |
 
-Type methods/properties, classes, and modules require additional binding,
+Classes and modules require additional binding,
 generation and project-system work. They remain outstanding core-language work.
 
 ## Outside the console/core back-port
@@ -138,6 +139,28 @@ location; Swift reuses a location with captured indexes. No runtime helper is ad
 The C/Objective-C/MASM allocating-index/early-return fixture reports 41 allocations,
 41 frees, zero live allocations and a peak of two. With index temporaries release
 their Text roots before entering the body.
+
+Type member fixtures run unchanged in SMILE 2.0 and on all ten targets, covering
+borrowed/aliased receivers, recursion, Optional/named calls, mixed six-argument
+integer/Double calls, read-only/write-only/private properties, aggregate copies,
+ByRef setter Value, and text-file reads inside accessors. Native instance methods
+and properties are used where available. C/Objective-C, MASM and COBOL use explicit
+receiver procedures; C++/Java use getter/setter methods. Aliased Swift receivers
+reuse the existing location adapter through static member methods, and asynchronous
+JavaScript accessors become async getter/setter methods. No new member runtime is
+introduced. Missing nested terminators preserve later declarations for diagnostics.
+Regressions cover Python self/property names, Swift newValue shadowing, COBOL's
+31-character program identity limit and a method parameter shadowing an Enum name.
+The last case is a recorded parity exception: SMILE 2.0 supports this shadowing
+after module linking, but its loose-file Enum lookup incorrectly overrides the
+local parameter. SMILE 1.0 consistently retains local variable lookup first;
+the separate regression is not claimed as an unchanged SMILE 2.0 fixture.
+
+The member milestone passed 111 focused member/record/ByRef/With/mission/reference/
+highlighting tests, the normal 22-test MissionGuardrail, the full living-source
+format check, and the cumulative example on all ten installed toolchains. The
+Desktop build has zero warnings/errors. Member Text lifetime probes finish with
+zero live allocations on C, Objective-C and MASM (2/2 and 1/1 allocations/frees).
 
 No repository file-size/complexity checker or reviewed no-growth baseline was
 found in SMILE 1.0. Existing broad writers received focused wiring; new text and

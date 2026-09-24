@@ -759,7 +759,9 @@ public sealed partial class SmileEvaluator
     {
         BoundRoutineDeclaration routine = _routines[symbol];
         var frame = new CallFrame();
-        foreach (VariableSymbol local in routine.Locals)
+        // Parameters already have captured values or borrowed locations. Do not
+        // allocate a default record (and its arrays) for a borrowed Me receiver.
+        foreach (VariableSymbol local in routine.Locals.Where(local => !local.IsParameter))
         {
             if (local.IsArray)
             {
@@ -771,9 +773,9 @@ public sealed partial class SmileEvaluator
             }
         }
 
-        for (int index = 0; index < symbol.Parameters.Count; index++)
+        for (int index = 0; index < arguments.Count; index++)
         {
-            VariableSymbol parameter = symbol.Parameters[index];
+            VariableSymbol parameter = RoutineArguments.ParameterAtSourceIndex(symbol, null, index);
             if (arguments[index].Location is { } location) frame.References[parameter] = location;
             else frame.Values[parameter] = arguments[index].Value;
         }

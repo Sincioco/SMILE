@@ -12,6 +12,7 @@ internal sealed partial class Parser
     private int _position;
     private int _delimiterDepth;
     private int _routineDepth;
+    private int _recordDepth;
 
     public Parser(string source)
     {
@@ -73,7 +74,7 @@ internal sealed partial class Parser
     private StatementSyntax? ParseStatement() => Current.Kind switch
     {
         TokenKind.Option => ParseOptionExplicit(),
-        TokenKind.Identifier or TokenKind.Dot => ParseLocationAssignment(),
+        TokenKind.Identifier or TokenKind.Dot or TokenKind.Me or TokenKind.OpenParenthesis => ParseLocationAssignment(),
         TokenKind.With => ParseWith(),
         TokenKind.Dim => ParseDim(),
         TokenKind.Enum => ParseEnum(),
@@ -160,7 +161,7 @@ internal sealed partial class Parser
     private StatementSyntax ParseRoutine(RoutineKind kind)
     {
         Token start = Next();
-        Token name = Match(TokenKind.Identifier, $"Expected a name after '{start.Text}'.");
+        Token name = _recordDepth > 0 ? MatchMemberName() : Match(TokenKind.Identifier, $"Expected a name after '{start.Text}'.");
         Match(TokenKind.OpenParenthesis, "Routine declarations require '('.");
         _delimiterDepth++;
         var parameters = new List<ParameterSyntax>();
@@ -238,7 +239,7 @@ internal sealed partial class Parser
 
         ConsumeRequiredLineEnd($"The {kind} header must end after its declaration.");
         _routineDepth++;
-        IReadOnlyList<SourceItemSyntax> body = ParseItems(() => IsRoutineTerminator(kind) || Current.Kind is TokenKind.Sub or TokenKind.Function);
+        IReadOnlyList<SourceItemSyntax> body = ParseItems(() => IsRoutineTerminator(kind) || Current.Kind is TokenKind.Sub or TokenKind.Function || _recordDepth > 0 && IsRecordMemberBoundary());
         _routineDepth--;
 
         TextSpan endSpan = LastSpan(body, headerEnd);
@@ -262,10 +263,11 @@ internal sealed partial class Parser
     private StatementSyntax ParseCallStatement()
     {
         Token start = Next();
-        Token name = Match(TokenKind.Identifier, "Expected a Sub name after 'Call'.");
-        IReadOnlyList<ExpressionSyntax> arguments = ParseArgumentList("Call statements require a parenthesized argument list.");
-        TextSpan end = arguments.Count > 0 ? arguments[^1].Span : Previous.Span;
-        return new CallStatementSyntax(name.Text, name.Span, arguments, Combine(start.Span, end));
+        ExpressionSyntax expression = ParsePrimaryExpression();
+        if (expression is MemberInvocationExpressionSyntax member) return new MemberCallStatementSyntax(member, Combine(start.Span, member.Span));
+        if (expression is CallExpressionSyntax call) return new CallStatementSyntax(call.Name, call.NameSpan, call.Arguments, Combine(start.Span, call.Span));
+        Report("SMILE2017", "Call requires a Sub name and parenthesized arguments.", expression.Span);
+        return new CallStatementSyntax("", expression.Span, [], Combine(start.Span, expression.Span));
     }
 
     private StatementSyntax ParseReturn()
@@ -581,6 +583,9 @@ internal sealed partial class Parser
         {
             case TokenKind.Dot:
                 return new WithReceiverExpressionSyntax(token.Span);
+            case TokenKind.Me:
+                Next();
+                return new MeExpressionSyntax(token.Span);
             case TokenKind.DoubleLiteral:
                 return new DoubleLiteralExpressionSyntax(Next().Text, token.Span);
             case TokenKind.Number:
@@ -890,7 +895,7 @@ internal sealed partial class Parser
         Call, Return, Select, Case, ByVal, ByRef, Optional, BuiltInConstant, BuiltInFunction, UnsupportedKeyword,
         Plus, Minus, Star, Slash, Equals, NotEquals, Less, LessOrEquals,
         Greater, GreaterOrEquals, OpenParenthesis, CloseParenthesis,
-        OpenBracket, CloseBracket, Semicolon, Comma, ColonEquals, Dot, Enum, Type, With
+        OpenBracket, CloseBracket, Semicolon, Comma, ColonEquals, Dot, Enum, Type, With, Me, Public, Private, Property, Set
     }
 
     private sealed record Token(TokenKind Kind, string Text, object? Value, TextSpan Span);
@@ -925,6 +930,8 @@ internal sealed partial class Parser
             ["Enum"] = TokenKind.Enum,
             ["Type"] = TokenKind.Type,
             ["With"] = TokenKind.With,
+            ["Me"] = TokenKind.Me, ["Public"] = TokenKind.Public, ["Private"] = TokenKind.Private,
+            ["Property"] = TokenKind.Property, ["Set"] = TokenKind.Set,
             ["Timer"] = TokenKind.BuiltInFunction, ["Abs"] = TokenKind.BuiltInFunction,
             ["Min"] = TokenKind.BuiltInFunction, ["Max"] = TokenKind.BuiltInFunction,
             ["Text_Length"] = TokenKind.BuiltInFunction,

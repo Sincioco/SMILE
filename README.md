@@ -130,8 +130,12 @@ references into its fields. Whole records cannot be printed, compared, used in
 arithmetic or stored in Const. `With CurrentEntry` ... `End With` captures a writable
 record location once; leading-dot expressions such as `.Points` use that record.
 Nested blocks use the nearest receiver, and array indexes run once on entry.
-Type methods/properties, classes and modules remain
-pending in the [back-port inventory](docs/SMILE%202%20Core%20Backport%20Progress.md).
+Types also contain Sub/Function methods and Property Get/Set accessors. `Me`
+borrows the current record; a setter receives its new value as `Value`. Methods
+and properties are Public by default and may be Private; fields remain Public.
+Member calls support Optional and named arguments. A property assignment evaluates
+its new value before capturing its receiver. Classes and modules remain pending
+in the [back-port inventory](docs/SMILE%202%20Core%20Backport%20Progress.md).
 
 ### Three original games, written entirely in SMILE
 

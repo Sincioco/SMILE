@@ -12,6 +12,9 @@ internal static partial class CoreBasicCodeGenerator
 
         private string ReferenceValueName(VariableSymbol variable)
         {
+            if (variable.IsReceiver && HasNativeMembers && !(_language is TargetLanguage.Swift && _swiftReferenceParameters.Contains(variable)))
+                return _language is TargetLanguage.Python or TargetLanguage.Swift ? "self" : _language is TargetLanguage.Cpp ? "(*this)" : "this";
+            if (variable.IsSetterValue && _language is TargetLanguage.CSharp) return "value";
             string name = StorageName(variable);
             if (NeedsReferenceBox(variable)) return $"{name}[0]";
             if (!variable.IsByRef) return name;
@@ -31,9 +34,9 @@ internal static partial class CoreBasicCodeGenerator
 
         private void WriteBoxedParameters(RoutineSymbol routine)
         {
-            for (int index = 0; index < routine.Parameters.Count; index++)
-                if (NeedsReferenceBox(routine.Parameters[index]))
-                    Line(ReferenceBoxDeclaration(routine.Parameters[index], $"_smileParameter{index + 1}"));
+            for (int index = 0; index < routine.ExecutionParameters.Count; index++)
+                if (NeedsReferenceBox(routine.ExecutionParameters[index]))
+                    Line(ReferenceBoxDeclaration(routine.ExecutionParameters[index], $"_smileParameter{index + 1}"));
         }
 
         private string ReferenceParameter(VariableSymbol parameter)
@@ -62,9 +65,9 @@ internal static partial class CoreBasicCodeGenerator
                 return PrepareJavaFieldReference(argument);
             if (argument is BoundFieldExpression dynamicField && UsesArrayReferences)
                 return PrepareDynamicFieldReference(dynamicField);
-            if (argument is BoundFieldExpression field && _language is TargetLanguage.CSharp or TargetLanguage.C or TargetLanguage.ObjectiveC or TargetLanguage.Cpp)
+            if (argument is BoundFieldExpression or BoundWithReceiverExpression && _language is TargetLanguage.CSharp or TargetLanguage.C or TargetLanguage.ObjectiveC or TargetLanguage.Cpp)
             {
-                string fieldTarget = FieldLocation(field);
+                string fieldTarget = PrepareRecordLocation(argument);
                 string capturedField = $"_smileReference{++_orderedTempId}";
                 if (_language is TargetLanguage.CSharp)
                 {
@@ -87,7 +90,7 @@ internal static partial class CoreBasicCodeGenerator
                     indices.Add(index);
                 }
             }
-            string target = argument is BoundFieldExpression swiftField ? FieldLocation(swiftField)
+            string target = argument is BoundFieldExpression or BoundWithReceiverExpression ? PrepareRecordLocation(argument)
                 : indices.Count == 0 ? Name(owner) : ArrayTarget(owner, indices);
             if (UsesArrayReferences)
             {

@@ -79,7 +79,7 @@ internal sealed partial class CobolWriter
 
         Line("       LINKAGE SECTION.");
         WriteStateDefinition(linkage: true);
-        foreach (VariableSymbol parameter in symbol.Parameters)
+        foreach (VariableSymbol parameter in symbol.ExecutionParameters)
         {
             if (parameter.Type is RecordTypeSymbol) { WriteRecordVariable(parameter, 1, linkage: true); continue; }
             Line($"       01 {Name(parameter)} {Picture(parameter.Type)}.");
@@ -100,7 +100,7 @@ internal sealed partial class CobolWriter
         }
 
         var usingItems = new List<string> { "BY REFERENCE SMILE-STATE" };
-        foreach (VariableSymbol parameter in symbol.Parameters)
+        foreach (VariableSymbol parameter in symbol.ExecutionParameters)
         {
             usingItems.Add($"BY REFERENCE {Name(parameter)}");
             if (parameter.Type is { Kind: SmileTypeKind.String })
@@ -1088,6 +1088,7 @@ internal sealed partial class CobolWriter
                 if (RoutineArguments.ParameterAtSourceIndex(routine, parameterOrder, index).IsByRef)
                 {
                     if (argument is BoundFieldExpression field) { captured.Add(PrepareRecordField(field, indent)); continue; }
+                    if (argument is BoundWithReceiverExpression receiver) { captured.Add(new PreparedArrayElement(_withLocations[receiver.Location], null)); continue; }
                     captured.Add(argument is BoundArrayExpression array
                         ? PrepareArrayElement(array.Array, array.Indices, indent, checkEachDimension: true)
                         : new PreparedArrayElement(_owner.Name(((BoundVariableExpression)argument).Variable),

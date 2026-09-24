@@ -25,6 +25,11 @@
       <Word>ENUM</Word>
       <Word>TYPE</Word>
       <Word>WITH</Word>
+      <Word>ME</Word>
+      <Word>PUBLIC</Word>
+      <Word>PRIVATE</Word>
+      <Word>PROPERTY</Word>
+      <Word>SET</Word>
       <Word>AS</Word>
       <Word>NUMBER</Word>
       <Word>DOUBLE</Word>

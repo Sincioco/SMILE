@@ -92,13 +92,11 @@ internal sealed partial class Binder
 
     private BoundExpression BindMember(MemberAccessExpressionSyntax syntax, bool constantsOnly)
     {
-        if (syntax.Receiver is NameExpressionSyntax name && _enums.TryGetValue(name.Name, out EnumTypeSymbol? type))
+        if (syntax.Receiver is NameExpressionSyntax name && LookupVariable(name.Name, name.Span, reportUnknown: false) is null &&
+            _enums.TryGetValue(name.Name, out EnumTypeSymbol? type))
         {
             EnumMemberSymbol? member = type.Members.FirstOrDefault(item => item.Name.Equals(syntax.Name, StringComparison.OrdinalIgnoreCase));
             if (member is not null) return new BoundEnumExpression(type, member.Value, member);
-        }
-        if (syntax.Receiver is NameExpressionSyntax enumName && _enums.ContainsKey(enumName.Name))
-        {
             Report("SMILE3423", $"Enum member '{syntax.Name}' is not declared.", syntax.NameSpan);
             return new BoundErrorExpression();
         }

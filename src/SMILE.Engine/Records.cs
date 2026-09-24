@@ -19,6 +19,8 @@ public sealed class RecordTypeSymbol : SmileType
 
     public RecordDeclarationSyntax Declaration { get; }
     public IReadOnlyList<RecordFieldSymbol> Fields { get; internal set; } = [];
+    public IReadOnlyList<RoutineSymbol> Methods { get; internal set; } = [];
+    public IReadOnlyList<RecordPropertySymbol> Properties { get; internal set; } = [];
     // MASM uses eight-byte scalar slots. Other writers use native field layouts.
     public int NativeSize { get; internal set; } = 8;
     public bool ContainsText { get; internal set; }
@@ -41,10 +43,10 @@ internal static class BoundLocations
 {
     public static bool IsWritable(BoundExpression expression) => expression switch
     {
-        BoundVariableExpression variable => !variable.Variable.IsConstant,
+        BoundVariableExpression variable => !variable.Variable.IsConstant && !variable.Variable.IsReceiver,
         BoundArrayExpression => true,
         BoundWithReceiverExpression => true,
-        BoundFieldExpression field => IsWritable(field.Receiver),
+        BoundFieldExpression field => IsWritable(field.Receiver) || field.Receiver is BoundVariableExpression { Variable.IsReceiver: true },
         _ => false
     };
 }

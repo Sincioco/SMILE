@@ -184,7 +184,7 @@ builtin-call    := "Timer" "(" ")"
 
 ## Deliberate exclusions
 
-This milestone does not add blocking `Input`, `Key_Held`, pointer/mouse input, cursor visibility/shape control, arbitrary terminal escape strings, graphics or `Game Window`, sound, unrestricted file writing, dynamic arrays, more than two dimensions, whole-array parameters or returns, variadic parameters, Type methods/properties, classes, modules, imports, threads in SMILE source, or an eleventh target. Historical LET/SET/INPUT/WHILE/interpolation/block-string syntax remains rejected. Blocking Input is also absent from current SMILE 2.0. The later back-port sections below add bounded file reads, integer/Data persistence, Enum and Type value records.
+This milestone does not add blocking `Input`, `Key_Held`, pointer/mouse input, cursor visibility/shape control, arbitrary terminal escape strings, graphics or `Game Window`, sound, unrestricted file writing, dynamic arrays, more than two dimensions, whole-array parameters or returns, variadic parameters, classes, modules, imports, threads in SMILE source, or an eleventh target. Historical LET/SET assignment, INPUT/WHILE/interpolation/block-string syntax remains rejected. Blocking Input is also absent from current SMILE 2.0. The later back-port sections below add bounded file reads, integer/Data persistence, Enum, Type value records, methods/properties and With.
 
 ## Unicode text inspection
 
@@ -555,8 +555,7 @@ Print Saved.Player; ":"; Saved.Points
   Data Count/Status also accept writable Number field locations after I/O.
 - Whole-record Print, comparisons, arithmetic, conversions, Const, Optional
   defaults and Select Case are not supported. Use the corresponding fields.
-- This value-record milestone does not yet implement Type methods/properties,
-  explicit member visibility, Me or Class reference objects.
+- Class reference objects remain part of the pending object back-port.
 
 Generation uses native structs/aggregates and copy semantics wherever available.
 Java/JavaScript/Python and array-bearing C# records need copy support to preserve
@@ -575,5 +574,37 @@ right side of an assignment replaces that record.
 Return, End Program and typed loop exits retain their ordinary behavior inside
 With. A temporary returned record is not writable and cannot be a With target.
 Scalar targets and leading-dot access outside a valid With block are errors.
-An invalid nested target does not fall back to the outer receiver. Class-reference
-With and member method/property calls remain part of the pending object back-port.
+An invalid nested target does not fall back to the outer receiver. Member calls and
+properties also accept leading-dot receivers. Class-reference With remains pending.
+
+## Type methods and properties
+
+A Type may contain Sub/Function declarations and `Property name As type` blocks.
+Fields, methods and properties share one case-insensitive member namespace.
+Methods/properties are Public by default; explicit Public and Private are allowed.
+Fields are always Public. Private access is confined to the declaring Type,
+including access to another instance of that same Type.
+
+Methods use `Call receiver.SubName(arguments)` or `receiver.FunctionName(arguments)`.
+Optional defaults and named arguments retain ordinary exact typing and authored
+evaluation order. The receiver is captured before method arguments; it must be a
+writable record location. A method-only Type is valid.
+
+`Me` denotes borrowed current-instance storage inside methods/accessors. Its fields
+are writable; Me itself cannot be assigned or passed ByRef. Me can be read/copied,
+passed ByVal, returned, used as a member receiver or selected by With.
+
+Properties contain Get and/or Set blocks, each closed with End Get/End Set, and
+end with End Property. Get must return the property's exact type on every normal
+path. Set receives an implicit, mutable ByVal `Value` of that type and has Sub
+return rules. Receiver and Value are outside the authored parameter list. A property
+assignment evaluates/copies its right-hand value before capturing the receiver.
+Get/Set may call routines and perform ordinary statements, including file reads.
+Read-only and write-only access violations are errors. A property value is not
+writable storage and cannot be passed ByRef or used as a writable record receiver.
+
+Property/method aggregate values use the same independent copies and stable field
+locations as ordinary record routines. Native target member constructs are used
+where available; aliasing Swift receivers and asynchronous JavaScript accessors
+require ordinary explicit-receiver or getter/setter methods as documented in the
+generation standard.

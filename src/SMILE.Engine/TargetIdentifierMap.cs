@@ -68,10 +68,15 @@ internal sealed partial class TargetIdentifierMap
         foreach (BoundRoutineDeclaration declaration in program.Routines)
         {
             RoutineSymbol routine = declaration.Symbol;
+            if (routine.Owner is not null)
+            {
+                routineNames.Add(routine, result.AddMemberRoutineName(routine, language, reserved, used));
+                continue;
+            }
             string preferred = IsSafeTargetIdentifier(routine.Name, language, reserved)
                 ? routine.Name
                 : BuildMappedName(routine.Name, language);
-            string unique = MakeUnique(preferred, used, language);
+            string unique = MakeUnique(preferred, used, language, language is TargetLanguage.Cobol ? 31 : int.MaxValue);
             used.Add(unique);
             routineNames.Add(routine, unique);
         }
@@ -253,19 +258,19 @@ internal sealed partial class TargetIdentifierMap
     private static bool IsCppImplementationReservedIdentifier(string name) =>
         IsCImplementationReservedIdentifier(name) || name.Contains("__", StringComparison.Ordinal);
 
-    private static string MakeUnique(string preferred, ISet<string> used, TargetLanguage language)
+    private static string MakeUnique(string preferred, ISet<string> used, TargetLanguage language, int maxLength = int.MaxValue)
     {
-        if (!used.Contains(preferred))
+        string initial = preferred[..Math.Min(preferred.Length, maxLength)];
+        if (!used.Contains(initial))
         {
-            return preferred;
+            return initial;
         }
 
         int suffix = 2;
         while (true)
         {
-            string candidate = language is TargetLanguage.Cobol
-                ? preferred + "-" + suffix
-                : preferred + "_" + suffix;
+            string ending = (language is TargetLanguage.Cobol ? "-" : "_") + suffix;
+            string candidate = preferred[..Math.Min(preferred.Length, maxLength - ending.Length)] + ending;
             if (!used.Contains(candidate))
             {
                 return candidate;

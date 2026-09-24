@@ -1,6 +1,7 @@
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Highlighting;
 using SMILE.Desktop.Highlighting;
+using SMILE.Engine;
 
 namespace SMILE.Tests;
 
@@ -33,7 +34,7 @@ Print Total
     [TestMethod]
     public void Obsolete_keywords_are_not_colored_as_canonical_keywords()
     {
-        const string source = "LET Name = 1\nSET Name = 2\nINPUT Name\nWHILE Name\nREM old";
+        const string source = "LET Name = 1\nINPUT Name\nWHILE Name\nREM old";
         var document = new TextDocument(source);
         IHighlightingDefinition definition = SyntaxHighlightingCatalog.GetDefinition("smile")!;
         var highlighter = new DocumentHighlighter(document, definition);
@@ -42,6 +43,16 @@ Print Total
         {
             Assert.IsFalse(highlighter.HighlightLine(line).Sections.Any(section => section.Color.Name == "Keyword"));
         }
+    }
+
+    [TestMethod]
+    public void Type_member_keywords_are_highlighted_but_legacy_Set_assignment_is_rejected()
+    {
+        var document = new TextDocument("Public\nPrivate\nProperty\nSet\nMe\nWith");
+        var highlighter = new DocumentHighlighter(document, SyntaxHighlightingCatalog.GetDefinition("smile")!);
+        for (int line = 1; line <= document.LineCount; line++)
+            Assert.IsTrue(highlighter.HighlightLine(line).Sections.Any(section => section.Color.Name == "Keyword"));
+        Assert.IsFalse(new SmileTranspiler().Bind("SET Name = 2").Success);
     }
 
     [TestMethod]

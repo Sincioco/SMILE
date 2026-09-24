@@ -10,6 +10,26 @@ End Enum
 Type ScoreEntry
     Player As Text
     Points As Number
+
+    Public Sub Add(Optional Delta As Number = 1)
+
+        Me.Points = Me.Points + Delta
+
+    End Sub
+
+    Property Score As Number
+        Get
+
+            Return Me.Points
+
+        End Get
+
+        Set
+
+            Me.Points = Value
+
+        End Set
+    End Property
 End Type
 
 Const ProductName = "SMILE"
@@ -203,6 +223,10 @@ With CurrentEntry
     .Points = .Points + 1
     Print "With record="; .Player; ":"; .Points
 End With
+
+Call CurrentEntry.Add(Delta:=2)
+CurrentEntry.Score = CurrentEntry.Score + 1
+Print "Record members="; CurrentEntry.Score
 
 Call ShowGreeting()
 Call ShowGreeting(Caption:="Welcome", Learner:="Sin")

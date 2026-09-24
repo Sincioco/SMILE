@@ -10,7 +10,7 @@ internal sealed partial class Binder
     {
         BoundExpression target = BindExpression(syntax.Target);
         var location = new WithLocationSymbol(target);
-        bool valid = target.Type is RecordTypeSymbol && BoundLocations.IsWritable(target);
+        bool valid = target.Type is RecordTypeSymbol && IsWritableReceiver(target);
         if (target.Type != SmileType.Error && !valid)
             Report(target.Type is RecordTypeSymbol ? "SMILE3412" : "SMILE3415",
                 "With requires a stable writable record location.", syntax.Target.Span);
@@ -52,7 +52,8 @@ internal sealed partial class Binder
                 fields.Add(new RecordFieldSymbol(type, syntax.Name, ResolveType(syntax.DeclaredType), dimensions, fields.Count, syntax.Span));
             }
             type.Fields = fields;
-            if (fields.Count == 0) Report("SMILE3402", "A Type must declare at least one member.", type.Declaration.Span);
+            if (fields.Count == 0 && !type.Declaration.SourceItems.Any(item => item is RecordMethodDeclarationSyntax or RecordPropertyDeclarationSyntax))
+                Report("SMILE3402", "A Type must declare at least one member.", type.Declaration.Span);
         }
         var states = new Dictionary<RecordTypeSymbol, bool>();
         foreach (RecordTypeSymbol type in _records.Values) LayoutRecord(type, states);
@@ -86,14 +87,16 @@ internal sealed partial class Binder
         _orderedRecords.Add(type);
     }
 
-    private BoundExpression BindRecordField(MemberAccessExpressionSyntax syntax, IReadOnlyList<ExpressionSyntax>? indexes, bool constantsOnly)
+    private BoundExpression BindRecordField(MemberAccessExpressionSyntax syntax, IReadOnlyList<ExpressionSyntax>? indexes, bool constantsOnly, BoundExpression? receiver = null)
     {
         if (constantsOnly)
         {
             Report("SMILE3406", "A constant expression cannot read a record field.", syntax.Span);
             return new BoundErrorExpression();
         }
-        BoundExpression receiver = BindExpression(syntax.Receiver);
+        receiver ??= BindExpression(syntax.Receiver);
+        RecordPropertySymbol? property = (receiver.Type as RecordTypeSymbol)?.Properties.FirstOrDefault(item => item.Name.Equals(syntax.Name, StringComparison.OrdinalIgnoreCase));
+        if (property is not null && indexes is null) return BindPropertyGet(property, receiver, syntax.NameSpan);
         RecordFieldSymbol? field = (receiver.Type as RecordTypeSymbol)?.Fields.FirstOrDefault(item => item.Name.Equals(syntax.Name, StringComparison.OrdinalIgnoreCase));
         if (field is null)
         {
@@ -110,9 +113,28 @@ internal sealed partial class Binder
 
     private BoundStatement? BindMemberAssignment(MemberAssignmentStatementSyntax syntax)
     {
-        BoundExpression target = BindExpression(syntax.Target);
+        BoundExpression? target = null;
+        if (syntax.Target is MeExpressionSyntax)
+        {
+            BindMe((MeExpressionSyntax)syntax.Target);
+            Report("SMILE3442", "Me is borrowed instance state and cannot be assigned.", syntax.Target.Span);
+            BindExpression(syntax.Value);
+            return null;
+        }
+        if (syntax.Target is MemberAccessExpressionSyntax member)
+        {
+            BoundExpression receiver = BindExpression(member.Receiver);
+            RecordPropertySymbol? property = (receiver.Type as RecordTypeSymbol)?.Properties.FirstOrDefault(item => item.Name.Equals(member.Name, StringComparison.OrdinalIgnoreCase));
+            if (property is not null) return BindPropertySet(property, receiver, BindExpression(syntax.Value), member.NameSpan);
+            target = BindRecordField(member, null, constantsOnly: false, receiver);
+        }
+        target ??= BindExpression(syntax.Target);
         BoundExpression value = BindExpression(syntax.Value);
-        if (target is not BoundFieldExpression field) return null;
+        if (target is not BoundFieldExpression field)
+        {
+            if (target is not BoundErrorExpression) Report(target is BoundVariableExpression { Variable.IsReceiver: true } ? "SMILE3442" : "SMILE3408", "Assignment requires a writable field location.", syntax.Target.Span);
+            return null;
+        }
         if (!BoundLocations.IsWritable(field)) Report("SMILE3408", "A field assignment requires writable record storage.", syntax.Target.Span);
         if (value.Type != SmileType.Error && value.Type != field.Type)
             Report("SMILE2106", $"Cannot assign {value.Type.Name} to {field.Type.Name} field '{field.Field.Name}'.", syntax.Value.Span);

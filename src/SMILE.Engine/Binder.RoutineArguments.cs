@@ -53,7 +53,8 @@ internal sealed partial class Binder
             slots[parameterIndex] = sourceIndex;
             if (routine.Parameters[parameterIndex].IsByRef && value is not BoundErrorExpression && !BoundLocations.IsWritable(value))
             {
-                Report("SMILE2165", "ByRef requires an exact-type writable variable or array element.", source.Span);
+                Report(value is BoundVariableExpression { Variable.IsReceiver: true } ? "SMILE3442" : "SMILE2165",
+                    "ByRef requires writable storage; Me is borrowed instance state.", source.Span);
             }
             if (value.Type is not { Kind: SmileTypeKind.Error } && value.Type != routine.Parameters[parameterIndex].Type)
             {
