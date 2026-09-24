@@ -57,9 +57,20 @@ A target should make the variable, counted loop, post-test loop, conditional, an
 
 Target-native integer overflow behavior can differ at extreme values because this beginner-first profile does not require a generated arbitrary precision or checked-arithmetic runtime in every destination. Ordinary signed-64 inputs and the pinned parity corpus remain cross-target conformance requirements.
 
-Calls use normal destination routines and native call frames. Destinations without a guaranteed left-to-right native argument order capture source arguments in readable temporaries first. Parameters remain independent ByVal copies, including when assigned by the callee.
+Calls use normal destination routines and native call frames. Destinations without a guaranteed left-to-right native argument order capture source arguments in readable temporaries first. ByVal parameters remain independent copies, including when assigned by the callee. ByRef parameters retain exact-type writable locations and immediately observable aliases; copy-in/copy-out cannot replace shared storage.
 
 Named calls capture explicit values in source order, then pass ordinary arguments in declaration order. Optional defaults are emitted as explicit literal arguments when omitted. This keeps one native routine per learner routine across all ten targets. No argument-dispatch runtime is permitted.
+
+ByRef uses native C# `ref`, C/Objective-C pointers, C++ references, MASM addresses,
+and COBOL BY REFERENCE data items (plus the Text logical length). For Java,
+JavaScript, and Python, use ordinary arrays and captured indices; one-element
+arrays are needed only for addressed scalars. Swift uses native `inout` when the
+call graph proves exclusive access; a focused getter/setter location adapter
+preserves shared aliases that Swift's exclusivity rules otherwise prohibit.
+Check each ByRef array dimension before evaluating the next index or argument.
+No target may replace references with deferred write-back or a general dispatch
+runtime. Native failure diagnostics may differ in formatting, but prior learner
+output must survive a checked failure.
 
 Unicode inspection uses native scalar iterators, streams, or string indexing where available. Small boundary helpers implement SMILE's `-1`/empty-Text results instead of target exceptions. UTF-8 targets require shared scalar traversal; slice allocation reuses the native Text lifetime owner. Programs containing non-ASCII Text configure UTF-8 output on C#, Java, and Python so redirected output does not depend on the Windows code page.
 

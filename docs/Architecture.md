@@ -42,7 +42,7 @@ Binding is case-insensitive with a shared program namespace and per-routine scop
 - Select values are exact-type compile-time constants and rank-one/rank-two arrays have positive compile-time dimensions with bounded total storage;
 - conditions require Boolean, loop bounds/counters/indexes require Number, and typed exits require a matching enclosing loop in the same routine.
 
-The evaluator keeps globals outside a stack of reentrant call frames. Each frame owns copied ByVal parameters, locals, and local arrays. It preserves left-to-right evaluation, short circuiting, selector-once Select behavior, checked one- and two-dimensional indexes, routine Return, typed exits, recursion, and whole-program `End Program` propagation.
+The evaluator keeps globals outside a stack of reentrant call frames. Each frame owns copied ByVal parameters, locals, and local arrays. ByRef parameters retain captured caller locations; writes are immediate and aliases remain shared. It preserves left-to-right evaluation, short circuiting, selector-once Select behavior, checked one- and two-dimensional indexes, routine Return, typed exits, recursion, and whole-program `End Program` propagation.
 
 `ISmileEvaluationHost` isolates terminal and nondeterministic effects: one-event key polling, clear/top-left frame boundaries, cursor moves, named color changes, virtual Wait, monotonic time, and inclusive Random. The default host is safe for ordinary callers; scripted tests use a deterministic host. Wait clamps once to the unsigned 32-bit millisecond maximum, and a reversed Random range returns its evaluated lower bound without consuming randomness. A configurable statement budget stops runaway game loops with `SMILER1222` without changing normal source semantics.
 
@@ -57,6 +57,18 @@ formatter own syntax and expression traversal.
 ## Generation registry
 
 `Binder.RoutineArguments` owns Optional-default validation and named-argument binding. Bound calls retain source-order expressions and a parameter-order index list; the evaluator and each writer apply that list only after capturing arguments. `RoutineArguments` provides this small compiler-side ordering operation, without introducing a generated calling framework. The parser continues to own all syntax, including multiline parameter lists and named labels.
+
+`Evaluation.RoutineArguments` owns evaluator location capture. ByRef array indices
+are checked one dimension at a time before later argument effects. The structured
+ByRef writer lowers native references/pointers and Java/JavaScript/Python
+array-and-index parameters. Only scalar storage actually passed ByRef is boxed
+in those three targets. The separate ByRef analysis tracks addressed storage and
+Swift call-graph overlap: safe routines keep native `inout`; potentially shared
+locations use a small getter/setter closure. MASM passes captured addresses in
+integer ABI slots, including for Double, and dereferences parameter storage.
+COBOL passes the original data item and, for Text, its logical-length item using
+native BY REFERENCE. Caller Text roots remain owned by their declaring frame;
+ByRef callees do not register or release those roots a second time.
 
 `TextIntrinsics` owns scalar-based text evaluation. `CoreBasicTextInspectionWriter` uses each structured target's normal Unicode/string APIs. `NativeTextInspection` emits only the used UTF-8 operations for C-family, MASM, and COBOL, sharing traversal semantics across those backends. Text slices reuse the existing native Text allocation/root owner; C/Objective-C/MASM do not add a second lifetime mechanism. Default expressions and named values are included in formatter traversal.
 

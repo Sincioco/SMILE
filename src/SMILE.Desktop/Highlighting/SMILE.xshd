@@ -59,6 +59,7 @@
       <Word>SELECT</Word>
       <Word>CASE</Word>
       <Word>BYVAL</Word>
+      <Word>BYREF</Word>
       <Word>OPTIONAL</Word>
       <Word>LOAD</Word>
       <Word>FILE</Word>

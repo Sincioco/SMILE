@@ -214,7 +214,8 @@ internal sealed partial class Binder
                     RoutineName: declaration.Name,
                     ArrayLength: 0,
                     IsParameter: true,
-                    DefaultValue: defaultValue));
+                    DefaultValue: defaultValue,
+                    IsByRef: parameter.IsByRef));
             }
 
             _routineSymbols.Add(declaration.Name, new RoutineSymbol(

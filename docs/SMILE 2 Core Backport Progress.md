@@ -5,7 +5,7 @@ Authority inspected read-only: `D:\SMILE 2.0`, commit
 before inspection and after the unchanged fixture compilation/execution.
 
 The overall requested back-port is **not complete**. This file records the
-completed text, routine, console-key, Double, and text-file milestones and the remaining source-language gaps.
+completed text, routine, console-key, Double, text-file, and scalar/array ByRef milestones and the remaining source-language gaps.
 
 ## Implemented in this milestone
 
@@ -15,6 +15,7 @@ completed text, routine, console-key, Double, and text-file milestones and the r
 | Optional parameters | Exact scalar literal/Const defaults; explicit ByVal supported |
 | Named arguments | `Name:=Value`; single evaluation in authored order before parameter placement |
 | Multiline routine declarations | Balanced declaration parentheses; explicit parameter and return types |
+| ByRef parameters | Exact-type writable scalars, array cells, forwarding and aliases; immediate writes; source-order index checks; all ten targets |
 | Unary Number `+` | Identity operation with unary precedence |
 | Unicode console output | UTF-8 for C#, Java, Python when source contains non-ASCII Text |
 | Expanded console keys | O/F/G/R/P/B/X/Y/Z/E/C, Backtick, Plus and Minus events on all ten targets; Control constant available |
@@ -30,7 +31,7 @@ execution on Windows. Ordinary ASCII programs retain their minimal output.
 
 | Area | Implemented SMILE 2.0 features still absent from SMILE 1.0 |
 |---|---|
-| Writable arguments | Exact-type `ByRef`, including scalar variables, checked array cells, and subsequently record locations |
+| Writable record arguments | ByRef field locations after records/classes are implemented; scalar/array locations are complete |
 | Console keys | Standalone Control key events: character-stream APIs do not report modifier-only events; a native console-event boundary is still needed |
 | Files and persistence | `Load`/`Save` integer values; byte Data save/load and recoverable Status; associated constants and application storage identity |
 | Value types | Nominal Enum declarations/members and Type records, nested fields, fixed-array fields, deep copies, and exact nominal typing |
@@ -38,9 +39,8 @@ execution on Windows. Ordinary ASCII programs retain their minimal output.
 | Program organization | Module/Import, qualified names, visibility, multi-file source/project inputs, deterministic source-owned libraries |
 
 Records, classes, and modules require broader storage, binding, generation, and
-project-system work than the completed scalar/routine milestone. The scope
-question about including those facilities remains unanswered in the conversation.
-Do not reinterpret their presence in this inventory as implementation.
+project-system work than the completed scalar/routine milestone. They remain
+outstanding core-language work, not implemented facilities.
 
 ## Outside the console/core back-port
 
@@ -61,6 +61,10 @@ explicitly typed SMILE 1.0 subset.
   slots. The bound tree retains source-order expressions and the parameter map.
 - `RoutineArguments.cs` applies the map after evaluation/capture; it is a compiler
   utility, not emitted runtime machinery.
+- `Evaluation.RoutineArguments.cs` owns captured writable locations. The focused
+  structured ByRef analysis/writer selects native references and the necessary
+  array/index or Swift location adapter. MASM uses direct addresses; COBOL uses
+  native BY REFERENCE, including Text length. Caller frames own referenced Text.
 - `TextFileLoading.cs` owns evaluator file semantics and the injectable stream host.
   `CoreBasicTextFileWriter.cs` owns lowering; managed/native file-support modules
   use normal file APIs. Node.js uses asynchronous file handles.
@@ -78,7 +82,7 @@ explicitly typed SMILE 1.0 subset.
   4096-byte storage and explicit logical lengths. No third-party dependency or
   source-language graphics feature was added.
 
-Actual validation includes the new evaluator/diagnostic tests, text/routine/Double/text-file fixtures
+Actual validation includes the new evaluator/diagnostic tests, text/routine/Double/text-file/ByRef fixtures
 built and run across all ten targets, MissionGuardrail, existing core conformance
 and terminal coverage, and unchanged fixtures built/run with the authoritative
 SMILE 2.0 compiler. Generated binaries and parity scratch files belong in ignored
@@ -92,10 +96,16 @@ unchanged in SMILE 2.0; it covers BOM/Unicode/NUL bytes, multi-chunk reads, shor
 files, truncation, zero-fill, path expressions and normalization, invalid/missing
 paths, global/local arrays, and asynchronous routine propagation. It also keeps
 regressions for a Windows GetPath name collision and C++ literal concatenation.
+The ByRef fixture covers shared scalar/array aliases, all four scalar types,
+named/Optional calls, mixed calls beyond four parameters, recursion, forwarding,
+ByVal isolation, global aliases, local arrays, loop counters and file counts.
+An out-of-bounds first dimension stops before the later index or call on all ten
+targets. Swift flushes prior output before its native bounds/numeric-error traps;
+the existing Double failure matrix now checks prior output as well as diagnostics.
 
 No repository file-size/complexity checker or reviewed no-growth baseline was
 found in SMILE 1.0. Existing broad writers received focused wiring; new text and
 argument algorithms have their own owners. No guardrail limit or exclusion was
 changed. Ordinary target-native Number overflow and existing native Text storage
-limitations remain; ByRef/file/object/module parity is pending. Double exponent
+limitations remain; record-location/persistence/object/module parity is pending. Double exponent
 spelling and transcendental rounding follow the target's standard library.

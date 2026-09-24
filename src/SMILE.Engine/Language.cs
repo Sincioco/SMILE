@@ -238,7 +238,8 @@ public sealed record VariableSymbol(
     int ArrayLength = 0,
     bool IsParameter = false,
     int ArraySecondLength = 0,
-    SmileValue? DefaultValue = null)
+    SmileValue? DefaultValue = null,
+    bool IsByRef = false)
 {
     public bool IsArray => ArrayLength > 0;
 

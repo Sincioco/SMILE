@@ -5,13 +5,20 @@ internal static partial class CoreBasicCodeGenerator
     private sealed partial class StructuredWriter
     {
         private IReadOnlyList<string> PrepareCallArguments(
-            IReadOnlyList<BoundExpression> arguments, IReadOnlyList<int>? parameterOrder, bool ordered = false)
+            IReadOnlyList<BoundExpression> arguments, IReadOnlyList<int>? parameterOrder, bool ordered = false, RoutineSymbol? routine = null)
         {
             var captured = new List<string>();
-            bool captureOrder = ordered || parameterOrder is not null || UsesOrderedCExpressions || arguments.Any(ContainsArrayAccess);
+            bool captureOrder = ordered || parameterOrder is not null || UsesOrderedCExpressions ||
+                routine?.Parameters.Any(parameter => parameter.IsByRef) == true || arguments.Any(ContainsArrayAccess);
             for (int index = 0; index < arguments.Count; index++)
             {
                 BoundExpression argument = arguments[index];
+                VariableSymbol? parameter = routine is null ? null : RoutineArguments.ParameterAtSourceIndex(routine, parameterOrder, index);
+                if (parameter?.IsByRef == true)
+                {
+                    captured.Add(PrepareReferenceArgument(argument, parameter));
+                    continue;
+                }
                 string value = captureOrder
                     ? LowerOrderedCExpression(argument)
                     : PreparedExpression(argument);

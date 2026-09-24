@@ -156,6 +156,10 @@ Print "Text-file bytes="; FileByteCount
 Call ShowGreeting()
 Call ShowGreeting(Caption:="Welcome", Learner:="Sin")
 
+Call AddPoint(Age)
+Call AddPoint(SampleValues[0])
+Print "ByRef changed caller storage="; Age; ", "; SampleValues[0]
+
 Print "End Program stops before the next statement."
 End Program
 Print "unreachable"
@@ -185,5 +189,11 @@ Sub ShowGreeting(
 )
 
     Print Caption; ", "; Learner
+
+End Sub
+
+Sub AddPoint(ByRef Value As Number)
+
+    Value = Value + 1
 
 End Sub

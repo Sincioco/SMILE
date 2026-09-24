@@ -152,6 +152,7 @@ End Function
             Assert.IsTrue(transpile.Success, string.Join("\n", transpile.Diagnostics));
             BuildRunResult run = await ToolchainRegistry.CreateDefault().Get(target).BuildAndRunAsync(transpile.GeneratedProgram!, CancellationToken.None);
             Assert.IsFalse(run.Success, $"{target} accepted {expression}.");
+            Assert.AreEqual("before\n", run.StandardOutput.Replace("\r\n", "\n"), $"{target}/{expression}");
             StringAssert.Contains(run.StandardError, "SMILER3902", $"{target}/{expression}: {run.BuildOutput}\n{run.StandardError}");
             StringAssert.Contains(run.StandardError, "line 4", $"{target}/{expression}: {run.StandardError}");
         }

@@ -197,6 +197,7 @@ internal sealed class Parser
                     SkipExpressionContinuations();
                 }
                 bool explicitByVal = false;
+                bool byRef = false;
                 if (Current.Kind is TokenKind.ByVal)
                 {
                     explicitByVal = true;
@@ -205,7 +206,8 @@ internal sealed class Parser
                 else if (Current.Kind is TokenKind.ByRef)
                 {
                     parameterStart = Next();
-                    Report("SMILE2011", "Core BASIC 2 parameters are ByVal; ByRef is not supported.", parameterStart.Span);
+                    byRef = true;
+                    if (optional) Report("SMILE2011", "Optional parameters must be ByVal.", parameterStart.Span);
                 }
                 SkipExpressionContinuations();
                 Token parameterName = Match(TokenKind.Identifier, "Expected a parameter name.");
@@ -230,7 +232,7 @@ internal sealed class Parser
                     parameterName.Span,
                     ToSmileType(type.Kind),
                     explicitByVal,
-                    Combine(parameterStart.Span, defaultValue?.Span ?? type.Span), optional, defaultValue));
+                    Combine(parameterStart.Span, defaultValue?.Span ?? type.Span), optional, defaultValue, byRef));
 
                 if (Current.Kind is not TokenKind.Comma)
                 {
@@ -540,7 +542,7 @@ internal sealed class Parser
         Token token = Next();
         string message = token.Kind switch
         {
-            TokenKind.ByRef => "Core BASIC 2 parameters are ByVal; ByRef is not supported.",
+            TokenKind.ByRef => "ByRef belongs in a routine parameter declaration.",
             TokenKind.Optional => "Core BASIC 2 does not support Optional parameters.",
             _ => $"'{token.Text}' is outside the Core BASIC 2 profile."
         };

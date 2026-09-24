@@ -307,7 +307,7 @@ End Sub
     [DataRow("Sub Work(Value As Number, value As Number)\nEnd Sub", "Parameter")]
     [DataRow("Sub Work(Value As Number)\nDim value As Number\nEnd Sub", "Local")]
     [DataRow("Sub Work(Value)\nEnd Sub", "Typed parameters")]
-    [DataRow("Sub Work(ByRef Value As Number)\nEnd Sub", "ByRef")]
+    [DataRow("Sub Work(Optional ByRef Value As Number = 0)\nEnd Sub", "ByVal")]
     [DataRow("Sub Work(Optional Value As Number)\nEnd Sub", "Optional")]
     [DataRow("Sub Work(Value As Number)\nEnd Sub\nCall Work(Unknown:=1)", "parameter")]
     [DataRow("Sub Work(Value As Number)\nEnd Sub\nCall Work()", "Required parameter")]

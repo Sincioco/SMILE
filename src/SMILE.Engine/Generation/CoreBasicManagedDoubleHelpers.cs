@@ -56,7 +56,7 @@ internal static partial class CoreBasicCodeGenerator
                     if (features.Has(BoundIntrinsicKind.TextToDouble)) Lines($"def {parse}(text, line):", $"    if not re.fullmatch(r\"{pattern}\", text):", $"        {fail}(line)", "    value = float(text)", "    if not math.isfinite(value):", $"        {fail}(line)", "    return value");
                     break;
                 case TargetLanguage.Swift:
-                    if (features.NeedsFailure) Lines($"func {fail}(_ line: Int) -> Never {{", "    fatalError(\"SMILE Runtime Error SMILER3902: Invalid Double operation at line \\(line).\")", "}");
+                    if (features.NeedsFailure) Lines($"func {fail}(_ line: Int) -> Never {{", "    fflush(nil)", "    fatalError(\"SMILE Runtime Error SMILER3902: Invalid Double operation at line \\(line).\")", "}");
                     if (features.NeedsCheck) Lines($"func {check}(_ value: Double, _ line: Int) -> Double {{", $"    if !value.isFinite {{ {fail}(line) }}", "    return value", "}");
                     if (features.HasDivision) Lines($"func {divisor}(_ value: Double, _ line: Int) -> Double {{", $"    if value == 0.0 {{ {fail}(line) }}", "    return value", "}");
                     if (features.Has(BoundIntrinsicKind.ToNumber)) Lines($"func {convert}(_ value: Double, _ line: Int) -> Int64 {{", $"    if value < -9223372036854775808.0 || value >= 9223372036854775808.0 {{ {fail}(line) }}", "    return Int64(value)", "}");

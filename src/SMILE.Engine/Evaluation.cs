@@ -20,7 +20,7 @@ public sealed record EvaluationResult(
     public string StandardError => ErrorOutput;
 }
 
-public sealed class SmileEvaluator
+public sealed partial class SmileEvaluator
 {
     private readonly SmileTranspiler _transpiler = new();
     private readonly Dictionary<VariableSymbol, SmileValue> _globalValues = new();
@@ -232,12 +232,7 @@ public sealed class SmileEvaluator
                     break;
 
                 case BoundCallStatement call:
-                    if (!TryEvaluateArguments(call.Arguments, frame, out SmileValue[]? callArguments, out SmileRuntimeError? argumentError))
-                    {
-                        return argumentError;
-                    }
-
-                    if (!TryInvoke(call.Routine, RoutineArguments.InParameterOrder(callArguments!, call.ParameterOrder), out _, out SmileRuntimeError? callError))
+                    if (!TryInvokeCall(call.Routine, call.Arguments, call.ParameterOrder, frame, out _, out SmileRuntimeError? callError))
                     {
                         return callError;
                     }
@@ -505,13 +500,7 @@ public sealed class SmileEvaluator
             case BoundIntrinsicExpression intrinsic:
                 return TryEvaluateIntrinsic(intrinsic, frame, out value, out error);
             case BoundCallExpression call:
-                if (!TryEvaluateArguments(call.Arguments, frame, out SmileValue[]? arguments, out error))
-                {
-                    value = default;
-                    return false;
-                }
-
-                return TryInvoke(call.Routine, RoutineArguments.InParameterOrder(arguments!, call.ParameterOrder), out value, out error);
+                return TryInvokeCall(call.Routine, call.Arguments, call.ParameterOrder, frame, out value, out error);
             case BoundUnaryExpression unary:
                 if (!TryEvaluateExpression(unary.Operand, frame, out SmileValue operand, out error))
                 {
@@ -720,7 +709,7 @@ public sealed class SmileEvaluator
 
     private bool TryInvoke(
         RoutineSymbol symbol,
-        IReadOnlyList<SmileValue> arguments,
+        IReadOnlyList<CallArgument> arguments,
         out SmileValue value,
         out SmileRuntimeError? error)
     {
@@ -740,7 +729,9 @@ public sealed class SmileEvaluator
 
         for (int index = 0; index < symbol.Parameters.Count; index++)
         {
-            frame.Values[symbol.Parameters[index]] = arguments[index];
+            VariableSymbol parameter = symbol.Parameters[index];
+            if (arguments[index].Location is { } location) frame.References[parameter] = location;
+            else frame.Values[parameter] = arguments[index].Value;
         }
 
         try
@@ -772,11 +763,16 @@ public sealed class SmileEvaluator
     }
 
     private SmileValue GetValue(VariableSymbol variable, CallFrame? frame) =>
-        variable.IsGlobal ? _globalValues[variable] : frame!.Values[variable];
+        variable.IsGlobal ? _globalValues[variable] : variable.IsByRef
+            ? frame!.References[variable].Read() : frame!.Values[variable];
 
     private void SetValue(VariableSymbol variable, CallFrame? frame, SmileValue value)
     {
-        if (variable.IsGlobal)
+        if (variable.IsByRef)
+        {
+            frame!.References[variable].Write(value);
+        }
+        else if (variable.IsGlobal)
         {
             _globalValues[variable] = value;
         }
@@ -891,6 +887,8 @@ public sealed class SmileEvaluator
 
     private sealed class CallFrame
     {
+        public Dictionary<VariableSymbol, WritableLocation> References { get; } = new();
+
         public Dictionary<VariableSymbol, SmileValue> Values { get; } = new();
 
         public Dictionary<VariableSymbol, SmileValue[]> Arrays { get; } = new();

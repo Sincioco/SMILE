@@ -130,6 +130,7 @@ internal static partial class CoreBasicCodeGenerator
             _features = CoreBasicProgramFeatureSet.Create(program);
             _doubleFeatures = new DoubleProgramFeatures(program);
             _asyncJavaScriptRoutines = FindAsyncJavaScriptRoutines(program);
+            FindReferenceStorage();
         }
 
         public string WriteCSharp()
@@ -543,7 +544,8 @@ internal static partial class CoreBasicCodeGenerator
                     Line($"def {name}({parameters}):");
                     _indent++;
                     string[] globals = AssignedGlobals(routine.SourceItems)
-                        .Select(Name)
+                        .Where(variable => !NeedsReferenceBox(variable))
+                        .Select(StorageName)
                         .Distinct(StringComparer.Ordinal)
                         .ToArray();
                     if (globals.Length > 0)
@@ -551,6 +553,7 @@ internal static partial class CoreBasicCodeGenerator
                         Line("global " + string.Join(", ", globals));
                     }
 
+                    WriteBoxedParameters(symbol);
                     WriteLocalDeclarations(routine);
                     if (!routine.SourceItems.OfType<BoundStatement>().Any() &&
                         !routine.SourceItems.OfType<BoundFullLineComment>().Any())
@@ -604,7 +607,8 @@ internal static partial class CoreBasicCodeGenerator
                 for (int index = 0; index < symbol.Parameters.Count; index++)
                 {
                     VariableSymbol parameter = symbol.Parameters[index];
-                    string binding = IsAssigned(parameter, routine.SourceItems) ? "var" : "let";
+                    if (parameter.IsByRef) continue;
+                    string binding = IsAssigned(parameter, routine.SourceItems) || _addressedVariables.Contains(parameter) ? "var" : "let";
                     Line($"{binding} {Name(parameter)}: {TypeName(parameter.Type)} = _smileParameter{index + 1}");
                 }
 
@@ -614,6 +618,7 @@ internal static partial class CoreBasicCodeGenerator
                 }
             }
 
+            WriteBoxedParameters(symbol);
             WriteLocalDeclarations(routine);
             WriteItems(routine.SourceItems);
             if (UsesManagedCText)
@@ -793,6 +798,7 @@ internal static partial class CoreBasicCodeGenerator
                     _indent++;
                     Line("if index < 0 || index >= Int64(length) {");
                     _indent++;
+                    Line("fflush(nil)");
                     Line("fatalError(\"SMILE Runtime Error SMILER1210: Array index \\(index) is outside the bounds of '\\(name)'.\")");
                     _indent--;
                     Line("}");
@@ -855,6 +861,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private string VariableDeclaration(VariableSymbol variable)
         {
+            if (NeedsReferenceBox(variable)) return ReferenceBoxDeclaration(variable, DefaultLiteral(variable.Type));
             string name = Name(variable);
             string value = DefaultLiteral(variable.Type);
             if (variable.IsArray)
@@ -907,7 +914,8 @@ internal static partial class CoreBasicCodeGenerator
 
         private string ParameterList(RoutineSymbol routine) => string.Join(", ", routine.Parameters.Select((parameter, index) =>
         {
-            string name = Name(parameter);
+            if (parameter.IsByRef) return ReferenceParameter(parameter);
+            string name = NeedsReferenceBox(parameter) ? $"_smileParameter{index + 1}" : StorageName(parameter);
             return _language switch
             {
                 TargetLanguage.CSharp or TargetLanguage.C or TargetLanguage.Java or
@@ -1002,7 +1010,7 @@ internal static partial class CoreBasicCodeGenerator
 
             string operation = register ? "register" : "unregister";
             foreach (VariableSymbol variable in variables.Where(variable =>
-                !variable.IsConstant && variable.Type is SmileType.String))
+                !variable.IsConstant && !variable.IsByRef && variable.Type is SmileType.String))
             {
                 string name = Name(variable);
                 if (!variable.IsArray)
@@ -1135,7 +1143,7 @@ internal static partial class CoreBasicCodeGenerator
             string awaitPrefix = _language is TargetLanguage.JavaScript && _asyncJavaScriptRoutines.Contains(call.Routine)
                 ? "await "
                 : string.Empty;
-            string invocation = $"{awaitPrefix}{RoutineName(call.Routine)}({string.Join(", ", PrepareCallArguments(call.Arguments, call.ParameterOrder))})";
+            string invocation = $"{awaitPrefix}{RoutineName(call.Routine)}({string.Join(", ", PrepareCallArguments(call.Arguments, call.ParameterOrder, routine: call.Routine))})";
             Line(_language is TargetLanguage.Swift or TargetLanguage.Python
                 ? invocation
                 : invocation + ";");
@@ -1891,7 +1899,7 @@ internal static partial class CoreBasicCodeGenerator
                 }
                 case BoundCallExpression call:
                 {
-                    IReadOnlyList<string> arguments = PrepareCallArguments(call.Arguments, call.ParameterOrder, ordered: true);
+                    IReadOnlyList<string> arguments = PrepareCallArguments(call.Arguments, call.ParameterOrder, ordered: true, routine: call.Routine);
                     string awaitPrefix = _language is TargetLanguage.JavaScript && _asyncJavaScriptRoutines.Contains(call.Routine)
                         ? "await "
                         : string.Empty;
@@ -1976,7 +1984,7 @@ internal static partial class CoreBasicCodeGenerator
         private static bool ContainsArrayAccess(BoundExpression expression) => expression switch
         {
             BoundArrayExpression => true,
-            BoundCallExpression call => call.ParameterOrder is not null || call.Arguments.Any(ContainsArrayAccess),
+            BoundCallExpression call => call.ParameterOrder is not null || call.Routine.Parameters.Any(parameter => parameter.IsByRef) || call.Arguments.Any(ContainsArrayAccess),
             BoundIntrinsicExpression intrinsic => DoubleSemantics.UsesDouble(intrinsic) || intrinsic.Arguments.Any(ContainsArrayAccess),
             BoundUnaryExpression unary => ContainsArrayAccess(unary.Operand),
             BoundBinaryExpression binary => ContainsArrayAccess(binary.Left) || ContainsArrayAccess(binary.Right),
@@ -2343,7 +2351,7 @@ internal static partial class CoreBasicCodeGenerator
             _ => "//"
         };
 
-        private string Name(VariableSymbol variable) => _identifiers.Get(variable);
+        private string Name(VariableSymbol variable) => ReferenceValueName(variable);
 
         private BoundConstStatement? FindConstant(VariableSymbol variable) =>
             EnumerateStatements(_program.SourceItems)

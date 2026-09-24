@@ -181,7 +181,7 @@ builtin-call    := "Timer" "(" ")"
 
 ## Deliberate exclusions
 
-This milestone does not add blocking `Input`, `Key_Held`, pointer/mouse input, cursor visibility/shape control, arbitrary terminal escape strings, graphics or `Game Window`, sound, file writing/persistence, dynamic arrays, more than two dimensions, array parameters or returns, `ByRef`, variadic parameters, records, enums, classes, modules, imports, threads in SMILE source, or an eleventh target. Historical LET/SET/INPUT/WHILE/interpolation/block-string syntax remains rejected. Blocking Input is also absent from current SMILE 2.0.
+This milestone does not add blocking `Input`, `Key_Held`, pointer/mouse input, cursor visibility/shape control, arbitrary terminal escape strings, graphics or `Game Window`, sound, file writing/persistence, dynamic arrays, more than two dimensions, array parameters or returns, variadic parameters, records, enums, classes, modules, imports, threads in SMILE source, or an eleventh target. Historical LET/SET/INPUT/WHILE/interpolation/block-string syntax remains rejected. Blocking Input is also absent from current SMILE 2.0.
 
 ## Unicode text inspection
 
@@ -200,6 +200,22 @@ The output is `3`, `128512`, and `😀`, on separate lines. Indexes and counts u
 - Existing target Text storage limits remain: COBOL stores at most 4096 UTF-8 bytes, while C/Objective-C/MASM use null-terminated UTF-8. No normalization or grapheme grouping is performed.
 
 ## Optional parameters, named arguments, and multiline declarations
+
+Required parameters accept `[ByVal | ByRef] Name As Type`, where Type is Number,
+Double, Boolean, or Text. Omitted mode means ByVal. A ByRef argument must be an
+exact-type writable scalar, array element, or writable parameter; constants,
+literal values, computations, routine results, and whole arrays are invalid.
+Writing a ByRef parameter immediately changes its caller location. Two
+parameters may share that location, and forwarding preserves the alias. ByVal
+parameters remain independent copies even if the callee passes its copy ByRef.
+
+Each explicit argument is captured once in source order before declaration-order
+placement. ByRef captures a location rather than its current value. For an array
+cell, evaluate and check each index before the next dimension or later argument;
+a failed bounds check stops the call without later effects and retains earlier
+output. Scalars and fixed array cells are currently supported; record locations
+depend on the pending record back-port. `SMILE2165` diagnoses non-writable ByRef
+arguments; normal exact-type diagnostics also apply. `Optional ByRef` is invalid.
 
 ```smile
 Call Greet()

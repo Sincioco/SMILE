@@ -252,6 +252,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private void WriteRuntimeHelpers()
         {
+            WriteReferenceHelpers();
             WriteTextInspectionHelpers();
             WriteDoubleHelpers();
             WriteTextFileHelpers();

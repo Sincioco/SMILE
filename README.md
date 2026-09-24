@@ -12,7 +12,7 @@ Write a small, readable program. See how it becomes C#, Java, C++, and seven oth
 
 ### Text, routines, Double math, and file reads back-ported from SMILE 2.0
 
-`Text_Length`, `Text_Code_At`, and `Text_Slice` now inspect Unicode scalars, including emoji. Routines support typed Optional defaults, named arguments, and multiline parameter lists; Number expressions also accept unary `+`. The evaluator and all ten targets preserve argument evaluation order. Windows C#, Java, and Python output explicitly uses UTF-8 when the program contains Unicode text.
+`Text_Length`, `Text_Code_At`, and `Text_Slice` now inspect Unicode scalars, including emoji. Routines support exact-type `ByRef` variables and array cells, typed Optional defaults, named arguments, and multiline parameter lists; Number expressions also accept unary `+`. The evaluator and all ten targets preserve argument evaluation order. Windows C#, Java, and Python output explicitly uses UTF-8 when the program contains Unicode text.
 
 `Double` adds fractional and exponent values while `Number` stays a whole-number type. All ten targets support Double variables, arrays, routines, Optional defaults, exact comparisons, explicit Number/Text conversions, and the math functions below. Invalid domains, zero divisors, conversion overflow, and nonfinite results fail with the SMILE source line.
 
@@ -26,7 +26,27 @@ Print Text_From_Double(-0.0)
 
 This prints `1.5`, `3.0:2.0`, and `-0.0`. Double math also includes `Abs`, `Min`, `Max`, `Clamp`, `Sin`, `Cos`, `Atan2`, `Floor`, `Ceiling`, and `Truncate`. Use `ToNumber` for checked truncation and `Text_To_Double` to parse invariant decimal text. No implicit Number/Double conversion occurs.
 
-The broader back-port remains in progress. ByRef, persistence, and structured types/modules remain listed in the [back-port inventory](docs/SMILE%202%20Core%20Backport%20Progress.md). Double output uses native binary64 arithmetic and standard math APIs, with small checks where the target permits infinities or has different conversion rules. COBOL needs C interoperability for exact binary64 operations because its ordinary decimal arithmetic and numeric transfers lose distinctions required by SMILE. Exponent spelling and transcendental rounding can differ between targets.
+The broader back-port remains in progress. Persistence and structured types/modules remain listed in the [back-port inventory](docs/SMILE%202%20Core%20Backport%20Progress.md). Double output uses native binary64 arithmetic and standard math APIs, with small checks where the target permits infinities or has different conversion rules. COBOL needs C interoperability for exact binary64 operations because its ordinary decimal arithmetic and numeric transfers lose distinctions required by SMILE. Exponent spelling and transcendental rounding can differ between targets.
+
+`ByRef` changes the caller's storage immediately, including when two parameters
+refer to the same variable. Ordinary parameters remain independent ByVal copies.
+Array indices are captured and checked once, in source order, before later
+arguments run. Optional parameters must be ByVal.
+
+```smile
+Dim Score As Number
+Call AddPoint(Score)
+Print Score
+
+Sub AddPoint(ByRef Value As Number)
+    Value = Value + 1
+End Sub
+```
+
+This prints `1`. C#, C/C++, MASM, and COBOL use native references or pointers.
+Java, JavaScript, and Python pass ordinary mutable arrays with a captured index;
+only addressed scalar variables need a one-element array. Swift uses `inout`
+where exclusive access is safe and a small location closure for shared aliases.
 
 `Load Text File Path Into Bytes Count ByteCount` now reads bounded UTF-8 bytes
 into a one-dimensional Number array on all ten targets. It removes an initial
@@ -200,7 +220,7 @@ Core BASIC 2.1 provides:
 - ascending `For ... To` and descending `For ... Down To`, closed by `End For`;
 - post-tested `Do / Loop Until`, unconditional `Do / Loop`, `Exit For`, and `Exit Do`;
 - optional `Option Explicit`;
-- top-level `Sub` and `Function` routines, `Call`, `Return`, exact typed ByVal parameters, routine-local scope, and recursion;
+- top-level `Sub` and `Function` routines, `Call`, `Return`, exact typed ByVal/ByRef parameters, routine-local scope, and recursion;
 - Optional literal/Const defaults, named arguments using `Name:=Value`, and multiline routine declarations;
 - Unicode scalar `Text_Length`, `Text_Code_At`, and `Text_Slice`, plus unary Number `+`;
 - `Select Case` over exact scalar constants;

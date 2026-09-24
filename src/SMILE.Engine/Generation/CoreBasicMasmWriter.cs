@@ -656,7 +656,7 @@ internal sealed partial class CoreBasicMasmWriter
             {
                 roots.AddRange(Routine!.Locals
                     .Distinct()
-                    .Where(variable => variable.Type is SmileType.String)
+                    .Where(variable => !variable.IsByRef && variable.Type is SmileType.String)
                     .Select(variable =>
                     {
                         Storage storage = _storage[variable];
@@ -698,7 +698,7 @@ internal sealed partial class CoreBasicMasmWriter
                 Storage storage = _storage[symbol.Parameters[index]];
                 if (index < 4)
                 {
-                    Append(_initialization, 1, symbol.Parameters[index].Type is SmileType.Double
+                    Append(_initialization, 1, symbol.Parameters[index] is { Type: SmileType.Double, IsByRef: false }
                         ? $"movsd QWORD PTR {Address(storage.Offset)}, xmm{index}"
                         : $"mov QWORD PTR {Address(storage.Offset)}, {ParameterRegisters[index]}");
                 }
@@ -1221,12 +1221,15 @@ internal sealed partial class CoreBasicMasmWriter
         private void EmitCall(RoutineSymbol routine, IReadOnlyList<BoundExpression> arguments, int indent, IReadOnlyList<int>? parameterOrder)
         {
             var captured = new List<Storage>();
-            foreach (BoundExpression argument in arguments)
+            for (int sourceIndex = 0; sourceIndex < arguments.Count; sourceIndex++)
             {
-                EmitExpression(argument, indent);
+                BoundExpression argument = arguments[sourceIndex];
+                bool byRef = RoutineArguments.ParameterAtSourceIndex(routine, parameterOrder, sourceIndex).IsByRef;
+                if (byRef) EmitReferenceLocation(argument, indent);
+                else EmitExpression(argument, indent);
                 Storage temporary = NewTemporary();
                 Emit(indent, $"mov QWORD PTR {Address(temporary.Offset)}, rax");
-                if (_owner._usesManagedText && argument.Type is SmileType.String)
+                if (!byRef && _owner._usesManagedText && argument.Type is SmileType.String)
                 {
                     _textTemporaryRoots.Add(temporary);
                 }
@@ -1238,7 +1241,7 @@ internal sealed partial class CoreBasicMasmWriter
             {
                 if (index < 4)
                 {
-                    Emit(indent, routine.Parameters[index].Type is SmileType.Double
+                    Emit(indent, routine.Parameters[index] is { Type: SmileType.Double, IsByRef: false }
                         ? $"movsd xmm{index}, QWORD PTR {Address(captured[index].Offset)}"
                         : $"mov {ParameterRegisters[index]}, QWORD PTR {Address(captured[index].Offset)}");
                 }
@@ -1271,18 +1274,19 @@ internal sealed partial class CoreBasicMasmWriter
             Label(okay);
         }
 
-        private Storage EmitArrayOffset(VariableSymbol array, IReadOnlyList<BoundExpression> indices, int indent)
+        private Storage EmitArrayOffset(VariableSymbol array, IReadOnlyList<BoundExpression> indices, int indent, bool checkEachDimension = false)
         {
             var captured = new List<Storage>(indices.Count);
             for (int dimension = 0; dimension < indices.Count; dimension++)
             {
                 EmitExpression(indices[dimension], indent);
+                if (checkEachDimension) EmitBoundsCheck(array, dimension, indent);
                 Storage value = NewTemporary();
                 Emit(indent, $"mov QWORD PTR {Address(value.Offset)}, rax");
                 captured.Add(value);
             }
 
-            for (int dimension = 0; dimension < captured.Count; dimension++)
+            for (int dimension = 0; !checkEachDimension && dimension < captured.Count; dimension++)
             {
                 Emit(indent, $"mov rax, QWORD PTR {Address(captured[dimension].Offset)}");
                 EmitBoundsCheck(array, dimension, indent);
@@ -1308,6 +1312,7 @@ internal sealed partial class CoreBasicMasmWriter
             else if (_storage.TryGetValue(variable, out Storage? storage))
             {
                 Emit(indent, $"mov rax, QWORD PTR {Address(storage.Offset)}");
+                if (variable.IsByRef) Emit(indent, "mov rax, QWORD PTR [rax]");
             }
             else
             {
@@ -1319,7 +1324,12 @@ internal sealed partial class CoreBasicMasmWriter
         {
             if (_storage.TryGetValue(variable, out Storage? storage))
             {
-                Emit(indent, $"mov QWORD PTR {Address(storage.Offset)}, {register}");
+                if (variable.IsByRef)
+                {
+                    Emit(indent, $"mov r11, QWORD PTR {Address(storage.Offset)}");
+                    Emit(indent, $"mov QWORD PTR [r11], {register}");
+                }
+                else Emit(indent, $"mov QWORD PTR {Address(storage.Offset)}, {register}");
             }
             else
             {

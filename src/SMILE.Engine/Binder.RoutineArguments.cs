@@ -51,6 +51,11 @@ internal sealed partial class Binder
             }
             if (slots[parameterIndex] >= 0) Report("SMILE2164", $"Parameter '{routine.Parameters[parameterIndex].Name}' is supplied twice.", source.Span);
             slots[parameterIndex] = sourceIndex;
+            if (routine.Parameters[parameterIndex].IsByRef && value is not
+                (BoundVariableExpression { Variable.IsConstant: false } or BoundArrayExpression or BoundErrorExpression))
+            {
+                Report("SMILE2165", "ByRef requires an exact-type writable variable or array element.", source.Span);
+            }
             if (value.Type is not SmileType.Error && value.Type != routine.Parameters[parameterIndex].Type)
             {
                 Report("SMILE2149", $"Argument {parameterIndex + 1} for '{routine.Parameters[parameterIndex].Name}' must be {DisplayType(routine.Parameters[parameterIndex].Type)}.", source.Span);

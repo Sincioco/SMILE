@@ -865,7 +865,7 @@ internal sealed partial class CobolWriter
         private PreparedArrayElement PrepareArrayElement(
             VariableSymbol array,
             IReadOnlyList<BoundExpression> indexExpressions,
-            int indent)
+            int indent, bool checkEachDimension = false)
         {
             var checkedIndices = new List<Temporary>(indexExpressions.Count);
             for (int dimension = 0; dimension < indexExpressions.Count; dimension++)
@@ -875,11 +875,16 @@ internal sealed partial class CobolWriter
                 Temporary checkedIndex = NewTemporary(SmileType.Integer);
                 Assign(checkedIndex.Name, SmileType.Integer, indexExpression, index, indent);
                 checkedIndices.Add(checkedIndex);
+                if (checkEachDimension) CheckDimension(checkedIndex, dimension);
             }
 
-            for (int dimension = 0; dimension < checkedIndices.Count; dimension++)
+            for (int dimension = 0; !checkEachDimension && dimension < checkedIndices.Count; dimension++)
             {
-                Temporary checkedIndex = checkedIndices[dimension];
+                CheckDimension(checkedIndices[dimension], dimension);
+            }
+
+            void CheckDimension(Temporary checkedIndex, int dimension)
+            {
                 int length = dimension == 0 ? array.ArrayLength : array.ArraySecondLength;
                 Line(indent, $"IF {checkedIndex.Name} < 0 OR {checkedIndex.Name} >= {length}");
                 Line(indent + 1, $"DISPLAY \"SMILE Runtime Error SMILER1210: Array index is outside the bounds of '{array.Name}'.\" UPON STDERR");
@@ -1021,10 +1026,18 @@ internal sealed partial class CobolWriter
             string? resultTarget,
             IReadOnlyList<int>? parameterOrder)
         {
-            var captured = new List<(VariableSymbol Parameter, Temporary Value)>();
+            var captured = new List<PreparedArrayElement>();
             for (int index = 0; index < arguments.Count; index++)
             {
                 BoundExpression argument = arguments[index];
+                if (RoutineArguments.ParameterAtSourceIndex(routine, parameterOrder, index).IsByRef)
+                {
+                    captured.Add(argument is BoundArrayExpression array
+                        ? PrepareArrayElement(array.Array, array.Indices, indent, checkEachDimension: true)
+                        : new PreparedArrayElement(_owner.Name(((BoundVariableExpression)argument).Variable),
+                            argument.Type is SmileType.String ? _owner.LengthName(((BoundVariableExpression)argument).Variable) : null));
+                    continue;
+                }
                 string expression = PrepareExpression(argument, indent);
                 Temporary temporary = NewTemporary(argument.Type);
                 Assign(
@@ -1034,18 +1047,17 @@ internal sealed partial class CobolWriter
                     expression,
                     indent,
                     argument.Type is SmileType.String ? LengthName(temporary) : null);
-                int parameterIndex = parameterOrder is null ? index : parameterOrder.ToList().IndexOf(index);
-                captured.Add((routine.Parameters[parameterIndex], temporary));
+                captured.Add(new PreparedArrayElement(temporary.Name, argument.Type is SmileType.String ? LengthName(temporary) : null));
             }
             captured = RoutineArguments.InParameterOrder(captured, parameterOrder).ToList();
 
             var usingItems = new List<string> { "BY REFERENCE SMILE-STATE" };
-            foreach ((VariableSymbol parameter, Temporary value) in captured)
+            foreach (PreparedArrayElement value in captured)
             {
-                usingItems.Add($"BY REFERENCE {value.Name}");
-                if (parameter.Type is SmileType.String)
+                usingItems.Add($"BY REFERENCE {value.Value}");
+                if (value.Length is not null)
                 {
-                    usingItems.Add($"BY REFERENCE {LengthName(value)}");
+                    usingItems.Add($"BY REFERENCE {value.Length}");
                 }
             }
             if (resultTarget is not null)

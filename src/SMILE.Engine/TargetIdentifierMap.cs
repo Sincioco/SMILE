@@ -23,6 +23,8 @@ internal sealed class TargetIdentifierMap
             "smile_text_slice", "smile_utf8_next", "smile_text_allocate"
         });
         if (language is TargetLanguage.Python) reserved.Add("ord");
+        if (language is TargetLanguage.Swift && program.Routines.Any(routine => routine.Symbol.Parameters.Any(parameter => parameter.IsByRef)))
+            reserved.Add("SmileReference");
         if (new DoubleProgramFeatures(program).IsRequired)
         {
             foreach (string name in new[] { "double_fail", "check_double", "double_divisor", "to_number", "double_clamp", "format_double", "text_from_double", "text_to_double", "double_round", "double_nonnegative" })

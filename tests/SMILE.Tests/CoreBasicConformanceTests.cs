@@ -308,7 +308,7 @@ Print "unreachable"
             "Dim Values(3) As Number",
             "Sub Work\nEnd Sub",
             "Call Work",
-            "Sub Change(ByRef Value As Number)\nEnd Sub",
+            "Sub Change(Optional ByRef Value As Number = 0)\nEnd Sub",
             "Sub Greet(Optional Name As Text)\nEnd Sub",
             "Sub Greet(Name As Text)\nEnd Sub\nCall Greet(Unknown:=\"Sin\")",
             "Dim Grid[2, 2, 2] As Number",

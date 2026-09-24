@@ -41,7 +41,8 @@ public sealed record ParameterSyntax(
     bool HasExplicitByVal,
     TextSpan Span,
     bool IsOptional = false,
-    ExpressionSyntax? DefaultValue = null)
+    ExpressionSyntax? DefaultValue = null,
+    bool IsByRef = false)
     : SyntaxNode(Span);
 
 public sealed record TextFileLoadStatementSyntax(
