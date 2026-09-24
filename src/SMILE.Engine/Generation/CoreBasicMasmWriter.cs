@@ -28,7 +28,7 @@ internal sealed class CoreBasicMasmWriter
             .OfType<BoundConstStatement>()
             .ToDictionary(statement => statement.Variable, statement => statement.Value);
         _features = CoreBasicProgramFeatureSet.Create(program);
-        _usesManagedText = CoreBasicMasmTextRuntime.IsRequired(program);
+        _usesManagedText = CoreBasicMasmTextRuntime.NeedsManagedText(program);
         if (_program.Variables.Any(variable =>
             !variable.IsConstant && variable.Type is SmileType.String))
         {
@@ -75,6 +75,9 @@ internal sealed class CoreBasicMasmWriter
             Line("_kbhit PROTO");
             Line("_getch PROTO");
         }
+        if (_features.HasTextLength) Line("smile_text_length PROTO :PTR BYTE");
+        if (_features.HasTextCodeAt) Line("smile_text_code_at PROTO :PTR BYTE, :QWORD");
+        if (_features.HasTextSlice) Line("smile_text_slice PROTO :PTR BYTE, :QWORD, :QWORD");
         if (_features.HasWait) Line("Sleep PROTO :DWORD");
         if (_features.HasTimer || _features.HasRandom) Line("GetTickCount64 PROTO");
         if (_features.HasClearScreen || _features.HasMoveCursor || _features.HasTextColor)
@@ -754,7 +757,7 @@ internal sealed class CoreBasicMasmWriter
                         break;
                     }
                     case BoundCallStatement call:
-                        EmitCall(call.Routine, call.Arguments, indent);
+                        EmitCall(call.Routine, call.Arguments, indent, call.ParameterOrder);
                         break;
                     case BoundReturnStatement returnStatement:
                         if (returnStatement.Value is not null)
@@ -994,7 +997,7 @@ internal sealed class CoreBasicMasmWriter
                     Emit(indent, "mov rax, QWORD PTR [r11+r10*8]");
                     return;
                 case BoundCallExpression call:
-                    EmitCall(call.Routine, call.Arguments, indent);
+                    EmitCall(call.Routine, call.Arguments, indent, call.ParameterOrder);
                     return;
                 case BoundIntrinsicExpression intrinsic:
                     EmitIntrinsic(intrinsic, indent);
@@ -1108,20 +1111,31 @@ internal sealed class CoreBasicMasmWriter
                 return;
             }
 
-            EmitExpression(intrinsic.Arguments[0], indent);
-            Storage left = NewTemporary();
-            Emit(indent, $"mov QWORD PTR {Address(left.Offset)}, rax");
-            if (intrinsic.Arguments.Count == 2)
+            var captured = new List<Storage>();
+            foreach (BoundExpression argument in intrinsic.Arguments)
             {
-                EmitExpression(intrinsic.Arguments[1], indent);
-                Emit(indent, "mov rdx, rax");
+                EmitExpression(argument, indent);
+                Storage temporary = NewTemporary();
+                Emit(indent, $"mov QWORD PTR {Address(temporary.Offset)}, rax");
+                if (_owner._usesManagedText && argument.Type is SmileType.String) _textTemporaryRoots.Add(temporary);
+                captured.Add(temporary);
             }
-            Emit(indent, $"mov rcx, QWORD PTR {Address(left.Offset)}");
+            string[] registers = { "rcx", "rdx", "r8" };
+            for (int index = 0; index < captured.Count; index++)
+            {
+                Emit(indent, $"mov {registers[index]}, QWORD PTR {Address(captured[index].Offset)}");
+            }
             NoteCall(intrinsic.Arguments.Count);
-            Emit(indent, $"call {intrinsic.Kind switch { BoundIntrinsicKind.Abs => "smile_abs", BoundIntrinsicKind.Min => "smile_min", BoundIntrinsicKind.Max => "smile_max", _ => "smile_timer" }}");
+            Emit(indent, $"call {intrinsic.Kind switch { BoundIntrinsicKind.Abs => "smile_abs", BoundIntrinsicKind.Min => "smile_min", BoundIntrinsicKind.Max => "smile_max", BoundIntrinsicKind.TextLength => "smile_text_length", BoundIntrinsicKind.TextCodeAt => "smile_text_code_at", BoundIntrinsicKind.TextSlice => "smile_text_slice", _ => "smile_timer" }}");
+            if (intrinsic.Type is SmileType.String)
+            {
+                Storage result = NewTemporary();
+                Emit(indent, $"mov QWORD PTR {Address(result.Offset)}, rax");
+                _textTemporaryRoots.Add(result);
+            }
         }
 
-        private void EmitCall(RoutineSymbol routine, IReadOnlyList<BoundExpression> arguments, int indent)
+        private void EmitCall(RoutineSymbol routine, IReadOnlyList<BoundExpression> arguments, int indent, IReadOnlyList<int>? parameterOrder)
         {
             var captured = new List<Storage>();
             foreach (BoundExpression argument in arguments)
@@ -1136,6 +1150,7 @@ internal sealed class CoreBasicMasmWriter
                 captured.Add(temporary);
             }
 
+            captured = RoutineArguments.InParameterOrder(captured, parameterOrder).ToList();
             for (int index = 0; index < captured.Count; index++)
             {
                 if (index < 4)

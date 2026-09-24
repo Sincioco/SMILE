@@ -235,15 +235,22 @@ internal static partial class CoreBasicCodeGenerator
                     break;
                 case TargetLanguage.Python:
                     if (_features.HasGetKey) Line("import msvcrt");
-                    if (_features.HasClearScreen || _features.HasMoveCursor || _features.HasTextColor) Line("import sys");
+                    if (_features.HasClearScreen || _features.HasMoveCursor || _features.HasTextColor || ProgramHasUnicodeText()) Line("import sys");
                     if (_features.HasRandom) Line("import random");
                     if (_features.HasWait || _features.HasTimer) Line("import time");
+                    if (ProgramHasUnicodeText())
+                    {
+                        Line();
+                        Line("sys.stdout.reconfigure(encoding=\"utf-8\")");
+                        Line();
+                    }
                     break;
             }
         }
 
         private void WriteRuntimeHelpers()
         {
+            WriteTextInspectionHelpers();
             if (!_features.HasConsoleRuntime && !_features.HasAbs && !_features.HasMin && !_features.HasMax)
             {
                 return;
@@ -279,7 +286,7 @@ internal static partial class CoreBasicCodeGenerator
                     ? "static std::size_t smile_index(std::int64_t index, std::size_t length, const std::string& name);"
                     : "static size_t smile_index(int64_t index, size_t length, const char *name);");
             }
-            if (ProgramHasTextConcatenation())
+            if (ProgramNeedsCTextStorage())
             {
                 Line("static const char *smile_text_return_root = NULL;");
                 Line("static void smile_text_initialize(void);");
@@ -287,8 +294,10 @@ internal static partial class CoreBasicCodeGenerator
                 Line("static void smile_text_unregister(const char **root);");
                 Line("static void smile_text_collect(void);");
                 Line("static void smile_text_shutdown(void);");
-                Line("static const char *smile_text_concat(const char *left, const char *right);");
+                if (ProgramExpressions().Any(expression => expression is BoundBinaryExpression { Operator.Kind: BoundBinaryOperatorKind.StringConcatenation }))
+                    Line("static const char *smile_text_concat(const char *left, const char *right);");
             }
+            WriteTextInspectionPrototypes();
             string integer = _language is TargetLanguage.Cpp ? "std::int64_t" : "int64_t";
             if (_features.HasGetKey) Line($"static {integer} smile_get_key(void);");
             if (_features.HasClearScreen) Line("static void smile_clear_screen(void);");
@@ -304,7 +313,7 @@ internal static partial class CoreBasicCodeGenerator
             if (_features.HasAbs) Line($"static {integer} smile_abs({integer} value);");
             if (_features.HasMin && _language is not TargetLanguage.Cpp) Line("static int64_t smile_min(int64_t left, int64_t right);");
             if (_features.HasMax && _language is not TargetLanguage.Cpp) Line("static int64_t smile_max(int64_t left, int64_t right);");
-            if (ProgramHasArrays() || ProgramHasTextConcatenation() || _features.HasConsoleRuntime || _features.HasAbs || _features.HasMin || _features.HasMax)
+            if (ProgramHasArrays() || ProgramNeedsCTextStorage() || _features.HasConsoleRuntime || _features.HasAbs || _features.HasMin || _features.HasMax)
             {
                 Line();
             }

@@ -5,7 +5,7 @@ namespace SMILE.Engine;
 // This is the sole source-language binder. It performs deliberate declaration
 // and body passes so every evaluator and target receives the same symbols,
 // scopes, exact scalar types, call order, and control-flow tree.
-internal sealed class Binder
+internal sealed partial class Binder
 {
     private readonly Dictionary<string, TextSpan> _programDeclarations = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DimStatementSyntax> _globalDimSyntax = new(StringComparer.OrdinalIgnoreCase);
@@ -191,6 +191,7 @@ internal sealed class Binder
         {
             var parameters = new List<VariableSymbol>();
             var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            bool sawOptional = false;
             foreach (ParameterSyntax parameter in declaration.Parameters)
             {
                 if (!names.Add(parameter.Name))
@@ -199,6 +200,12 @@ internal sealed class Binder
                     continue;
                 }
 
+                if (sawOptional && !parameter.IsOptional)
+                {
+                    Report("SMILE2160", "Required parameters must precede Optional parameters.", parameter.Span);
+                }
+                sawOptional |= parameter.IsOptional;
+                SmileValue? defaultValue = BindParameterDefault(parameter);
                 parameters.Add(new VariableSymbol(
                     parameter.Name,
                     parameter.NameSpan,
@@ -206,7 +213,8 @@ internal sealed class Binder
                     IsConstant: false,
                     RoutineName: declaration.Name,
                     ArrayLength: 0,
-                    IsParameter: true));
+                    IsParameter: true,
+                    DefaultValue: defaultValue));
             }
 
             _routineSymbols.Add(declaration.Name, new RoutineSymbol(
@@ -609,13 +617,13 @@ internal sealed class Binder
     private BoundStatement BindCallStatement(CallStatementSyntax syntax)
     {
         RoutineSymbol routine = ResolveRoutine(syntax.Name, syntax.NameSpan, expectedFunction: false);
-        IReadOnlyList<BoundExpression> arguments = BindCallArguments(routine, syntax.Arguments, syntax.NameSpan);
+        BoundArguments arguments = BindCallArguments(routine, syntax.Arguments, syntax.NameSpan);
         if (routine.IsFunction)
         {
             Report("SMILE2131", $"Function '{routine.Name}' must be used as an expression, not with Call.", syntax.NameSpan);
         }
 
-        return new BoundCallStatement(routine, arguments);
+        return new BoundCallStatement(routine, arguments.Values, arguments.ParameterOrder);
     }
 
     private BoundStatement BindReturn(ReturnStatementSyntax syntax)
@@ -855,14 +863,14 @@ internal sealed class Binder
                 }
 
                 RoutineSymbol routine = ResolveRoutine(call.Name, call.NameSpan, expectedFunction: true);
-                IReadOnlyList<BoundExpression> arguments = BindCallArguments(routine, call.Arguments, call.NameSpan);
+                BoundArguments arguments = BindCallArguments(routine, call.Arguments, call.NameSpan);
                 if (!routine.IsFunction)
                 {
                     Report("SMILE2142", $"Sub '{routine.Name}' cannot be used as an expression.", call.NameSpan);
                     return new BoundErrorExpression();
                 }
 
-                return new BoundCallExpression(routine, arguments);
+                return new BoundCallExpression(routine, arguments.Values, arguments.ParameterOrder);
             case UnaryExpressionSyntax unary:
                 BoundExpression operand = BindExpression(unary.Operand, constantsOnly);
                 BoundUnaryOperator? unaryOperator = BoundUnaryOperator.Bind(unary.OperatorToken.Kind, operand.Type);
@@ -1026,6 +1034,9 @@ internal sealed class Binder
             "ABS" => BoundIntrinsicKind.Abs,
             "MIN" => BoundIntrinsicKind.Min,
             "MAX" => BoundIntrinsicKind.Max,
+            "TEXT_LENGTH" => BoundIntrinsicKind.TextLength,
+            "TEXT_CODE_AT" => BoundIntrinsicKind.TextCodeAt,
+            "TEXT_SLICE" => BoundIntrinsicKind.TextSlice,
             _ => null
         };
         if (kind is null)
@@ -1034,7 +1045,21 @@ internal sealed class Binder
             return false;
         }
 
-        int expected = kind is BoundIntrinsicKind.Timer ? 0 : kind is BoundIntrinsicKind.Abs ? 1 : 2;
+        if (syntax.Arguments.Any(argument => argument is NamedArgumentExpressionSyntax))
+        {
+            Report("SMILE2165", "Built-in functions accept positional arguments only.", syntax.Span);
+            expression = new BoundErrorExpression();
+            return true;
+        }
+
+        int expected = kind switch
+        {
+            BoundIntrinsicKind.Timer => 0,
+            BoundIntrinsicKind.Abs or BoundIntrinsicKind.TextLength => 1,
+            BoundIntrinsicKind.TextSlice => 3,
+            _ => 2
+        };
+        int diagnosticCount = _diagnostics.Count;
         BoundExpression[] arguments = syntax.Arguments.Select(argument => BindExpression(argument, constantsOnly)).ToArray();
         if (arguments.Length != expected)
         {
@@ -1044,17 +1069,29 @@ internal sealed class Binder
         foreach ((BoundExpression argument, int index) in arguments.Select((value, index) => (value, index)))
         {
             TextSpan argumentSpan = index < syntax.Arguments.Count ? syntax.Arguments[index].Span : syntax.NameSpan;
-            RequireNumber(argument, argumentSpan, $"{syntax.Name} argument");
+            if (index == 0 && kind is BoundIntrinsicKind.TextLength or BoundIntrinsicKind.TextCodeAt or BoundIntrinsicKind.TextSlice)
+            {
+                if (argument.Type is not (SmileType.String or SmileType.Error))
+                {
+                    Report("SMILE2154", $"{syntax.Name} requires Text as its first argument.", argumentSpan);
+                }
+            }
+            else
+            {
+                RequireNumber(argument, argumentSpan, $"{syntax.Name} argument");
+            }
         }
 
-        if (constantsOnly && kind is BoundIntrinsicKind.Timer)
+        if (constantsOnly && kind is BoundIntrinsicKind.Timer or BoundIntrinsicKind.TextLength or BoundIntrinsicKind.TextCodeAt or BoundIntrinsicKind.TextSlice)
         {
-            Report("SMILE2111", "Constant expressions cannot read Timer().", syntax.Span);
+            Report("SMILE2111", $"Constant expressions cannot call {syntax.Name}().", syntax.Span);
             expression = new BoundErrorExpression();
             return true;
         }
 
-        expression = new BoundIntrinsicExpression(kind.Value, arguments);
+        expression = _diagnostics.Count == diagnosticCount
+            ? new BoundIntrinsicExpression(kind.Value, arguments)
+            : new BoundErrorExpression();
         return true;
     }
 
@@ -1072,35 +1109,6 @@ internal sealed class Binder
             expectedFunction ? RoutineKind.Function : RoutineKind.Sub,
             Array.Empty<VariableSymbol>(),
             expectedFunction ? SmileType.Error : null);
-    }
-
-    private IReadOnlyList<BoundExpression> BindCallArguments(
-        RoutineSymbol routine,
-        IReadOnlyList<ExpressionSyntax> arguments,
-        TextSpan callSpan)
-    {
-        BoundExpression[] bound = arguments.Select(argument => BindExpression(argument)).ToArray();
-        if (bound.Length != routine.Parameters.Count)
-        {
-            Report(
-                "SMILE2148",
-                $"Routine '{routine.Name}' expects {routine.Parameters.Count} argument(s), but received {bound.Length}.",
-                callSpan);
-        }
-
-        int count = Math.Min(bound.Length, routine.Parameters.Count);
-        for (int index = 0; index < count; index++)
-        {
-            if (bound[index].Type is not SmileType.Error && bound[index].Type != routine.Parameters[index].Type)
-            {
-                Report(
-                    "SMILE2149",
-                    $"Argument {index + 1} for '{routine.Name}' must be {DisplayType(routine.Parameters[index].Type)}, not {DisplayType(bound[index].Type)}.",
-                    arguments[index].Span);
-            }
-        }
-
-        return bound;
     }
 
     private static VariableSymbol ErrorVariable(string name, TextSpan span, SmileType type) =>

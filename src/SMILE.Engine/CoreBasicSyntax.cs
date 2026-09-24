@@ -39,8 +39,13 @@ public sealed record ParameterSyntax(
     TextSpan NameSpan,
     SmileType DeclaredType,
     bool HasExplicitByVal,
-    TextSpan Span)
+    TextSpan Span,
+    bool IsOptional = false,
+    ExpressionSyntax? DefaultValue = null)
     : SyntaxNode(Span);
+
+public sealed record NamedArgumentExpressionSyntax(string Name, ExpressionSyntax Value, TextSpan Span)
+    : ExpressionSyntax(Span);
 
 public sealed record RoutineDeclarationSyntax(
     RoutineKind Kind,

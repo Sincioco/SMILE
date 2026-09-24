@@ -230,7 +230,8 @@ public sealed record VariableSymbol(
     string? RoutineName = null,
     int ArrayLength = 0,
     bool IsParameter = false,
-    int ArraySecondLength = 0)
+    int ArraySecondLength = 0,
+    SmileValue? DefaultValue = null)
 {
     public bool IsArray => ArrayLength > 0;
 
@@ -370,7 +371,8 @@ public sealed record BoundRandomStatement(
 
 public sealed record BoundCallStatement(
     RoutineSymbol Routine,
-    IReadOnlyList<BoundExpression> Arguments)
+    IReadOnlyList<BoundExpression> Arguments,
+    IReadOnlyList<int>? ParameterOrder = null)
     : BoundStatement;
 
 public sealed record BoundReturnStatement(BoundExpression? Value)
@@ -493,17 +495,21 @@ public enum BoundIntrinsicKind
     Timer,
     Abs,
     Min,
-    Max
+    Max,
+    TextLength,
+    TextCodeAt,
+    TextSlice
 }
 
 public sealed record BoundIntrinsicExpression(
     BoundIntrinsicKind Kind,
     IReadOnlyList<BoundExpression> Arguments)
-    : BoundExpression(SmileType.Integer);
+    : BoundExpression(Kind is BoundIntrinsicKind.TextSlice ? SmileType.String : SmileType.Integer);
 
 public sealed record BoundCallExpression(
     RoutineSymbol Routine,
-    IReadOnlyList<BoundExpression> Arguments)
+    IReadOnlyList<BoundExpression> Arguments,
+    IReadOnlyList<int>? ParameterOrder = null)
     : BoundExpression(Routine.ReturnType ?? SmileType.Error);
 
 public sealed record BoundUnaryExpression(
@@ -782,6 +788,12 @@ public static class BoundExpressionEvaluator
 
         try
         {
+            if (intrinsic.Kind is BoundIntrinsicKind.TextLength or BoundIntrinsicKind.TextCodeAt or BoundIntrinsicKind.TextSlice)
+            {
+                return StaticEvaluationResult.Known(
+                    TextIntrinsics.Evaluate(intrinsic.Kind, arguments.Select(argument => argument.Value).ToArray()), mayFail);
+            }
+
             long value = intrinsic.Kind switch
             {
                 BoundIntrinsicKind.Abs => checked(Math.Abs(arguments[0].Value.IntegerValue)),

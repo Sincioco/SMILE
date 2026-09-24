@@ -3,13 +3,28 @@ namespace SMILE.Engine;
 internal static class CoreBasicMasmTextRuntime
 {
     public static bool IsRequired(BoundProgram program) =>
+        NeedsManagedText(program) || CoreBasicProgramFeatureSet.Create(program).HasTextInspection;
+
+    public static bool NeedsManagedText(BoundProgram program) =>
+        CoreBasicProgramFeatureSet.Create(program).HasTextSlice ||
         CoreBasicCodeGenerator.EnumerateExpressionsForSupport(program)
             .Any(expression => expression is BoundBinaryExpression
             {
                 Operator.Kind: BoundBinaryOperatorKind.StringConcatenation
             });
 
-    public static string Generate() => GeneratedSourceLayout.Normalize(
+    public static string Generate(BoundProgram program)
+    {
+        CoreBasicProgramFeatureSet features = CoreBasicProgramFeatureSet.Create(program);
+        string runtime = NeedsManagedText(program) ? GenerateManagedRuntime() : "#include <string.h>\n";
+        if (features.HasTextInspection)
+        {
+            runtime += "\n#include <stdint.h>\n" + NativeTextInspection.Generate(features, TargetLanguage.MasmX64);
+        }
+        return GeneratedSourceLayout.Normalize(runtime, TargetLanguage.C);
+    }
+
+    private static string GenerateManagedRuntime() => GeneratedSourceLayout.Normalize(
         """
 #include <stdbool.h>
 #include <stdio.h>
@@ -120,9 +135,8 @@ void smile_text_initialize(void)
     smile_text_shutdown_complete = false;
 }
 
-const char *smile_text_concat(const char *left, const char *right)
+static char *smile_text_allocate(size_t length)
 {
-    size_t length = strlen(left) + strlen(right) + 1;
     SmileTextAllocation *allocation = malloc(sizeof(*allocation) + length);
     if (allocation == NULL)
     {
@@ -130,7 +144,6 @@ const char *smile_text_concat(const char *left, const char *right)
         exit(1);
     }
 
-    snprintf(allocation->text, length, "%s%s", left, right);
     allocation->next = smile_text_allocations;
     smile_text_allocations = allocation;
     smile_text_allocation_count++;
@@ -141,6 +154,14 @@ const char *smile_text_concat(const char *left, const char *right)
     }
 
     return allocation->text;
+}
+
+const char *smile_text_concat(const char *left, const char *right)
+{
+    size_t length = strlen(left) + strlen(right) + 1;
+    char *result = smile_text_allocate(length);
+    snprintf(result, length, "%s%s", left, right);
+    return result;
 }
 """,
         TargetLanguage.C);

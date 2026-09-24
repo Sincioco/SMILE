@@ -17,6 +17,12 @@ internal sealed class TargetIdentifierMap
     public static TargetIdentifierMap Create(BoundProgram program, TargetLanguage language)
     {
         ISet<string> reserved = TargetReservedNames.For(language);
+        reserved.UnionWith(new[]
+        {
+            "smileTextCodeAt", "smileTextSlice", "smile_text_length", "smile_text_code_at",
+            "smile_text_slice", "smile_utf8_next", "smile_text_allocate"
+        });
+        if (language is TargetLanguage.Python) reserved.Add("ord");
         var used = new HashSet<string>(StringComparer.Ordinal);
         var names = new Dictionary<VariableSymbol, string>();
         var routineNames = new Dictionary<RoutineSymbol, string>();

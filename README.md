@@ -10,6 +10,12 @@ Write a small, readable program. See how it becomes C#, Java, C++, and seven oth
 
 ## Latest progress
 
+### Text and routine features back-ported from SMILE 2.0
+
+`Text_Length`, `Text_Code_At`, and `Text_Slice` now inspect Unicode scalars, including emoji. Routines support typed Optional defaults, named arguments, and multiline parameter lists; Number expressions also accept unary `+`. The evaluator and all ten targets preserve argument evaluation order. Windows C#, Java, and Python output explicitly uses UTF-8 when the program contains Unicode text.
+
+This is the first completed portion of the broader back-port. Double math, ByRef, persistence, and structured types/modules remain listed in the [back-port inventory](docs/SMILE%202%20Core%20Backport%20Progress.md).
+
 ### Three original games, written entirely in SMILE
 
 The latest implementation expands the terminal games with larger boards, named colors, cursor-based redraws, and state-driven updates. Their rules live in ordinary `.smile` programs: arrays hold the board, routines organize behavior, and loops respond to keys and time.
@@ -171,6 +177,8 @@ Core BASIC 2.1 provides:
 - post-tested `Do / Loop Until`, unconditional `Do / Loop`, `Exit For`, and `Exit Do`;
 - optional `Option Explicit`;
 - top-level `Sub` and `Function` routines, `Call`, `Return`, exact typed ByVal parameters, routine-local scope, and recursion;
+- Optional literal/Const defaults, named arguments using `Name:=Value`, and multiline routine declarations;
+- Unicode scalar `Text_Length`, `Text_Code_At`, and `Text_Slice`, plus unary Number `+`;
 - `Select Case` over exact scalar constants;
 - checked fixed one- and two-dimensional arrays with zero-based indexes;
 - nonblocking `Get Key`, stable `KEY_*` constants, `Clear Screen`, 1-based `Move Cursor To`, named `Text Color`, and millisecond `Wait`;

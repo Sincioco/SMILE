@@ -12,8 +12,12 @@ internal sealed record CoreBasicProgramFeatureSet(
     bool HasTimer,
     bool HasAbs,
     bool HasMin,
-    bool HasMax)
+    bool HasMax,
+    bool HasTextLength,
+    bool HasTextCodeAt,
+    bool HasTextSlice)
 {
+    public bool HasTextInspection => HasTextLength || HasTextCodeAt || HasTextSlice;
     public bool HasInteractiveConsole => HasGetKey || HasClearScreen || HasMoveCursor || HasTextColor;
 
     public bool HasConsoleRuntime => HasInteractiveConsole || HasWait || HasRandom || HasTimer;
@@ -34,7 +38,10 @@ internal sealed record CoreBasicProgramFeatureSet(
             expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.Timer }),
             expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.Abs }),
             expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.Min }),
-            expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.Max }));
+            expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.Max }),
+            expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.TextLength }),
+            expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.TextCodeAt }),
+            expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.TextSlice }));
     }
 
     private static IEnumerable<BoundStatement> EnumerateStatements(BoundProgram program)

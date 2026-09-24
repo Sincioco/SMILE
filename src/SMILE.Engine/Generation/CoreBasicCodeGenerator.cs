@@ -58,7 +58,7 @@ internal static partial class CoreBasicCodeGenerator
         {
             files.Add(new GeneratedFile(
                 "SmileTextRuntime.c",
-                CoreBasicMasmTextRuntime.Generate(),
+                CoreBasicMasmTextRuntime.Generate(program),
                 IsPrimary: false));
         }
 
@@ -128,6 +128,7 @@ internal static partial class CoreBasicCodeGenerator
         public string WriteCSharp()
         {
             Line("using System;");
+            if (_features.HasTextInspection) Line("using System.Text;");
             Line();
             Line("internal static class Program");
             Line("{");
@@ -136,6 +137,7 @@ internal static partial class CoreBasicCodeGenerator
             Line("private static void Main()");
             Line("{");
             _indent++;
+            if (ProgramHasUnicodeText()) Line("Console.OutputEncoding = new System.Text.UTF8Encoding(false);");
             WriteArrayInitializers(_program.Variables);
             WriteItems(_program.SourceItems);
             _indent--;
@@ -206,6 +208,7 @@ internal static partial class CoreBasicCodeGenerator
             WriteGlobalDeclarations(fieldContext: true);
             Line("public static void main(String[] args) {");
             _indent++;
+            if (ProgramHasUnicodeText()) Line("System.setOut(new java.io.PrintStream(System.out, true, java.nio.charset.StandardCharsets.UTF_8));");
             WriteArrayInitializers(_program.Variables);
             WriteItems(_program.SourceItems);
             _indent--;
@@ -329,11 +332,11 @@ internal static partial class CoreBasicCodeGenerator
             Line("#include <stdio.h>");
             Line("#include <stdlib.h>");
             WriteRuntimePreamble();
-            if (ProgramHasTextComparison() && !ProgramHasTextConcatenation())
+            if ((ProgramHasTextComparison() || _features.HasTextInspection) && !ProgramNeedsCTextStorage())
             {
                 Line("#include <string.h>");
             }
-            if (ProgramHasTextConcatenation())
+            if (ProgramNeedsCTextStorage())
             {
                 Line("#include <string.h>");
             }
@@ -363,7 +366,7 @@ internal static partial class CoreBasicCodeGenerator
             Line();
             WriteRoutines();
             WriteIndexHelper();
-            if (ProgramHasTextConcatenation())
+            if (ProgramNeedsCTextStorage())
             {
                 WriteCTextConcatHelper();
                 Line();
@@ -379,11 +382,11 @@ internal static partial class CoreBasicCodeGenerator
             Line("#include <stdio.h>");
             Line("#include <stdlib.h>");
             WriteRuntimePreamble();
-            if (ProgramHasTextComparison() && !ProgramHasTextConcatenation())
+            if ((ProgramHasTextComparison() || _features.HasTextInspection) && !ProgramNeedsCTextStorage())
             {
                 Line("#include <string.h>");
             }
-            if (ProgramHasTextConcatenation())
+            if (ProgramNeedsCTextStorage())
             {
                 Line("#include <string.h>");
             }
@@ -412,7 +415,7 @@ internal static partial class CoreBasicCodeGenerator
             Line();
             WriteRoutines();
             WriteIndexHelper();
-            if (ProgramHasTextConcatenation())
+            if (ProgramNeedsCTextStorage())
             {
                 WriteCTextConcatHelper();
                 Line();
@@ -957,7 +960,7 @@ internal static partial class CoreBasicCodeGenerator
         }
 
         private bool UsesManagedCText =>
-            (_language is TargetLanguage.C or TargetLanguage.ObjectiveC) && ProgramHasTextConcatenation();
+            (_language is TargetLanguage.C or TargetLanguage.ObjectiveC) && ProgramNeedsCTextStorage();
 
         private void BeginManagedTextStatement()
         {
@@ -1121,7 +1124,7 @@ internal static partial class CoreBasicCodeGenerator
             string awaitPrefix = _language is TargetLanguage.JavaScript && _asyncJavaScriptRoutines.Contains(call.Routine)
                 ? "await "
                 : string.Empty;
-            string invocation = $"{awaitPrefix}{RoutineName(call.Routine)}({string.Join(", ", call.Arguments.Select(PreparedExpression))})";
+            string invocation = $"{awaitPrefix}{RoutineName(call.Routine)}({string.Join(", ", PrepareCallArguments(call.Arguments, call.ParameterOrder))})";
             Line(_language is TargetLanguage.Swift or TargetLanguage.Python
                 ? invocation
                 : invocation + ";");
@@ -1870,7 +1873,7 @@ internal static partial class CoreBasicCodeGenerator
                 }
                 case BoundCallExpression call:
                 {
-                    string[] arguments = call.Arguments.Select(LowerOrderedCExpression).ToArray();
+                    IReadOnlyList<string> arguments = PrepareCallArguments(call.Arguments, call.ParameterOrder, ordered: true);
                     string awaitPrefix = _language is TargetLanguage.JavaScript && _asyncJavaScriptRoutines.Contains(call.Routine)
                         ? "await "
                         : string.Empty;
@@ -1953,7 +1956,7 @@ internal static partial class CoreBasicCodeGenerator
         private static bool ContainsArrayAccess(BoundExpression expression) => expression switch
         {
             BoundArrayExpression => true,
-            BoundCallExpression call => call.Arguments.Any(ContainsArrayAccess),
+            BoundCallExpression call => call.ParameterOrder is not null || call.Arguments.Any(ContainsArrayAccess),
             BoundIntrinsicExpression intrinsic => intrinsic.Arguments.Any(ContainsArrayAccess),
             BoundUnaryExpression unary => ContainsArrayAccess(unary.Operand),
             BoundBinaryExpression binary => ContainsArrayAccess(binary.Left) || ContainsArrayAccess(binary.Right),
@@ -2086,7 +2089,9 @@ internal static partial class CoreBasicCodeGenerator
             Intrinsic(intrinsic.Kind, intrinsic.Arguments.Select(Expression).ToArray());
 
         private string Intrinsic(BoundIntrinsicKind kind, IReadOnlyList<string> arguments) =>
-            (_language, kind) switch
+            kind is BoundIntrinsicKind.TextLength or BoundIntrinsicKind.TextCodeAt or BoundIntrinsicKind.TextSlice
+                ? TextIntrinsic(kind, arguments)
+                : (_language, kind) switch
             {
                 (TargetLanguage.CSharp, BoundIntrinsicKind.Timer) => "SmileTimer()",
                 (TargetLanguage.CSharp, BoundIntrinsicKind.Abs) => $"Math.Abs({arguments[0]})",
@@ -2415,16 +2420,14 @@ internal static partial class CoreBasicCodeGenerator
                 "    atexit(smile_text_shutdown);",
                 "}");
             Lines(
-                "static const char *smile_text_concat(const char *left, const char *right)",
+                "static char *smile_text_allocate(size_t length)",
                 "{",
-                "    size_t length = strlen(left) + strlen(right) + 1;",
                 "    SmileTextAllocation *allocation = malloc(sizeof(*allocation) + length);",
                 "    if (allocation == NULL)",
                 "    {",
                 "        fputs(\"SMILE Runtime Error: Text allocation failed.\\n\", stderr);",
                 "        exit(1);",
                 "    }",
-                "    snprintf(allocation->text, length, \"%s%s\", left, right);",
                 "    allocation->next = smile_text_allocations;",
                 "    smile_text_allocations = allocation;",
                 "    smile_text_allocation_count++;",
@@ -2435,6 +2438,17 @@ internal static partial class CoreBasicCodeGenerator
                 "    }",
                 "    return allocation->text;",
                 "}");
+            if (ProgramExpressions().Any(expression => expression is BoundBinaryExpression { Operator.Kind: BoundBinaryOperatorKind.StringConcatenation }))
+            {
+                Lines(
+                    "static const char *smile_text_concat(const char *left, const char *right)",
+                    "{",
+                    "    size_t length = strlen(left) + strlen(right) + 1;",
+                    "    char *result = smile_text_allocate(length);",
+                    "    snprintf(result, length, \"%s%s\", left, right);",
+                    "    return result;",
+                    "}");
+            }
         }
 
         private void Line(string text = "")
@@ -2610,10 +2624,14 @@ internal static partial class CoreBasicCodeGenerator
 
         private bool ProgramHasArrays() => _program.AllVariables.Any(variable => variable.IsArray);
 
-        private bool ProgramHasTextConcatenation() => ProgramExpressions().Any(expression => expression is BoundBinaryExpression
+        private bool ProgramHasUnicodeText() => ProgramExpressions().Any(expression =>
+            expression is BoundStringLiteralExpression text && text.Value.Any(character => character > 127));
+
+        private bool ProgramNeedsCTextStorage() => (_language is TargetLanguage.C or TargetLanguage.ObjectiveC) &&
+            (_features.HasTextSlice || ProgramExpressions().Any(expression => expression is BoundBinaryExpression
         {
             Operator.Kind: BoundBinaryOperatorKind.StringConcatenation
-        });
+        }));
 
         private bool ProgramHasTextComparison() => ProgramExpressions().Any(expression => expression is BoundBinaryExpression binary &&
             binary.Left.Type is SmileType.String &&

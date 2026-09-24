@@ -2,7 +2,9 @@
 
 ## Status and authority
 
-This is the only current complete SMILE 1.0 language specification. It additively extends the preserved [Core BASIC 2.0 subset](002%20-%20SMILE%20Core%20BASIC%202%20Official%20Specification.md) with the smallest console runtime and rank-two array surface needed for original text games.
+This is the current complete SMILE 1.0 language specification. It additively extends the preserved [Core BASIC 2.0 subset](002%20-%20SMILE%20Core%20BASIC%202%20Official%20Specification.md) with console operations, rank-two arrays, and the text/routine additions below.
+
+The text/routine back-port was verified against SMILE 2.0 commit `e97afe296f6866d97ad035c9a9b0c9596b919fe0`. This is an incremental back-port, not a claim of complete non-graphical SMILE 2.0 parity. The [back-port inventory](../SMILE%202%20Core%20Backport%20Progress.md) records the remaining features.
 
 The shared Core BASIC source spelling and meaning were verified against the read-only SMILE 2.0 repository at commit `b34f4c5284f9f636e17a62ce5b6e2721d53be464`. The SMILE 1.0-only `Move Cursor To` and `Text Color` terminal statements were subsequently authorized directly for this profile; they do not claim SMILE 2.0 parity. SMILE 1.0 has one parser, binder, evaluator, and language—2.1 is a milestone label, not a dialect selector.
 
@@ -164,4 +166,42 @@ builtin-call    := "Timer" "(" ")"
 
 ## Deliberate exclusions
 
-This milestone does not add blocking `Input`, `Key_Held`, pointer/mouse input, cursor visibility/shape control, arbitrary terminal escape strings, graphics or `Game Window`, sound, files, dynamic arrays, more than two dimensions, array parameters or returns, `ByRef`, Optional/named/variadic parameters, records, classes, modules, imports, threads in SMILE source, or an eleventh target. Historical LET/SET/INPUT/WHILE/interpolation/block-string syntax remains rejected.
+This milestone does not add blocking `Input`, `Key_Held`, pointer/mouse input, cursor visibility/shape control, arbitrary terminal escape strings, graphics or `Game Window`, sound, files, dynamic arrays, more than two dimensions, array parameters or returns, `ByRef`, variadic parameters, Double, records, enums, classes, modules, imports, threads in SMILE source, or an eleventh target. Historical LET/SET/INPUT/WHILE/interpolation/block-string syntax remains rejected. Blocking Input is also absent from current SMILE 2.0.
+
+## Unicode text inspection
+
+```smile
+Print Text_Length("A😀B")
+Print Text_Code_At("A😀B", 1)
+Print Text_Slice("A😀B", 1, 1)
+```
+
+The output is `3`, `128512`, and `😀`, on separate lines. Indexes and counts use Unicode scalar values, not UTF-8 bytes, UTF-16 units, or grapheme clusters. A combining accent is a separate scalar. All explicit arguments evaluate once, left to right.
+
+- `Text_Length(Text)` returns a Number scalar count.
+- `Text_Code_At(Text, Number)` returns a scalar value, or `-1` for a negative or out-of-range index.
+- `Text_Slice(Text, Number, Number)` returns Text beginning at the zero-based start. A negative start, nonpositive count, or start beyond the end returns empty Text. A large count stops at the end without overflow.
+- These functions accept positional arguments only and are not permitted in Const initializers, matching the current authority.
+- Existing target Text storage limits remain: COBOL stores at most 4096 UTF-8 bytes, while C/Objective-C/MASM use null-terminated UTF-8. No normalization or grapheme grouping is performed.
+
+## Optional parameters, named arguments, and multiline declarations
+
+```smile
+Call Greet()
+Call Greet(Caption:="Welcome", Name:="Sin")
+
+Sub Greet(
+    Optional Name As Text = "student",
+    Optional ByVal Caption As Text = "Hello"
+)
+    Print Caption; ", "; Name
+End Sub
+```
+
+Optional parameters are ByVal, have an explicit scalar type and default, and follow all required parameters. A default is an exact-type literal or Const; parentheses and a directly negated numeric literal are allowed. Computed defaults such as `1 + 2` must first be named by a Const. Required parameters cannot have defaults.
+
+Calls use `ParameterName:=Expression`. Names are case-insensitive. Positional arguments precede all named arguments. Unknown names, duplicate arguments, missing required values, and mismatched types are errors. Explicit values are captured once in source order before placing them in declaration order; omitted defaults are then supplied. No extra routine is generated to implement this behavior.
+
+Balanced declaration parentheses permit newlines between parameter tokens and commas. The opening parenthesis stays on the Sub/Function declaration line; a Function's `As Type` stays on the same line as the closing parenthesis. Square brackets still do not imply continuation. A routine must still declare explicit types; legacy untyped SMILE 2.0 declarations are outside this profile.
+
+Unary `+` is accepted on Number with the same precedence as unary `-` and leaves its value unchanged.

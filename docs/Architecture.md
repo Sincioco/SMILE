@@ -48,6 +48,10 @@ The evaluator keeps globals outside a stack of reentrant call frames. Each frame
 
 ## Generation registry
 
+`Binder.RoutineArguments` owns Optional-default validation and named-argument binding. Bound calls retain source-order expressions and a parameter-order index list; the evaluator and each writer apply that list only after capturing arguments. `RoutineArguments` provides this small compiler-side ordering operation, without introducing a generated calling framework. The parser continues to own all syntax, including multiline parameter lists and named labels.
+
+`TextIntrinsics` owns scalar-based text evaluation. `CoreBasicTextInspectionWriter` uses each structured target's normal Unicode/string APIs. `NativeTextInspection` emits only the used UTF-8 operations for C-family, MASM, and COBOL, sharing traversal semantics across those backends. Text slices reuse the existing native Text allocation/root owner; C/Objective-C/MASM do not add a second lifetime mechanism. Default expressions and named values are included in formatter traversal.
+
 `CodeGeneratorRegistry` contains exactly one registered `ICodeGenerator` for each active target. Each entry delegates the bound Core BASIC program to the canonical target renderer for that language. No target reparses source or switches language behavior. `CoreBasicProgramFeatureSet` inventories used operations once; the structured writer owns common statement/expression lowering, while focused runtime and COBOL/MASM writers emit only required target support.
 
 The active policy is centralized in `TargetLanguageInfo.All` and `ActiveTargetLanguages.All`, in this order:

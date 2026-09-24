@@ -59,6 +59,10 @@ Target-native integer overflow behavior can differ at extreme values because thi
 
 Calls use normal destination routines and native call frames. Destinations without a guaranteed left-to-right native argument order capture source arguments in readable temporaries first. Parameters remain independent ByVal copies, including when assigned by the callee.
 
+Named calls capture explicit values in source order, then pass ordinary arguments in declaration order. Optional defaults are emitted as explicit literal arguments when omitted. This keeps one native routine per learner routine across all ten targets. No argument-dispatch runtime is permitted.
+
+Unicode inspection uses native scalar iterators, streams, or string indexing where available. Small boundary helpers implement SMILE's `-1`/empty-Text results instead of target exceptions. UTF-8 targets require shared scalar traversal; slice allocation reuses the native Text lifetime owner. Programs containing non-ASCII Text configure UTF-8 output on C#, Java, and Python so redirected output does not depend on the Windows code page.
+
 ## Storage
 
 Implicit assignment, `Dim`, constants, parameters, local/global variables, arrays, and loop counters become clear target declarations and assignments. Declarations may be hoisted where the destination requires it, but learner reads and writes stay visible. Constants should use a destination constant when its declaration model permits; otherwise use the smallest faithful immutable representation.

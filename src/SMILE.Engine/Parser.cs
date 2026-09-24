@@ -170,11 +170,18 @@ internal sealed class Parser
         Match(TokenKind.OpenParenthesis, "Routine declarations require '('.");
         _delimiterDepth++;
         var parameters = new List<ParameterSyntax>();
+        SkipExpressionContinuations();
         if (Current.Kind is not TokenKind.CloseParenthesis)
         {
             while (true)
             {
                 Token parameterStart = Current;
+                bool optional = Current.Kind is TokenKind.Optional;
+                if (optional)
+                {
+                    Next();
+                    SkipExpressionContinuations();
+                }
                 bool explicitByVal = false;
                 if (Current.Kind is TokenKind.ByVal)
                 {
@@ -186,21 +193,30 @@ internal sealed class Parser
                     parameterStart = Next();
                     Report("SMILE2011", "Core BASIC 2 parameters are ByVal; ByRef is not supported.", parameterStart.Span);
                 }
-                else if (Current.Kind is TokenKind.Optional)
-                {
-                    parameterStart = Next();
-                    Report("SMILE2012", "Core BASIC 2 does not support Optional parameters.", parameterStart.Span);
-                }
-
+                SkipExpressionContinuations();
                 Token parameterName = Match(TokenKind.Identifier, "Expected a parameter name.");
+                SkipExpressionContinuations();
                 Match(TokenKind.As, "Typed parameters require 'As Number', 'As Boolean', or 'As Text'.");
+                SkipExpressionContinuations();
                 Token type = ParseType("Expected Number, Boolean, or Text for the parameter type.");
+                SkipExpressionContinuations();
+                ExpressionSyntax? defaultValue = null;
+                if (Current.Kind is TokenKind.Equals)
+                {
+                    Next();
+                    defaultValue = ParseExpression();
+                    SkipExpressionContinuations();
+                }
+                if (optional != (defaultValue is not null))
+                {
+                    Report("SMILE2012", "Optional parameters require a default; required parameters cannot have one.", parameterName.Span);
+                }
                 parameters.Add(new ParameterSyntax(
                     parameterName.Text,
                     parameterName.Span,
                     ToSmileType(type.Kind),
                     explicitByVal,
-                    Combine(parameterStart.Span, type.Span)));
+                    Combine(parameterStart.Span, defaultValue?.Span ?? type.Span), optional, defaultValue));
 
                 if (Current.Kind is not TokenKind.Comma)
                 {
@@ -208,6 +224,7 @@ internal sealed class Parser
                 }
 
                 Next();
+                SkipExpressionContinuations();
             }
         }
 
@@ -666,24 +683,29 @@ internal sealed class Parser
         Match(TokenKind.OpenParenthesis, openMessage);
         _delimiterDepth++;
         var arguments = new List<ExpressionSyntax>();
+        SkipExpressionContinuations();
         if (Current.Kind is not TokenKind.CloseParenthesis)
         {
             while (true)
             {
+                Token? argumentName = null;
                 if (Current.Kind is TokenKind.Identifier && Peek(1).Kind is TokenKind.ColonEquals)
                 {
-                    Token name = Next();
+                    argumentName = Next();
                     Next();
-                    Report("SMILE2015", "Core BASIC 2 does not support named arguments.", name.Span);
                 }
 
-                arguments.Add(ParseExpression());
+                ExpressionSyntax argument = ParseExpression();
+                arguments.Add(argumentName is null ? argument :
+                    new NamedArgumentExpressionSyntax(argumentName.Text, argument, Combine(argumentName.Span, argument.Span)));
+                SkipExpressionContinuations();
                 if (Current.Kind is not TokenKind.Comma)
                 {
                     break;
                 }
 
                 Next();
+                SkipExpressionContinuations();
             }
         }
 
@@ -707,7 +729,7 @@ internal sealed class Parser
 
     private static int GetUnaryPrecedence(TokenKind kind) => kind switch
     {
-        TokenKind.Minus or TokenKind.Not => 8,
+        TokenKind.Plus or TokenKind.Minus or TokenKind.Not => 8,
         _ => 0
     };
 
@@ -900,7 +922,10 @@ internal sealed class Parser
             ["ByVal"] = TokenKind.ByVal, ["ByRef"] = TokenKind.ByRef,
             ["Optional"] = TokenKind.Optional,
             ["Timer"] = TokenKind.BuiltInFunction, ["Abs"] = TokenKind.BuiltInFunction,
-            ["Min"] = TokenKind.BuiltInFunction, ["Max"] = TokenKind.BuiltInFunction
+            ["Min"] = TokenKind.BuiltInFunction, ["Max"] = TokenKind.BuiltInFunction,
+            ["Text_Length"] = TokenKind.BuiltInFunction,
+            ["Text_Code_At"] = TokenKind.BuiltInFunction,
+            ["Text_Slice"] = TokenKind.BuiltInFunction
         };
 
         private static readonly Dictionary<string, SmileTextColor> TextColors = new(StringComparer.OrdinalIgnoreCase)

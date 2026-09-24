@@ -127,6 +127,14 @@ Print "Math="; Abs(-5); ", "; Min(8, 3); ", "; Max(8, 3)
 Print "Timer monotonic="; Timer() >= StartedAt
 Text Color Default
 
+Print "Unicode scalar count="; Text_Length("A😀B")
+Print "Emoji scalar="; Text_Code_At("A😀B", 1)
+Print "Text slice="; Text_Slice("A😀B", 1, 1)
+Print "Unary plus="; +Age
+
+Call ShowGreeting()
+Call ShowGreeting(Caption:="Welcome", Learner:="Sin")
+
 Print "End Program stops before the next statement."
 End Program
 Print "unreachable"
@@ -149,3 +157,12 @@ Function SampleTotal() As Number
     Return Result
 
 End Function
+
+Sub ShowGreeting(
+    Optional Learner As Text = "student",
+    Optional Caption As Text = "Hello"
+)
+
+    Print Caption; ", "; Learner
+
+End Sub

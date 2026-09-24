@@ -158,6 +158,8 @@ public static class SmileSourceFormatter
                 DimStatementSyntax declaration => declaration.ArraySizes,
                 ConstStatementSyntax constant => new[] { constant.Initializer },
                 CallStatementSyntax call => call.Arguments,
+                RoutineDeclarationSyntax routine => routine.Parameters
+                    .Where(parameter => parameter.DefaultValue is not null).Select(parameter => parameter.DefaultValue!),
                 ReturnStatementSyntax { Value: not null } returned => new[] { returned.Value },
                 SelectStatementSyntax select => new[] { select.Selector }
                     .Concat(select.Cases.Where(clause => clause.Value is not null).Select(clause => clause.Value!)),
@@ -198,6 +200,7 @@ public static class SmileSourceFormatter
             BinaryExpressionSyntax binary => new[] { binary.Left, binary.Right },
             ParenthesizedExpressionSyntax parenthesized => new[] { parenthesized.Expression },
             CallExpressionSyntax call => call.Arguments,
+            NamedArgumentExpressionSyntax named => new[] { named.Value },
             ArrayAccessExpressionSyntax array => array.Indices,
             _ => Array.Empty<ExpressionSyntax>()
         };
@@ -461,6 +464,10 @@ public static class SmileSourceFormatter
                 {
                     int headerEnd = HeaderEndLine(start, end, routine.SourceItems);
                     MarkHeader(start, headerEnd, depth);
+                    if (headerEnd > start && _lines[headerEnd].TrimStart().StartsWith(')'))
+                    {
+                        MarkLine(headerEnd, depth);
+                    }
                     MarkItemList(routine.SourceItems, depth + 1);
                     MarkLine(end, depth);
                     int? bodyStart = FirstContentLine(routine.SourceItems);

@@ -45,6 +45,7 @@
       <Word>SELECT</Word>
       <Word>CASE</Word>
       <Word>BYVAL</Word>
+      <Word>OPTIONAL</Word>
       <Word>GET</Word>
       <Word>KEY</Word>
       <Word>CLEAR</Word>
@@ -69,6 +70,9 @@
       <Word>ABS</Word>
       <Word>MIN</Word>
       <Word>MAX</Word>
+      <Word>TEXT_LENGTH</Word>
+      <Word>TEXT_CODE_AT</Word>
+      <Word>TEXT_SLICE</Word>
       <Word>KEY_NONE</Word>
       <Word>KEY_W</Word>
       <Word>KEY_A</Word>

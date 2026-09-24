@@ -423,7 +423,7 @@ internal sealed class CobolWriter
                         break;
                     }
                     case BoundCallStatement call:
-                        EmitCall(call.Routine, call.Arguments, indent, resultTarget: null);
+                        EmitCall(call.Routine, call.Arguments, indent, resultTarget: null, call.ParameterOrder);
                         break;
                     case BoundReturnStatement returnStatement:
                         if (returnStatement.Value is not null)
@@ -761,7 +761,7 @@ internal sealed class CobolWriter
                 case BoundCallExpression call:
                 {
                     Temporary result = NewTemporary(call.Type);
-                    EmitCall(call.Routine, call.Arguments, indent, result.Name);
+                    EmitCall(call.Routine, call.Arguments, indent, result.Name, call.ParameterOrder);
                     if (call.Type is SmileType.String)
                     {
                         _preparedTextLengths[call] = LengthName(result);
@@ -955,24 +955,42 @@ internal sealed class CobolWriter
             foreach (BoundExpression argument in intrinsic.Arguments)
             {
                 string value = PrepareExpression(argument, indent);
-                Temporary captured = NewTemporary(SmileType.Integer);
-                Assign(captured.Name, SmileType.Integer, argument, value, indent);
+                Temporary captured = NewTemporary(argument.Type);
+                Assign(captured.Name, argument.Type, argument, value, indent,
+                    argument.Type is SmileType.String ? LengthName(captured) : null);
                 arguments.Add(captured);
             }
 
-            Temporary result = NewTemporary(SmileType.Integer);
+            Temporary result = NewTemporary(intrinsic.Type);
             string helper = intrinsic.Kind switch
             {
                 BoundIntrinsicKind.Timer => "smile_timer_cobol",
                 BoundIntrinsicKind.Abs => "smile_abs_cobol",
                 BoundIntrinsicKind.Min => "smile_min_cobol",
                 BoundIntrinsicKind.Max => "smile_max_cobol",
+                BoundIntrinsicKind.TextLength => "smile_text_length_cobol",
+                BoundIntrinsicKind.TextCodeAt => "smile_text_code_at_cobol",
+                BoundIntrinsicKind.TextSlice => "smile_text_slice_cobol",
                 _ => "smile_timer_cobol"
             };
-            string usingClause = arguments.Count == 0
+            var usingItems = new List<string>();
+            foreach (Temporary argument in arguments)
+            {
+                usingItems.Add($"BY REFERENCE {argument.Name}");
+                if (argument.Type is SmileType.String) usingItems.Add($"BY REFERENCE {LengthName(argument)}");
+            }
+            if (intrinsic.Type is SmileType.String)
+            {
+                Line(indent, $"MOVE SPACES TO {result.Name}");
+                usingItems.Add($"BY REFERENCE {result.Name}");
+                usingItems.Add($"BY REFERENCE {LengthName(result)}");
+                _preparedTextLengths[intrinsic] = LengthName(result);
+            }
+            string usingClause = usingItems.Count == 0
                 ? string.Empty
-                : " USING " + string.Join(" ", arguments.Select(item => $"BY REFERENCE {item.Name}"));
-            Line(indent, $"CALL \"{helper}\"{usingClause} RETURNING {result.Name}");
+                : " USING " + string.Join(" ", usingItems);
+            string returning = intrinsic.Type is SmileType.String ? "" : $" RETURNING {result.Name}";
+            Line(indent, $"CALL \"{helper}\"{usingClause}{returning}");
             return result.Name;
         }
 
@@ -980,7 +998,8 @@ internal sealed class CobolWriter
             RoutineSymbol routine,
             IReadOnlyList<BoundExpression> arguments,
             int indent,
-            string? resultTarget)
+            string? resultTarget,
+            IReadOnlyList<int>? parameterOrder)
         {
             var captured = new List<(VariableSymbol Parameter, Temporary Value)>();
             for (int index = 0; index < arguments.Count; index++)
@@ -995,8 +1014,10 @@ internal sealed class CobolWriter
                     expression,
                     indent,
                     argument.Type is SmileType.String ? LengthName(temporary) : null);
-                captured.Add((routine.Parameters[index], temporary));
+                int parameterIndex = parameterOrder is null ? index : parameterOrder.ToList().IndexOf(index);
+                captured.Add((routine.Parameters[parameterIndex], temporary));
             }
+            captured = RoutineArguments.InParameterOrder(captured, parameterOrder).ToList();
 
             var usingItems = new List<string> { "BY REFERENCE SMILE-STATE" };
             foreach ((VariableSymbol parameter, Temporary value) in captured)

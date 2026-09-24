@@ -230,7 +230,7 @@ public sealed class SmileEvaluator
                         return argumentError;
                     }
 
-                    if (!TryInvoke(call.Routine, callArguments!, out _, out SmileRuntimeError? callError))
+                    if (!TryInvoke(call.Routine, RoutineArguments.InParameterOrder(callArguments!, call.ParameterOrder), out _, out SmileRuntimeError? callError))
                     {
                         return callError;
                     }
@@ -501,7 +501,7 @@ public sealed class SmileEvaluator
                     return false;
                 }
 
-                return TryInvoke(call.Routine, arguments!, out value, out error);
+                return TryInvoke(call.Routine, RoutineArguments.InParameterOrder(arguments!, call.ParameterOrder), out value, out error);
             case BoundUnaryExpression unary:
                 if (!TryEvaluateExpression(unary.Operand, frame, out SmileValue operand, out error))
                 {
@@ -624,6 +624,12 @@ public sealed class SmileEvaluator
 
         try
         {
+            if (intrinsic.Kind is BoundIntrinsicKind.TextLength or BoundIntrinsicKind.TextCodeAt or BoundIntrinsicKind.TextSlice)
+            {
+                value = TextIntrinsics.Evaluate(intrinsic.Kind, arguments!);
+                return Success(out error);
+            }
+
             long result = intrinsic.Kind switch
             {
                 BoundIntrinsicKind.Abs => checked(Math.Abs(arguments![0].IntegerValue)),

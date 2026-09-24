@@ -43,7 +43,7 @@ link.exe /nologo /ignore:4210 Program.obj kernel32.lib legacy_stdio_definitions.
 
 Generated assembly follows the Windows x64 ABI, including required shadow space and stack alignment. It uses recognizable CRT output and `ExitProcess`. The known `LNK4210` warning associated with direct UCRT use and a custom assembly entry point is suppressed by the focused link command.
 
-Programs without Text concatenation remain a single `Program.asm`. A program that uses Text `+` also receives dependency-free `SmileTextRuntime.c`; the assemble script compiles it with MSVC and the link step adds its object. That companion owns only allocation/root collection and optional lifetime counters. Generated assembly retains learner expressions, assignments, arrays, calls, returns, branches, and loops.
+Programs without Text concatenation or Unicode inspection remain a single `Program.asm`. Text `+`, `Text_Slice`, `Text_Length`, or `Text_Code_At` can require dependency-free `SmileTextRuntime.c`; the assemble script compiles it with MSVC and the link step adds its object. That companion owns only the used UTF-8 scalar operations and, when Text is allocated, allocation/root collection and optional lifetime counters. Generated assembly retains learner expressions, assignments, arrays, calls, returns, branches, and loops.
 
 ## JavaScript (Node.js) and Python
 
