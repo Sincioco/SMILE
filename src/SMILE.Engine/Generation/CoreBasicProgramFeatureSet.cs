@@ -18,8 +18,11 @@ internal sealed record CoreBasicProgramFeatureSet(
     bool HasTextSlice,
     bool HasTextFileLoad,
     bool HasNumberLoad,
-    bool HasNumberSave)
+    bool HasNumberSave,
+    bool HasDataLoad,
+    bool HasDataSave)
 {
+    public bool HasDataPersistence => HasDataLoad || HasDataSave;
     public bool HasNumberPersistence => HasNumberLoad || HasNumberSave;
     public bool HasTextInspection => HasTextLength || HasTextCodeAt || HasTextSlice;
     public bool HasInteractiveConsole => HasGetKey || HasClearScreen || HasMoveCursor || HasTextColor;
@@ -48,7 +51,9 @@ internal sealed record CoreBasicProgramFeatureSet(
             expressions.Any(expression => expression is BoundIntrinsicExpression { Kind: BoundIntrinsicKind.TextSlice }),
             statements.Any(statement => statement is BoundTextFileLoadStatement),
             statements.Any(statement => statement is BoundNumberLoadStatement),
-            statements.Any(statement => statement is BoundNumberSaveStatement));
+            statements.Any(statement => statement is BoundNumberSaveStatement),
+            statements.Any(statement => statement is BoundDataLoadStatement),
+            statements.Any(statement => statement is BoundDataSaveStatement));
     }
 
     private static IEnumerable<BoundStatement> EnumerateStatements(BoundProgram program)
@@ -112,6 +117,7 @@ internal sealed record CoreBasicProgramFeatureSet(
                 BoundRandomStatement random => new[] { random.LowerBound, random.UpperBound },
                 BoundTextFileLoadStatement load => new[] { load.Path },
                 BoundNumberLoadStatement load => new[] { load.DefaultValue },
+                BoundDataLoadStatement or BoundDataSaveStatement => DataStatementFacts.Expressions(statement),
                 BoundNumberSaveStatement save => new BoundExpression[] { new BoundVariableExpression(save.Source) },
                 _ => Array.Empty<BoundExpression>()
             };

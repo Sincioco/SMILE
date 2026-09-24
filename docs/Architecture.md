@@ -56,6 +56,21 @@ formatter own syntax and expression traversal.
 
 ## Generation registry
 
+`Parser.Data`/`Binder.Data` own Data byte-array operations. Output locations remain
+bound expressions, so arrays and ByRef outputs retain their existing storage
+ownership. `Evaluation.Data` calls `SmilePersistentStorage`'s separate Data module,
+then evaluates Count and Status locations in that order. Strict failures stop
+before output locations are evaluated. `CoreBasicDataSyntax` holds these nodes and
+their focused traversal facts. No persistence logic lives in CLI/Desktop.
+
+The structured, MASM and COBOL Data writers lower operations through standard file
+and SHA-256 APIs. Target templates are split by destination; the native C support
+is shared by C/C++, Objective-C, MASM and COBOL. Only Data programs need that support
+or Windows BCrypt linkage. Save uses flushed temporary files and atomic replacement;
+Node's standard API publishes backup and primary through two separate renames.
+Unrelated programs acquire no storage dependencies. Hashes preserve full UTF-8
+key/program identity, rather than integer-storage filename sanitization.
+
 `Parser.Persistence` and `Binder.Persistence` own integer Load/Save syntax and
 exact Number/key validation. `SmilePersistentStorage` owns evaluator storage;
 `SmileEvaluationOptions.Storage` permits an isolated program/root. The structured,

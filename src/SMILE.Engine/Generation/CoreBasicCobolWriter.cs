@@ -379,6 +379,12 @@ internal sealed partial class CobolWriter
                     case BoundTextFileLoadStatement load:
                         WriteTextFileLoad(load, indent);
                         break;
+                    case BoundDataLoadStatement load:
+                        WriteDataLoad(load, indent);
+                        break;
+                    case BoundDataSaveStatement save:
+                        WriteDataSave(save, indent);
+                        break;
                     case BoundNumberLoadStatement load:
                         WriteNumberLoad(load, indent);
                         break;

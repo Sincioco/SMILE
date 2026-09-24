@@ -11,7 +11,7 @@ internal static class CoreBasicCobolRuntimeSupport
     {
         CoreBasicProgramFeatureSet features = CoreBasicProgramFeatureSet.Create(program);
         var numeric = new DoubleProgramFeatures(program);
-        if (!features.HasConsoleRuntime && !features.HasAbs && !features.HasMin && !features.HasMax && !features.HasTextInspection && !numeric.NeedsCobolRuntime && !features.HasTextFileLoad && !features.HasNumberPersistence)
+        if (!features.HasConsoleRuntime && !features.HasAbs && !features.HasMin && !features.HasMax && !features.HasTextInspection && !numeric.NeedsCobolRuntime && !features.HasTextFileLoad && !features.HasNumberPersistence && !features.HasDataPersistence)
         {
             return null;
         }
@@ -189,6 +189,7 @@ internal static class CoreBasicCobolRuntimeSupport
         text.AppendLine(NativeDoubleSupport.GenerateCobol(program));
         if (features.HasTextFileLoad) text.AppendLine(NativeTextFileSupport.GenerateCompanion(cobol: true));
         if (features.HasNumberPersistence) text.AppendLine(NativeNumberPersistence.Companion(program, cobol: true));
+        if (features.HasDataPersistence) text.AppendLine(NativeDataPersistence.Companion(program, cobol: true));
         return text.ToString().Replace("\r\n", "\n", StringComparison.Ordinal);
     }
 }

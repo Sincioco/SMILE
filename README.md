@@ -26,7 +26,7 @@ Print Text_From_Double(-0.0)
 
 This prints `1.5`, `3.0:2.0`, and `-0.0`. Double math also includes `Abs`, `Min`, `Max`, `Clamp`, `Sin`, `Cos`, `Atan2`, `Floor`, `Ceiling`, and `Truncate`. Use `ToNumber` for checked truncation and `Text_To_Double` to parse invariant decimal text. No implicit Number/Double conversion occurs.
 
-The broader back-port remains in progress. Byte Data storage and structured types/modules remain listed in the [back-port inventory](docs/SMILE%202%20Core%20Backport%20Progress.md). Double output uses native binary64 arithmetic and standard math APIs, with small checks where the target permits infinities or has different conversion rules. COBOL needs C interoperability for exact binary64 operations because its ordinary decimal arithmetic and numeric transfers lose distinctions required by SMILE. Exponent spelling and transcendental rounding can differ between targets.
+The broader back-port remains in progress. Structured types/modules and project application identity remain listed in the [back-port inventory](docs/SMILE%202%20Core%20Backport%20Progress.md). Double output uses native binary64 arithmetic and standard math APIs, with small checks where the target permits infinities or has different conversion rules. COBOL needs C interoperability for exact binary64 operations because its ordinary decimal arithmetic and numeric transfers lose distinctions required by SMILE. Exponent spelling and transcendental rounding can differ between targets.
 
 `ByRef` changes the caller's storage immediately, including when two parameters
 refer to the same variable. Ordinary parameters remain independent ByVal copies.
@@ -76,8 +76,17 @@ constant and ignores storage failures. Files contain plain decimal integers unde
 filename stem for a stable program identity across targets and temporary runs;
 Save As with a new name selects a different storage directory. Names/keys replace
 non-ASCII letters/digits (except `_` and `-`) with underscores. This is a separate
-SMILE 1.0 namespace; it does not import SMILE 2.0 saves automatically. Byte Data
-storage and project application identities remain outstanding.
+SMILE 1.0 namespace; it does not import SMILE 2.0 saves automatically.
+
+`Save Data Bytes Count Length To Key Status State` and
+`Load Data Key Into Bytes Count Length Status State` now persist byte arrays on
+all ten targets. Computed Text keys, SHA-256 checksums, 1 MiB blocks, backup
+recovery and the `DATA_STATUS_*` constants follow SMILE 2.0. Checked loads keep
+the array intact on failure; successful loads change only the returned bytes.
+Omit Status for strict operations that stop on storage errors (a missing load
+returns zero). See the [Data contract](docs/SMILE%20Language%20Specification/003%20-%20SMILE%20Core%20BASIC%202.1%20Text-Game%20Foundation%20Official%20Specification.md#data-persistence),
+including Node.js's two-step atomic backup/primary publication. Project
+ApplicationId configuration remains part of the outstanding project back-port.
 
 ### Three original games, written entirely in SMILE
 

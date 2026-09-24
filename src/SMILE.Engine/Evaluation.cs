@@ -171,9 +171,23 @@ public sealed partial class SmileEvaluator
                     break;
 
                 case BoundNumberLoadStatement load:
+                {
                     if (!TryEvaluateExpression(load.DefaultValue, frame, out SmileValue fallback, out SmileRuntimeError? loadError)) return loadError;
                     SetValue(load.Target, frame, SmileValue.FromInteger(_storage.LoadNumber(load.Key, fallback.IntegerValue)));
                     break;
+                }
+                case BoundDataLoadStatement load:
+                {
+                    SmileRuntimeError? error = LoadData(load, frame);
+                    if (error is not null) return error;
+                    break;
+                }
+                case BoundDataSaveStatement save:
+                {
+                    SmileRuntimeError? error = SaveData(save, frame);
+                    if (error is not null) return error;
+                    break;
+                }
                 case BoundNumberSaveStatement save:
                     _storage.SaveNumber(save.Key, GetValue(save.Source, frame).IntegerValue);
                     break;

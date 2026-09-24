@@ -369,7 +369,7 @@ ordinary scope/Option Explicit rules. Save accepts a Number variable or constant
 The key is a nonempty, non-whitespace Text literal; malformed storage keys report
 `SMILE3025`. Default is an exact Number expression, evaluated once before I/O even
 when a saved value exists. Array cells and computed keys are not integer-storage
-operands; byte Data storage has a separate contract and remains pending.
+operands; byte Data storage has the separate contract below.
 
 Load reads at most the first 63 file bytes. After trimming ASCII space, tab, CR,
 and LF, the entire bounded result must be an optionally signed ASCII decimal
@@ -392,3 +392,79 @@ supply `programName`; its default is `Program`. Evaluator callers may inject
 `SmileEvaluationOptions.Storage`. The optional root replaces LocalAppData.
 SMILE 1.0 intentionally has a separate product storage namespace from SMILE 2.0;
 it does not automatically migrate that product's executable-named integer saves.
+
+## Data persistence
+
+```smile
+Dim Bytes[8] As Number
+Dim ByteCount As Number
+Dim State As Number
+Bytes[0] = 72
+Bytes[1] = 105
+Save Data Bytes Count 2 To "greeting" Status State
+Load Data "greeting" Into Bytes Count ByteCount Status State
+Print ByteCount; ":"; State
+```
+
+Save requires a fixed rank-one Number array, a Number count expression and a Text
+key expression. Load requires a Text key, a fixed rank-one Number array and a
+writable Number Count location. Optional `Status` names a writable Number location;
+it is contextual, so `Dim Status As Number` remains valid. Output locations may be
+scalars, ByRef parameters or array cells. Ordinary scope/Option Explicit rules
+apply. Type/rank mismatches report `SMILE3506`.
+
+Save evaluates Count then Key exactly once, before inspecting array contents.
+Load evaluates Key once before changing the array. Both perform I/O before
+evaluating Status's location; Load writes Count first, then evaluates/writes
+Status. Shared Count/Status locations therefore end with the status value.
+
+`DATA_BLOCK_MAX_BYTES` is 1048576. Array capacity and saved count must not exceed
+that bound; count must be nonnegative and no greater than capacity. The first
+Count values must be integers 0–255; unused array cells are irrelevant. Empty
+blocks and empty keys are valid. Keys use their exact UTF-8 bytes, up to 1 MiB;
+overlong keys make storage unavailable. No path characters or integer-key
+sanitization affect Data identity. Existing C/Objective-C/MASM null-terminated
+Text and COBOL fixed-Text limits still apply to their key expressions.
+
+| Constant | Value | Meaning |
+|---|---:|---|
+| DATA_STATUS_OK | 0 | Operation succeeded |
+| DATA_STATUS_MISSING | 1 | No primary or usable backup exists |
+| DATA_STATUS_RECOVERED | 2 | Loaded a valid backup |
+| DATA_STATUS_INVALID | 3 | Invalid capacity, count, or byte value |
+| DATA_STATUS_UNAVAILABLE | 4 | Storage/path/I/O unavailable |
+| DATA_STATUS_CORRUPT | 5 | Invalid envelope, length, version, or checksum |
+| DATA_STATUS_TOO_LARGE | 6 | Valid stored payload exceeds destination capacity |
+
+With Status, load failures return Count zero and leave the destination unchanged.
+Success overwrites exactly Count cells, preserving the remaining cells. A missing
+or corrupt primary permits `.bak` recovery; other failures do not. A successful
+backup gives RECOVERED without repairing the primary. A missing backup retains
+the original primary status; another backup failure replaces it.
+
+Without Status, Load clears the entire valid destination first, does not recover
+backups, and returns zero for a missing primary. Other failures stop with a visible
+stderr message and exit 2 in generated programs. Strict Save likewise stops on
+any failure. The evaluator reports `SMILER3506`. Earlier output survives failures.
+
+Files are `%LOCALAPPDATA%\SMILE\Games\<identity-hash>\Data\<key-hash>.bin`, where
+both hashes are lowercase SHA-256 of exact UTF-8 text. Loose-program identity uses
+the source filename stem supplied by CLI/Desktop (`Program` for unsaved/direct
+API programs). Project ApplicationId configuration remains pending. The namespace
+is separate from SMILE 2.0; no automatic save migration occurs.
+
+The file envelope is 44 bytes plus payload: ASCII `SMD4`, little-endian uint32
+version 1, little-endian uint32 payload length, and the payload's 32-byte SHA-256.
+Validation checks the exact file length and digest before writing any array cell.
+Save writes and flushes a fresh exclusive temporary file, validates an existing
+primary and atomically replaces it while retaining that valid primary as `.bak`.
+A checked save can replace a corrupt primary only after validating its backup;
+the corrupt primary never overwrites that backup. Strict save rejects it.
+Failed operations remove only their owned temporary files.
+
+Node.js's built-in API lacks Windows replace-with-backup. It publishes a flushed
+verified backup and then the primary using two atomic renames; a failure between
+them may leave the backup equal to the unchanged valid primary. Other targets use
+Windows atomic replacement directly. None of these operations provides a
+multi-process transaction lock. Standard crypto/file APIs and focused helpers
+implement this contract without a persistence framework or third-party package.

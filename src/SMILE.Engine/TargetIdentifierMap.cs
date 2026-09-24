@@ -23,6 +23,12 @@ internal sealed class TargetIdentifierMap
             "smile_text_slice", "smile_utf8_next", "smile_text_allocate"
         });
         if (language is TargetLanguage.Python) reserved.Add("ord");
+        if (CoreBasicProgramFeatureSet.Create(program).HasDataPersistence)
+        {
+            foreach (string suffix in new[] { "DataPath", "ReadData", "LoadData", "SaveData", "SaveDataCore", "DataHash", "DataFail", "DataIoError", "DataRead", "DataReplace" })
+                reserved.UnionWith(new[] { "Smile" + suffix, "smile" + suffix });
+            reserved.UnionWith(new[] { "smile_data_path", "smile_read_data", "smile_load_data", "smile_save_data", "smile_save_data_core", "smile_data_hash", "smile_data_read", "smile_data_fail", "smile_data_u32", "hashlib", "os", "pathlib", "ctypes", "time", "sys", "bytes", "str", "any", "int", "len", "smileCrypto", "smileFileSystem", "smilePath", "Buffer", "java", "ProcessInfo", "FileManager", "FileHandle", "URL", "Data", "ULONG", "DWORD", "LARGE_INTEGER", "BCRYPT_ALG_HANDLE", "BCryptHash", "BCryptOpenAlgorithmProvider", "BCryptCloseAlgorithmProvider" });
+        }
         if (CoreBasicProgramFeatureSet.Create(program).HasNumberPersistence)
             reserved.UnionWith(new[] { "SmileNumberPath", "SmileLoadNumber", "SmileSaveNumber", "smileNumberPath", "smileLoadNumber", "smileSaveNumber", "smile_number_path", "smile_load_number", "smile_save_number", "os", "pathlib", "str", "int", "any", "smileFileSystem", "smilePath", "Buffer", "java", "ProcessInfo", "URL", "FileManager", "FileHandle", "Data", "CharacterSet", "_wgetenv", "swprintf", "wcscat", "wcslen", "_wfopen", "strtoll", "errno", "ERANGE" });
         if (language is TargetLanguage.Swift && program.Routines.Any(routine => routine.Symbol.Parameters.Any(parameter => parameter.IsByRef)))

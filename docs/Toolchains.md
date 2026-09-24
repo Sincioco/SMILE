@@ -35,6 +35,13 @@ The Windows C and C++ paths use Visual Studio's x64 environment and `/fp:strict`
 
 ## MASM x64
 
+Data persistence uses Windows' supplied BCrypt SHA-256 service. C/C++ and MASM's
+C file companion request `bcrypt.lib`; Objective-C and COBOL add `-lbcrypt` only
+when generated support includes BCrypt. Swift uses WinSDK linkage. Java's existing
+JDK 21 preview/native-access switches also apply to its Data atomic-replacement
+FFM calls. C#, Node.js and Python use their standard cryptographic APIs; Python's
+standard ctypes supplies Windows atomic replacement. No new tool was installed.
+
 The linker direction is equivalent to:
 
 ```text

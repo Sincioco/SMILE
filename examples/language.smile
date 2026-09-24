@@ -41,6 +41,7 @@ Dim FileBytes[16] As Number
 
 Dim FileByteCount As Number
 Dim BestScore As Number
+Dim DataStatus As Number
 
 FirstName = "Sin"
 LastName = "Cioco"
@@ -159,6 +160,13 @@ Load BestScore From "reference-best" Default 0
 BestScore = Max(BestScore, 100)
 Save BestScore To "reference-best"
 Print "Saved best score="; BestScore
+
+' Data preserves byte arrays and reports recoverable storage outcomes.
+FileBytes[0] = 72
+FileBytes[1] = 105
+Save Data FileBytes Count 2 To "reference-bytes" Status DataStatus
+Load Data "reference-bytes" Into FileBytes Count FileByteCount Status DataStatus
+Print "Saved bytes="; FileByteCount; ", status="; DataStatus
 
 Call ShowGreeting()
 Call ShowGreeting(Caption:="Welcome", Learner:="Sin")

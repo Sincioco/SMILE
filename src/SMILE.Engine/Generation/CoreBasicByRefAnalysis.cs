@@ -90,6 +90,8 @@ internal static partial class CoreBasicCodeGenerator
                 {
                     BoundArraySetStatement set => set.Array,
                     BoundTextFileLoadStatement load => load.Destination,
+                    BoundDataLoadStatement load => load.Destination,
+                    BoundDataSaveStatement save => save.Source,
                     _ => null
                 }).OfType<VariableSymbol>().Where(variable => variable.IsGlobal));
     }

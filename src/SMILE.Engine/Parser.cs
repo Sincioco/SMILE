@@ -88,6 +88,8 @@ internal sealed partial class Parser
         TokenKind.TextType => ParseTextColor(),
         TokenKind.Wait => ParseWait(),
         TokenKind.Random => ParseRandom(),
+        TokenKind.Load when Peek(1).Kind is TokenKind.Data => ParseDataLoad(),
+        TokenKind.Save when Peek(1).Kind is TokenKind.Data => ParseDataSave(),
         TokenKind.Load => Peek(1).Kind is TokenKind.TextType ? ParseTextFileLoad() : ParseNumberLoad(),
         TokenKind.Save => ParseNumberSave(),
         TokenKind.If => ParseIf(),
@@ -910,7 +912,7 @@ internal sealed partial class Parser
         Bad, EndOfFile, EndOfLine, Comment, Identifier, Number, DoubleLiteral, String,
         Dim, If, Then, Else, End, For, To, Down, Do, Loop, Until, Print,
         Get, Key, Clear, Screen, Move, Cursor, Color, Default, TextColor, Wait, Milliseconds, Random, From, Load, Save, File, Into, Count,
-        True, False, And, Or, Not, Const, Mod, Exit, Program, As,
+        True, False, And, Or, Not, Const, Mod, Exit, Program, As, Data,
         NumberType, DoubleType, BooleanType, TextType, Option, Explicit, Sub, Function,
         Call, Return, Select, Case, ByVal, ByRef, Optional, BuiltInConstant, BuiltInFunction, UnsupportedKeyword,
         Plus, Minus, Star, Slash, Equals, NotEquals, Less, LessOrEquals,
@@ -946,6 +948,7 @@ internal sealed partial class Parser
             ["Load"] = TokenKind.Load, ["Save"] = TokenKind.Save, ["File"] = TokenKind.File, ["Into"] = TokenKind.Into, ["Count"] = TokenKind.Count,
             ["ByVal"] = TokenKind.ByVal, ["ByRef"] = TokenKind.ByRef,
             ["Optional"] = TokenKind.Optional,
+            ["Data"] = TokenKind.Data,
             ["Timer"] = TokenKind.BuiltInFunction, ["Abs"] = TokenKind.BuiltInFunction,
             ["Min"] = TokenKind.BuiltInFunction, ["Max"] = TokenKind.BuiltInFunction,
             ["Text_Length"] = TokenKind.BuiltInFunction,
@@ -999,7 +1002,11 @@ internal sealed partial class Parser
             ["KEY_E"] = 38,
             ["KEY_PLUS"] = 39,
             ["KEY_MINUS"] = 40,
-            ["KEY_C"] = 41
+            ["KEY_C"] = 41,
+            ["DATA_BLOCK_MAX_BYTES"] = SmilePersistentStorage.MaximumDataBytes,
+            ["DATA_STATUS_OK"] = 0, ["DATA_STATUS_MISSING"] = 1, ["DATA_STATUS_RECOVERED"] = 2,
+            ["DATA_STATUS_INVALID"] = 3, ["DATA_STATUS_UNAVAILABLE"] = 4,
+            ["DATA_STATUS_CORRUPT"] = 5, ["DATA_STATUS_TOO_LARGE"] = 6
         };
 
         private static readonly HashSet<string> ReservedWords = new(StringComparer.OrdinalIgnoreCase)

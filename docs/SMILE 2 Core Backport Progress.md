@@ -23,6 +23,7 @@ completed text, routine, console-key, Double, text-file, and scalar/array ByRef 
 | Double math and conversions | ToDouble/ToNumber; polymorphic Abs/Min/Max; Clamp, Sqrt, Sin, Cos, Atan2, Floor, Ceiling, Truncate, Round; Text_From_Double/Text_To_Double |
 | Load Text File | Expression paths, executable-relative normalization, bounded UTF-8 bytes, BOM removal, zero-fill, safe missing/unreadable results; all ten targets |
 | Integer Load/Save | Literal keys, Number variables/constants, eagerly evaluated defaults, signed-64 decimal files, stable source identity; evaluator and all ten targets |
+| Data Load/Save | Byte arrays, computed UTF-8 keys, 1 MiB bound, SMD4 checksums, checked recovery/Status and strict failures; evaluator and all ten targets |
 | Checked Double failures | Invalid domains, zero divisors, conversion overflow and nonfinite results report their source line before destination mutation |
 
 The UTF-8 output fix addresses failures observed during actual generated-program
@@ -34,7 +35,7 @@ execution on Windows. Ordinary ASCII programs retain their minimal output.
 |---|---|
 | Writable record arguments | ByRef field locations after records/classes are implemented; scalar/array locations are complete |
 | Console keys | Standalone Control key events: character-stream APIs do not report modifier-only events; a native console-event boundary is still needed |
-| Files and persistence | Byte Data save/load and recoverable Status; associated constants and application storage identity |
+| Files and persistence | Project ApplicationId ownership/configuration; current loose programs use the source filename stem |
 | Value types | Nominal Enum declarations/members and Type records, nested fields, fixed-array fields, deep copies, and exact nominal typing |
 | Object members | Type methods/properties, Class references/constructors, Me, New, Nothing, Is/Is Not, With blocks, member visibility and ownership |
 | Program organization | Module/Import, qualified names, visibility, multi-file source/project inputs, deterministic source-owned libraries |
@@ -111,10 +112,17 @@ Integer persistence runs unchanged in SMILE 2.0 and on all ten targets, covering
 both signed limits, eager defaults, ByRef/routine access, Unicode-key sanitizing,
 missing/unreadable files, 63-byte parsing, malformed text and overflow. A reproduced
 .NET trailing-NUL parsing difference is fixed and retained as a regression case.
+The Data fixture also runs unchanged in SMILE 2.0, with exact file envelopes,
+Unicode/empty keys, corrupt checksums/signatures, missing/corrupt primary recovery,
+invalid counts/bytes, unavailable directory paths, capacity limits, local arrays,
+ByRef counts and post-I/O Count/Status location order. Strict load/save failures
+preserve prior output and exit 2 on all ten targets. Native header/API differences
+use the widely available BCrypt create/update/finish API. C/Objective-C now widen
+direct Number literals correctly at the variadic Print boundary.
 
 No repository file-size/complexity checker or reviewed no-growth baseline was
 found in SMILE 1.0. Existing broad writers received focused wiring; new text and
 argument algorithms have their own owners. No guardrail limit or exclusion was
 changed. Ordinary target-native Number overflow and existing native Text storage
-limitations remain; record-location/persistence/object/module parity is pending. Double exponent
+limitations remain; record-location/object/module and project-identity parity is pending. Double exponent
 spelling and transcendental rounding follow the target's standard library.

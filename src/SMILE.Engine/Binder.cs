@@ -455,6 +455,8 @@ internal sealed partial class Binder
     private BoundStatement? BindStatement(StatementSyntax statement, bool directProgramLevel) => statement switch
     {
         CoreAssignmentStatementSyntax assignment => BindAssignment(assignment),
+        DataLoadStatementSyntax load => BindDataLoad(load),
+        DataSaveStatementSyntax save => BindDataSave(save),
         CoreArrayAssignmentStatementSyntax assignment => BindArrayAssignment(assignment),
         DimStatementSyntax dim => BindDim(dim),
         ConstStatementSyntax constant => directProgramLevel ? BindConst(constant) : BindLocalConst(constant),

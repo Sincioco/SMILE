@@ -172,6 +172,8 @@ public static class SmileSourceFormatter
                 RandomStatementSyntax random => new[] { random.LowerBound, random.UpperBound },
                 TextFileLoadStatementSyntax load => new[] { load.Path },
                 NumberLoadStatementSyntax load => new[] { load.DefaultValue },
+                DataLoadStatementSyntax load => new[] { load.Key, load.Count }.Concat(load.Status is null ? [] : new[] { load.Status }),
+                DataSaveStatementSyntax save => new[] { save.Count, save.Key }.Concat(save.Status is null ? [] : new[] { save.Status }),
                 _ => Array.Empty<ExpressionSyntax>()
             };
 

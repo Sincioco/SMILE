@@ -92,6 +92,15 @@ with a compiler-time cache. Node.js uses asynchronous file APIs; MASM/COBOL shar
 their existing feature-gated C file companion. Program identity is embedded from
 the source filename, independently of target filenames or temporary run folders.
 
+Data persistence preserves the SMD4 version-1 envelope and SHA-256 checksums using
+native cryptographic/file APIs. Checked loads never partially overwrite an array;
+strict loads zero it before I/O. Evaluate save Count before Key, and evaluate
+output locations only after the operation, Count before Status. Emit only used
+operations (save also needs read validation). Java's standard FFM and Python's
+standard ctypes expose Windows atomic replacement; Swift uses WinSDK, and native
+targets use BCrypt/Win32 directly. Node uses asynchronous built-in APIs and two
+atomic renames to publish a verified backup followed by the new primary.
+
 ## Print
 
 Values print in order with no inserted separator. Number uses invariant decimal text, Boolean uses `True`/`False`, and Text writes its value. A normal Print ends with one newline; a trailing source semicolon suppresses it; blank Print writes only a newline.

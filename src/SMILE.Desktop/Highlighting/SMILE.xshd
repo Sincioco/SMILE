@@ -63,6 +63,15 @@
       <Word>OPTIONAL</Word>
       <Word>LOAD</Word>
       <Word>SAVE</Word>
+      <Word>DATA</Word>
+      <Word>DATA_BLOCK_MAX_BYTES</Word>
+      <Word>DATA_STATUS_OK</Word>
+      <Word>DATA_STATUS_MISSING</Word>
+      <Word>DATA_STATUS_RECOVERED</Word>
+      <Word>DATA_STATUS_INVALID</Word>
+      <Word>DATA_STATUS_UNAVAILABLE</Word>
+      <Word>DATA_STATUS_CORRUPT</Word>
+      <Word>DATA_STATUS_TOO_LARGE</Word>
       <Word>FILE</Word>
       <Word>INTO</Word>
       <Word>COUNT</Word>

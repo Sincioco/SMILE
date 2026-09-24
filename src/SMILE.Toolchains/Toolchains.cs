@@ -1012,6 +1012,8 @@ public sealed class CobolToolchain : ToolchainBase
         string buildSources = string.IsNullOrEmpty(ancillarySources)
             ? "Program.cob"
             : "Program.cob " + ancillarySources;
+        string nativeLibraries = generatedProgram.Files.Any(file => file.Content.Contains("#include <bcrypt.h>", StringComparison.Ordinal))
+            ? " -lbcrypt" : string.Empty;
         await WriteCommandScriptAsync(
             workspace,
             "build-cobol.cmd",
@@ -1021,7 +1023,7 @@ public sealed class CobolToolchain : ToolchainBase
                 "cd /d \"%~dp0\"",
                 pathSetup,
                 configSetup,
-                $"{QuoteForCmd(detection.Commands.Cobc)} -x -free {buildSources} -o Program.exe"
+                $"{QuoteForCmd(detection.Commands.Cobc)} -x -free {buildSources} -o Program.exe{nativeLibraries}"
             },
             cancellationToken).ConfigureAwait(false);
 
@@ -1853,7 +1855,8 @@ public sealed class ObjectiveCToolchain : ToolchainBase
                 "@echo off",
                 "cd /d \"%~dp0\"",
                 pathSetup,
-                $"{QuoteForCmd(detection.Commands.Clang)} -x objective-c Program.m -o Program.exe"
+                $"{QuoteForCmd(detection.Commands.Clang)} -x objective-c Program.m -o Program.exe" +
+                    (generatedProgram.PrimaryFile.Content.Contains("#include <bcrypt.h>", StringComparison.Ordinal) ? " -lbcrypt" : string.Empty)
             },
             cancellationToken).ConfigureAwait(false);
 
