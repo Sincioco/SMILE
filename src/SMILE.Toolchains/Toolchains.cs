@@ -166,7 +166,7 @@ public sealed class TranspileOnlyToolchain : IToolchain
     }
 }
 
-public abstract class ToolchainBase : IToolchain
+public abstract partial class ToolchainBase : IToolchain
 {
     public static readonly TimeSpan DetectionTimeout = TimeSpan.FromSeconds(5);
     public static readonly TimeSpan BuildTimeout = TimeSpan.FromSeconds(120);
@@ -604,6 +604,7 @@ public sealed class DotNetToolchain : ToolchainBase
                 "Building");
         }
 
+        await CopyAssetsAsync(generatedProgram, Path.Combine(workspace, "bin", "Debug", "net10.0"), cancellationToken).ConfigureAwait(false);
         string? pauseLauncherPath = await WritePauseLauncherAsync(
             workspace,
             new[] { "\"bin\\Debug\\net10.0\\GeneratedProgram.exe\"" },
@@ -697,6 +698,7 @@ public sealed class MsvcCToolchain : ToolchainBase
             return FromProcessResults(status, buildOutput, build, workspace, "Building", buildSucceeded: false);
         }
 
+        await CopyAssetsAsync(generatedProgram, workspace, cancellationToken).ConfigureAwait(false);
         string? pauseLauncherPath = await WritePauseLauncherAsync(
             workspace,
             new[] { "\"Program.exe\"" },
@@ -786,6 +788,7 @@ public sealed class MsvcCppToolchain : ToolchainBase
             return FromProcessResults(status, buildOutput, build, workspace, "Building", buildSucceeded: false);
         }
 
+        await CopyAssetsAsync(generatedProgram, workspace, cancellationToken).ConfigureAwait(false);
         string? pauseLauncherPath = await WritePauseLauncherAsync(
             workspace,
             new[] { "\"Program.exe\"" },
@@ -928,6 +931,7 @@ public sealed class MasmX64Toolchain : ToolchainBase
                 totalDuration: TotalDuration(assemble, link));
         }
 
+        await CopyAssetsAsync(generatedProgram, workspace, cancellationToken).ConfigureAwait(false);
         string? pauseLauncherPath = await WritePauseLauncherAsync(
             workspace,
             new[] { "\"Program.exe\"" },
@@ -1056,6 +1060,7 @@ public sealed class CobolToolchain : ToolchainBase
             },
             cancellationToken).ConfigureAwait(false);
 
+        await CopyAssetsAsync(generatedProgram, workspace, cancellationToken).ConfigureAwait(false);
         string? pauseLauncherPath = await WritePauseLauncherAsync(
             workspace,
             new[] { "\"Program.exe\"" },
@@ -1244,6 +1249,7 @@ public sealed class NodeToolchain : ToolchainBase
             return FromProcessResults(status, buildOutput, build, workspace, "Checking syntax", buildSucceeded: false);
         }
 
+        await CopyAssetsAsync(generatedProgram, workspace, cancellationToken).ConfigureAwait(false);
         string? pauseLauncherPath = await WritePauseLauncherAsync(
             workspace,
             new[] { "node Program.js" },
@@ -1348,6 +1354,7 @@ public sealed class PythonToolchain : ToolchainBase
             return FromProcessResults(status, buildOutput, build, workspace, "Checking syntax", buildSucceeded: false);
         }
 
+        await CopyAssetsAsync(generatedProgram, workspace, cancellationToken).ConfigureAwait(false);
         string? pauseLauncherPath = await WritePauseLauncherAsync(
             workspace,
             new[] { launcherCommand },
@@ -1570,6 +1577,7 @@ public sealed class JavaToolchain : ToolchainBase
             return FromProcessResults(status, buildOutput, build, workspace, "Building", buildSucceeded: false);
         }
 
+        await CopyAssetsAsync(generatedProgram, workspace, cancellationToken).ConfigureAwait(false);
         string? pauseLauncherPath = await WritePauseLauncherAsync(
             workspace,
             new[] { BuildJavaProgramCommand(commands, usesForeignApi) },
@@ -1888,6 +1896,7 @@ public sealed class ObjectiveCToolchain : ToolchainBase
             },
             cancellationToken).ConfigureAwait(false);
 
+        await CopyAssetsAsync(generatedProgram, workspace, cancellationToken).ConfigureAwait(false);
         string? pauseLauncherPath = await WritePauseLauncherAsync(
             workspace,
             new[] { "\"Program.exe\"" },
@@ -2090,6 +2099,7 @@ public sealed class SwiftToolchain : ToolchainBase
             },
             cancellationToken).ConfigureAwait(false);
 
+        await CopyAssetsAsync(generatedProgram, workspace, cancellationToken).ConfigureAwait(false);
         string? pauseLauncherPath = await WritePauseLauncherAsync(
             workspace,
             new[] { "\"Program.exe\"" },

@@ -5,7 +5,7 @@ Authority inspected read-only: `D:\SMILE 2.0`, commit
 before inspection and after the unchanged fixture compilation/execution.
 
 The overall requested back-port is **not complete**. This file records the
-completed text, routine, console-key, Double, text-file, persistence, Enum, Type records/members, With, and ByRef milestones and the remaining source-language gaps.
+completed text, routine, console-key, Double, text-file, persistence, Enum, Type/Class, With, ByRef, and module/project milestones and the remaining source-language gap.
 
 ## Implemented in this milestone
 
@@ -29,6 +29,8 @@ completed text, routine, console-key, Double, text-file, persistence, Enum, Type
 | With blocks | Capture writable record locations and checked indexes once; nested leading-dot access, stable aliases, recursion and ordinary return/loop-exit behavior; evaluator and all ten targets |
 | Type members | Sub/Function methods, Get/Set properties, borrowed Me, Public/Private access, Optional/named calls and value-first property assignment; evaluator and all ten targets |
 | Class references | New/constructors, Nothing, Is/Is Not, reference copies/ByRef, class With, visibility, native object ownership and borrowed fields; evaluator and all ten targets |
+| Modules and projects | Module/Import aliases, qualified names, Public/Private, split modules, ordered initialization, multi-file projects, source-owned libraries and runtime assets; evaluator and all ten targets |
+| Application identity | Validated project/CLI ApplicationId; stable persistence ownership independent of the startup filename |
 | Checked Double failures | Invalid domains, zero divisors, conversion overflow and nonfinite results report their source line before destination mutation |
 
 The UTF-8 output fix addresses failures observed during actual generated-program
@@ -39,11 +41,6 @@ execution on Windows. Ordinary ASCII programs retain their minimal output.
 | Area | Implemented SMILE 2.0 features still absent from SMILE 1.0 |
 |---|---|
 | Console keys | Standalone Control key events: character-stream APIs do not report modifier-only events; a native console-event boundary is still needed |
-| Files and persistence | Project ApplicationId ownership/configuration; current loose programs use the source filename stem |
-| Program organization | Module/Import, qualified names, visibility, multi-file source/project inputs, deterministic source-owned libraries |
-
-Modules require additional binding, generation and project-system work. They
-remain outstanding core-language work.
 
 ## Outside the console/core back-port
 
@@ -166,7 +163,7 @@ No repository file-size/complexity checker or reviewed no-growth baseline was
 found in SMILE 1.0. Existing broad writers received focused wiring; new text and
 argument algorithms have their own owners. No guardrail limit or exclusion was
 changed. Ordinary target-native Number overflow and existing native Text storage
-limitations remain; module and project-identity parity is pending. Double exponent
+limitations remain. Double exponent
 spelling and transcendental rounding follow the target's standard library.
 
 Class fixtures run unchanged in SMILE 2.0 and across all ten targets. They cover
@@ -183,3 +180,30 @@ all 162 allocations (peaks four/four/six). Class fields default to Private as in
 the authority; methods and properties default to Public. Classes add no external
 dependency. The procedural native targets need a small pointer/root allocator;
 C++ uses shared_ptr and the remaining structured targets use native object lifetime.
+
+The module/project milestone adds a source-set front end owned by ModuleCompilation
+and project/package loading under Engine/Projects. CLI and Desktop consume the same
+immutable source snapshot; Desktop reloads and formats project sources off the UI
+thread. MainWindowViewModel.Sources owns document/project lifecycle. Toolchains copy
+declared assets only after compilation, into the program's runtime directory.
+Targets statically combine source declarations with deterministic module prefixes
+and ordinary native routines, records, classes and enums. No module loader, runtime
+registry or dispatch helper is generated.
+
+Unchanged module fixtures execute in SMILE 2.0 and all ten targets. Format-7
+library manifests and public API JSON match the authority byte for byte, including
+same-spelled type/value names, enum aliases, Optional defaults and Double constants.
+Both compilers consume the other's source-owned library. A recorded parity exception
+is direct imported array access: the authority rejects Counts.Values[1] during
+module lowering, while SMILE 1.0 resolves it normally. The shared parity fixture
+uses access routines; separate native asset tests cover direct imported array writes.
+
+Validation: 156 final focused module/project/library/format/mission/core/Desktop
+tests passed, the normal 23-test MissionGuardrail passed, all living sources passed
+Format-Smile.ps1 -Check, and the project example ran on all ten installed toolchains.
+An earlier broader run passed 248/250: an obsolete Desktop formatter call-site
+assertion was updated and passes in the final selection; a Java console harness
+exit failed despite the child reporting success, and both Java/JavaScript targeted
+console reruns passed. No harness behavior was weakened. Builds have zero warnings
+or errors. Desktop project opening and formatting were also exercised in the native
+UI. No architecture check, exclusion or limit was changed.

@@ -25,7 +25,17 @@ public static class SmileSourceFormatter
 {
     public const int MaximumLineLength = 100;
 
-    public static SmileFormatResult Format(string source)
+    public static SmileFormatResult Format(string source) => FormatCore(source, new SmileTranspiler().Bind);
+
+    public static SmileFormatResult Format(SmileSource source, IReadOnlyList<SmileSource> compilation)
+    {
+        if (!compilation.Any(item => string.Equals(item.Path, source.Path, StringComparison.OrdinalIgnoreCase)))
+            throw new ArgumentException("The source must belong to the supplied compilation.", nameof(source));
+        return FormatCore(source.Text, text => new SmileTranspiler().BindSources(compilation.Select(item =>
+            string.Equals(item.Path, source.Path, StringComparison.OrdinalIgnoreCase) ? source with { Text = text } : item).ToArray()));
+    }
+
+    private static SmileFormatResult FormatCore(string source, Func<string, BindResult> bind)
     {
         ArgumentNullException.ThrowIfNull(source);
 
@@ -36,7 +46,7 @@ public static class SmileSourceFormatter
             return new SmileFormatResult(source, source, parsed.Diagnostics);
         }
 
-        BindResult bound = transpiler.Bind(source);
+        BindResult bound = bind(source);
         if (!bound.Success)
         {
             return new SmileFormatResult(source, source, bound.Diagnostics);
@@ -56,7 +66,7 @@ public static class SmileSourceFormatter
         string formatted = layout.Render();
 
         ParseResult formattedParse = transpiler.Parse(formatted);
-        BindResult formattedBind = transpiler.Bind(formatted);
+        BindResult formattedBind = bind(formatted);
         if (!formattedParse.Success || formattedParse.Program is null || !formattedBind.Success ||
             !HasSameProtectedContent(parsed.Program, formattedParse.Program, normalized, formatted))
         {
@@ -231,6 +241,12 @@ public static class SmileSourceFormatter
     {
         switch (item)
         {
+            case ModuleDeclarationSyntax module:
+                yield return module.SourceItems;
+                break;
+            case VisibilityDeclarationSyntax visible:
+                yield return new SourceItemSyntax[] { visible.Declaration };
+                break;
             case RoutineDeclarationSyntax routine:
                 yield return routine.SourceItems;
                 break;
@@ -495,6 +511,14 @@ public static class SmileSourceFormatter
             int end = EndLine(statement.Span);
             switch (statement)
             {
+                case ModuleDeclarationSyntax module:
+                    MarkLine(start, depth);
+                    MarkItemList(module.SourceItems, depth + 1);
+                    MarkLine(end, depth);
+                    break;
+                case VisibilityDeclarationSyntax visible:
+                    MarkStatement(visible.Declaration, depth);
+                    break;
                 case InstanceMethodDeclarationSyntax method:
                     MarkStatement(method.Routine, depth);
                     break;

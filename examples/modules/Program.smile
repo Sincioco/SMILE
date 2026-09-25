@@ -1,0 +1,16 @@
+Option Explicit
+
+Import Lessons.Counters As Counters
+
+Dim Session As New Counters.Counter(2)
+
+Dim Bytes[128] As Number
+
+Dim ByteCount As Number
+
+Call Session.Add(3)
+Load Text File "assets/lesson.txt" Into Bytes Count ByteCount
+
+Print Counters.Caption
+Print "Score: "; Session.Score
+Print "Lesson bytes: "; ByteCount

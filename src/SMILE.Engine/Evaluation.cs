@@ -48,6 +48,19 @@ public sealed partial class SmileEvaluator
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(source);
+        cancellationToken.ThrowIfCancellationRequested();
+        return EvaluateBound(_transpiler.Bind(source), options, cancellationToken);
+    }
+
+    public EvaluationResult EvaluateSources(IReadOnlyList<SmileSource> sources,
+        SmileEvaluationOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return EvaluateBound(_transpiler.BindSources(sources), options ?? new SmileEvaluationOptions(), cancellationToken);
+    }
+
+    private EvaluationResult EvaluateBound(BindResult bindResult, SmileEvaluationOptions options, CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(options);
         if (options.StatementBudget <= 0)
         {
@@ -56,7 +69,6 @@ public sealed partial class SmileEvaluator
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        BindResult bindResult = _transpiler.Bind(source);
         if (!bindResult.Success || bindResult.Program is null)
         {
             return new EvaluationResult(

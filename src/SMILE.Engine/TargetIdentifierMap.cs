@@ -5,6 +5,9 @@ internal sealed partial class TargetIdentifierMap
     private const string MappedPrefix = "_smile_";
     private readonly IReadOnlyDictionary<VariableSymbol, string> _names;
     private readonly IReadOnlyDictionary<RoutineSymbol, string> _routineNames;
+    private IReadOnlyDictionary<string, ModuleMember> _moduleMembers = new Dictionary<string, ModuleMember>();
+    private string SourceName(string name) => _moduleMembers.TryGetValue(name, out ModuleMember? member)
+        ? member.Owner.Name.Replace('.', '_') + "_" + member.Name : name;
 
     private TargetIdentifierMap(
         IReadOnlyDictionary<VariableSymbol, string> names,
@@ -50,15 +53,16 @@ internal sealed partial class TargetIdentifierMap
         var used = new HashSet<string>(StringComparer.Ordinal);
         var names = new Dictionary<VariableSymbol, string>();
         var routineNames = new Dictionary<RoutineSymbol, string>();
-        var result = new TargetIdentifierMap(names, routineNames);
+        var result = new TargetIdentifierMap(names, routineNames) { _moduleMembers = program.ModuleMembers };
         result.AddEnumNames(program, language, reserved, used);
         result.AddRecordNames(program, language, reserved, used);
 
         foreach (VariableSymbol variable in program.AllVariables.Distinct())
         {
-            string preferred = IsSafeTargetIdentifier(variable.Name, language, reserved)
-                ? variable.Name
-                : BuildMappedName(variable.Name, language);
+            string sourceName = result.SourceName(variable.Name);
+            string preferred = IsSafeTargetIdentifier(sourceName, language, reserved)
+                ? sourceName
+                : BuildMappedName(sourceName, language);
             string unique = MakeUnique(preferred, used, language);
 
             used.Add(unique);
@@ -73,9 +77,10 @@ internal sealed partial class TargetIdentifierMap
                 routineNames.Add(routine, result.AddMemberRoutineName(routine, language, reserved, used));
                 continue;
             }
-            string preferred = IsSafeTargetIdentifier(routine.Name, language, reserved)
-                ? routine.Name
-                : BuildMappedName(routine.Name, language);
+            string sourceName = result.SourceName(routine.Name);
+            string preferred = IsSafeTargetIdentifier(sourceName, language, reserved)
+                ? sourceName
+                : BuildMappedName(sourceName, language);
             string unique = MakeUnique(preferred, used, language, language is TargetLanguage.Cobol ? 31 : int.MaxValue);
             used.Add(unique);
             routineNames.Add(routine, unique);
@@ -113,6 +118,7 @@ internal sealed partial class TargetIdentifierMap
         language switch
         {
             TargetLanguage.Cobol => BuildCobolMappedName(name),
+            _ when name.Contains('.') => BuildMappedName(name.Replace('.', '_'), language),
             // Prefixing a C++ implementation-reserved spelling is not enough:
             // the original double underscore would remain reserved anywhere in
             // the final identifier. Spell reserved underscores out so the
@@ -261,6 +267,7 @@ internal sealed partial class TargetIdentifierMap
     private static string MakeUnique(string preferred, ISet<string> used, TargetLanguage language, int maxLength = int.MaxValue)
     {
         string initial = preferred[..Math.Min(preferred.Length, maxLength)];
+        if (language is TargetLanguage.Cobol) initial = initial.TrimEnd('-');
         if (!used.Contains(initial))
         {
             return initial;
@@ -270,7 +277,8 @@ internal sealed partial class TargetIdentifierMap
         while (true)
         {
             string ending = (language is TargetLanguage.Cobol ? "-" : "_") + suffix;
-            string candidate = preferred[..Math.Min(preferred.Length, maxLength - ending.Length)] + ending;
+            string prefix = preferred[..Math.Min(preferred.Length, maxLength - ending.Length)];
+            string candidate = (language is TargetLanguage.Cobol ? prefix.TrimEnd('-') : prefix) + ending;
             if (!used.Contains(candidate))
             {
                 return candidate;

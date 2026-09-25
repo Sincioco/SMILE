@@ -184,7 +184,7 @@ builtin-call    := "Timer" "(" ")"
 
 ## Deliberate exclusions
 
-This milestone does not add blocking `Input`, `Key_Held`, pointer/mouse input, cursor visibility/shape control, arbitrary terminal escape strings, graphics or `Game Window`, sound, unrestricted file writing, dynamic arrays, more than two dimensions, whole-array parameters or returns, variadic parameters, classes, modules, imports, threads in SMILE source, or an eleventh target. Historical LET/SET assignment, INPUT/WHILE/interpolation/block-string syntax remains rejected. Blocking Input is also absent from current SMILE 2.0. The later back-port sections below add bounded file reads, integer/Data persistence, Enum, Type value records, methods/properties and With.
+This milestone does not add blocking `Input`, `Key_Held`, pointer/mouse input, cursor visibility/shape control, arbitrary terminal escape strings, graphics or `Game Window`, sound, unrestricted file writing, dynamic arrays, more than two dimensions, whole-array parameters or returns, variadic parameters, threads in SMILE source, or an eleventh target. Historical LET/SET assignment, INPUT/WHILE/interpolation/block-string syntax remains rejected. Blocking Input is also absent from current SMILE 2.0. The later back-port sections below add bounded file reads, integer/Data persistence, Enum, Type value records, Class references, methods/properties, With, modules, projects and libraries.
 
 ## Unicode text inspection
 
@@ -501,7 +501,7 @@ any failure. The evaluator reports `SMILER3506`. Earlier output survives failure
 Files are `%LOCALAPPDATA%\SMILE\Games\<identity-hash>\Data\<key-hash>.bin`, where
 both hashes are lowercase SHA-256 of exact UTF-8 text. Loose-program identity uses
 the source filename stem supplied by CLI/Desktop (`Program` for unsaved/direct
-API programs). Project ApplicationId configuration remains pending. The namespace
+API programs). Projects use ApplicationId, falling back to OutputName. The namespace
 is separate from SMILE 2.0; no automatic save migration occurs.
 
 The file envelope is 44 bytes plus payload: ASCII `SMD4`, little-endian uint32
@@ -643,3 +643,27 @@ instance. Dereferencing Nothing, including entry to With, fails before member
 arguments or field indexes are evaluated. Property assignment retains value-first
 evaluation before receiver capture and validation. The evaluator reports SMILER3457;
 generated targets use their native failure mechanism and preserve prior output.
+
+## Modules, projects and libraries
+
+The current core back-port includes `Module`, `Import ... As`, module-level
+Public/Private declarations, qualified values/routines/types and multi-file source
+inputs. A physical module source contains exactly one Module; modules can span
+sources within one provider. Declarations default to Private. Imports and Option
+Explicit belong to the physical source. Values and nominal types occupy distinct
+namespaces, and enum member selection resolves the type namespace. Public API
+signatures cannot leak private types. Import aliases cannot collide with explicit
+or implicit application globals. Routine locals can shadow aliases. Modules cannot
+read consuming-program globals. Import cycles are errors.
+
+Dependencies initialize before importers; module/support initializers precede the
+selected startup source. Non-module support sources cannot contain executable
+top-level statements. Project and loose-source paths accompany diagnostics.
+
+`.smileproj` application inputs, `.smilelibproj` library projects, exact direct
+provider references, ApplicationId, runtime Asset includes and deterministic
+source-owned `.smilelib` format 7 are implemented. The
+[Modules and Projects contract](../Modules%20and%20Projects.md) specifies project
+selection, visibility, package validation/resource limits, asset publication and
+identity fallback. Library packages are built through the CLI; Desktop opens
+application projects and edits their startup source asynchronously.

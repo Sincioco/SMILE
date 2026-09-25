@@ -11,6 +11,7 @@ public sealed record GeneratedProgram(
     bool RequiresStandardInput = false)
 {
     public GeneratedFile PrimaryFile => Files.Single(file => file.IsPrimary);
+    public IReadOnlyList<SmileApplicationAsset> Assets { get; init; } = [];
 }
 
 public interface ICodeGenerator
@@ -33,7 +34,7 @@ public sealed record TranspileResult(
         Diagnostics.All(diagnostic => diagnostic.Severity != DiagnosticSeverity.Error);
 }
 
-public sealed class SmileTranspiler
+public sealed partial class SmileTranspiler
 {
     public ParseResult Parse(string source)
     {
@@ -48,6 +49,9 @@ public sealed class SmileTranspiler
         {
             return new BindResult(null, parseResult.Diagnostics);
         }
+
+        if (parseResult.Program.Statements.Any(item => item is ModuleDeclarationSyntax or ImportStatementSyntax or VisibilityDeclarationSyntax))
+            return BindSources([new SmileSource("<source>", source)]);
 
         BindResult bindResult = new Binder().Bind(parseResult.Program);
         IReadOnlyList<Diagnostic> diagnostics = parseResult.Diagnostics

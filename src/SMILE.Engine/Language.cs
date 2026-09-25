@@ -17,14 +17,17 @@ public sealed record Diagnostic(
     TextSpan Span)
 {
     public override string ToString() =>
-        $"{Code} {Severity} at line {Span.Line}, column {Span.Column}: {Message}";
+        $"{Code} {Severity} {(Span.SourcePath is null ? "" : "in " + Span.SourcePath + " ")}at line {Span.Line}, column {Span.Column}: {Message}";
 }
 
 public readonly record struct TextSpan(
     int Start,
     int Length,
     int Line,
-    int Column);
+    int Column)
+{
+    public string? SourcePath { get; init; }
+}
 
 // Syntax nodes describe what the user wrote, before the compiler resolves
 // names or decides what an operator means for particular operand types.
@@ -43,6 +46,10 @@ public abstract record SourceItemSyntax(TextSpan Span)
 
 public sealed record SmileProgramSyntax : SyntaxNode
 {
+    internal IReadOnlyDictionary<string, bool> SourceOptions { get; init; } = new Dictionary<string, bool>();
+    internal IReadOnlySet<string> ModuleSources { get; init; } = new HashSet<string>();
+    internal IReadOnlyDictionary<string, ModuleMember> ModuleMembers { get; init; } = new Dictionary<string, ModuleMember>();
+    internal IReadOnlyList<ModuleSymbol> Modules { get; init; } = [];
     public SmileProgramSyntax(
         IReadOnlyList<SourceItemSyntax> SourceItems,
         TextSpan Span)
@@ -244,6 +251,7 @@ public sealed record VariableSymbol(
     SmileValue? DefaultValue = null,
     bool IsByRef = false)
 {
+    public EnumMemberSymbol? DefaultEnumMember { get; init; }
     public bool IsArray => ArrayLength > 0;
 
     public int ArrayRank => !IsArray ? 0 : ArraySecondLength > 0 ? 2 : 1;
@@ -299,6 +307,8 @@ public abstract record BoundSourceItem;
 
 public sealed record BoundProgram
 {
+    internal IReadOnlyDictionary<string, ModuleMember> ModuleMembers { get; init; } = new Dictionary<string, ModuleMember>();
+    internal IReadOnlyList<ModuleSymbol> Modules { get; init; } = [];
     public BoundProgram(
         IReadOnlyList<BoundSourceItem> SourceItems,
         IReadOnlyList<VariableSymbol> Variables,

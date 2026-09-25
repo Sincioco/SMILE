@@ -1,0 +1,30 @@
+Module Lessons.Counters
+    Option Explicit
+
+    Public Const Caption = "Learning together"
+    Private Const Bonus = 1
+
+    Public Class Counter
+        Private Total As Number
+
+        Sub New(Optional Start As Number = 0)
+
+            Me.Total = Start
+
+        End Sub
+
+        Sub Add(Amount As Number)
+
+            Me.Total = Me.Total + Amount + Bonus
+
+        End Sub
+
+        Property Score As Number
+            Get
+
+                Return Me.Total
+
+            End Get
+        End Property
+    End Class
+End Module

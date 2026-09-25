@@ -238,3 +238,30 @@ including Text-field finalization. It is emitted only for class programs. C++
 uses standard shared ownership; the other structured targets use their native
 object lifetime rules. Existing record/member writers remain the shared owners
 of field access and member calls for both kinds of instance.
+
+## Multi-file compilation and project ownership
+
+Parser.Modules creates source-preserving Module/Import/visibility syntax.
+ModuleCompilation owns provider inventory, source-local options/imports, dependency
+ordering, public API checks and syntax lowering into the existing Binder. Focused
+expression/statement partials handle rewriting; no second type checker or runtime
+module registry is introduced. BoundProgram retains source/module ownership for
+diagnostics, target naming and package metadata. Each target emits ordinary
+declarations and routines with deterministic readable module prefixes.
+
+Projects/SmileProject owns XML metadata. SmileProjectLoader owns an individual
+load's provider graph and produces an immutable SmileCompilationInput snapshot.
+It validates libraries using their own declared dependency closures, excluding
+consumer globals and unrelated sibling providers. SmileLibraryPackage owns the
+bounded archive envelope and atomic output publication; SmileLibraryApi derives
+format-7 public metadata from bound symbols. Package source stays in memory.
+SmileProjectAssets resolves portable project-relative files; ToolchainAssets
+copies them after compilation into each fresh runtime directory, never before
+the compiler could accidentally treat an asset as generated source.
+
+DesktopProjectSession keeps the project path and selected startup path. Its
+background snapshots replace only the editor-owned text and reload support files.
+MainWindowViewModel.Sources owns source opening/saving/format orchestration; the
+main view model delegates generation to the session. Open/format use the existing
+busy/progress/cancellation boundary and reject stale results after an edit.
+CLI options and formatting have separate focused owners. No new dependency is used.

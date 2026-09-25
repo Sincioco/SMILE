@@ -2,8 +2,9 @@ namespace SMILE.Engine;
 
 internal sealed partial class Binder
 {
-    private SmileValue? BindParameterDefault(ParameterSyntax parameter, SmileType parameterType)
+    private SmileValue? BindParameterDefault(ParameterSyntax parameter, SmileType parameterType, out EnumMemberSymbol? defaultMember)
     {
+        defaultMember = null;
         if (parameter.DefaultValue is null) return null;
         ExpressionSyntax source = parameter.DefaultValue;
         while (source is ParenthesizedExpressionSyntax parentheses) source = parentheses.Expression;
@@ -17,6 +18,7 @@ internal sealed partial class Binder
             Report("SMILE2161", "An Optional default must be a literal, Const or Enum member of the exact parameter type.", source.Span);
             return null;
         }
+        defaultMember = (expression as BoundEnumExpression)?.Member;
         return result.Value;
     }
 

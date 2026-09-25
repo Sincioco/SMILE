@@ -8,7 +8,7 @@ internal sealed partial class Parser
         Next(); // Data was selected by the statement dispatch.
         ExpressionSyntax key = ParseExpression();
         Match(TokenKind.Into, "Expected Into after the Data key.");
-        Token destination = Match(TokenKind.Identifier, "Expected a Number array after Into.");
+        Token destination = ParseQualifiedName();
         Match(TokenKind.Count, "Expected Count after the Data destination.");
         ExpressionSyntax count = ParseDataTarget();
         ExpressionSyntax? status = ParseDataStatus();
@@ -19,7 +19,7 @@ internal sealed partial class Parser
     {
         Token start = Next();
         Next();
-        Token source = Match(TokenKind.Identifier, "Expected a Number array after Save Data.");
+        Token source = ParseQualifiedName();
         Match(TokenKind.Count, "Expected Count after the Data source.");
         ExpressionSyntax count = ParseExpression();
         Match(TokenKind.To, "Expected To after the Data count.");

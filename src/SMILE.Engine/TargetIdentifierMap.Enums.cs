@@ -16,7 +16,8 @@ internal sealed partial class TargetIdentifierMap
         memberReserved.UnionWith(new[] { "value__", "rawValue", "hashValue", "RawValue", "allCases", "name", "value", "mro", "__proto__", "_name_", "_value_", "_ignore_", "_member_map_", "_smileDefault" });
         foreach (EnumTypeSymbol type in program.EnumTypes)
         {
-            string preferred = IsSafeTargetIdentifier(type.Name, language, reserved) ? type.Name : BuildMappedName(type.Name, language);
+            string sourceName = SourceName(type.Name);
+            string preferred = IsSafeTargetIdentifier(sourceName, language, reserved) ? sourceName : BuildMappedName(sourceName, language);
             string typeName = MakeUnique(preferred, used, language);
             used.Add(typeName);
             _typeNames.Add(type, typeName);
@@ -24,7 +25,7 @@ internal sealed partial class TargetIdentifierMap
             foreach (EnumMemberSymbol member in type.Members)
             {
                 bool global = language is TargetLanguage.C or TargetLanguage.ObjectiveC or TargetLanguage.MasmX64 or TargetLanguage.Cobol;
-                string source = global ? type.Name + "_" + member.Name : member.Name;
+                string source = global ? SourceName(type.Name) + "_" + member.Name : member.Name;
                 if (language is TargetLanguage.Python && source.StartsWith('_') && source.EndsWith('_')) source = "member" + source;
                 string candidate = IsSafeTargetIdentifier(source, language, memberReserved) ? source : BuildMappedName(source, language);
                 string name = MakeUnique(candidate, global ? used : scoped, language);

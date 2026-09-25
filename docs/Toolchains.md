@@ -121,9 +121,11 @@ executable, Node/Python script, or Java class directory. The evaluator defaults
 to its application's base directory and supports an injected file host. C# build
 output is under `bin/Debug/net10.0`; its input files belong there. Other current
 toolchains place executable/script/class output in the generated workspace.
-CLI/Desktop create a fresh workspace per build and do not yet publish project
-assets. Put input files beside a separately built generated program for manual
-file-read testing; automatic project publication remains in the back-port backlog.
+CLI/Desktop create a fresh workspace per build and publish application project
+assets after successful compilation, before launch. C# assets are copied into
+bin/Debug/net10.0; other targets use their executable/script workspace directory.
+Publication cannot overwrite existing generated/build files and a failed copy
+prevents launch. Fresh output directories make a stale-file deletion pass unnecessary.
 
 Class reference programs use the same installed toolchains. MASM additionally
 compiles the generated SmileClassRuntime.c companion with the existing Visual
@@ -132,3 +134,11 @@ in their existing native support output. No external runtime is downloaded.
 The optional SMILE_OBJECT_LIFETIME_REPORT environment variable reports allocation,
 free, live and peak counts at shutdown for those four targets. C/Objective-C/MASM
 also honor the existing SMILE_TEXT_LIFETIME_REPORT for owned Text storage.
+
+Module/project/library compilation uses the same ten toolchains. The CLI accepts
+repeatable --source/--library arguments, or --project for a .smileproj input.
+--target library builds a deterministic source-only .smilelib from .smilelibproj;
+no destination compiler or package restore is needed for that step. Format-7
+packages work in both SMILE versions. ApplicationId is carried into Number/Data
+storage generation, independently of temporary native executable names. See
+[Modules and Projects](Modules%20and%20Projects.md) for the complete input contract.

@@ -200,9 +200,18 @@ public sealed class SourceFormattingTests
             .ToArray();
 
         Assert.IsNotEmpty(files);
+        var contexts = new Dictionary<string, SmileCompilationInput>(StringComparer.OrdinalIgnoreCase);
+        foreach (string project in Directory.EnumerateFiles(Path.Combine(repository, "examples"), "*", SearchOption.AllDirectories)
+            .Where(path => Path.GetExtension(path) is ".smileproj" or ".smilelibproj"))
+        {
+            SmileCompilationInput input = SmileCompilationInput.Load(project);
+            foreach (SmileSource source in input.Sources) contexts.TryAdd(source.Path, input);
+        }
         foreach (string file in files)
         {
-            SmileFormatResult result = SmileSourceFormatter.Check(File.ReadAllText(file));
+            SmileFormatResult result = contexts.TryGetValue(file, out SmileCompilationInput? input)
+                ? SmileSourceFormatter.Format(input.Sources.Single(source => source.Path == file), input.Sources)
+                : SmileSourceFormatter.Check(File.ReadAllText(file));
             Assert.IsTrue(result.Success, $"{file}{Environment.NewLine}{Join(result.Diagnostics)}");
             Assert.IsFalse(result.NeedsFormatting, $"Formatting required: {file}");
         }

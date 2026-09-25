@@ -26,7 +26,7 @@ Print Text_From_Double(-0.0)
 
 This prints `1.5`, `3.0:2.0`, and `-0.0`. Double math also includes `Abs`, `Min`, `Max`, `Clamp`, `Sin`, `Cos`, `Atan2`, `Floor`, `Ceiling`, and `Truncate`. Use `ToNumber` for checked truncation and `Text_To_Double` to parse invariant decimal text. No implicit Number/Double conversion occurs.
 
-The broader back-port remains in progress. Structured types/modules and project application identity remain listed in the [back-port inventory](docs/SMILE%202%20Core%20Backport%20Progress.md). Double output uses native binary64 arithmetic and standard math APIs, with small checks where the target permits infinities or has different conversion rules. COBOL needs C interoperability for exact binary64 operations because its ordinary decimal arithmetic and numeric transfers lose distinctions required by SMILE. Exponent spelling and transcendental rounding can differ between targets.
+The broader back-port remains in progress; standalone Control key events remain in the [back-port inventory](docs/SMILE%202%20Core%20Backport%20Progress.md). Modules, application projects and deterministic source-owned libraries are supported. Double output uses native binary64 arithmetic and standard math APIs, with small checks where the target permits infinities or has different conversion rules. COBOL needs C interoperability for exact binary64 operations because its ordinary decimal arithmetic and numeric transfers lose distinctions required by SMILE. Exponent spelling and transcendental rounding can differ between targets.
 
 `ByRef` changes the caller's storage immediately, including when two parameters
 refer to the same variable. Ordinary parameters remain independent ByVal copies.
@@ -85,8 +85,9 @@ recovery and the `DATA_STATUS_*` constants follow SMILE 2.0. Checked loads keep
 the array intact on failure; successful loads change only the returned bytes.
 Omit Status for strict operations that stop on storage errors (a missing load
 returns zero). See the [Data contract](docs/SMILE%20Language%20Specification/003%20-%20SMILE%20Core%20BASIC%202.1%20Text-Game%20Foundation%20Official%20Specification.md#data-persistence),
-including Node.js's two-step atomic backup/primary publication. Project
-ApplicationId configuration remains part of the outstanding project back-port.
+including Node.js's two-step atomic backup/primary publication. Projects use an
+explicit ApplicationId, falling back to OutputName; loose files also accept
+`--application-id`. Libraries share their consuming application's identity.
 
 Nominal enums now work in the evaluator and all ten targets:
 
@@ -134,8 +135,7 @@ Types also contain Sub/Function methods and Property Get/Set accessors. `Me`
 borrows the current record; a setter receives its new value as `Value`. Methods
 and properties are Public by default and may be Private; fields remain Public.
 Member calls support Optional and named arguments. A property assignment evaluates
-its new value before capturing its receiver. Modules remain pending
-in the [back-port inventory](docs/SMILE%202%20Core%20Backport%20Progress.md).
+its new value before capturing its receiver.
 
 `Class` declares reference objects. `Dim Board As New ScoreBoard()` or
 `Board = New ScoreBoard()` constructs an instance; assignment, ByVal and returns
@@ -146,6 +146,20 @@ captures the reference once, even if Board is reassigned inside the block. A
 Nothing receiver fails before method arguments or field indexes run. Class fields
 may contain scalar values, enums, records and fixed arrays, but not other class
 references; arrays of class references are also unsupported, matching SMILE 2.0.
+
+`Module ... End Module`, `Import Name As Alias`, source-local imports/Option
+Explicit, Public/Private module declarations and qualified names work across
+multiple sources and all ten targets. Application `.smileproj` files select a
+startup source, references, runtime assets and persistent ApplicationId. Desktop
+opens the project and edits its startup source. The CLI also builds and consumes
+deterministic `.smilelib` format-7 packages with exact dependencies and source/API
+validation. Try [Scoreboard](examples/modules/Scoreboard.smileproj) or follow the
+[Modules and Projects guide](docs/Modules%20and%20Projects.md).
+
+```powershell
+dotnet run --project src/SMILE.Cli -- --project examples/modules/Scoreboard.smileproj --target python --run
+dotnet run --project src/SMILE.Cli -- --project examples/modules/library/Counters.smilelibproj --target library -o out/Counters.smilelib
+```
 
 ### Three original games, written entirely in SMILE
 
@@ -329,7 +343,7 @@ The complete current language is defined by the [SMILE Core BASIC 2.1 Text-Game 
 
 This release intentionally rejects earlier SMILE 1.0-only syntax. The compiler does not silently reinterpret old source. Core BASIC 1 remains a valid subset, while its former active documentation is preserved under `Requirements/Archive/Core-BASIC-1`.
 
-**Current boundaries:** no blocking `Input`, graphical game window, sound, arbitrary file I/O, dynamic arrays, or modules in SMILE source. Bounded text-file reads and Number/Data persistence are supported. `Number` is a signed 64-bit whole-number type. This is an active research project; deliberate language improvements update living examples and documentation together, without a legacy parser or external backward-compatibility promise.
+**Current boundaries:** no blocking `Input`, graphical game window, sound, arbitrary file I/O, or dynamic arrays. Bounded text-file reads, project assets, modules/libraries and Number/Data persistence are supported. Library package builds use the CLI; Desktop edits an application project's startup source. `Number` is a signed 64-bit whole-number type. This is an active research project; deliberate language improvements update living examples and documentation together, without a legacy parser or external backward-compatibility promise.
 
 ## Ten active targets
 

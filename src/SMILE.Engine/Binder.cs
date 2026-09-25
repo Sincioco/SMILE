@@ -22,11 +22,17 @@ internal sealed partial class Binder
     private Dictionary<string, VariableSymbol>? _locals;
     private RoutineSymbol? _currentRoutine;
     private bool _optionExplicit;
+    private IReadOnlyDictionary<string, bool> _sourceOptions = new Dictionary<string, bool>();
+    private IReadOnlySet<string> _moduleSources = new HashSet<string>();
+    private bool IsExplicit(TextSpan span) => span.SourcePath is { } path && _sourceOptions.TryGetValue(path, out bool enabled) ? enabled : _optionExplicit;
+    private bool CanAccessGlobal(string name, TextSpan span) => name.Contains('.') || span.SourcePath is null || !_moduleSources.Contains(span.SourcePath);
     private int _forDepth;
     private int _doDepth;
 
     public BindResult Bind(SmileProgramSyntax syntax)
     {
+        _sourceOptions = syntax.SourceOptions;
+        _moduleSources = syntax.ModuleSources;
         ValidateOptionExplicit(syntax.SourceItems);
         InventoryProgramDeclarations(syntax.SourceItems);
         BindEnums();
@@ -54,7 +60,7 @@ internal sealed partial class Binder
                 topLevel,
                 _globals.Values.OrderBy(symbol => symbol.DeclarationSpan.Start).ToArray(),
                 _boundRoutines,
-                _optionExplicit) { EnumTypes = _enums.Values.ToArray(), RecordTypes = _orderedRecords, ClassTypes = _classes.Values.ToArray() },
+                _optionExplicit) { EnumTypes = _enums.Values.ToArray(), RecordTypes = _orderedRecords, ClassTypes = _classes.Values.ToArray(), ModuleMembers = syntax.ModuleMembers, Modules = syntax.Modules },
             _diagnostics);
     }
 
@@ -231,7 +237,7 @@ internal sealed partial class Binder
             }
             sawOptional |= parameter.IsOptional;
             SmileType parameterType = ResolveType(parameter.DeclaredType);
-            SmileValue? defaultValue = BindParameterDefault(parameter, parameterType);
+            SmileValue? defaultValue = BindParameterDefault(parameter, parameterType, out EnumMemberSymbol? defaultMember);
             parameters.Add(new VariableSymbol(
                 parameter.Name,
                 parameter.NameSpan,
@@ -241,7 +247,7 @@ internal sealed partial class Binder
                 ArrayLength: 0,
                 IsParameter: true,
                 DefaultValue: defaultValue,
-                IsByRef: parameter.IsByRef));
+                IsByRef: parameter.IsByRef) { DefaultEnumMember = defaultMember });
         }
 
         return new RoutineSymbol(
@@ -567,13 +573,13 @@ internal sealed partial class Binder
             return existing;
         }
 
-        if (_programDeclarations.ContainsKey(name))
+        if (CanAccessGlobal(name, span) && _programDeclarations.ContainsKey(name))
         {
             Report("SMILE2128", $"'{name}' names a routine and cannot be used as a variable.", span);
             return ErrorVariable(name, span, inferredType);
         }
 
-        if (_optionExplicit)
+        if (IsExplicit(span))
         {
             Report("SMILE2129", $"Variable '{name}' must be declared because Option Explicit is enabled.", span);
             return ErrorVariable(name, span, inferredType);
@@ -809,12 +815,12 @@ internal sealed partial class Binder
         bool declares = counter is null;
         if (counter is null)
         {
-            if (_optionExplicit)
+            if (IsExplicit(syntax.CounterSpan))
             {
                 Report("SMILE2129", $"FOR counter '{syntax.CounterName}' must be declared because Option Explicit is enabled.", syntax.CounterSpan);
                 counter = ErrorVariable(syntax.CounterName, syntax.CounterSpan, SmileType.Integer);
             }
-            else if (_programDeclarations.ContainsKey(syntax.CounterName))
+            else if (CanAccessGlobal(syntax.CounterName, syntax.CounterSpan) && _programDeclarations.ContainsKey(syntax.CounterName))
             {
                 Report("SMILE2128", $"'{syntax.CounterName}' names a routine and cannot be used as a FOR counter.", syntax.CounterSpan);
                 counter = ErrorVariable(syntax.CounterName, syntax.CounterSpan, SmileType.Integer);
@@ -1029,7 +1035,7 @@ internal sealed partial class Binder
             return local;
         }
 
-        if (_globals.TryGetValue(name, out VariableSymbol? global))
+        if (CanAccessGlobal(name, useSpan) && _globals.TryGetValue(name, out VariableSymbol? global))
         {
             return global;
         }
@@ -1108,7 +1114,7 @@ internal sealed partial class Binder
         bool constantsOnly,
         out BoundExpression? expression)
     {
-        if (_routineSymbols.ContainsKey(syntax.Name)) { expression = null; return false; }
+        if (CanAccessGlobal(syntax.Name, syntax.Span) && _routineSymbols.ContainsKey(syntax.Name)) { expression = null; return false; }
         BoundIntrinsicKind? kind = syntax.Name.ToUpperInvariant() switch
         {
             "TODOUBLE" => BoundIntrinsicKind.ToDouble,

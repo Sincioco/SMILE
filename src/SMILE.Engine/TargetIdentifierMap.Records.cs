@@ -14,7 +14,7 @@ internal sealed partial class TargetIdentifierMap
     {
         bool freeFunction = language is TargetLanguage.C or TargetLanguage.ObjectiveC or TargetLanguage.Cobol or TargetLanguage.MasmX64;
         string accessor = routine.MemberKind is InstanceMemberRoutineKind.PropertyGet ? "get_" : routine.MemberKind is InstanceMemberRoutineKind.PropertySet ? "set_" : "";
-        string sourceName = (freeFunction ? routine.Owner!.Name + "_" : "") + accessor + routine.Name;
+        string sourceName = (freeFunction ? SourceName(routine.Owner!.Name) + "_" : "") + accessor + routine.Name;
         if (language is TargetLanguage.Python && routine.IsPrivate) sourceName = "_" + sourceName;
         string preferred = IsSafeTargetIdentifier(sourceName, language, reserved) ? sourceName : BuildMappedName(sourceName, language);
         ISet<string> scope = freeFunction ? used : _recordMemberNames[routine.Owner!];
@@ -35,7 +35,8 @@ internal sealed partial class TargetIdentifierMap
         if (language is TargetLanguage.Swift && program.InstanceTypes.Any(type => type.Properties.Count > 0)) reserved.Add("newValue");
         foreach (InstanceTypeSymbol type in program.InstanceTypes)
         {
-            string preferred = IsSafeTargetIdentifier(type.Name, language, reserved) ? type.Name : BuildMappedName(type.Name, language);
+            string typeSourceName = SourceName(type.Name);
+            string preferred = IsSafeTargetIdentifier(typeSourceName, language, reserved) ? typeSourceName : BuildMappedName(typeSourceName, language);
             string typeName = MakeUnique(preferred, used, language);
             used.Add(typeName);
             _recordNames.Add(type, typeName);

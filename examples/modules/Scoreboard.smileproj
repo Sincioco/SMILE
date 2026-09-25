@@ -1,0 +1,13 @@
+<SmileProject>
+  <PropertyGroup>
+    <ProjectKind>Console</ProjectKind>
+    <StartupFile>Program.smile</StartupFile>
+    <OutputName>Scoreboard</OutputName>
+    <ApplicationId>org.smile.scoreboard</ApplicationId>
+  </PropertyGroup>
+  <ItemGroup>
+    <SmileSource Include="Program.smile" />
+    <SmileProjectReference Include="library/Counters.smilelibproj" />
+    <Asset Include="assets/*.txt" />
+  </ItemGroup>
+</SmileProject>

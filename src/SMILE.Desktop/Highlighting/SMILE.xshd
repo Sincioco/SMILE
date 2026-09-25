@@ -22,6 +22,8 @@
       <Word>ELSE</Word>
       <Word>END</Word>
       <Word>DIM</Word>
+      <Word>MODULE</Word>
+      <Word>IMPORT</Word>
       <Word>ENUM</Word>
       <Word>TYPE</Word>
       <Word>CLASS</Word>

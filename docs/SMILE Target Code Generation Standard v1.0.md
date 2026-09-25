@@ -263,3 +263,13 @@ interpreter. It collects unreferenced allocations at statement/frame boundaries,
 finalizes owned Text roots, and frees remaining objects on program shutdown.
 Class fields cannot contain references, so recursive graph tracing is unnecessary.
 No class allocation support is emitted for programs without classes.
+
+Module imports are resolved during binding. Current targets statically combine
+the selected sources, using readable module prefixes for ordinary declarations,
+native classes/records/enums and routine calls. Privacy and provider identity are
+checked before generation; no runtime import loader, dispatch table, module
+interpreter or new support helper is emitted. Initializers retain dependency and
+source order. Python remains a direct top-level script and Node remains plain
+dependency-free JavaScript. Packages contain source and verified API metadata,
+never target binaries. Runtime project assets are separate from GeneratedFile
+source text and are copied only after a successful native build.

@@ -71,7 +71,7 @@ public sealed class CoreBasicDesktopTests
 
         StringAssert.Contains(xaml, "Header=\"_Format SMILE\"");
         StringAssert.Contains(xaml, "InputGestureText=\"Ctrl+K, Ctrl+D\"");
-        StringAssert.Contains(codeBehind, "SmileSourceFormatter.Format(SourceEditor.Text");
+        StringAssert.Contains(codeBehind, "await _viewModel.FormatSourceAsync(SourceEditor.Text");
         StringAssert.Contains(codeBehind, "SourceEditor.ReplaceAllTextAsSingleEdit");
     }
 

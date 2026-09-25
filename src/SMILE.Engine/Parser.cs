@@ -14,11 +14,11 @@ internal sealed partial class Parser
     private int _routineDepth;
     private int _recordDepth;
 
-    public Parser(string source)
+    public Parser(string source, string? sourcePath = null)
     {
         var lexer = new Lexer(source);
-        _tokens = lexer.LexAll();
-        _diagnostics.AddRange(lexer.Diagnostics);
+        _tokens = lexer.LexAll().Select(token => token with { Span = token.Span with { SourcePath = sourcePath } }).ToArray();
+        _diagnostics.AddRange(lexer.Diagnostics.Select(diagnostic => diagnostic with { Span = diagnostic.Span with { SourcePath = sourcePath } }));
     }
 
     public ParseResult Parse()
@@ -76,6 +76,9 @@ internal sealed partial class Parser
         TokenKind.Option => ParseOptionExplicit(),
         TokenKind.Identifier or TokenKind.Dot or TokenKind.Me or TokenKind.OpenParenthesis => ParseLocationAssignment(),
         TokenKind.With => ParseWith(),
+        TokenKind.Module => ParseModule(),
+        TokenKind.Import => ParseImport(),
+        TokenKind.Public or TokenKind.Private => ParseVisibility(),
         TokenKind.Dim => ParseDim(),
         TokenKind.Enum => ParseEnum(),
         TokenKind.Type or TokenKind.Class => ParseRecord(),
@@ -112,9 +115,9 @@ internal sealed partial class Parser
         Match(TokenKind.File, "Expected File after Load Text.");
         ExpressionSyntax path = ParseExpression();
         Match(TokenKind.Into, "Expected Into after the file path.");
-        Token destination = Match(TokenKind.Identifier, "Expected a Number array after Into.");
+        Token destination = ParseQualifiedName();
         Match(TokenKind.Count, "Expected Count after the destination array.");
-        Token count = Match(TokenKind.Identifier, "Expected a Number count variable.");
+        Token count = ParseQualifiedName();
         return new TextFileLoadStatementSyntax(path, destination.Text, destination.Span, count.Text, count.Span, Combine(start.Span, count.Span));
     }
 
@@ -353,7 +356,7 @@ internal sealed partial class Parser
     {
         Token start = Next();
         Match(TokenKind.Key, "Expected 'Key' after 'Get'.");
-        Token target = Match(TokenKind.Identifier, "Get Key requires a writable Number variable.");
+        Token target = ParseQualifiedName();
         return new GetKeyStatementSyntax(target.Text, target.Span, Combine(start.Span, target.Span));
     }
 
@@ -406,7 +409,7 @@ internal sealed partial class Parser
     private StatementSyntax ParseRandom()
     {
         Token start = Next();
-        Token target = Match(TokenKind.Identifier, "Random requires a writable Number variable.");
+        Token target = ParseQualifiedName();
         Match(TokenKind.From, "Expected 'From' after the Random target.");
         ExpressionSyntax lower = ParseExpression();
         Match(TokenKind.To, "Expected 'To' between Random bounds.");
@@ -463,7 +466,7 @@ internal sealed partial class Parser
     private StatementSyntax ParseFor()
     {
         Token start = Next();
-        Token counter = Match(TokenKind.Identifier, "Expected a FOR counter identifier.");
+        Token counter = ParseQualifiedName();
         Match(TokenKind.Equals, "Expected '=' after the FOR counter.");
         ExpressionSyntax lower = ParseExpression();
         bool descending = Current.Kind is TokenKind.Down;
@@ -791,6 +794,7 @@ internal sealed partial class Parser
 
     private Token ParseType(string message)
     {
+        if (Current.Kind is TokenKind.Identifier && Peek(1).Kind is TokenKind.Dot) return ParseQualifiedName();
         if (Current.Kind is TokenKind.Identifier && string.Equals(Current.Text, "Double", StringComparison.OrdinalIgnoreCase))
             return Next() with { Kind = TokenKind.DoubleType };
         return Current.Kind is TokenKind.NumberType or TokenKind.BooleanType or TokenKind.TextType or TokenKind.Identifier
@@ -866,7 +870,7 @@ internal sealed partial class Parser
         }
 
         Report("SMILE2005", message, Current.Span);
-        return new Token(kind, string.Empty, null, new TextSpan(Current.Span.Start, 0, Current.Span.Line, Current.Span.Column));
+        return new Token(kind, string.Empty, null, Current.Span with { Length = 0 });
     }
 
     private Token Current => Peek(0);
@@ -896,7 +900,7 @@ internal sealed partial class Parser
         items.Count == 0 ? fallback : items[^1].Span;
 
     private static TextSpan Combine(TextSpan first, TextSpan last) =>
-        new(first.Start, Math.Max(0, last.Start + last.Length - first.Start), first.Line, first.Column);
+        first with { Length = Math.Max(0, last.Start + last.Length - first.Start) };
 
     private enum TokenKind
     {
@@ -908,7 +912,7 @@ internal sealed partial class Parser
         Call, Return, Select, Case, ByVal, ByRef, Optional, BuiltInConstant, BuiltInFunction, UnsupportedKeyword,
         Plus, Minus, Star, Slash, Equals, NotEquals, Less, LessOrEquals,
         Greater, GreaterOrEquals, OpenParenthesis, CloseParenthesis,
-        OpenBracket, CloseBracket, Semicolon, Comma, ColonEquals, Dot, Enum, Type, With, Me, Public, Private, Property, Set, Class, New, Nothing, Is
+        OpenBracket, CloseBracket, Semicolon, Comma, ColonEquals, Dot, Enum, Type, With, Me, Public, Private, Property, Set, Class, New, Nothing, Is, Module, Import
     }
 
     private sealed record Token(TokenKind Kind, string Text, object? Value, TextSpan Span);
@@ -946,6 +950,7 @@ internal sealed partial class Parser
             ["Me"] = TokenKind.Me, ["Public"] = TokenKind.Public, ["Private"] = TokenKind.Private,
             ["Property"] = TokenKind.Property, ["Set"] = TokenKind.Set,
             ["Class"] = TokenKind.Class, ["New"] = TokenKind.New, ["Nothing"] = TokenKind.Nothing, ["Is"] = TokenKind.Is,
+            ["Module"] = TokenKind.Module, ["Import"] = TokenKind.Import,
             ["Timer"] = TokenKind.BuiltInFunction, ["Abs"] = TokenKind.BuiltInFunction,
             ["Min"] = TokenKind.BuiltInFunction, ["Max"] = TokenKind.BuiltInFunction,
             ["Text_Length"] = TokenKind.BuiltInFunction,

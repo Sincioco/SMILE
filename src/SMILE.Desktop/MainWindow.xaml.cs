@@ -72,9 +72,10 @@ public partial class MainWindow : Window
         }
     }
 
-    private void FormatSmileSource()
+    private async void FormatSmileSource()
     {
-        SmileFormatResult result = SmileSourceFormatter.Format(SourceEditor.Text ?? string.Empty);
+        SmileFormatResult? result = await _viewModel.FormatSourceAsync(SourceEditor.Text ?? string.Empty);
+        if (result is null) return;
         if (!result.Success)
         {
             _viewModel.OperationStatus = "Formatting not applied";

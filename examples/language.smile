@@ -300,3 +300,7 @@ Sub AddPoint(ByRef Value As Number)
     Value = Value + 1
 
 End Sub
+
+' Module and Import span physical files rather than this single-file reference.
+' Open examples/modules/Scoreboard.smileproj for a Class library and text asset.
+' That project also demonstrates Public/Private module declarations and ApplicationId.

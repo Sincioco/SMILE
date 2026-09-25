@@ -9,7 +9,7 @@ using SMILE.Toolchains;
 
 namespace SMILE.Desktop;
 
-public sealed class MainWindowViewModel : ViewModelBase
+public sealed partial class MainWindowViewModel : ViewModelBase
 {
     internal const string LanguageFileName = "language.smile";
 
@@ -286,99 +286,6 @@ public sealed class MainWindowViewModel : ViewModelBase
         RaiseCommandStateChanged();
     }
 
-    private void NewDocument()
-    {
-        CancelLiveTranspilation();
-
-        // New is an editor reset, not a second request for the packaged
-        // language reference. Advancing the revision even when the editor was
-        // already empty prevents a pending startup read from winning the race
-        // and putting language.smile back into the new document.
-        _sourceRevision++;
-        if (_sourceText.Length != 0)
-        {
-            _sourceText = string.Empty;
-            OnPropertyChanged(nameof(SourceText));
-        }
-
-        _currentFilePath = null;
-        ResetGeneratedTargetsForEmptySource();
-    }
-
-    private async Task<string?> LoadLanguageSourceAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await _languageSourceReader(cancellationToken).ConfigureAwait(true);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex) when (!DesktopExceptionPolicy.IsFatal(ex))
-        {
-            string details = ReportException("Load language reference", ex, stage: LanguageFileName);
-            AppendConciseError("Load language reference", ex, details, stage: LanguageFileName);
-            return null;
-        }
-    }
-
-    private async Task OpenAsync()
-    {
-        var dialog = new OpenFileDialog
-        {
-            Filter = "SMILE source (*.smile)|*.smile|All files (*.*)|*.*",
-            Title = "Open SMILE source"
-        };
-
-        if (dialog.ShowDialog() != true)
-        {
-            return;
-        }
-
-        string openedSource = await File.ReadAllTextAsync(dialog.FileName).ConfigureAwait(true);
-        _currentFilePath = dialog.FileName;
-        if (SourceText == openedSource)
-        {
-            _sourceRevision++;
-            ScheduleLiveTranspilation();
-        }
-        else SourceText = openedSource;
-        OperationStatus = $"Opened {Path.GetFileName(_currentFilePath)}";
-    }
-
-    private async Task SaveAsync()
-    {
-        if (_currentFilePath is null)
-        {
-            await SaveAsAsync().ConfigureAwait(true);
-            return;
-        }
-
-        await File.WriteAllTextAsync(_currentFilePath, SourceText).ConfigureAwait(true);
-        OperationStatus = $"Saved {Path.GetFileName(_currentFilePath)}";
-    }
-
-    private async Task SaveAsAsync()
-    {
-        var dialog = new SaveFileDialog
-        {
-            Filter = "SMILE source (*.smile)|*.smile|All files (*.*)|*.*",
-            FileName = "PrintEverywhere.smile",
-            Title = "Save SMILE source"
-        };
-
-        if (dialog.ShowDialog() != true)
-        {
-            return;
-        }
-
-        _currentFilePath = dialog.FileName;
-        await SaveAsync().ConfigureAwait(true);
-        _sourceRevision++;
-        ScheduleLiveTranspilation();
-    }
-
     private async Task TranspileAllAsync()
     {
         await RunOperationAsync(
@@ -652,8 +559,10 @@ public sealed class MainWindowViewModel : ViewModelBase
         // The lexer/parser/generator pipeline is fast today, but keeping it
         // off the WPF dispatcher protects the editor as SMILE grows.
         string programName = Path.GetFileNameWithoutExtension(_currentFilePath ?? "Program");
+        DesktopProjectSession? project = _projectSession;
         return await Task.Run(
-            () => _transpiler.TranspileMany(sourceSnapshot, languages, programName),
+            () => project is null ? _transpiler.TranspileMany(sourceSnapshot, languages, programName)
+                : project.Snapshot(sourceSnapshot).Transpile(languages),
             cancellationToken).ConfigureAwait(true);
     }
 
@@ -1616,7 +1525,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ??
             assembly.GetName().Version?.ToString() ??
             "unknown";
-        const string mission = "SMILE is a beginner-first language inspired by BASIC. Students write one clear program, then compare the readable code generated for ten destination languages. SMILE Core BASIC 2.1 adds a small text-game foundation—fixed two-dimensional arrays, nonblocking keys, screen redraw, timing, and randomness—without adding graphics or hiding the lesson behind a framework. Unicode text inspection, bounded text-file reads, integer and byte Data persistence, nominal enums, Type value records, Class reference objects, methods/properties and With blocks, Double math and explicit conversions, ByRef parameters, Optional defaults, named arguments, and multiline routine declarations extend that core. The goal is not to memorize one syntax, but to build logical thinking and recognize the shared fundamentals underneath many languages.";
+        const string mission = "SMILE is a beginner-first language inspired by BASIC. Students write one clear program, then compare the readable code generated for ten destination languages. SMILE Core BASIC 2.1 adds a small text-game foundation—fixed two-dimensional arrays, nonblocking keys, screen redraw, timing, and randomness—without adding graphics or hiding the lesson behind a framework. Unicode text inspection, bounded text-file reads, integer and byte Data persistence, nominal enums, Type value records, Class reference objects, methods/properties and With blocks, modules and source-owned libraries, application projects/assets and persistent identity, Double math and explicit conversions, ByRef parameters, Optional defaults, named arguments, and multiline routine declarations extend that core. The goal is not to memorize one syntax, but to build logical thinking and recognize the shared fundamentals underneath many languages.";
 
         MessageBox.Show(
             $"SMILE - Simple Modern and Intuitive Language for Everyone{Environment.NewLine}Version {version}{Environment.NewLine}Session {SessionId}{Environment.NewLine}{Environment.NewLine}{mission}",

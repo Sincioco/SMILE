@@ -1,0 +1,10 @@
+<SmileProject>
+  <PropertyGroup>
+    <ProjectKind>Library</ProjectKind>
+    <LibraryName>Lessons.Counters</LibraryName>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <SmileSource Include="Counter.smile" />
+  </ItemGroup>
+</SmileProject>
