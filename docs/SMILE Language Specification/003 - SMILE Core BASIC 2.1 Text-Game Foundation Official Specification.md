@@ -73,9 +73,7 @@ The following built-in Number constants use the authoritative stable values:
 
 Letters accept either case. Backtick includes the shifted tilde key; Plus
 includes `+`/`=`, and Minus includes `-`/`_`. These character events work on all
-ten targets. `KEY_CONTROL` reserves the authority's value, but standalone Control
-events are not currently supplied by the target character-stream readers.
-Adding native modifier-only event handling remains a back-port gap.
+ten targets. `KEY_CONTROL` reports standalone left or right Control presses. Native console-event readers skip key releases and non-key records, consume one key-down record per result (including repeated records), and preserve event order. No target polls the global keyboard when its console has no input.
 
 Pad-only and pointer constants are outside this console profile.
 
@@ -160,7 +158,7 @@ The evaluator exposes an injectable host for one-event key polling, clear/top-le
 
 Every target lowers the bound operations to normal destination facilities. Helpers/imports are emitted only when used and contain terminal/runtime mechanics only—not game rules.
 
-For C#, C, MASM x64, Java, COBOL, Objective-C, and C++, the main or primary program is the first executable body, followed by user routines and then compiler helpers. Required imports, data, fields, external declarations, and prototypes may precede main. Node.js uses a dependency-free async main only when asynchronous console behavior requires it; Wait uses a Promise and never blocks the event loop. Python remains a direct module-level script without a synthetic main guard.
+For C#, C, MASM x64, Java, COBOL, Objective-C, and C++, the main or primary program is the first executable body, followed by user routines and then compiler helpers. Required imports, data, fields, external declarations, and prototypes may precede main. Node.js uses a async main only when Wait or asynchronous file/persistence behavior requires it; Wait uses a Promise and never blocks the event loop. Python remains a direct module-level script without a synthetic main guard.
 
 ## Grammar additions
 

@@ -22,7 +22,7 @@ internal static class CoreBasicCobolRuntimeSupport
             text.AppendLine(NativeClassSupport.Definition);
             text.AppendLine("void *smile_object_allocate_cobol(size_t bytes) { return smile_object_allocate(bytes, NULL); }");
         }
-        if (features.HasGetKey) text.AppendLine("#include <conio.h>");
+
         text.AppendLine("#include <stdint.h>");
         if (features.HasTextInspection) text.AppendLine("#include <string.h>");
         if (features.HasAbs)
@@ -30,47 +30,14 @@ internal static class CoreBasicCobolRuntimeSupport
             text.AppendLine("#include <stdio.h>");
             text.AppendLine("#include <stdlib.h>");
         }
-        if (features.HasClearScreen || features.HasMoveCursor || features.HasTextColor || features.HasWait || features.HasTimer || features.HasRandom)
+        if (features.HasGetKey || features.HasClearScreen || features.HasMoveCursor || features.HasTextColor || features.HasWait || features.HasTimer || features.HasRandom)
         {
             text.AppendLine("#include <windows.h>");
         }
         text.AppendLine();
 
         if (features.HasGetKey)
-        {
-            text.AppendLine("int64_t smile_get_key_cobol(void)");
-            text.AppendLine("{");
-            text.AppendLine("    if (!_kbhit()) return 0;");
-            text.AppendLine("    int key = _getch();");
-            text.AppendLine("    if (key == 0 || key == 224)");
-            text.AppendLine("    {");
-            text.AppendLine("        if (!_kbhit()) return 19;");
-            text.AppendLine("        key = _getch();");
-            text.AppendLine("        switch (key) { case 72: return 10; case 80: return 11; case 75: return 12; case 77: return 13; default: return 19; }");
-            text.AppendLine("    }");
-            text.AppendLine("    switch (key)");
-            text.AppendLine("    {");
-            text.AppendLine("        case 'w': case 'W': return 1; case 'a': case 'A': return 2; case 's': case 'S': return 3; case 'd': case 'D': return 4;");
-            text.AppendLine("        case 'o': case 'O': return 27;");
-            text.AppendLine("        case 'f': case 'F': return 28;");
-            text.AppendLine("        case 'g': case 'G': return 29;");
-            text.AppendLine("        case 'r': case 'R': return 30;");
-            text.AppendLine("        case 'p': case 'P': return 31;");
-            text.AppendLine("        case 'b': case 'B': return 32;");
-            text.AppendLine("        case 'x': case 'X': return 35;");
-            text.AppendLine("        case 'y': case 'Y': return 36;");
-            text.AppendLine("        case 'z': case 'Z': return 37;");
-            text.AppendLine("        case 'e': case 'E': return 38;");
-            text.AppendLine("        case 'c': case 'C': return 41;");
-            text.AppendLine("        case '`': case '~': return 34;");
-            text.AppendLine("        case '+': case '=': return 39;");
-            text.AppendLine("        case '-': case '_': return 40;");
-            text.AppendLine("        case 13: return 14; case 27: return 15; case ' ': return 16; case '1': return 17; case '2': return 18;");
-            text.AppendLine("        case '3': return 20; case 9: return 21; case '4': return 22; default: return 19;");
-            text.AppendLine("    }");
-            text.AppendLine("}");
-            text.AppendLine();
-        }
+            text.AppendLine(ConsoleKeyMap.NativeFunction("int64_t smile_get_key_cobol(void)"));
 
         if (features.HasClearScreen)
         {

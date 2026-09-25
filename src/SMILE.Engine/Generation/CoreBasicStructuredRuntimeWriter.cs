@@ -184,14 +184,10 @@ internal static partial class CoreBasicCodeGenerator
                 case TargetLanguage.ObjectiveC:
                 case TargetLanguage.Cpp:
                     bool cppNeedsWindows = _language is TargetLanguage.Cpp &&
-                        (_features.HasClearScreen || _features.HasMoveCursor || _features.HasTextColor || _features.HasTextFileLoad);
+                        (_features.HasGetKey || _features.HasClearScreen || _features.HasMoveCursor || _features.HasTextColor || _features.HasTextFileLoad);
                     if (cppNeedsWindows)
                     {
                         Line("#define NOMINMAX");
-                    }
-                    if (_features.HasGetKey)
-                    {
-                        Line("#include <conio.h>");
                     }
                     if (_language is not TargetLanguage.Cpp && (_features.HasConsoleRuntime || _features.HasTextFileLoad || (_features.HasNumberPersistence || _features.HasDataPersistence)) ||
                         cppNeedsWindows)
@@ -234,13 +230,13 @@ internal static partial class CoreBasicCodeGenerator
                     {
                         Line("import Foundation");
                     }
-                    if (_features.HasClearScreen || _features.HasMoveCursor || _features.HasTextColor)
+                    if (_features.HasGetKey || _features.HasClearScreen || _features.HasMoveCursor || _features.HasTextColor)
                     {
                         Line("import WinSDK");
                     }
                     break;
                 case TargetLanguage.Python:
-                    if (_features.HasGetKey) Line("import msvcrt");
+                    if (_features.HasGetKey) Line("import ctypes");
                     if (_features.HasClearScreen || _features.HasMoveCursor || _features.HasTextColor || ProgramHasUnicodeText()) Line("import sys");
                     if (_features.HasRandom) Line("import random");
                     if (_features.HasWait || _features.HasTimer) Line("import time");
@@ -338,7 +334,7 @@ internal static partial class CoreBasicCodeGenerator
         {
             if (_features.HasGetKey)
             {
-                Lines("private static long SmileGetKey()", "{", "    try", "    {", "        if (!Console.KeyAvailable)", "        {", "            return 0;", "        }", "        ConsoleKeyInfo key = Console.ReadKey(intercept: true);", "        return key.Key switch", "        {", "            ConsoleKey.W => 1,", "            ConsoleKey.A => 2,", "            ConsoleKey.S => 3,", "            ConsoleKey.D => 4,", "            ConsoleKey.O => 27,", "            ConsoleKey.F => 28,", "            ConsoleKey.G => 29,", "            ConsoleKey.R => 30,", "            ConsoleKey.P => 31,", "            ConsoleKey.B => 32,", "            ConsoleKey.X => 35,", "            ConsoleKey.Y => 36,", "            ConsoleKey.Z => 37,", "            ConsoleKey.E => 38,", "            ConsoleKey.C => 41,", "            ConsoleKey.Oem3 => 34,", "            ConsoleKey.OemPlus or ConsoleKey.Add => 39,", "            ConsoleKey.OemMinus or ConsoleKey.Subtract => 40,", "            ConsoleKey.UpArrow => 10,", "            ConsoleKey.DownArrow => 11,", "            ConsoleKey.LeftArrow => 12,", "            ConsoleKey.RightArrow => 13,", "            ConsoleKey.Enter => 14,", "            ConsoleKey.Escape => 15,", "            ConsoleKey.Spacebar => 16,", "            ConsoleKey.D1 or ConsoleKey.NumPad1 => 17,", "            ConsoleKey.D2 or ConsoleKey.NumPad2 => 18,", "            ConsoleKey.D3 or ConsoleKey.NumPad3 => 20,", "            ConsoleKey.Tab => 21,", "            ConsoleKey.D4 or ConsoleKey.NumPad4 => 22,", "            _ => 19", "        };", "    }", "    catch (InvalidOperationException)", "    {", "        return 0;", "    }", "}");
+                WriteCSharpConsoleInput();
             }
             if (_features.HasClearScreen)
             {
@@ -396,7 +392,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private void WriteCGetKeyHelper()
         {
-            Lines("static int64_t smile_get_key(void)", "{", "    if (!_kbhit())", "    {", "        return 0;", "    }", "    int key = _getch();", "    if (key == 0 || key == 224)", "    {", "        if (!_kbhit())", "        {", "            return 19;", "        }", "        key = _getch();", "        switch (key)", "        {", "            case 72: return 10;", "            case 80: return 11;", "            case 75: return 12;", "            case 77: return 13;", "            default: return 19;", "        }", "    }", "    switch (key)", "    {", "        case 'w': case 'W': return 1;", "        case 'a': case 'A': return 2;", "        case 's': case 'S': return 3;", "        case 'd': case 'D': return 4;", "        case 'o': case 'O': return 27;", "        case 'f': case 'F': return 28;", "        case 'g': case 'G': return 29;", "        case 'r': case 'R': return 30;", "        case 'p': case 'P': return 31;", "        case 'b': case 'B': return 32;", "        case 'x': case 'X': return 35;", "        case 'y': case 'Y': return 36;", "        case 'z': case 'Z': return 37;", "        case 'e': case 'E': return 38;", "        case 'c': case 'C': return 41;", "        case '`': case '~': return 34;", "        case '+': case '=': return 39;", "        case '-': case '_': return 40;", "        case 13: return 14;", "        case 27: return 15;", "        case ' ': return 16;", "        case '1': return 17;", "        case '2': return 18;", "        case '3': return 20;", "        case 9: return 21;", "        case '4': return 22;", "        default: return 19;", "    }", "}");
+            foreach (string line in ConsoleKeyMap.NativeFunction("static int64_t smile_get_key(void)").Split('\n')) Line(line.TrimEnd('\r'));
         }
 
         private void WriteCClearHelper()
@@ -428,67 +424,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private void WriteJavaScriptRuntimeHelpers()
         {
-            if (_features.HasGetKey)
-            {
-                Lines(
-                    "const smileKeyQueue = [];",
-                    "const smileKeyMap = new Map([",
-                    "    [\"w\", 1n], [\"W\", 1n], [\"a\", 2n], [\"A\", 2n],",
-                    "    [\"s\", 3n], [\"S\", 3n], [\"d\", 4n], [\"D\", 4n],",
-                    "    [\"\\r\", 14n], [\"\\n\", 14n], [\"\\u001b\", 15n], [\" \", 16n],",
-                    "    [\"o\", 27n], [\"O\", 27n],",
-                    "    [\"f\", 28n], [\"F\", 28n],",
-                    "    [\"g\", 29n], [\"G\", 29n],",
-                    "    [\"r\", 30n], [\"R\", 30n],",
-                    "    [\"p\", 31n], [\"P\", 31n],",
-                    "    [\"b\", 32n], [\"B\", 32n],",
-                    "    [\"x\", 35n], [\"X\", 35n],",
-                    "    [\"y\", 36n], [\"Y\", 36n],",
-                    "    [\"z\", 37n], [\"Z\", 37n],",
-                    "    [\"e\", 38n], [\"E\", 38n],",
-                    "    [\"c\", 41n], [\"C\", 41n],",
-                    "    [\"`\", 34n], [\"~\", 34n],",
-                    "    [\"+\", 39n], [\"=\", 39n],",
-                    "    [\"-\", 40n], [\"_\", 40n],",
-                    "    [\"1\", 17n], [\"2\", 18n], [\"3\", 20n], [\"\\t\", 21n], [\"4\", 22n]",
-                    "]);",
-                    "let smileInputStarted = false;");
-                Lines(
-                    "function smileStartInput() {",
-                    "    if (smileInputStarted || !process.stdin.isTTY) {",
-                    "        return;",
-                    "    }",
-                    "    smileInputStarted = true;",
-                    "    process.stdin.setRawMode(true);",
-                    "    process.stdin.resume();",
-                    "    process.stdin.on(\"data\", data => {",
-                    "        for (let index = 0; index < data.length; index++) {",
-                    "            if (data[index] === 27 && data[index + 1] === 91 && index + 2 < data.length) {",
-                    "                const arrows = { 65: 10n, 66: 11n, 68: 12n, 67: 13n };",
-                    "                smileKeyQueue.push(arrows[data[index + 2]] ?? 19n);",
-                    "                index += 2;",
-                    "            } else {",
-                    "                const key = String.fromCharCode(data[index]);",
-                    "                smileKeyQueue.push(smileKeyMap.get(key) ?? 19n);",
-                    "            }",
-                    "        }",
-                    "    });",
-                    "}");
-                Lines(
-                    "function smileGetKey() {",
-                    "    smileStartInput();",
-                    "    return smileKeyQueue.shift() ?? 0n;",
-                    "}");
-                Lines(
-                    "function smileCleanup() {",
-                    "    if (!smileInputStarted || !process.stdin.isTTY) {",
-                    "        return;",
-                    "    }",
-                    "    process.stdin.setRawMode(false);",
-                    "    process.stdin.pause();",
-                    "    smileInputStarted = false;",
-                    "}");
-            }
+            if (_features.HasGetKey) Line("const smileGetKey = require(\"./SmileConsole.node\");");
             if (_features.HasClearScreen) Lines("function smileClearScreen() {", "    if (process.stdout.isTTY) {", "        process.stdout.write(\"\\u001b[2J\\u001b[H\");", "    }", "}");
             if (_features.HasMoveCursor) Lines("function smileMoveCursor(column, row) {", "    if (process.stdout.isTTY) {", "        const x = Number(column < 1n ? 1n : column);", "        const y = Number(row < 1n ? 1n : row);", "        process.stdout.write(`\\u001b[${y};${x}H`);", "    }", "}");
             if (_features.HasTextColor) Lines("function smileSetTextColor(foreground, background) {", "    if (process.stdout.isTTY) {", "        const foregroundCode = foreground === 0 ? 30 : 90 + foreground;", "        const backgroundCode = background === 0 ? 40 : 100 + background;", "        process.stdout.write(`\\u001b[${foregroundCode};${backgroundCode}m`);", "    }", "}", "function smileResetTextColor() {", "    if (process.stdout.isTTY) {", "        process.stdout.write(\"\\u001b[0m\");", "    }", "}");
@@ -502,7 +438,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private void WriteJavaRuntimeHelpers()
         {
-            if (_features.HasGetKey) Lines("private static long smileGetKey()", "{", "    try", "    {", "        if ((int)SMILE_KBHIT.invokeExact() == 0)", "        {", "            return 0;", "        }", "        int key = (int)SMILE_GETWCH.invokeExact();", "        if (key == 0 || key == 224)", "        {", "            key = (int)SMILE_GETWCH.invokeExact();", "            return switch (key)", "            {", "                case 72 -> 10;", "                case 80 -> 11;", "                case 75 -> 12;", "                case 77 -> 13;", "                default -> 19;", "            };", "        }", "        return switch (key)", "        {", "            case 'w', 'W' -> 1;", "            case 'a', 'A' -> 2;", "            case 's', 'S' -> 3;", "            case 'd', 'D' -> 4;", "            case 'o', 'O' -> 27;", "            case 'f', 'F' -> 28;", "            case 'g', 'G' -> 29;", "            case 'r', 'R' -> 30;", "            case 'p', 'P' -> 31;", "            case 'b', 'B' -> 32;", "            case 'x', 'X' -> 35;", "            case 'y', 'Y' -> 36;", "            case 'z', 'Z' -> 37;", "            case 'e', 'E' -> 38;", "            case 'c', 'C' -> 41;", "            case '`', '~' -> 34;", "            case '+', '=' -> 39;", "            case '-', '_' -> 40;", "            case 13 -> 14;", "            case 27 -> 15;", "            case 32 -> 16;", "            case '1' -> 17;", "            case '2' -> 18;", "            case '3' -> 20;", "            case 9 -> 21;", "            case '4' -> 22;", "            default -> 19;", "        };", "    }", "    catch (Throwable error)", "    {", "        return 0;", "    }", "}");
+            if (_features.HasGetKey) WriteJavaConsoleInput();
             if (_features.HasClearScreen) Lines("private static void smileClearScreen()", "{", "    if (System.console() != null)", "    {", "        System.out.print(\"\\033[2J\\033[H\");", "        System.out.flush();", "    }", "}");
             if (_features.HasMoveCursor) Lines("private static void smileMoveCursor(long column, long row)", "{", "    if (System.console() != null)", "    {", "        System.out.printf(\"\\033[%d;%dH\", Math.max(row, 1), Math.max(column, 1));", "        System.out.flush();", "    }", "}");
             if (_features.HasTextColor) Lines("private static void smileSetTextColor(int foreground, int background)", "{", "    if (System.console() != null)", "    {", "        int foregroundCode = foreground == 0 ? 30 : 90 + foreground;", "        int backgroundCode = background == 0 ? 40 : 100 + background;", "        System.out.printf(\"\\033[%d;%dm\", foregroundCode, backgroundCode);", "        System.out.flush();", "    }", "}", "private static void smileResetTextColor()", "{", "    if (System.console() != null)", "    {", "        System.out.print(\"\\033[0m\");", "        System.out.flush();", "    }", "}");
@@ -517,18 +453,13 @@ internal static partial class CoreBasicCodeGenerator
             {
                 return;
             }
-
-            Line("private static final Arena SMILE_ARENA = Arena.global();");
-            Line("private static final Linker SMILE_LINKER = Linker.nativeLinker();");
-            Line("private static final SymbolLookup SMILE_CRT = SymbolLookup.libraryLookup(\"ucrtbase\", SMILE_ARENA);");
-            Line("private static final MethodHandle SMILE_KBHIT = SMILE_LINKER.downcallHandle(SMILE_CRT.find(\"_kbhit\").orElseThrow(), FunctionDescriptor.of(ValueLayout.JAVA_INT));");
-            Line("private static final MethodHandle SMILE_GETWCH = SMILE_LINKER.downcallHandle(SMILE_CRT.find(\"_getwch\").orElseThrow(), FunctionDescriptor.of(ValueLayout.JAVA_INT));");
+            WriteJavaConsoleFields();
             _layout.EnsureBlankLines(_language is TargetLanguage.Python ? 2 : 1);
         }
 
         private void WriteSwiftRuntimeHelpers()
         {
-            if (_features.HasGetKey) Lines("@_silgen_name(\"_kbhit\") func _kbhit() -> Int32", "@_silgen_name(\"_getch\") func _getch() -> Int32", "func smileGetKey() -> Int64 {", "    if _kbhit() == 0 {", "        return 0", "    }", "    var key = _getch()", "    if key == 0 || key == 224 {", "        if _kbhit() == 0 {", "            return 19", "        }", "        key = _getch()", "        switch key {", "        case 72: return 10", "        case 80: return 11", "        case 75: return 12", "        case 77: return 13", "        default: return 19", "        }", "    }", "    switch key {", "    case 119, 87: return 1", "    case 97, 65: return 2", "    case 115, 83: return 3", "    case 100, 68: return 4", "    case 111, 79: return 27", "    case 102, 70: return 28", "    case 103, 71: return 29", "    case 114, 82: return 30", "    case 112, 80: return 31", "    case 98, 66: return 32", "    case 120, 88: return 35", "    case 121, 89: return 36", "    case 122, 90: return 37", "    case 101, 69: return 38", "    case 99, 67: return 41", "    case 96, 126: return 34", "    case 43, 61: return 39", "    case 45, 95: return 40", "    case 13: return 14", "    case 27: return 15", "    case 32: return 16", "    case 49: return 17", "    case 50: return 18", "    case 51: return 20", "    case 9: return 21", "    case 52: return 22", "    default: return 19", "    }", "}");
+            if (_features.HasGetKey) WriteSwiftConsoleInput();
             if (_features.HasClearScreen) Lines("func smileClearScreen() {", "    let output = GetStdHandle(STD_OUTPUT_HANDLE)", "    var mode: DWORD = 0", "    if output == INVALID_HANDLE_VALUE || !GetConsoleMode(output, &mode) {", "        return", "    }", "    print(\"\\u{001B}[2J\\u{001B}[H\", terminator: \"\")", "}");
             if (_features.HasMoveCursor) Lines("func smileMoveCursor(_ column: Int64, _ row: Int64) {", "    let output = GetStdHandle(STD_OUTPUT_HANDLE)", "    var mode: DWORD = 0", "    if output == INVALID_HANDLE_VALUE || !GetConsoleMode(output, &mode) {", "        return", "    }", "    print(\"\\u{001B}[\\(max(row, 1));\\(max(column, 1))H\", terminator: \"\")", "}");
             if (_features.HasTextColor) Lines("func smileSetTextColor(_ foreground: Int, _ background: Int) {", "    let output = GetStdHandle(STD_OUTPUT_HANDLE)", "    var mode: DWORD = 0", "    if output == INVALID_HANDLE_VALUE || !GetConsoleMode(output, &mode) {", "        return", "    }", "    let foregroundCode = foreground == 0 ? 30 : 90 + foreground", "    let backgroundCode = background == 0 ? 40 : 100 + background", "    print(\"\\u{001B}[\\(foregroundCode);\\(backgroundCode)m\", terminator: \"\")", "}", "func smileResetTextColor() {", "    let output = GetStdHandle(STD_OUTPUT_HANDLE)", "    var mode: DWORD = 0", "    if output == INVALID_HANDLE_VALUE || !GetConsoleMode(output, &mode) {", "        return", "    }", "    print(\"\\u{001B}[0m\", terminator: \"\")", "}");
@@ -539,7 +470,7 @@ internal static partial class CoreBasicCodeGenerator
 
         private void WritePythonRuntimeHelpers()
         {
-            if (_features.HasGetKey) Lines("smile_extended_key_pending = False", "smile_key_map = {", "    'w': 1, 'W': 1, 'a': 2, 'A': 2,", "    's': 3, 'S': 3, 'd': 4, 'D': 4,", "    '\\r': 14, '\\n': 14, '\\x1b': 15, ' ': 16,", "    'o': 27, 'O': 27,", "    'f': 28, 'F': 28,", "    'g': 29, 'G': 29,", "    'r': 30, 'R': 30,", "    'p': 31, 'P': 31,", "    'b': 32, 'B': 32,", "    'x': 35, 'X': 35,", "    'y': 36, 'Y': 36,", "    'z': 37, 'Z': 37,", "    'e': 38, 'E': 38,", "    'c': 41, 'C': 41,", "    '`': 34, '~': 34,", "    '+': 39, '=': 39,", "    '-': 40, '_': 40,", "    '1': 17, '2': 18, '3': 20, '\\t': 21, '4': 22,", "}", "smile_arrow_map = {'H': 10, 'P': 11, 'K': 12, 'M': 13}", "def smile_get_key():", "    global smile_extended_key_pending", "    if smile_extended_key_pending:", "        if not msvcrt.kbhit():", "            return 0", "        smile_extended_key_pending = False", "        return smile_arrow_map.get(msvcrt.getwch(), 19)", "    if not msvcrt.kbhit():", "        return 0", "    key = msvcrt.getwch()", "    if key in ('\\x00', '\\xe0'):", "        if not msvcrt.kbhit():", "            smile_extended_key_pending = True", "            return 0", "        return smile_arrow_map.get(msvcrt.getwch(), 19)", "    return smile_key_map.get(key, 19)");
+            if (_features.HasGetKey) WritePythonConsoleInput();
             if (_features.HasClearScreen) Lines("def smile_clear_screen():", "    if sys.stdout.isatty():", "        print('\\x1b[2J\\x1b[H', end='', flush=True)");
             if (_features.HasMoveCursor) Lines("def smile_move_cursor(column, row):", "    if sys.stdout.isatty():", "        print(f'\\x1b[{max(row, 1)};{max(column, 1)}H', end='', flush=True)");
             if (_features.HasTextColor) Lines("def smile_set_text_color(foreground, background):", "    if sys.stdout.isatty():", "        foreground_code = 30 if foreground == 0 else 90 + foreground", "        background_code = 40 if background == 0 else 100 + background", "        print(f'\\x1b[{foreground_code};{background_code}m', end='', flush=True)", "def smile_reset_text_color():", "    if sys.stdout.isatty():", "        print('\\x1b[0m', end='', flush=True)");

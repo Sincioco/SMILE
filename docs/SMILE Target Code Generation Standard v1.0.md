@@ -135,15 +135,15 @@ C and Objective-C programs that concatenate Text emit an immutable allocation re
 
 | Target | Required recognizable direction |
 |---|---|
-| C# | main-first minimal console program, rectangular arrays, `Console` polling/screen/color operations, `Thread.Sleep`, monotonic clock |
+| C# | main-first minimal console program, rectangular arrays, Win32 event polling and `Console` screen/color operations, `Thread.Sleep`, monotonic clock |
 | C | main-first `int main(void)`, fixed arrays, Win32/CRT console and color primitives, explicit ordered temporaries |
 | MASM x64 | main-first ABI-correct `PROC`, flattened checked 2D offsets, direct CRT/Win64 screen/color primitives |
-| JavaScript (Node.js) | dependency-free `.js`, independent nested arrays, feature-driven async main, Promise Wait, raw queue/finally cleanup |
-| Java | main-first small `Program`, primitive arrays, standard JDK 21 FFM for Windows CRT key polling |
+| JavaScript (Node.js) | npm-free `.js`, independent nested arrays, feature-driven async main, Promise Wait, feature-gated native console addon |
+| Java | main-first small `Program`, primitive arrays, standard JDK 21 FFM for Win32 console events |
 | COBOL | primary-first recursive program units, nested `OCCURS`, exact logical-length Text, and a feature-gated C console companion |
 | Objective-C | dependency-light C-compatible console source in `.m` |
 | Swift | top-level script statements, nested arrays, WinSDK/CRT console interop only when used |
-| Python | direct module-level script, list comprehensions, `msvcrt`, and no synthetic main |
+| Python | direct module-level script, list comprehensions, standard `ctypes` Win32 polling, and no synthetic main |
 | C++ | main-first small program, nested `std::array`, standard chrono/thread/random |
 
 ## Comments and layout
@@ -270,6 +270,6 @@ native classes/records/enums and routine calls. Privacy and provider identity ar
 checked before generation; no runtime import loader, dispatch table, module
 interpreter or new support helper is emitted. Initializers retain dependency and
 source order. Python remains a direct top-level script and Node remains plain
-dependency-free JavaScript. Packages contain source and verified API metadata,
+JavaScript with no npm dependency. Get Key alone adds the native console addon. Packages contain source and verified API metadata,
 never target binaries. Runtime project assets are separate from GeneratedFile
 source text and are copied only after a successful native build.

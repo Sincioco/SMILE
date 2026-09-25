@@ -40,7 +40,7 @@ public sealed class SmileLanguageReferenceTests
         string[] labels = Regex.Matches(navigation.Groups[1].Value, @"<a\b[^>]*>(.*?)</a>", HtmlOptions)
             .Select(match => StripTags(match.Groups[1].Value).Trim())
             .ToArray();
-        Assert.HasCount(37, labels);
+        Assert.HasCount(38, labels);
         foreach (string label in labels)
         {
             Assert.IsTrue(Regex.IsMatch(label, @"^\d{2}\s·\s\D+$"), $"Navigation must contain exactly one authored number: {label}");

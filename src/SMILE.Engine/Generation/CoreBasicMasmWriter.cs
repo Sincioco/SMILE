@@ -83,17 +83,18 @@ internal sealed partial class CoreBasicMasmWriter
         }
         if (_features.HasGetKey)
         {
-            Line("_kbhit PROTO");
-            Line("_getch PROTO");
+            Line("PeekConsoleInputW PROTO :QWORD, :PTR BYTE, :DWORD, :PTR DWORD");
+            Line("ReadConsoleInputW PROTO :QWORD, :PTR BYTE, :DWORD, :PTR DWORD");
         }
         if (_features.HasTextLength) Line("smile_text_length PROTO :PTR BYTE");
         if (_features.HasTextCodeAt) Line("smile_text_code_at PROTO :PTR BYTE, :QWORD");
         if (_features.HasTextSlice) Line("smile_text_slice PROTO :PTR BYTE, :QWORD, :QWORD");
         if (_features.HasWait) Line("Sleep PROTO :DWORD");
         if (_features.HasTimer || _features.HasRandom) Line("GetTickCount64 PROTO");
+        if (_features.HasGetKey || _features.HasClearScreen || _features.HasMoveCursor || _features.HasTextColor)
+            Line("GetStdHandle PROTO :DWORD");
         if (_features.HasClearScreen || _features.HasMoveCursor || _features.HasTextColor)
         {
-            Line("GetStdHandle PROTO :DWORD");
             Line("GetConsoleScreenBufferInfo PROTO :QWORD, :PTR BYTE");
         }
         if (_features.HasClearScreen)
@@ -107,7 +108,7 @@ internal sealed partial class CoreBasicMasmWriter
         }
         if (_features.HasTextColor) Line("SetConsoleTextAttribute PROTO :QWORD, :DWORD");
         Line("includelib kernel32.lib");
-        if ((_usesPrintf || _usesStrcmp || _features.HasGetKey) && !_usesManagedText)
+        if ((_usesPrintf || _usesStrcmp) && !_usesManagedText)
         {
             Line("includelib msvcrt.lib");
         }
@@ -261,83 +262,7 @@ internal sealed partial class CoreBasicMasmWriter
             Line();
         }
 
-        if (_features.HasGetKey)
-        {
-            Line("smile_get_key PROC");
-            Line("    sub rsp, 40");
-            Line("    call _kbhit");
-            Line("    test eax, eax");
-            Line("    jz smile_get_key_none");
-            Line("    call _getch");
-            Line("    cmp eax, 0");
-            Line("    je smile_get_key_extended");
-            Line("    cmp eax, 224");
-            Line("    je smile_get_key_extended");
-            Line("    cmp eax, 'w'"); Line("    je smile_get_key_w"); Line("    cmp eax, 'W'"); Line("    je smile_get_key_w");
-            Line("    cmp eax, 'a'"); Line("    je smile_get_key_a"); Line("    cmp eax, 'A'"); Line("    je smile_get_key_a");
-            Line("    cmp eax, 's'"); Line("    je smile_get_key_s"); Line("    cmp eax, 'S'"); Line("    je smile_get_key_s");
-            Line("    cmp eax, 'd'"); Line("    je smile_get_key_d"); Line("    cmp eax, 'D'"); Line("    je smile_get_key_d");
-            foreach ((int Key, int Code, string Name) in new[] { (13,14,"enter"), (27,15,"escape"), (32,16,"space"), (49,17,"one"), (50,18,"two"), (51,20,"three"), (9,21,"tab"), (52,22,"four") })
-            {
-                Line($"    cmp eax, {Key}"); Line($"    je smile_get_key_{Name}");
-            }
-            Line("    cmp eax, 111"); Line("    je smile_get_key_extra_27");
-            Line("    cmp eax, 79"); Line("    je smile_get_key_extra_27");
-            Line("    cmp eax, 102"); Line("    je smile_get_key_extra_28");
-            Line("    cmp eax, 70"); Line("    je smile_get_key_extra_28");
-            Line("    cmp eax, 103"); Line("    je smile_get_key_extra_29");
-            Line("    cmp eax, 71"); Line("    je smile_get_key_extra_29");
-            Line("    cmp eax, 114"); Line("    je smile_get_key_extra_30");
-            Line("    cmp eax, 82"); Line("    je smile_get_key_extra_30");
-            Line("    cmp eax, 112"); Line("    je smile_get_key_extra_31");
-            Line("    cmp eax, 80"); Line("    je smile_get_key_extra_31");
-            Line("    cmp eax, 98"); Line("    je smile_get_key_extra_32");
-            Line("    cmp eax, 66"); Line("    je smile_get_key_extra_32");
-            Line("    cmp eax, 120"); Line("    je smile_get_key_extra_35");
-            Line("    cmp eax, 88"); Line("    je smile_get_key_extra_35");
-            Line("    cmp eax, 121"); Line("    je smile_get_key_extra_36");
-            Line("    cmp eax, 89"); Line("    je smile_get_key_extra_36");
-            Line("    cmp eax, 122"); Line("    je smile_get_key_extra_37");
-            Line("    cmp eax, 90"); Line("    je smile_get_key_extra_37");
-            Line("    cmp eax, 101"); Line("    je smile_get_key_extra_38");
-            Line("    cmp eax, 69"); Line("    je smile_get_key_extra_38");
-            Line("    cmp eax, 99"); Line("    je smile_get_key_extra_41");
-            Line("    cmp eax, 67"); Line("    je smile_get_key_extra_41");
-            Line("    cmp eax, 96"); Line("    je smile_get_key_extra_34");
-            Line("    cmp eax, 126"); Line("    je smile_get_key_extra_34");
-            Line("    cmp eax, 43"); Line("    je smile_get_key_extra_39");
-            Line("    cmp eax, 61"); Line("    je smile_get_key_extra_39");
-            Line("    cmp eax, 45"); Line("    je smile_get_key_extra_40");
-            Line("    cmp eax, 95"); Line("    je smile_get_key_extra_40");
-            Line("    mov eax, 19"); Line("    jmp smile_get_key_done");
-            Line("smile_get_key_extended:");
-            Line("    call _getch");
-            foreach ((int Key, int Code, string Name) in new[] { (72,10,"up"), (80,11,"down"), (75,12,"left"), (77,13,"right") })
-            {
-                Line($"    cmp eax, {Key}"); Line($"    je smile_get_key_{Name}");
-            }
-            Line("    mov eax, 19"); Line("    jmp smile_get_key_done");
-            Line("smile_get_key_none:"); Line("    xor eax, eax"); Line("    jmp smile_get_key_done");
-            foreach ((int Code, string Name) in new[] { (1,"w"), (2,"a"), (3,"s"), (4,"d"), (10,"up"), (11,"down"), (12,"left"), (13,"right"), (14,"enter"), (15,"escape"), (16,"space"), (17,"one"), (18,"two"), (20,"three"), (21,"tab"), (22,"four") })
-            {
-                Line($"smile_get_key_{Name}:"); Line($"    mov eax, {Code}"); Line("    jmp smile_get_key_done");
-            }
-            Line("smile_get_key_extra_27:"); Line("    mov eax, 27"); Line("    jmp smile_get_key_done");
-            Line("smile_get_key_extra_28:"); Line("    mov eax, 28"); Line("    jmp smile_get_key_done");
-            Line("smile_get_key_extra_29:"); Line("    mov eax, 29"); Line("    jmp smile_get_key_done");
-            Line("smile_get_key_extra_30:"); Line("    mov eax, 30"); Line("    jmp smile_get_key_done");
-            Line("smile_get_key_extra_31:"); Line("    mov eax, 31"); Line("    jmp smile_get_key_done");
-            Line("smile_get_key_extra_32:"); Line("    mov eax, 32"); Line("    jmp smile_get_key_done");
-            Line("smile_get_key_extra_35:"); Line("    mov eax, 35"); Line("    jmp smile_get_key_done");
-            Line("smile_get_key_extra_36:"); Line("    mov eax, 36"); Line("    jmp smile_get_key_done");
-            Line("smile_get_key_extra_37:"); Line("    mov eax, 37"); Line("    jmp smile_get_key_done");
-            Line("smile_get_key_extra_38:"); Line("    mov eax, 38"); Line("    jmp smile_get_key_done");
-            Line("smile_get_key_extra_41:"); Line("    mov eax, 41"); Line("    jmp smile_get_key_done");
-            Line("smile_get_key_extra_34:"); Line("    mov eax, 34"); Line("    jmp smile_get_key_done");
-            Line("smile_get_key_extra_39:"); Line("    mov eax, 39"); Line("    jmp smile_get_key_done");
-            Line("smile_get_key_extra_40:"); Line("    mov eax, 40"); Line("    jmp smile_get_key_done");
-            Line("smile_get_key_done:"); Line("    add rsp, 40"); Line("    ret"); Line("smile_get_key ENDP"); Line();
-        }
+        if (_features.HasGetKey) WriteConsoleInput();
 
         if (_features.HasClearScreen)
         {

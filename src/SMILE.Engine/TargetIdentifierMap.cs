@@ -26,6 +26,11 @@ internal sealed partial class TargetIdentifierMap
             "smile_text_slice", "smile_utf8_next", "smile_text_allocate"
         });
         if (language is TargetLanguage.Python) reserved.Add("ord");
+        if (CoreBasicProgramFeatureSet.Create(program).HasGetKey)
+            reserved.UnionWith(new[] { "GetStdHandle", "PeekConsoleInputW", "ReadConsoleInputW", "SmileInputRecord",
+                "INPUT_RECORD", "KEY_EVENT", "STD_INPUT_HANDLE", "DWORD", "HANDLE", "ctypes", "int",
+                "smile_console", "smile_read", "SMILE_ARENA", "SMILE_LINKER", "SMILE_CONSOLE", "SMILE_INPUT",
+                "SMILE_READ_SIGNATURE", "SMILE_PEEK", "SMILE_READ", "Arena", "ValueLayout", "Linker", "SymbolLookup", "FunctionDescriptor", "MethodHandle" });
         if (CoreBasicProgramFeatureSet.Create(program).HasDataPersistence)
         {
             foreach (string suffix in new[] { "DataPath", "ReadData", "LoadData", "SaveData", "SaveDataCore", "DataHash", "DataFail", "DataIoError", "DataRead", "DataReplace" })

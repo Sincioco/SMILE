@@ -4,8 +4,9 @@ Authority inspected read-only: `D:\SMILE 2.0`, commit
 `e97afe296f6866d97ad035c9a9b0c9596b919fe0`. The authority repository was clean
 before inspection and after the unchanged fixture compilation/execution.
 
-The overall requested back-port is **not complete**. This file records the
-completed text, routine, console-key, Double, text-file, persistence, Enum, Type/Class, With, ByRef, and module/project milestones and the remaining source-language gap.
+The requested text, console and core-language back-port is **complete** against
+the authority snapshot above. This file records the implemented features,
+validation, target-native limitations and deliberately excluded GUI facilities.
 
 ## Implemented in this milestone
 
@@ -18,7 +19,7 @@ completed text, routine, console-key, Double, text-file, persistence, Enum, Type
 | ByRef parameters | Exact-type writable scalars, array cells, forwarding and aliases; immediate writes; source-order index checks; all ten targets |
 | Unary Number `+` | Identity operation with unary precedence |
 | Unicode console output | UTF-8 for C#, Java, Python when source contains non-ASCII Text |
-| Expanded console keys | O/F/G/R/P/B/X/Y/Z/E/C, Backtick, Plus and Minus events on all ten targets; Control constant available |
+| Expanded console keys | O/F/G/R/P/B/X/Y/Z/E/C, Backtick, Plus, Minus and standalone left/right Control events on all ten targets |
 | Double arithmetic | Distinct binary64 literals, scalar/array storage, routines, Optional defaults, same-type operators and exact comparisons |
 | Double math and conversions | ToDouble/ToNumber; polymorphic Abs/Min/Max; Clamp, Sqrt, Sin, Cos, Atan2, Floor, Ceiling, Truncate, Round; Text_From_Double/Text_To_Double |
 | Load Text File | Expression paths, executable-relative normalization, bounded UTF-8 bytes, BOM removal, zero-fill, safe missing/unreadable results; all ten targets |
@@ -36,19 +37,20 @@ completed text, routine, console-key, Double, text-file, persistence, Enum, Type
 The UTF-8 output fix addresses failures observed during actual generated-program
 execution on Windows. Ordinary ASCII programs retain their minimal output.
 
-## Remaining non-graphical gaps
+## Final scope audit
 
-| Area | Implemented SMILE 2.0 features still absent from SMILE 1.0 |
-|---|---|
-| Console keys | Standalone Control key events: character-stream APIs do not report modifier-only events; a native console-event boundary is still needed |
+No outstanding text/console/core feature was found in the inspected parser,
+built-in signatures and semantic/runtime implementation. The completed set
+includes program organization, source libraries, project assets and persistence
+identity as well as expressions, types, routines, text and console operations.
 
 ## Outside the console/core back-port
 
 Graphics, Game Window, pointer input, rendering, images, audio and media are
 graphical/runtime facilities. `Key_Held` and `Key_Event_Held` require Game Window
 in the authority's semantic analyzer, so they are not console primitives.
-GUI file pickers and shell-reveal operations should be scoped separately from
-ordinary text-file/persistence operations.
+File_Import and File_Export invoke Windows open/save dialogs; File_Reveal opens
+the graphical shell. These GUI operations remain outside this console/core task.
 
 Blocking `Input`, While, dynamic arrays, variadic parameters, and rank-three
 arrays are not newly implemented SMILE 2.0 features to import. Legacy untyped
@@ -207,3 +209,42 @@ exit failed despite the child reporting success, and both Java/JavaScript target
 console reruns passed. No harness behavior was weakened. Builds have zero warnings
 or errors. Desktop project opening and formatting were also exercised in the native
 UI. No architecture check, exclusion or limit was changed.
+
+Standalone Control now uses PeekConsoleInputW/ReadConsoleInputW on all ten targets.
+The actual Windows input buffer owns events; native switches map each key-down
+record once, skipping releases and non-key records. The noninteractive contract
+continues to return None, without the authority's process-global keyboard fallback.
+C#/Python use standard interop, Java its existing JDK FFM, Swift WinSDK, C-family
+and MASM direct Win32 calls, and COBOL its existing C companion. Node lacks native
+Win32 FFI, so Get Key alone emits a small stable Node-API addon built with the
+installed MSVC. It needs no npm package, node-gyp, downloaded headers or input
+thread/process. Other JavaScript programs remain a single source file.
+
+The unchanged Control fixture compiles and executes in SMILE 2.0. Both versions
+receive real console KEY_EVENT_RECORDs, including left/right Control, a release,
+repeat count, Control+C, a Unicode unknown key and Escape. Every target reports
+33, 41, 33, 19, 15 in order, followed by None. The 71-test console/foundation/mission
+run also passes the ordinary attached-console key contract on all ten targets;
+the final normal MissionGuardrail passes 24 tests. A reproduced Swift WindowsBool
+interop error was corrected before those tests passed.
+
+Console metadata and rendering have focused compiler-owned modules; NodeToolchain
+was extracted from Toolchains.cs. Existing runtime writers shrink. No unrelated
+architecture refactor, dependency, guardrail exception or native input global
+state was added. The Node addon stores only its stable API function pointer.
+
+Final validation also ran the cumulative language reference on all ten targets,
+the full living-source format check, 34 generation/hardening/Desktop/format/HTML
+checks (33 initially passed; the Modules navigation count was updated from 37
+to 38 and all three HTML checks then passed), and 59 class/mission/HTML checks.
+C# class storage now carries normal nullable-reference annotations, eliminating
+the observed class/null warnings; the existing native class test also rejects
+CS86xx regressions and passes. The cumulative C# program retains three expected
+learner-example warnings: two unused fields and one unreachable branch. Engine,
+CLI and Desktop builds have zero warnings/errors.
+
+In the final console change, CoreBasicStructuredRuntimeWriter shrinks by 69 lines,
+CoreBasicMasmWriter by 75, CoreBasicCobolRuntimeSupport by 33 and Toolchains.cs by
+76. The largest new implementation owner is the 126-line console binding writer;
+the Node toolchain is 98 lines. The focused nullable class change is one line.
+No file-size baseline or architecture check was disabled or modified.

@@ -56,7 +56,7 @@ Current justified examples include C Text concatenation, deterministic array bou
 
 ## 7. Ten active destinations
 
-C#, C, Windows x64 MASM Assembly, JavaScript (Node.js), Java, COBOL, Objective-C, Swift, Python, and C++ are active. Keep their generator, toolchain, Desktop/CLI exposure, tests, and documentation available. `javascript` remains the stable target ID and output remains dependency-free `.js`.
+C#, C, Windows x64 MASM Assembly, JavaScript (Node.js), Java, COBOL, Objective-C, Swift, Python, and C++ are active. Keep their generator, toolchain, Desktop/CLI exposure, tests, and documentation available. `javascript` remains the stable target ID and primary output remains `.js` without npm dependencies. Get Key alone adds a small generated Windows console addon, compiled with the installed Visual Studio tools, because Node has no native console-event API.
 
 Do not add, recommend, prototype, or scaffold another destination until Sin explicitly changes the target strategy.
 

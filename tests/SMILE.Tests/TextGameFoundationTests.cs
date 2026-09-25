@@ -285,15 +285,15 @@ Print Grid[1, 2]; KeyCode
         Dictionary<TargetLanguage, string[]> markers = new()
         {
             [TargetLanguage.CSharp] = ["long[,] Grid", "SmileGetKey"],
-            [TargetLanguage.C] = ["Grid[2][3]", "_kbhit"],
-            [TargetLanguage.MasmX64] = ["QWORD 6 DUP", "_kbhit PROTO"],
-            [TargetLanguage.JavaScript] = ["Array.from({ length: 2 }", "setRawMode(true)"],
+            [TargetLanguage.C] = ["Grid[2][3]", "PeekConsoleInputW"],
+            [TargetLanguage.MasmX64] = ["QWORD 6 DUP", "PeekConsoleInputW PROTO"],
+            [TargetLanguage.JavaScript] = ["Array.from({ length: 2 }", "SmileConsole.node"],
             [TargetLanguage.Java] = ["long[][] Grid", "java.lang.foreign"],
             [TargetLanguage.Cobol] = ["OCCURS 2 TIMES", "OCCURS 3 TIMES"],
-            [TargetLanguage.ObjectiveC] = ["Grid[2][3]", "_kbhit"],
-            [TargetLanguage.Swift] = ["[[Int64]]", "_kbhit"],
-            [TargetLanguage.Python] = ["for _ in range(3)", "msvcrt.kbhit"],
-            [TargetLanguage.Cpp] = ["std::array<std::array<std::int64_t, 3>, 2>", "_kbhit"]
+            [TargetLanguage.ObjectiveC] = ["Grid[2][3]", "PeekConsoleInputW"],
+            [TargetLanguage.Swift] = ["[[Int64]]", "PeekConsoleInputW"],
+            [TargetLanguage.Python] = ["for _ in range(3)", "smile_console.PeekConsoleInputW"],
+            [TargetLanguage.Cpp] = ["std::array<std::array<std::int64_t, 3>, 2>", "PeekConsoleInputW"]
         };
 
         foreach (TranspileResult result in _transpiler.TranspileMany(source, ActiveTargetLanguages.All))

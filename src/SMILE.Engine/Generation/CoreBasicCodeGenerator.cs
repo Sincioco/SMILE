@@ -26,6 +26,8 @@ internal static partial class CoreBasicCodeGenerator
         {
             new(TargetLanguageInfo.GetPrimaryFileName(language), content, IsPrimary: true)
         };
+        if (language is TargetLanguage.JavaScript && CoreBasicProgramFeatureSet.Create(program).HasGetKey)
+            files.Add(new GeneratedFile("SmileConsole.c", NodeConsoleSupport.Generate(), IsPrimary: false));
         if (language is TargetLanguage.CSharp)
         {
             const string project = """
@@ -174,26 +176,12 @@ internal static partial class CoreBasicCodeGenerator
             WriteRuntimePreamble();
             Line();
             WriteGlobalDeclarations();
-            bool wrappedMain = _features.HasGetKey || _features.HasWait || _features.HasTextFileLoad || (_features.HasNumberPersistence || _features.HasDataPersistence);
+            bool wrappedMain = _features.HasWait || _features.HasTextFileLoad || (_features.HasNumberPersistence || _features.HasDataPersistence);
             if (wrappedMain)
             {
                 Line("async function main() {");
                 _indent++;
-                if (_features.HasGetKey)
-                {
-                    Line("try {");
-                    _indent++;
-                }
                 WriteItems(_program.SourceItems);
-                if (_features.HasGetKey)
-                {
-                    _indent--;
-                    Line("} finally {");
-                    _indent++;
-                    Line("smileCleanup();");
-                    _indent--;
-                    Line("}");
-                }
                 _indent--;
                 Line("}");
                 Line();
@@ -1863,7 +1851,7 @@ internal static partial class CoreBasicCodeGenerator
                 TargetLanguage.CSharp => "Environment.Exit(0);",
                 TargetLanguage.Java => "System.exit(0);",
                 TargetLanguage.C or TargetLanguage.ObjectiveC or TargetLanguage.Cpp => "exit(0);",
-                TargetLanguage.JavaScript when _features.HasGetKey || _features.HasWait || _features.HasTextFileLoad || (_features.HasNumberPersistence || _features.HasDataPersistence) => "throw { smileEnd: true };",
+                TargetLanguage.JavaScript when _features.HasWait || _features.HasTextFileLoad || (_features.HasNumberPersistence || _features.HasDataPersistence) => "throw { smileEnd: true };",
                 TargetLanguage.JavaScript => "process.exit(0);",
                 TargetLanguage.Swift => "exit(0)",
                 TargetLanguage.Python => "raise SystemExit(0)",

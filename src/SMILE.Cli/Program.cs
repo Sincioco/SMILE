@@ -163,7 +163,7 @@ internal static class Program
         Console.Error.WriteLine($"  dotnet run --project src\\SMILE.Cli -- --project <app.smileproj> --target {targetList} [--run]");
         Console.Error.WriteLine("  dotnet run --project src\\SMILE.Cli -- --project <library.smilelibproj> --target library [-o <output.smilelib>]");
         Console.Error.WriteLine("  dotnet run --project src\\SMILE.Cli -- <file.smile|project.smileproj|library.smilelibproj> --format|--check");
-        Console.Error.WriteLine("  javascript generates dependency-free JavaScript (Node.js) in Program.js.");
+        Console.Error.WriteLine("  javascript generates Program.js without npm dependencies; Get Key adds a locally built Windows console addon.");
         Console.Error.WriteLine("  Current language: SMILE Core BASIC 2.1 - Text-Game Foundation (ten targets).");
         Console.Error.WriteLine("  Text-game programs use keys, screen clearing, cursor movement, named colors, timing, random values, and fixed 2D arrays.");
         Console.Error.WriteLine("  Unicode text inspection, Load Text File, integer/Data Load/Save, nominal enums, Type value records, Class reference objects, methods/properties and With blocks, Double math/conversions, ByRef, Optional defaults, named arguments, multiline routine declarations, Module/Import, projects, source-owned libraries, assets and ApplicationId are supported.");

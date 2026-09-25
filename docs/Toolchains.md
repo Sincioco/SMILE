@@ -13,7 +13,7 @@ Detection, compilation, linking, and execution are asynchronous and cancellation
 | C# | .NET SDK builds the generated minimal project | generated console executable |
 | C | Visual Studio x64 C compiler | generated executable |
 | MASM x64 | Visual Studio `ml64` plus `link` and UCRT/Kernel32 libraries; MSVC compiles the feature-gated Text/numeric/file companions when needed | generated executable |
-| JavaScript (Node.js) | Node.js | `node Program.js` |
+| JavaScript (Node.js) | Node.js; installed MSVC for Get Key only | `node Program.js` |
 | Java | JDK `javac` and `java` | generated `Program` class |
 | COBOL | GnuCOBOL | generated executable |
 | Objective-C | MSYS2/MinGW Clang | generated executable |
@@ -62,13 +62,14 @@ Programs without Text/numeric/file support requirements remain a single `Program
 
 ## JavaScript (Node.js) and Python
 
-These are direct-run targets. `javascript` remains the stable CLI ID, the display name is JavaScript (Node.js), and generation produces dependency-free `Program.js` with no npm package or module requirement. Node syntax is checked before execution. Programs using `Get Key`, `Wait`, or `Load Text File` receive a feature-driven async main; Wait uses a Promise, key input uses a raw-mode queue, and `finally` restores stdin. Python remains a top-level executable script and is syntax-compiled before execution; it uses Windows `msvcrt` only when key polling is present.
+These are direct-run targets. `javascript` remains the stable CLI ID and the primary file is `Program.js`. Node syntax is checked before execution. Wait and asynchronous file/persistence operations receive a feature-driven async main; Wait uses a Promise. Get Key alone remains synchronous and nonblocking. It adds `SmileConsole.c`, compiled by the installed MSVC x64 tools into `SmileConsole.node`, using the stable Node-API ABI exported by Node itself. There is no npm package, node-gyp, downloaded header or import-library dependency. Keep the addon beside Program.js when copying a key-reading program. Missing MSVC is reported as a build limitation only for programs that need the addon. Python remains a top-level executable script and uses its standard `ctypes` module for native key events.
 
 ## Text-game console integration
 
 - C#, C, Objective-C, MASM, Swift, and C++ use their normal Windows console/CRT facilities.
-- Java requires JDK 21 and uses the standard Foreign Function & Memory API with `--enable-preview` to call `_kbhit`/`_getwch`; no JNA or external JAR is used.
-- Swift uses Windows CRT symbols for key polling and WinSDK only for screen operations.
+- All ten targets poll Windows console input records with PeekConsoleInputW/ReadConsoleInputW, including standalone Control. Key releases and non-key records are skipped. No input mode changes or background input process are needed.
+- Java requires JDK 21 and uses the standard Foreign Function & Memory API with `--enable-preview` for those calls; no JNA or external JAR is used.
+- Swift uses WinSDK for key and screen operations.
 - GnuCOBOL links a generated `SmileRuntime.c` only when a used primitive needs C/Win32 interop. The companion contains terminal/text/file mechanics and, when used, exact Double C adapters; learner statements and game logic stay in COBOL.
 - `Clear Screen` erases the visible attached console and homes the cursor. `Move Cursor To Column, Row` uses 1-based coordinates, and `Text Color Foreground, Background` maps eight named colors to the closest normal terminal palette; `Text Color Default` restores the terminal default. These screen operations are safe no-ops when output is redirected. `Get Key` returns `KEY_NONE` when no attached interactive input event exists. Wait clamps to `4,294,967,295` milliseconds; reversed Random returns its lower bound without consuming randomness.
 - Interactive conformance uses Windows ConPTY to prove W/A/S/D, real arrow sequences, Enter, Escape, Space, no-input polling, redraw, exit, and restored launcher input on every target.

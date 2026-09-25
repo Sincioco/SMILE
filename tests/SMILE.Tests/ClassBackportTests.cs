@@ -147,6 +147,8 @@ End Sub
         Assert.IsTrue(transpile.Success, string.Join("\n", transpile.Diagnostics));
         BuildRunResult run = await ToolchainRegistry.CreateDefault().Get(target).BuildAndRunAsync(transpile.GeneratedProgram!, CancellationToken.None);
         Assert.IsTrue(run.Success, $"{target}: {run.BuildOutput}\n{run.StandardError}");
+        if (target is TargetLanguage.CSharp)
+            Assert.IsFalse(System.Text.RegularExpressions.Regex.IsMatch(run.BuildOutput, @"warning CS86\d+"), run.BuildOutput);
         Assert.AreEqual(Expected, run.StandardOutput.Replace("\r\n", "\n"), target.ToString());
         transpile = new SmileTranspiler().Transpile(ConstructorSource, target);
         Assert.IsTrue(transpile.Success, string.Join("\n", transpile.Diagnostics));

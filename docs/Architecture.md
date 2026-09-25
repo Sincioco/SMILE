@@ -169,7 +169,14 @@ C uses direct scalar storage, combined `printf`, `for`, `do`, and native numeric
 
 MASM uses ABI-correct `PROC` frames, register/stack arguments, global `.data`, local stack arrays, direct CRT/Win64 calls, and readable compare/branch labels. When Text concatenation is used, a generated `SmileTextRuntime.c` companion provides only the same explicit-root collector and counters; the assembly still contains all learner control and data flow. COBOL uses separate recursive program units, explicit shared global state, `LOCAL-STORAGE`, linkage parameters, `EVALUATE`, nested `OCCURS`, `DISPLAY`, and structured `PERFORM`. Because ordinary `PIC X` fields are fixed-width and do not remember a SMILE Text value's logical end, each mutable COBOL Text field or array cell has a parallel numeric length. Calls pass that length with Text parameters and returns; exact reference modification preserves leading, embedded, trailing, and all-space values without trimming. A feature-gated C companion supplies the few Windows console calls GnuCOBOL does not expose directly.
 
-Main-first ordering is structural policy: C#, C, MASM, Java, COBOL, Objective-C, and C++ put the main/primary body before user routines and compiler helpers. JavaScript (Node.js) uses `async function main()` only when key/Wait lifecycle requires it, propagates async through called routines, restores raw stdin in `finally`, and keeps helpers last. Python remains a direct script; Swift keeps ordinary top-level execution.
+Main-first ordering is structural policy: C#, C, MASM, Java, COBOL, Objective-C, and C++ put the main/primary body before user routines and compiler helpers. JavaScript (Node.js) uses `async function main()` only for Wait or asynchronous file/persistence operations and propagates async through called routines. Key polling requires no async wrapper or raw-stdin lifecycle. Python remains a direct script; Swift keeps ordinary top-level execution.
+
+ConsoleKeyMap owns compile-time key metadata and shared C event-reader rendering.
+CoreBasicConsoleInputWriter and CoreBasicMasmConsoleInput emit the native bindings
+and switches; the Windows input buffer owns pending events. No process-global
+keyboard polling is used. NodeConsoleSupport supplies a minimal feature-gated
+Node-API addon because Node has no built-in Win32 FFI. NodeToolchain owns its local
+MSVC compilation. No new package or external build dependency is introduced.
 
 Text-game operations map to normal facilities: attached-console key polling, clearing, cursor positioning, named foreground/background colors, non-busy waits, monotonic clocks, and one process-level random source. Redirected key input returns `KEY_NONE`; redirected screen/color operations are no-ops; runtime imports/helpers are feature-gated.
 

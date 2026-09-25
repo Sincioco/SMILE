@@ -26,7 +26,7 @@ Print Text_From_Double(-0.0)
 
 This prints `1.5`, `3.0:2.0`, and `-0.0`. Double math also includes `Abs`, `Min`, `Max`, `Clamp`, `Sin`, `Cos`, `Atan2`, `Floor`, `Ceiling`, and `Truncate`. Use `ToNumber` for checked truncation and `Text_To_Double` to parse invariant decimal text. No implicit Number/Double conversion occurs.
 
-The broader back-port remains in progress; standalone Control key events remain in the [back-port inventory](docs/SMILE%202%20Core%20Backport%20Progress.md). Modules, application projects and deterministic source-owned libraries are supported. Double output uses native binary64 arithmetic and standard math APIs, with small checks where the target permits infinities or has different conversion rules. COBOL needs C interoperability for exact binary64 operations because its ordinary decimal arithmetic and numeric transfers lose distinctions required by SMILE. Exponent spelling and transcendental rounding can differ between targets.
+The text, console and core-language back-port is recorded in the [back-port inventory](docs/SMILE%202%20Core%20Backport%20Progress.md). Modules, application projects and deterministic source-owned libraries are supported. Double output uses native binary64 arithmetic and standard math APIs, with small checks where the target permits infinities or has different conversion rules. COBOL needs C interoperability for exact binary64 operations because its ordinary decimal arithmetic and numeric transfers lose distinctions required by SMILE. Exponent spelling and transcendental rounding can differ between targets.
 
 `ByRef` changes the caller's storage immediately, including when two parameters
 refer to the same variable. Ordinary parameters remain independent ByVal copies.
@@ -53,12 +53,11 @@ into a one-dimensional Number array on all ten targets. It removes an initial
 UTF-8 BOM, clears unused cells, and returns zero for missing/unreadable files.
 Paths are normalized relative to the executable (or script/class directory),
 with escaping paths rejected. Place data files there when running generated
-programs; automatic project-asset publication remains pending. Node.js reads
+programs, or declare project assets to publish them automatically. Node.js reads
 asynchronously. See the [official file-read contract](docs/SMILE%20Language%20Specification/003%20-%20SMILE%20Core%20BASIC%202.1%20Text-Game%20Foundation%20Official%20Specification.md#load-text-file).
 
 Console controls also recognize O/F/G/R/P/B/X/Y/Z/E/C, Backtick, Plus and Minus
-with SMILE 2.0 key codes on every target. `KEY_CONTROL` is available as a constant;
-standalone Control-event delivery remains pending.
+with SMILE 2.0 key codes on every target. `KEY_CONTROL` reports standalone left/right Control presses through native console events.
 
 Integer `Load` and `Save` persist Number values across runs on all ten targets:
 
@@ -367,9 +366,9 @@ Generated code uses native destination constructs whenever practical: ordinary r
 <details>
 <summary>Target-native implementation details</summary>
 
-Helpers appear only when a target needs one to preserve semantics, such as checked indexes, C Text concatenation, or Python's typed exit across differently nested loop kinds. C, Objective-C, and MASM Text concatenation uses explicit generated roots and bounded statement-boundary collection; a feature-gated MASM C companion supplies only that lifetime mechanism. COBOL pairs its native fixed `PIC X(4096)` Text storage with an explicit logical length so `DISPLAY` preserves meaningful spaces in variables, arrays, routine calls, returns, comparisons, concatenation, and game cells. Python output is a direct module-level script—no synthetic `main()` wrapper. JavaScript remains dependency-free `.js` executed directly by Node.js; no npm dependency or module system is added.
+Helpers appear only when a target needs one to preserve semantics, such as checked indexes, C Text concatenation, or Python's typed exit across differently nested loop kinds. C, Objective-C, and MASM Text concatenation uses explicit generated roots and bounded statement-boundary collection; a feature-gated MASM C companion supplies only that lifetime mechanism. COBOL pairs its native fixed `PIC X(4096)` Text storage with an explicit logical length so `DISPLAY` preserves meaningful spaces in variables, arrays, routine calls, returns, comparisons, concatenation, and game cells. Python output is a direct module-level script—no synthetic `main()` wrapper. JavaScript is executed by Node.js with no npm dependency. Only `Get Key` adds a small generated Windows console addon, built locally with the installed Visual Studio C++ tools.
 
-For interactive programs, generated code polls real terminal keys without requiring Enter, clears or positions the attached console, applies named foreground/background colors, waits without a busy loop, and restores changed input state. Games explicitly reset their colors before returning. Node.js uses an async `main` only when `Get Key` or `Wait` requires the console lifecycle; its delay remains Promise-based. Noninteractive programs receive none of that support.
+For interactive programs, generated code polls real terminal keys without requiring Enter, clears or positions the attached console, applies named foreground/background colors, waits without a busy loop, and restores changed input state. Games explicitly reset their colors before returning. Node.js uses async `main` only for Wait or asynchronous file/persistence operations; its delay remains Promise-based and key polling does not change stdin mode. Noninteractive programs receive none of that support.
 
 See [Architecture](docs/Architecture.md), [Toolchains](docs/Toolchains.md), and the [Target Code Generation Standard](docs/SMILE%20Target%20Code%20Generation%20Standard%20v1.0.md).
 

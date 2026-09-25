@@ -8,7 +8,7 @@ internal static partial class CoreBasicCodeGenerator
         {
             TargetLanguage.C or TargetLanguage.ObjectiveC => _identifiers.Get(type) + "*",
             TargetLanguage.Cpp => "std::shared_ptr<" + _identifiers.Get(type) + ">",
-            TargetLanguage.Swift => _identifiers.Get(type) + "?",
+            TargetLanguage.CSharp or TargetLanguage.Swift => _identifiers.Get(type) + "?",
             _ => _identifiers.Get(type)
         };
 
